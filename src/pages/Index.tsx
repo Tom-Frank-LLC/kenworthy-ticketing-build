@@ -5,6 +5,7 @@ import { TrailerFeed, type FeedItem } from '@/components/home/TrailerFeed';
 import { EditorialCalendar } from '@/components/home/EditorialCalendar';
 import { BackstageTeaser } from '@/components/home/BackstageTeaser';
 import { ConcessionsPreview } from '@/components/home/ConcessionsPreview';
+import { InstagramFeed } from '@/components/home/InstagramFeed';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -156,7 +157,7 @@ export default function Index() {
     <>
       {/* Mobile: stacked. Desktop (lg+): split-scroll, two independently scrolling rails. */}
       <div className="lg:h-[calc(100vh-68px-1px)] lg:overflow-hidden">
-        <div className="lg:grid lg:grid-cols-[55fr_45fr] lg:h-full">
+        <div className="lg:grid lg:grid-cols-[45fr_35fr_20fr] lg:h-full">
           {/* LEFT — Trailer feed */}
           <div className="lg:h-full lg:border-r lg:border-accent/20 lg:relative">
             <div className="h-[80vh] lg:h-full">
@@ -179,8 +180,8 @@ export default function Index() {
             </div>
           </div>
 
-          {/* RIGHT — Editorial calendar */}
-          <div className="lg:h-full">
+          {/* MIDDLE — Editorial calendar */}
+          <div className="lg:h-full lg:border-r lg:border-accent/20 lg:overflow-hidden">
             {loading ? (
               <div className="p-10 space-y-6">
                 <div className="h-4 w-40 bg-muted rounded animate-pulse" />
@@ -191,6 +192,11 @@ export default function Index() {
             ) : (
               <EditorialCalendar items={feed} onSelect={handleSelect} />
             )}
+          </div>
+
+          {/* RIGHT — Instagram feed (sidebar on desktop, stacked below on mobile) */}
+          <div className="lg:h-full lg:overflow-hidden">
+            <InstagramFeed className="h-full" />
           </div>
         </div>
       </div>
