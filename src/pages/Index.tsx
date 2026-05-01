@@ -6,6 +6,7 @@ import { EditorialCalendar } from '@/components/home/EditorialCalendar';
 import { BackstageTeaser } from '@/components/home/BackstageTeaser';
 import { ConcessionsPreview } from '@/components/home/ConcessionsPreview';
 import { InstagramFeed } from '@/components/home/InstagramFeed';
+import { RenovationCard } from '@/components/home/RenovationCard';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -195,8 +196,9 @@ export default function Index() {
           </div>
 
           {/* RIGHT — Instagram feed (sidebar on desktop, stacked below on mobile) */}
-          <div className="lg:h-full lg:overflow-hidden">
-            <InstagramFeed className="h-full" />
+          <div className="lg:h-full lg:overflow-y-auto">
+            <InstagramFeed />
+            <RenovationCard />
           </div>
         </div>
       </div>
