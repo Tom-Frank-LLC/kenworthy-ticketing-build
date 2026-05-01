@@ -117,6 +117,22 @@
   .snap-feed {
     scroll-snap-type: y mandatory;
     -webkit-overflow-scrolling: touch;
+    /* Dark scrollbar so it blends with the marquee-black rail */
+    scrollbar-width: thin;
+    scrollbar-color: hsl(0 0% 18%) transparent;
+  }
+  .snap-feed::-webkit-scrollbar {
+    width: 8px;
+  }
+  .snap-feed::-webkit-scrollbar-track {
+    background: hsl(0 0% 6%);
+  }
+  .snap-feed::-webkit-scrollbar-thumb {
+    background-color: hsl(0 0% 18%);
+    border-radius: 4px;
+  }
+  .snap-feed::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(0 0% 28%);
   }
   .snap-feed > * {
     scroll-snap-align: start;
