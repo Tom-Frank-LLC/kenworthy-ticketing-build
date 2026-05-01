@@ -141,11 +141,22 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                     />
                   )
                 ) : item.posterUrl ? (
-                  <img
-                    src={item.posterUrl}
-                    alt={item.title}
-                    className="h-full w-full object-cover"
-                  />
+                  <>
+                    {/* Blurred backdrop fills the rail without distorting the
+                        actual artwork. The poster itself sits on top, contained
+                        by width so nothing gets stretched or cropped. */}
+                    <img
+                      src={item.posterUrl}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 h-full w-full object-cover scale-110 blur-2xl opacity-50"
+                    />
+                    <img
+                      src={item.posterUrl}
+                      alt={item.title}
+                      className="relative h-full w-full object-contain"
+                    />
+                  </>
                 ) : (
                   <div className="h-full w-full flex items-center justify-center bg-secondary">
                     <Icon className="h-20 w-20 text-muted-foreground" />
