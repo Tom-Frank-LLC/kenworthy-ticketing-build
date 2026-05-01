@@ -114,7 +114,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                 if (el) slideRefs.current.set(item.id, el);
                 else slideRefs.current.delete(item.id);
               }}
-              className="relative w-full overflow-hidden bg-black flex items-center justify-center min-h-[560px]"
+              className="relative w-full overflow-hidden bg-black flex items-center justify-center min-h-[560px] lg:min-h-full lg:h-full"
             >
               {/* Media layer */}
               {/* Blurred backdrop fills the rail edge-to-edge so the
