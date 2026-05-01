@@ -129,7 +129,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                 />
               )}
 
-              <div className="relative w-full">
+              <div className="relative z-[1] flex h-full w-full items-center justify-center p-4 md:p-6">
                 {trailer && !reduceMotion ? (
                   trailer.kind === 'file' ? (
                     <video
@@ -140,10 +140,10 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                       loop
                       playsInline
                       poster={item.posterUrl ?? undefined}
-                      className="w-full h-auto max-h-[80vh] object-contain bg-black"
+                      className="max-h-full w-full object-contain bg-black"
                     />
                   ) : (
-                    <div className="w-full aspect-video bg-black">
+                    <div className="w-full max-w-full aspect-video bg-black">
                       <iframe
                         key={`${item.id}-${isActive}-${muted}`}
                         src={trailer.src}
@@ -158,10 +158,10 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                   <img
                     src={item.posterUrl}
                     alt={item.title}
-                    className="relative block w-full h-auto max-h-[85vh] object-contain mx-auto"
+                    className="block max-h-full w-full object-contain"
                   />
                 ) : (
-                  <div className="h-[60vh] w-full flex items-center justify-center bg-secondary">
+                  <div className="flex h-full w-full items-center justify-center bg-secondary">
                     <Icon className="h-20 w-20 text-muted-foreground" />
                   </div>
                 )}
