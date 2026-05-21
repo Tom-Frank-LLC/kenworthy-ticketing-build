@@ -167,8 +167,10 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                 )}
               </div>
 
-              {/* Gradient scrim for legibility */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/10 pointer-events-none" />
+              {/* Gradient scrim for legibility — stronger at the bottom so the
+                  title block always reads cleanly over busy poster art. */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/85 via-40% to-transparent pointer-events-none" />
+              <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black to-transparent pointer-events-none" />
               <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent pointer-events-none" />
 
               {/* Top label */}
@@ -180,7 +182,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
 
               {/* Content overlay */}
               <div className="absolute inset-x-0 bottom-0 z-10 p-6 md:p-8 text-white">
-                <div className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-2">
+                <div className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
                   {format(new Date(item.startTime), 'EEEE, MMMM d · h:mm a')}
                 </div>
                 <h2 className="font-display text-4xl md:text-5xl leading-[0.95] mb-3 drop-shadow-lg">
