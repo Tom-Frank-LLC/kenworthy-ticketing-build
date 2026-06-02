@@ -7,6 +7,7 @@ import { BackstageTeaser } from '@/components/home/BackstageTeaser';
 import { ConcessionsPreview } from '@/components/home/ConcessionsPreview';
 import { InstagramFeed } from '@/components/home/InstagramFeed';
 import { RenovationCard } from '@/components/home/RenovationCard';
+import { HomeMarquee } from '@/components/home/HomeMarquee';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -156,7 +157,9 @@ export default function Index() {
 
   return (
     <>
-      {/* Mobile: stacked. Desktop (lg+): split-scroll, two independently scrolling rails. */}
+      <HomeMarquee />
+
+      {/* Mobile: stacked. Desktop (lg+): split-scroll, three independently scrolling rails. */}
       <div className="lg:h-[calc(100vh-68px-1px)] lg:overflow-hidden">
         <div className="lg:grid lg:grid-cols-[45fr_35fr_20fr] lg:h-full">
           {/* LEFT — Trailer feed */}
