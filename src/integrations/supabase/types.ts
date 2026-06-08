@@ -760,6 +760,137 @@ export type Database = {
         }
         Relationships: []
       }
+      rental_requests: {
+        Row: {
+          accessibility_requirements: string | null
+          activity_order: string | null
+          admin_notes: string | null
+          age_range: string | null
+          applicant_name: string
+          arrival_time: string | null
+          created_at: string
+          departure_time: string | null
+          email: string
+          equipment: Json | null
+          event_description: string | null
+          event_end_time: string | null
+          event_start_time: string | null
+          event_title: string
+          expected_guests: number | null
+          id: string
+          invite_token: string | null
+          is_public: boolean | null
+          is_ticketed: boolean | null
+          kenworthy_provides_media: boolean | null
+          linked_event_id: string | null
+          marquee_text: string | null
+          media_notes: string | null
+          needs_digital_ticketing: boolean | null
+          organization_name: string | null
+          phone: string | null
+          proposed_date: string | null
+          renter_provides_media: boolean | null
+          secondary_contact_email: string | null
+          secondary_contact_name: string | null
+          secondary_contact_phone: string | null
+          special_needs: string | null
+          status: Database["public"]["Enums"]["rental_request_status"]
+          submitted_at: string
+          updated_at: string
+          venue_area: string | null
+          wants_beer_wine: boolean | null
+          wants_concessions: boolean | null
+        }
+        Insert: {
+          accessibility_requirements?: string | null
+          activity_order?: string | null
+          admin_notes?: string | null
+          age_range?: string | null
+          applicant_name: string
+          arrival_time?: string | null
+          created_at?: string
+          departure_time?: string | null
+          email: string
+          equipment?: Json | null
+          event_description?: string | null
+          event_end_time?: string | null
+          event_start_time?: string | null
+          event_title: string
+          expected_guests?: number | null
+          id?: string
+          invite_token?: string | null
+          is_public?: boolean | null
+          is_ticketed?: boolean | null
+          kenworthy_provides_media?: boolean | null
+          linked_event_id?: string | null
+          marquee_text?: string | null
+          media_notes?: string | null
+          needs_digital_ticketing?: boolean | null
+          organization_name?: string | null
+          phone?: string | null
+          proposed_date?: string | null
+          renter_provides_media?: boolean | null
+          secondary_contact_email?: string | null
+          secondary_contact_name?: string | null
+          secondary_contact_phone?: string | null
+          special_needs?: string | null
+          status?: Database["public"]["Enums"]["rental_request_status"]
+          submitted_at?: string
+          updated_at?: string
+          venue_area?: string | null
+          wants_beer_wine?: boolean | null
+          wants_concessions?: boolean | null
+        }
+        Update: {
+          accessibility_requirements?: string | null
+          activity_order?: string | null
+          admin_notes?: string | null
+          age_range?: string | null
+          applicant_name?: string
+          arrival_time?: string | null
+          created_at?: string
+          departure_time?: string | null
+          email?: string
+          equipment?: Json | null
+          event_description?: string | null
+          event_end_time?: string | null
+          event_start_time?: string | null
+          event_title?: string
+          expected_guests?: number | null
+          id?: string
+          invite_token?: string | null
+          is_public?: boolean | null
+          is_ticketed?: boolean | null
+          kenworthy_provides_media?: boolean | null
+          linked_event_id?: string | null
+          marquee_text?: string | null
+          media_notes?: string | null
+          needs_digital_ticketing?: boolean | null
+          organization_name?: string | null
+          phone?: string | null
+          proposed_date?: string | null
+          renter_provides_media?: boolean | null
+          secondary_contact_email?: string | null
+          secondary_contact_name?: string | null
+          secondary_contact_phone?: string | null
+          special_needs?: string | null
+          status?: Database["public"]["Enums"]["rental_request_status"]
+          submitted_at?: string
+          updated_at?: string
+          venue_area?: string | null
+          wants_beer_wine?: boolean | null
+          wants_concessions?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_requests_linked_event_id_fkey"
+            columns: ["linked_event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       seats: {
         Row: {
           id: string
@@ -1129,6 +1260,12 @@ export type Database = {
         | "stand_up_comedy"
         | "theatre"
         | "dance"
+      rental_request_status:
+        | "pending"
+        | "reviewing"
+        | "approved"
+        | "declined"
+        | "archived"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1263,6 +1400,13 @@ export const Constants = {
         "stand_up_comedy",
         "theatre",
         "dance",
+      ],
+      rental_request_status: [
+        "pending",
+        "reviewing",
+        "approved",
+        "declined",
+        "archived",
       ],
     },
   },
