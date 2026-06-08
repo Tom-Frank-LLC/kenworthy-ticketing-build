@@ -192,7 +192,17 @@ export default function RentalContract() {
       {isAdmin && (
         <div className="print:hidden border-b border-border/40 bg-card/50 sticky top-0 z-10">
           <div className="container max-w-5xl py-4 px-4 flex items-center justify-between gap-3">
-            <h1 className="font-display uppercase">Contract Editor — {request.event_title}</h1>
+            <div>
+              <h1 className="font-display uppercase">Contract Editor — {request.event_title}</h1>
+              {request.signed_at && (
+                <p className="font-serif text-xs text-accent flex items-center gap-1 mt-1">
+                  <BadgeCheck className="h-3.5 w-3.5" />
+                  Signed {format(new Date(request.signed_at), 'PPp')} by {request.signed_by_name}
+                  {' • '}
+                  <a href={`/verify/${request.id}`} target="_blank" rel="noreferrer" className="underline">verify</a>
+                </p>
+              )}
+            </div>
             <div className="flex gap-2">
               <Button size="sm" onClick={save} disabled={saving}>
                 <Save className="h-4 w-4 mr-1" /> {saving ? 'Saving…' : 'Save'}
