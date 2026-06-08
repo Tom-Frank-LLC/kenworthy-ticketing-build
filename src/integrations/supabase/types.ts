@@ -740,6 +740,7 @@ export type Database = {
           email: string | null
           id: string
           phone: string | null
+          signer_title: string | null
           updated_at: string
         }
         Insert: {
@@ -748,6 +749,7 @@ export type Database = {
           email?: string | null
           id: string
           phone?: string | null
+          signer_title?: string | null
           updated_at?: string
         }
         Update: {
@@ -756,6 +758,7 @@ export type Database = {
           email?: string | null
           id?: string
           phone?: string | null
+          signer_title?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -795,6 +798,12 @@ export type Database = {
           secondary_contact_email: string | null
           secondary_contact_name: string | null
           secondary_contact_phone: string | null
+          signature_serial: string | null
+          signed_at: string | null
+          signed_by: string | null
+          signed_by_name: string | null
+          signed_by_title: string | null
+          signed_pdf_sha256: string | null
           special_needs: string | null
           status: Database["public"]["Enums"]["rental_request_status"]
           submitted_at: string
@@ -837,6 +846,12 @@ export type Database = {
           secondary_contact_email?: string | null
           secondary_contact_name?: string | null
           secondary_contact_phone?: string | null
+          signature_serial?: string | null
+          signed_at?: string | null
+          signed_by?: string | null
+          signed_by_name?: string | null
+          signed_by_title?: string | null
+          signed_pdf_sha256?: string | null
           special_needs?: string | null
           status?: Database["public"]["Enums"]["rental_request_status"]
           submitted_at?: string
@@ -879,6 +894,12 @@ export type Database = {
           secondary_contact_email?: string | null
           secondary_contact_name?: string | null
           secondary_contact_phone?: string | null
+          signature_serial?: string | null
+          signed_at?: string | null
+          signed_by?: string | null
+          signed_by_name?: string | null
+          signed_by_title?: string | null
+          signed_pdf_sha256?: string | null
           special_needs?: string | null
           status?: Database["public"]["Enums"]["rental_request_status"]
           submitted_at?: string
@@ -1282,6 +1303,12 @@ export type Database = {
           secondary_contact_email: string | null
           secondary_contact_name: string | null
           secondary_contact_phone: string | null
+          signature_serial: string | null
+          signed_at: string | null
+          signed_by: string | null
+          signed_by_name: string | null
+          signed_by_title: string | null
+          signed_pdf_sha256: string | null
           special_needs: string | null
           status: Database["public"]["Enums"]["rental_request_status"]
           submitted_at: string
