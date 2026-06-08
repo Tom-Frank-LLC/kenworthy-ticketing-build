@@ -26,6 +26,7 @@ import NotFound from "./pages/NotFound";
 import HistoryPage from "./pages/History";
 import RentalRequest from "./pages/RentalRequest";
 import RentalContract from "./pages/RentalContract";
+import VerifyContract from "./pages/VerifyContract";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +64,7 @@ const App = () => (
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/rental-request" element={<RentalRequest />} />
               <Route path="/contract/:token" element={<RentalContract />} />
+              <Route path="/verify/:id" element={<VerifyContract />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Layout>

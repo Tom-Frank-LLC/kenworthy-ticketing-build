@@ -1051,6 +1051,33 @@ export type Database = {
           },
         ]
       }
+      signing_keys: {
+        Row: {
+          active: boolean
+          algorithm: string
+          created_at: string
+          id: string
+          private_key_b64: string
+          public_key_b64: string
+        }
+        Insert: {
+          active?: boolean
+          algorithm?: string
+          created_at?: string
+          id?: string
+          private_key_b64: string
+          public_key_b64: string
+        }
+        Update: {
+          active?: boolean
+          algorithm?: string
+          created_at?: string
+          id?: string
+          private_key_b64?: string
+          public_key_b64?: string
+        }
+        Relationships: []
+      }
       tickets: {
         Row: {
           id: string
@@ -1267,6 +1294,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_contract_signature: {
+        Args: { p_request_id: string }
+        Returns: {
+          algorithm: string
+          applicant_name: string
+          event_title: string
+          public_key_b64: string
+          signature_b64: string
+          signed_at: string
+          signed_by_name: string
+          signed_by_title: string
+          signed_pdf_sha256: string
+        }[]
+      }
       get_rental_request_by_token: {
         Args: { p_token: string }
         Returns: {
