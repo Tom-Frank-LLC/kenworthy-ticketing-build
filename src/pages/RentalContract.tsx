@@ -181,7 +181,7 @@ export default function RentalContract() {
       )}
 
       {/* Contract body — print target */}
-      <article className="container max-w-3xl py-10 px-6 md:px-12 bg-background text-foreground font-serif text-[15px] leading-relaxed print:py-0">
+      <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-background text-foreground font-serif text-[15px] leading-relaxed print:py-0">
         <header className="text-center mb-8">
           <h1 className="font-display text-3xl uppercase tracking-wider">License Agreement</h1>
           <p className="text-muted-foreground text-sm mt-2">{agreementDate}</p>
@@ -344,7 +344,10 @@ export default function RentalContract() {
         </div>
 
         {!isAdmin && (
-          <div className="print:hidden mt-10 text-center">
+          <div className="print:hidden mt-10 text-center flex justify-center gap-2">
+            <Button onClick={exportPdf} disabled={exporting}>
+              <Printer className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
+            </Button>
             <Button variant="outline" onClick={() => window.print()}>
               <Printer className="h-4 w-4 mr-1" /> Print / Save as PDF
             </Button>
