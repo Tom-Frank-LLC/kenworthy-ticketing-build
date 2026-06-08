@@ -25,6 +25,7 @@ import Sponsors from "./pages/Sponsors";
 import NotFound from "./pages/NotFound";
 import HistoryPage from "./pages/History";
 import RentalRequest from "./pages/RentalRequest";
+import RentalContract from "./pages/RentalContract";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,7 @@ const App = () => (
               <Route path="/sponsors" element={<Sponsors />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/rental-request" element={<RentalRequest />} />
+              <Route path="/contract/:token" element={<RentalContract />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Layout>
