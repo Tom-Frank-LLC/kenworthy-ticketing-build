@@ -329,6 +329,11 @@ export default function AdminDashboard() {
         <TabsContent value="analytics">
           <AnalyticsTab />
         </TabsContent>
+
+        {/* Archive Tab */}
+        <TabsContent value="archive">
+          <ArchiveTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
