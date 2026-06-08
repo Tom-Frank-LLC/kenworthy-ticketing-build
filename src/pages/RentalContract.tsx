@@ -9,6 +9,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Printer, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+// @ts-ignore - no types
+import html2pdf from 'html2pdf.js';
 
 type ContractData = {
   agreement_date?: string;
@@ -44,6 +46,7 @@ export default function RentalContract() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ContractData>(DEFAULTS);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -80,6 +83,29 @@ export default function RentalContract() {
     else toast.success('Contract saved');
   }
 
+  async function exportPdf() {
+    const el = document.getElementById('contract-body');
+    if (!el) return;
+    setExporting(true);
+    try {
+      const filename = `Kenworthy-Contract-${(request.event_title || 'rental').replace(/[^a-z0-9]+/gi, '-')}.pdf`;
+      await html2pdf()
+        .set({
+          margin: [0.5, 0.5, 0.5, 0.5],
+          filename,
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+        } as any)
+        .from(el)
+        .save();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to export PDF');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading) return <div className="container py-16 text-center text-muted-foreground">Loading…</div>;
   if (!request) return <div className="container py-16 text-center text-muted-foreground">Contract not found.</div>;
 
@@ -105,6 +131,9 @@ export default function RentalContract() {
             <div className="flex gap-2">
               <Button size="sm" onClick={save} disabled={saving}>
                 <Save className="h-4 w-4 mr-1" /> {saving ? 'Saving…' : 'Save'}
+              </Button>
+              <Button size="sm" onClick={exportPdf} disabled={exporting}>
+                <Printer className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Export PDF'}
               </Button>
               <Button size="sm" variant="outline" onClick={() => window.print()}>
                 <Printer className="h-4 w-4 mr-1" /> Print / PDF
@@ -152,7 +181,7 @@ export default function RentalContract() {
       )}
 
       {/* Contract body — print target */}
-      <article className="container max-w-3xl py-10 px-6 md:px-12 bg-background text-foreground font-serif text-[15px] leading-relaxed print:py-0">
+      <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-background text-foreground font-serif text-[15px] leading-relaxed print:py-0">
         <header className="text-center mb-8">
           <h1 className="font-display text-3xl uppercase tracking-wider">License Agreement</h1>
           <p className="text-muted-foreground text-sm mt-2">{agreementDate}</p>
@@ -315,7 +344,10 @@ export default function RentalContract() {
         </div>
 
         {!isAdmin && (
-          <div className="print:hidden mt-10 text-center">
+          <div className="print:hidden mt-10 text-center flex justify-center gap-2">
+            <Button onClick={exportPdf} disabled={exporting}>
+              <Printer className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
+            </Button>
             <Button variant="outline" onClick={() => window.print()}>
               <Printer className="h-4 w-4 mr-1" /> Print / Save as PDF
             </Button>
