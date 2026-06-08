@@ -47,7 +47,7 @@ export default function RentalRequestsTab() {
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
 
   async function updateStatus(id: string, status: string) {
-    const { error } = await supabase.from('rental_requests').update({ status }).eq('id', id);
+    const { error } = await supabase.from('rental_requests').update({ status: status as any }).eq('id', id);
     if (error) toast.error(error.message);
     else { toast.success('Status updated'); load(); }
   }
