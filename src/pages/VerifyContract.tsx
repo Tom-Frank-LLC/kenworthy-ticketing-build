@@ -67,7 +67,6 @@ export default function VerifyContract() {
     setResult({ state: 'checking' });
     try {
       const buffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
       const sha = await sha256Hex(buffer);
 
       const pubKey = await crypto.subtle.importKey(
