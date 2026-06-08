@@ -8,9 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Archive, Upload, Loader2, Wand2, Trash2, Plus, History } from 'lucide-react';
+import { Archive, Loader2, Wand2, Trash2, Plus, History } from 'lucide-react';
 import { parseHistoricalWorkbook } from '@/lib/parseHistoricalXlsx';
-import { parseFinancialWorkbook } from '@/lib/parseFinancialXlsx';
 
 const CHUNK = 500;
 
@@ -19,9 +18,9 @@ const HISTORY_CATEGORIES = [
 ] as const;
 type HistoryCategory = typeof HISTORY_CATEGORIES[number];
 
-type Counts = { historical: number; financial: number; milestones: number };
+type Counts = { historical: number; milestones: number };
 
-async function insertChunked(table: 'historical_screenings' | 'financial_entries', rows: any[]) {
+async function insertChunked(table: 'historical_screenings', rows: any[]) {
   for (let i = 0; i < rows.length; i += CHUNK) {
     const slice = rows.slice(i, i + CHUNK);
     const { error } = await (supabase.from(table) as any).insert(slice);
@@ -30,7 +29,7 @@ async function insertChunked(table: 'historical_screenings' | 'financial_entries
 }
 
 export default function ArchiveTab() {
-  const [counts, setCounts] = useState<Counts>({ historical: 0, financial: 0, milestones: 0 });
+  const [counts, setCounts] = useState<Counts>({ historical: 0, milestones: 0 });
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<string>('');
   const [history, setHistory] = useState<any[]>([]);
@@ -44,18 +43,15 @@ export default function ArchiveTab() {
     source_url: '',
   });
   const histFileRef = useRef<HTMLInputElement>(null);
-  const finFileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
-    const [h, f, m, list] = await Promise.all([
+    const [h, m, list] = await Promise.all([
       supabase.from('historical_screenings').select('*', { count: 'exact', head: true }),
-      supabase.from('financial_entries').select('*', { count: 'exact', head: true }),
       supabase.from('kenworthy_history').select('*', { count: 'exact', head: true }),
       supabase.from('kenworthy_history').select('*').order('year', { ascending: true }).order('event_date', { ascending: true, nullsFirst: true }),
     ]);
     setCounts({
       historical: h.count ?? 0,
-      financial: f.count ?? 0,
       milestones: m.count ?? 0,
     });
     setHistory(list.data ?? []);
@@ -90,27 +86,6 @@ export default function ArchiveTab() {
     }
   }
 
-  async function handleFinancialFile(file: File) {
-    setBusy('financial');
-    setProgress('Reading workbook…');
-    try {
-      const m = file.name.match(/(\d{4})/);
-      const year = m ? parseInt(m[1], 10) : new Date().getFullYear();
-      const buf = await file.arrayBuffer();
-      const rows = parseFinancialWorkbook(buf, year);
-      setProgress(`Parsed ${rows.length} entries for ${year}. Uploading…`);
-      await insertChunked('financial_entries', rows);
-      toast.success(`Imported ${rows.length} financial entries for ${year}.`);
-      refresh();
-    } catch (e: any) {
-      toast.error(e.message ?? 'Import failed');
-    } finally {
-      setBusy(null);
-      setProgress('');
-      if (finFileRef.current) finFileRef.current.value = '';
-    }
-  }
-
   async function runMatch() {
     setBusy('match');
     try {
@@ -124,7 +99,7 @@ export default function ArchiveTab() {
     }
   }
 
-  async function clearTable(table: 'historical_screenings' | 'financial_entries') {
+  async function clearTable(table: 'historical_screenings') {
     if (!confirm(`Delete ALL rows from ${table}? This cannot be undone.`)) return;
     setBusy(`clear-${table}`);
     const { error } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
@@ -162,17 +137,11 @@ export default function ArchiveTab() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="glass">
           <CardContent className="p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Historical screenings</p>
             <p className="text-2xl font-display font-bold">{counts.historical.toLocaleString()}</p>
-          </CardContent>
-        </Card>
-        <Card className="glass">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Financial entries</p>
-            <p className="text-2xl font-display font-bold">{counts.financial.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card className="glass">
@@ -210,26 +179,6 @@ export default function ArchiveTab() {
             </Button>
             <Button onClick={() => clearTable('historical_screenings')} disabled={!!busy} variant="ghost">
               <Trash2 className="h-4 w-4 mr-1 text-destructive" /> Clear archive
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display flex items-center gap-2"><Upload className="h-5 w-5" /> Income & Expenses</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Upload one yearly xlsx (sheets named January … December). The importer tolerates column drift across years.
-            Year is read from the filename.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Input ref={finFileRef} type="file" accept=".xlsx" className="max-w-sm"
-              disabled={!!busy}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFinancialFile(f); }} />
-            <Button onClick={() => clearTable('financial_entries')} disabled={!!busy} variant="ghost">
-              <Trash2 className="h-4 w-4 mr-1 text-destructive" /> Clear financials
             </Button>
           </div>
         </CardContent>
