@@ -4,11 +4,18 @@ import { Badge } from '@/components/ui/badge';
 import { Film, Building2, Sparkles, Hammer, Star, Users } from 'lucide-react';
 import { SEO } from '@/components/SEO';
 
-import img1926 from '@/assets/history/1926-opening.jpg';
-import img1940s from '@/assets/history/1940s-marquee.jpg';
-import img1970s from '@/assets/history/1970s-interior.jpg';
-import img2000s from '@/assets/history/2000s-restoration.jpg';
-import imgToday from '@/assets/history/today-marquee.jpg';
+import img1928 from '@/assets/history/kenworthy-1928-facade.jpg.asset.json';
+import imgAuditorium from '@/assets/history/kenworthy-1926-auditorium.jpg.asset.json';
+import img1935 from '@/assets/history/kenworthy-circa-1935.jpg.asset.json';
+import imgHistoricInterior from '@/assets/history/kenworthy-historic-interior.jpg.asset.json';
+import img1950s from '@/assets/history/moscow-main-street-1950s-night.jpg.asset.json';
+import img1952 from '@/assets/history/moscow-main-street-1952.jpg.asset.json';
+import img1953 from '@/assets/history/moscow-main-street-1953.jpg.asset.json';
+import img1965 from '@/assets/history/moscow-main-street-1965.jpg.asset.json';
+import img2025Restoration from '@/assets/history/kenworthy-2025-marquee-restoration.jpg.asset.json';
+import imgToday from '@/assets/history/kenworthy-today-marquee-night.jpg.asset.json';
+
+const KENWORTHY_SOURCE = 'https://www.kenworthy.org/history/';
 
 type Milestone = {
   id: string;
@@ -28,96 +35,258 @@ type ArchiveRow = {
   film_year: number | null;
 };
 
-// Curated fallback so the page tells a story even before staff fill the DB.
+// Timeline drawn from kenworthy.org/history. Images are real archival photos
+// (provided by KPAC, kenworthy.org, or historic postcards of downtown Moscow).
+// Do not replace with AI-generated imagery.
 const SEED: Milestone[] = [
+  {
+    id: 'seed-1908',
+    year: 1908,
+    category: 'milestone',
+    title: 'The Crystal Theater opens',
+    description:
+      "Part of the building at 508 S. Main first operates as The Crystal Theater — Moscow's opera house.",
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-1925',
+    year: 1925,
+    category: 'milestone',
+    title: 'Milburn Kenworthy buys the theater',
+    description:
+      'Milburn Kenworthy purchases the theater and gives it the name it still carries a century later.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
   {
     id: 'seed-1926',
     year: 1926,
     category: 'milestone',
-    title: 'The Kenworthy opens on Main Street',
+    title: 'Opening night on Main Street',
     description:
-      'Brothers George and Milton Kenworthy raise the marquee at 508 S. Main, bringing silent pictures and live vaudeville to downtown Moscow.',
-    image_url: img1926,
-    source_url: null,
+      'The Kenworthy opens to the public on January 4, 1926. The premiere film is "We Moderns" — a silent picture that is now lost.',
+    image_url: imgAuditorium.url,
+    source_url: KENWORTHY_SOURCE,
   },
   {
-    id: 'seed-1929',
-    year: 1929,
+    id: 'seed-1927',
+    year: 1927,
     category: 'programming',
-    title: 'Talkies arrive on the Palouse',
+    title: 'Vaudeville, silents, and a pipe organ',
     description:
-      'A Western Electric sound system is installed and the Kenworthy screens its first synchronized-sound features alongside organ accompaniment.',
+      'A full but shallow stage with proscenium and fly space hosts vaudeville and dramatic productions; a screen rolls in front for silent films. Milburn Kenworthy buys a Robert Morton theater pipe organ to accompany them.',
     image_url: null,
-    source_url: null,
+    source_url: KENWORTHY_SOURCE,
   },
   {
-    id: 'seed-1942',
-    year: 1942,
-    category: 'community',
-    title: 'Wartime newsreels and double features',
-    description:
-      'The lobby becomes a gathering point for war-bond drives. Saturday matinees pair newsreels with serials for a town hungry for news from abroad.',
-    image_url: img1940s,
-    source_url: null,
-  },
-  {
-    id: 'seed-1955',
-    year: 1955,
+    id: 'seed-1928',
+    year: 1928,
     category: 'renovation',
-    title: 'CinemaScope conversion',
+    title: 'The brick building is enlarged',
     description:
-      'The proscenium is widened and a new anamorphic lens added so the Kenworthy can show widescreen pictures arriving from Hollywood.',
+      'The original brick structure is extended twenty feet to the south.',
+    image_url: img1928.url,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-1935',
+    year: 1935,
+    category: 'milestone',
+    title: 'A decade in: the family movie house',
+    description:
+      'By the mid-1930s the Kenworthy is woven into downtown — the vertical blade sign and chained marquee a fixture of Main Street.',
+    image_url: img1935.url,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-1936',
+    year: 1936,
+    category: 'community',
+    title: 'The pipe organ goes to the University of Idaho',
+    description:
+      "Milburn Kenworthy gifts the Robert Morton organ to the University of Idaho. After restoration it's installed in the U of I Auditorium, where it still resides.",
     image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-1949',
+    year: 1949,
+    category: 'renovation',
+    title: 'New terracotta façade and bigger marquee',
+    description:
+      "A streamlined terracotta tile façade and enlarged marquee go up. By now the Kenworthy is Moscow's premier movie theater.",
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-1952',
+    year: 1952,
+    category: 'programming',
+    title: 'Quo Vadis and the postwar Main Street',
+    description:
+      'A summer afternoon on S. Main: the Kenworthy blade sign rises over a row of parked sedans, "Quo Vadis" on the marquee next door to the Nuart.',
+    image_url: img1952.url,
     source_url: null,
   },
   {
-    id: 'seed-1978',
-    year: 1978,
-    category: 'closure',
-    title: 'A tired old room',
+    id: 'seed-1953',
+    year: 1953,
+    category: 'programming',
+    title: 'Kirk Douglas in The Bad and the Beautiful',
     description:
-      'Decades of nightly shows leave the seats threadbare and the plaster cracked. Attendance dips as multiplexes open elsewhere in the region.',
-    image_url: img1970s,
+      'A real-photo postcard of Main Street, Moscow — the Nuart marquee playing "The Band Wagon" and Kirk Douglas, with the Kenworthy a block south.',
+    image_url: img1953.url,
     source_url: null,
+  },
+  {
+    id: 'seed-1950s',
+    year: 1958,
+    category: 'community',
+    title: 'A wet night under the neon',
+    description:
+      "Saturday night downtown: rain on the asphalt, Fonk's and the Paper House lit up, holiday lights strung across Main.",
+    image_url: img1950s.url,
+    source_url: null,
+  },
+  {
+    id: 'seed-1965',
+    year: 1965,
+    category: 'community',
+    title: 'Davids\u2019, Drugs, and the long blue hour',
+    description:
+      'Postcard dusk on Main Street in the mid-1960s — the Kenworthy still anchoring the block as downtown rebuilds around it.',
+    image_url: img1965.url,
+    source_url: null,
+  },
+  {
+    id: 'seed-1971',
+    year: 1971,
+    category: 'milestone',
+    title: 'Milburn Kenworthy passes',
+    description:
+      'Milburn Kenworthy dies on December 2, 1971. After several years of management transitions, Judd Kenworthy inherits the family theaters.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-1979',
+    year: 1979,
+    category: 'renovation',
+    title: 'Café Libre takes over backstage',
+    description:
+      'The back stage is converted into a coffee house — Café Libre — connected to BookPeople of Moscow next door. Movies keep running in the main auditorium.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-1984',
+    year: 1984,
+    category: 'closure',
+    title: 'Leased to Carmike Cinemas',
+    description:
+      'The Kenworthy Theatre is leased to the Carmike chain. Judd Kenworthy retires from the movie business.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-1987',
+    year: 1987,
+    category: 'renovation',
+    title: 'Backstage becomes offices',
+    description:
+      'The back stage is converted again, this time into an office and apartment housing Kenworthy Enterprises.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-1999',
+    year: 1999,
+    category: 'milestone',
+    title: 'Gifted to the community',
+    description:
+      'On December 31, 1999, the Judd Kenworthy family gifts the theater to Moscow Community Theatre, Inc.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
   },
   {
     id: 'seed-2000',
     year: 2000,
-    category: 'community',
-    title: 'The Kenworthy Performing Arts Centre is founded',
+    category: 'reopening',
+    title: 'Live theater returns after 75 years',
     description:
-      'A nonprofit forms to save the building, raising the first matching grants and rallying volunteers from across Latah County.',
-    image_url: null,
-    source_url: null,
+      'The nonprofit Kenworthy Performing Arts Centre, Inc. forms and begins restoration. On November 2, Moscow Community Theater stages Little Shop of Horrors — complete with the original Broadway Audrey II puppet — and live theater is back at the Kenworthy after a 75-year absence.',
+    image_url: imgHistoricInterior.url,
+    source_url: KENWORTHY_SOURCE,
   },
   {
-    id: 'seed-2004',
-    year: 2004,
-    category: 'renovation',
-    title: 'Restoration of the proscenium and auditorium',
+    id: 'seed-2001',
+    year: 2001,
+    category: 'milestone',
+    title: 'On the National Register of Historic Places',
     description:
-      'Volunteers, contractors, and historic-preservation grants bring back the ornamental plaster, the curtain, and the original color palette.',
-    image_url: img2000s,
-    source_url: null,
+      'The Kenworthy Theatre is listed on the National Register of Historic Places.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-2000s',
+    year: 2008,
+    category: 'renovation',
+    title: 'ADA restrooms, marquee, expanded stage',
+    description:
+      'Major renovations through the 2000s: ADA-accessible restrooms are installed, the marquee is refurbished, and the stage is expanded for live productions.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-2012',
+    year: 2012,
+    category: 'renovation',
+    title: 'Bathrooms, paint, sidewalk — original tile kept',
+    description:
+      'New paint, sidewalk work, and refreshed bathrooms — the original 1949 tile is preserved.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-2013',
+    year: 2013,
+    category: 'renovation',
+    title: 'Digital projection conversion',
+    description:
+      'A community fundraising push pays for a digital projector, completing the conversion so first-run independent and foreign films can keep playing in Moscow.',
+    image_url: null,
+    source_url: KENWORTHY_SOURCE,
   },
   {
     id: 'seed-2014',
     year: 2014,
-    category: 'renovation',
-    title: 'Digital projection installed',
+    category: 'programming',
+    title: 'Inaugural MET Live in HD season',
     description:
-      'A community campaign funds a 4K DCI projector so first-run independent and foreign films can keep playing in Moscow.',
+      'The Kenworthy launches its first season of MET Live in HD broadcasts.',
     image_url: null,
-    source_url: null,
+    source_url: KENWORTHY_SOURCE,
   },
   {
-    id: 'seed-2020',
-    year: 2020,
-    category: 'closure',
-    title: 'Pandemic intermission',
+    id: 'seed-2019',
+    year: 2019,
+    category: 'renovation',
+    title: 'Art Deco seats and carpet, true to the original',
     description:
-      'The marquee goes dark for the longest stretch in its history. Staff pivot to virtual screenings and curbside concessions to keep the lights on.',
+      "Major interior renovations install new Art Deco seats and carpeting consistent with the building's original design.",
     image_url: null,
+    source_url: KENWORTHY_SOURCE,
+  },
+  {
+    id: 'seed-2025',
+    year: 2025,
+    category: 'renovation',
+    title: 'Marquee comes down for restoration',
+    description:
+      'Crews strip the 1949 marquee back to its frame — original timbers, rusted steel, and all — to rebuild it for the next hundred years.',
+    image_url: img2025Restoration.url,
     source_url: null,
   },
   {
@@ -126,8 +295,8 @@ const SEED: Milestone[] = [
     category: 'milestone',
     title: '100 years on Main Street',
     description:
-      'A full centennial season — retrospectives, restorations, and a town-wide birthday party for the theater that has outlasted everything around it.',
-    image_url: imgToday,
+      'A full centennial season — retrospectives, restorations, and a town-wide birthday party for the theater that has outlasted almost everything around it.',
+    image_url: imgToday.url,
     source_url: null,
   },
 ];
@@ -383,7 +552,7 @@ export default function HistoryPage() {
       <header className="relative overflow-hidden border-b border-border/40">
         <div className="absolute inset-0">
           <img
-            src={imgToday}
+            src={imgToday.url}
             alt=""
             width={1280}
             height={800}
