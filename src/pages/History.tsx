@@ -552,7 +552,7 @@ export default function HistoryPage() {
       <header className="relative overflow-hidden border-b border-border/40">
         <div className="absolute inset-0">
           <img
-            src={imgToday}
+            src={imgToday.url}
             alt=""
             width={1280}
             height={800}
