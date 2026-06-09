@@ -25,6 +25,7 @@ import Sponsors from "./pages/Sponsors";
 import NotFound from "./pages/NotFound";
 import HistoryPage from "./pages/History";
 import RentalRequest from "./pages/RentalRequest";
+import Rentals from "./pages/Rentals";
 import RentalContract from "./pages/RentalContract";
 import VerifyContract from "./pages/VerifyContract";
 
@@ -63,6 +64,7 @@ const App = () => (
               <Route path="/sponsors" element={<Sponsors />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/rental-request" element={<RentalRequest />} />
+              <Route path="/rentals" element={<Rentals />} />
               <Route path="/contract/:token" element={<RentalContract />} />
               <Route path="/verify/:id" element={<VerifyContract />} />
               <Route path="*" element={<NotFound />} />

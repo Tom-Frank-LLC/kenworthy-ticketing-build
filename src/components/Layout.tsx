@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Ticket, LogOut, Shield, User, CreditCard, Home, MapPin, Mail, Phone } from 'lucide-react';
+import { Ticket, LogOut, Shield, User, CreditCard, Home, MapPin, Mail, Phone, Heart, Building2 } from 'lucide-react';
 import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -42,9 +42,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               History
             </Link>
+            <Link
+              to="/rentals"
+              className="hidden md:inline font-display uppercase text-sm tracking-[0.25em] text-accent hover:text-primary transition-colors"
+            >
+              Rentals
+            </Link>
           </div>
 
           <nav className="flex items-center gap-1.5" aria-label="Primary">
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="hidden sm:inline-flex h-10 border-primary/60 text-primary hover:bg-primary hover:text-primary-foreground"
+            >
+              <a href="https://kenworthy.org/donate" target="_blank" rel="noopener noreferrer">
+                <Heart className="h-4 w-4 mr-1" /> Donate
+              </a>
+            </Button>
             {user ? (
               <>
                 <Button variant="ghost" size="sm" asChild className="h-10">
