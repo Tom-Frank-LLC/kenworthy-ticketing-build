@@ -105,11 +105,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="md:text-right text-muted-foreground">
             <p className="font-serif">Performing Arts Centre</p>
             <p className="font-serif">Celebrating 100 Years · Est. 1926</p>
-            <p className="mt-3">
-              <Link to="/sponsors" className="font-display uppercase text-xs tracking-[0.2em] text-accent hover:text-primary transition-colors">
-                Our Sponsors
-              </Link>
-            </p>
             <p className="mt-3 text-xs">© {new Date().getFullYear()} The Kenworthy</p>
           </div>
         </div>
