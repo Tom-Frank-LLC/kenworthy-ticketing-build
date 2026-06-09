@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Film, Building2, Sparkles, Hammer, Star, Users } from 'lucide-react';
-import SEO from '@/components/SEO';
+import { SEO } from '@/components/SEO';
 
 import img1926 from '@/assets/history/1926-opening.jpg';
 import img1940s from '@/assets/history/1940s-marquee.jpg';
