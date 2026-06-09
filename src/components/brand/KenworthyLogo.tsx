@@ -1,4 +1,4 @@
-import kenworthyFullLogo from '@/assets/kenworthy-full-logo.png';
+import kenworthyFullLogoAsset from '@/assets/kpac100-white.png.asset.json';
 import { cn } from '@/lib/utils';
 
 /**
@@ -25,10 +25,11 @@ interface KenworthyLogoProps extends Omit<React.ImgHTMLAttributes<HTMLImageEleme
 }
 
 const TONE_CLASS: Record<LogoTone, string> = {
-  'on-dark': '[filter:invert(1)_brightness(1.05)]',
-  'on-light': '',
-  // Tailwind `dark:` variant — relies on `.dark` on a parent (html/body).
-  auto: 'dark:[filter:invert(1)_brightness(1.05)]',
+  // The KPAC100 artwork is already white-on-transparent, so no inversion
+  // is needed on dark surfaces. On light surfaces we invert to black.
+  'on-dark': '',
+  'on-light': '[filter:invert(1)_brightness(0.95)]',
+  auto: 'dark:[filter:invert(0)] [filter:invert(1)_brightness(0.95)]',
 };
 
 const SIZE_CLASS: Record<LogoSize, string> = {
@@ -53,10 +54,10 @@ export function KenworthyLogo({
 }: KenworthyLogoProps) {
   return (
     <img
-      src={kenworthyFullLogo}
+      src={kenworthyFullLogoAsset.url}
       alt={alt}
-      width={1920}
-      height={453}
+      width={768}
+      height={203}
       loading="lazy"
       decoding="async"
       className={cn('w-auto object-contain', SIZE_CLASS[size], TONE_CLASS[tone], className)}
