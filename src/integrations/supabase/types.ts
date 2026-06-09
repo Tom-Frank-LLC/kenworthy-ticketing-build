@@ -690,8 +690,10 @@ export type Database = {
       }
       movies: {
         Row: {
+          circuit: string | null
           created_at: string
           description: string | null
+          distributor: string | null
           duration_minutes: number
           genre: string | null
           id: string
@@ -699,13 +701,18 @@ export type Database = {
           is_featured: boolean
           poster_url: string | null
           rating: string | null
+          release_label: string | null
+          release_year: number | null
+          terms_percent: number | null
           title: string
           trailer_url: string | null
           updated_at: string
         }
         Insert: {
+          circuit?: string | null
           created_at?: string
           description?: string | null
+          distributor?: string | null
           duration_minutes?: number
           genre?: string | null
           id?: string
@@ -713,13 +720,18 @@ export type Database = {
           is_featured?: boolean
           poster_url?: string | null
           rating?: string | null
+          release_label?: string | null
+          release_year?: number | null
+          terms_percent?: number | null
           title: string
           trailer_url?: string | null
           updated_at?: string
         }
         Update: {
+          circuit?: string | null
           created_at?: string
           description?: string | null
+          distributor?: string | null
           duration_minutes?: number
           genre?: string | null
           id?: string
@@ -727,6 +739,9 @@ export type Database = {
           is_featured?: boolean
           poster_url?: string | null
           rating?: string | null
+          release_label?: string | null
+          release_year?: number | null
+          terms_percent?: number | null
           title?: string
           trailer_url?: string | null
           updated_at?: string
