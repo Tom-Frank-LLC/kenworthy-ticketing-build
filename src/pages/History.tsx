@@ -434,17 +434,6 @@ function ItemCard({
             {milestone.description}
           </p>
         )}
-        {milestone.source_url && (
-          <a
-            href={milestone.source_url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-primary hover:underline mt-3 inline-block"
-          >
-            Source →
-          </a>
-        )}
-
         {screenings.length > 0 && (
           <div className="mt-4 pt-4 border-t border-border/40">
             <div
