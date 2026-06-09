@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Film } from 'lucide-react';
+import { SEO } from '@/components/SEO';
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
@@ -73,6 +74,11 @@ export default function Auth() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
+      <SEO
+        title="Sign In or Create Account — The Kenworthy"
+        description="Sign in to your Kenworthy account to buy tickets, manage film passes, and access digital QR tickets for shows at our historic Moscow, Idaho theatre."
+      />
+      <h1 className="sr-only">Sign In or Create Account</h1>
       <Card className="w-full max-w-md glass glow-primary">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-2">

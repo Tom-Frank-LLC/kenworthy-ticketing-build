@@ -13,6 +13,7 @@ import { SeatMap } from '@/components/SeatMap';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
 import { type Seat, type PriceTier, TAX_RATE, buildTicketRows, computeOrderTotals, computeLineItemTotals, type TicketLineItem } from '@/lib/booking';
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
+import { SEO } from '@/components/SEO';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -351,6 +352,42 @@ export default function Showing() {
 
   return (
     <div className="container py-8 px-4 max-w-5xl">
+      <SEO
+        title={`${production?.title ?? 'Showing'} — ${format(new Date(showing.start_time), 'MMM d, yyyy')} at The Kenworthy`}
+        description={
+          production?.description?.slice(0, 160) ??
+          `Tickets for ${production?.title ?? 'this showing'} at The Kenworthy Performing Arts Centre in Moscow, Idaho on ${format(new Date(showing.start_time), 'MMMM d, yyyy')}.`
+        }
+        ogType="event"
+        image={production?.poster_url || undefined}
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Event",
+          name: production?.title,
+          startDate: showing.start_time,
+          eventStatus: "https://schema.org/EventScheduled",
+          eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+          image: production?.poster_url || undefined,
+          description: production?.description || undefined,
+          location: {
+            "@type": "Place",
+            name: venue?.name || "The Kenworthy Performing Arts Centre",
+            address: {
+              "@type": "PostalAddress",
+              streetAddress: "508 S Main St",
+              addressLocality: "Moscow",
+              addressRegion: "ID",
+              postalCode: "83843",
+              addressCountry: "US",
+            },
+          },
+          organizer: {
+            "@type": "Organization",
+            name: "The Kenworthy Performing Arts Centre",
+            url: "https://kenworthy-ticketing.lovable.app/",
+          },
+        }}
+      />
       {/* Production info */}
       <div className="mb-8">
         <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="mb-4">← Back</Button>

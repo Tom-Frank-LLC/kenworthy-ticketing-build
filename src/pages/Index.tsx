@@ -8,6 +8,7 @@ import { ConcessionsPreview } from '@/components/home/ConcessionsPreview';
 import { InstagramFeed } from '@/components/home/InstagramFeed';
 import { RenovationCard } from '@/components/home/RenovationCard';
 import { HomeMarquee } from '@/components/home/HomeMarquee';
+import { SEO } from '@/components/SEO';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -157,6 +158,11 @@ export default function Index() {
 
   return (
     <>
+      <SEO
+        title="The Kenworthy — Films, Performances & Events in Moscow, ID"
+        description="A century of stories on Main Street. Browse upcoming films, live performances, and events at The Kenworthy Performing Arts Centre in Moscow, Idaho."
+        path="/"
+      />
       <HomeMarquee />
 
       {/* Mobile: stacked. Desktop (lg+): split-scroll, three independently scrolling rails. */}

@@ -1,0 +1,16 @@
+# The Kenworthy Performing Arts Centre
+
+> A historic non-profit cinema and performing arts centre on Main Street in Moscow, Idaho. Showing films, live performances, and community events since 1926.
+
+The Kenworthy is located at 508 S Main St, Moscow, ID 83843. The theatre programs an interleaved calendar of independent and repertory films, live music, theatre, and community events, sells digital QR-coded tickets and film passes, and rents the venue to community hosts.
+
+## Pages
+
+- [Home](/): Upcoming films, performances, and events with trailer previews and an editorial calendar.
+- [Sponsors](/sponsors): Foundations and businesses that support the Kenworthy, plus how to become an investor.
+- [History](/history): A century of programming history at The Kenworthy.
+- [Rental Request](/rental-request): Inquiries from community hosts who want to rent the venue.
+
+## Optional
+
+- [Sign In or Create Account](/auth): Account creation and sign-in for ticket buyers.

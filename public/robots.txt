@@ -12,3 +12,13 @@ Allow: /
 
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /host
+Disallow: /profile
+Disallow: /my-tickets
+Disallow: /my-passes
+Disallow: /reset-password
+Disallow: /contract/
+Disallow: /verify/
+
+Sitemap: https://kenworthy-ticketing.lovable.app/sitemap.xml
