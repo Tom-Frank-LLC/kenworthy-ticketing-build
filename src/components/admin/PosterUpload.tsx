@@ -47,10 +47,11 @@ export function PosterUpload({ currentUrl, onUrlChange, folder }: PosterUploadPr
       <Label>Poster Image</Label>
       {currentUrl ? (
         <div className="relative w-32 aspect-[2/3] rounded-lg overflow-hidden bg-secondary">
-          <img src={currentUrl} alt="Poster" className="w-full h-full object-cover" />
+          <img src={currentUrl} alt="Movie poster preview" className="w-full h-full object-cover" />
           <button
             type="button"
             onClick={() => onUrlChange('')}
+            aria-label="Remove poster"
             className="absolute top-1 right-1 p-1 rounded-full bg-background/80 hover:bg-background text-foreground"
           >
             <X className="h-3 w-3" />
