@@ -36,6 +36,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               Our Sponsors
             </Link>
+            <Link
+              to="/history"
+              className="hidden sm:inline font-display uppercase text-sm tracking-[0.25em] text-accent hover:text-primary transition-colors"
+            >
+              History
+            </Link>
           </div>
 
           <nav className="flex items-center gap-1.5" aria-label="Primary">
