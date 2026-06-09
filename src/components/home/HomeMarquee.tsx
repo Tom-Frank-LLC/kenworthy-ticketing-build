@@ -21,7 +21,7 @@ export function HomeMarquee() {
           src={heroPhoto.url}
           alt="The Kenworthy marquee glowing on Main Street during the 2025 relighting ceremony"
           className="h-full w-full object-cover"
-          style={{ objectPosition: 'center 75%' }}
+          style={{ objectPosition: 'center 92%' }}
           loading="eager"
           decoding="async"
         />
