@@ -376,7 +376,7 @@ export default function HistoryPage() {
       <SEO
         title="A Century on Main Street | Kenworthy History"
         description="One hundred years of films, renovations, and community at the Kenworthy Performing Arts Centre in Moscow, Idaho — told as an animated vertical timeline."
-        canonical="https://kenworthy-ticketing.lovable.app/history"
+        path="/history"
       />
 
       {/* Hero */}
