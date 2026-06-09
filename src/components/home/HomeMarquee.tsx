@@ -38,12 +38,6 @@ export function HomeMarquee() {
               <MapPin className="h-4 w-4 text-accent shrink-0" />
               <span className="break-words">508 S Main St · Moscow, ID</span>
             </p>
-            <Link
-              to="/sponsors"
-              className="font-display uppercase text-xs tracking-[0.25em] text-accent hover:text-primary transition-colors"
-            >
-              Our Sponsors →
-            </Link>
           </div>
         </div>
       </div>
