@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { TrailerFeed, type FeedItem } from '@/components/home/TrailerFeed';
 import { EditorialCalendar } from '@/components/home/EditorialCalendar';
-import { MonthCalendar } from '@/components/home/MonthCalendar';
+import { UpcomingList } from '@/components/home/UpcomingList';
 import { BackstageTeaser } from '@/components/home/BackstageTeaser';
 import { ConcessionsPreview } from '@/components/home/ConcessionsPreview';
 import { InstagramFeed } from '@/components/home/InstagramFeed';
@@ -166,11 +166,11 @@ export default function Index() {
       />
       <HomeMarquee />
 
-      {/* Quick-scan month calendar — the easiest way to see what's playing
-          and jump straight into a production. Sits above the split-scroll so
-          visitors who just want showtimes don't have to hunt. */}
+      {/* Clean upcoming list with a live preview pane. The full month
+          calendar is tucked behind a "Calendar" button so the default view
+          stays scannable. */}
       {!loading && feed.length > 0 && (
-        <MonthCalendar items={feed} onSelect={handleSelect} />
+        <UpcomingList items={feed} onSelect={handleSelect} />
       )}
 
       {/* Mobile: stacked. Desktop (lg+): split-scroll, three independently scrolling rails. */}
