@@ -1,13 +1,45 @@
 import { Heart } from 'lucide-react';
 import { SEO } from '@/components/SEO';
+import iccu from '@/assets/sponsors/iccu.jpg.asset.json';
+import ihc from '@/assets/sponsors/ihc.jpeg.asset.json';
+import lsi from '@/assets/sponsors/lsi.jpg.asset.json';
+import allstate from '@/assets/sponsors/allstate.png.asset.json';
+import nrs from '@/assets/sponsors/nrs.png.asset.json';
+import innovia from '@/assets/sponsors/innovia.png.asset.json';
+import mt from '@/assets/sponsors/mt.png.asset.json';
+import gritman from '@/assets/sponsors/gritman.png.asset.json';
+import avista from '@/assets/sponsors/avista.png.asset.json';
+import lmcf from '@/assets/sponsors/lmcf.jpg.asset.json';
+import artsIdaho from '@/assets/sponsors/arts-idaho.jpg.asset.json';
+import logo2018 from '@/assets/sponsors/logo-2018.png.asset.json';
+import logo1 from '@/assets/sponsors/logo-1.png.asset.json';
+import usbank from '@/assets/sponsors/usbank.png.asset.json';
+import mwgc from '@/assets/sponsors/mwgc.jpg.asset.json';
+import steppingstones from '@/assets/sponsors/steppingstones.jpg.asset.json';
+import inb from '@/assets/sponsors/inb.png.asset.json';
+import sponsorFb from '@/assets/sponsors/sponsor-fb.png.asset.json';
+import dac from '@/assets/sponsors/dac.png.asset.json';
 
-const SPONSORS = [
-  { name: 'Idaho Central Credit Union', short: 'ICCU' },
-  { name: 'Northwest River Supplies', short: 'NRS' },
-  { name: 'Innovia Foundation', short: 'Innovia' },
-  { name: 'Allstate', short: 'Allstate' },
-  { name: 'LSI', short: 'LSI' },
-  { name: 'Moscow-Pullman Daily News', short: 'Print' },
+const SPONSORS: { name: string; src: string }[] = [
+  { name: 'Idaho Humanities Council', src: ihc.url },
+  { name: 'Idaho Central Credit Union', src: iccu.url },
+  { name: 'Northwest River Supplies', src: nrs.url },
+  { name: 'Innovia Foundation', src: innovia.url },
+  { name: 'Avista', src: avista.url },
+  { name: 'Gritman Medical Center', src: gritman.url },
+  { name: 'U.S. Bank', src: usbank.url },
+  { name: 'Inland Northwest Bank', src: inb.url },
+  { name: 'Allstate', src: allstate.url },
+  { name: 'LSI', src: lsi.url },
+  { name: 'Moscow Title', src: mt.url },
+  { name: 'Latah Moscow Community Foundation', src: lmcf.url },
+  { name: 'Arts Idaho', src: artsIdaho.url },
+  { name: 'MWGC', src: mwgc.url },
+  { name: 'Stepping Stones', src: steppingstones.url },
+  { name: 'DAC', src: dac.url },
+  { name: 'Community supporter', src: logo1.url },
+  { name: 'Community supporter', src: logo2018.url },
+  { name: 'Community supporter', src: sponsorFb.url },
 ];
 
 export default function Sponsors() {
@@ -26,32 +58,40 @@ export default function Sponsors() {
         </h1>
         <p className="font-serif italic text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
           To the foundations and businesses who have played a vital role in
-          providing an investment in our community's non-profit cinematic
-          art-house theatre. Your support helps sustain and expand our
-          programming, education, and operations.
+          providing an investment to the community's non-profit cinematic
+          art-house theatre. This financial support has helped sustain and
+          expand our renowned programming, education activities, and
+          operations.
         </p>
       </header>
 
       <section className="mb-16">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {SPONSORS.map((s) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {SPONSORS.map((s, i) => (
             <div
-              key={s.name}
-              className="aspect-[3/2] border border-accent/20 bg-card/40 rounded-sm flex flex-col items-center justify-center p-6 text-center hover:border-accent/50 transition-colors"
+              key={`${s.name}-${i}`}
+              className="aspect-[3/2] bg-white rounded-sm flex items-center justify-center p-5 hover:scale-[1.02] transition-transform"
             >
-              <p className="font-display text-xl uppercase tracking-wide text-foreground">
-                {s.short}
-              </p>
-              <p className="font-serif text-xs italic text-muted-foreground mt-1">
-                {s.name}
-              </p>
+              <img
+                src={s.src}
+                alt={s.name}
+                loading="lazy"
+                className="max-h-full max-w-full object-contain"
+              />
             </div>
           ))}
         </div>
-        <p className="font-serif italic text-xs text-muted-foreground text-center mt-6">
-          Logo placeholders — replace with sponsor artwork as it's provided.
-        </p>
       </section>
+
+      <figure className="border-l-2 border-accent/40 pl-6 max-w-2xl mx-auto mb-16">
+        <blockquote className="font-serif italic text-lg text-foreground/90 leading-relaxed">
+          "This is such a cool opportunity! Thanks for letting us be a part of
+          this!"
+        </blockquote>
+        <figcaption className="font-display uppercase tracking-wider text-xs text-muted-foreground mt-3">
+          Clark Rasmussen · Idaho Central Credit Union
+        </figcaption>
+      </figure>
 
       <section className="border-t border-accent/20 pt-12 max-w-3xl mx-auto text-center">
         <p className="text-xs uppercase tracking-[0.3em] text-accent font-display mb-3">
