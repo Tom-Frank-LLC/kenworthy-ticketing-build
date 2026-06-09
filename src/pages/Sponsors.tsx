@@ -70,7 +70,7 @@ export default function Sponsors() {
           {SPONSORS.map((s, i) => (
             <div
               key={`${s.name}-${i}`}
-              className="aspect-[3/2] bg-cream rounded-sm flex items-center justify-center p-5 hover:scale-[1.02] transition-transform"
+              className="aspect-[3/2] bg-white rounded-sm flex items-center justify-center p-5 hover:scale-[1.02] transition-transform"
             >
               <img
                 src={s.src}
