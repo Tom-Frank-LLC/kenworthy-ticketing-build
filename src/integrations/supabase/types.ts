@@ -993,18 +993,21 @@ export type Database = {
           seat_number: number
           seat_row: string
           seat_type: string
+          section: string
         }
         Insert: {
           id?: string
           seat_number: number
           seat_row: string
           seat_type?: string
+          section?: string
         }
         Update: {
           id?: string
           seat_number?: number
           seat_row?: string
           seat_type?: string
+          section?: string
         }
         Relationships: []
       }
@@ -1299,6 +1302,7 @@ export type Database = {
           seat_number: number
           seat_row: string
           seat_type: string
+          section: string
           venue_id: string
         }
         Insert: {
@@ -1306,6 +1310,7 @@ export type Database = {
           seat_number: number
           seat_row: string
           seat_type?: string
+          section?: string
           venue_id: string
         }
         Update: {
@@ -1313,6 +1318,7 @@ export type Database = {
           seat_number?: number
           seat_row?: string
           seat_type?: string
+          section?: string
           venue_id?: string
         }
         Relationships: [

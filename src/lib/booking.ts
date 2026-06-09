@@ -3,6 +3,7 @@ export interface Seat {
   seat_row: string;
   seat_number: number;
   seat_type: string;
+  section?: string | null;
 }
 
 export interface PriceTier {
