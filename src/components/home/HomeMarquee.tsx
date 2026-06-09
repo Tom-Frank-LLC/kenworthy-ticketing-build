@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { MapPin, Sparkles } from 'lucide-react';
 
 /**
