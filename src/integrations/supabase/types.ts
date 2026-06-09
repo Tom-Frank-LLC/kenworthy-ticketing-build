@@ -208,6 +208,60 @@ export type Database = {
           },
         ]
       }
+      donations: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          dedicate_to: string | null
+          dedication_type: string | null
+          donor_email: string
+          donor_name: string
+          donor_phone: string | null
+          id: string
+          message: string | null
+          notify_email: string | null
+          notify_name: string | null
+          square_payment_id: string | null
+          square_receipt_url: string | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          dedicate_to?: string | null
+          dedication_type?: string | null
+          donor_email: string
+          donor_name: string
+          donor_phone?: string | null
+          id?: string
+          message?: string | null
+          notify_email?: string | null
+          notify_name?: string | null
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          dedicate_to?: string | null
+          dedication_type?: string | null
+          donor_email?: string
+          donor_name?: string
+          donor_phone?: string | null
+          id?: string
+          message?: string | null
+          notify_email?: string | null
+          notify_name?: string | null
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       events: {
         Row: {
           created_at: string

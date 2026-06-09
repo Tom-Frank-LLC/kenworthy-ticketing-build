@@ -28,6 +28,7 @@ import RentalRequest from "./pages/RentalRequest";
 import Rentals from "./pages/Rentals";
 import RentalContract from "./pages/RentalContract";
 import VerifyContract from "./pages/VerifyContract";
+import Donate from "./pages/Donate";
 
 const queryClient = new QueryClient();
 
@@ -65,6 +66,7 @@ const App = () => (
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/rental-request" element={<RentalRequest />} />
               <Route path="/rentals" element={<Rentals />} />
+              <Route path="/donate" element={<Donate />} />
               <Route path="/contract/:token" element={<RentalContract />} />
               <Route path="/verify/:id" element={<VerifyContract />} />
               <Route path="*" element={<NotFound />} />

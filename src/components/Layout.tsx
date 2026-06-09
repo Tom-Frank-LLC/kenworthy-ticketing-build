@@ -57,9 +57,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               asChild
               className="hidden sm:inline-flex h-10 border-primary/60 text-primary hover:bg-primary hover:text-primary-foreground"
             >
-              <a href="https://kenworthy.org/donate" target="_blank" rel="noopener noreferrer">
+              <Link to="/donate">
                 <Heart className="h-4 w-4 mr-1" /> Donate
-              </a>
+              </Link>
             </Button>
             {user ? (
               <>
