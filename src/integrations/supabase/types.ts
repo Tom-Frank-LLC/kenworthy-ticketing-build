@@ -947,7 +947,7 @@ export type Database = {
       }
       qbo_connection: {
         Row: {
-          access_token: string | null
+          access_token_secret_id: string | null
           connected_at: string | null
           connected_by: string | null
           created_at: string
@@ -955,12 +955,12 @@ export type Database = {
           id: string
           is_active: boolean
           realm_id: string | null
-          refresh_token: string | null
+          refresh_token_secret_id: string | null
           token_expires_at: string | null
           updated_at: string
         }
         Insert: {
-          access_token?: string | null
+          access_token_secret_id?: string | null
           connected_at?: string | null
           connected_by?: string | null
           created_at?: string
@@ -968,12 +968,12 @@ export type Database = {
           id?: string
           is_active?: boolean
           realm_id?: string | null
-          refresh_token?: string | null
+          refresh_token_secret_id?: string | null
           token_expires_at?: string | null
           updated_at?: string
         }
         Update: {
-          access_token?: string | null
+          access_token_secret_id?: string | null
           connected_at?: string | null
           connected_by?: string | null
           created_at?: string
@@ -981,7 +981,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           realm_id?: string | null
-          refresh_token?: string | null
+          refresh_token_secret_id?: string | null
           token_expires_at?: string | null
           updated_at?: string
         }
@@ -1732,6 +1732,27 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      qbo_disconnect: { Args: { p_environment?: string }; Returns: boolean }
+      qbo_get_active_tokens: {
+        Args: { p_environment?: string }
+        Returns: {
+          access_token: string
+          connection_id: string
+          realm_id: string
+          refresh_token: string
+          token_expires_at: string
+        }[]
+      }
+      qbo_save_tokens: {
+        Args: {
+          p_access_token: string
+          p_environment?: string
+          p_expires_at: string
+          p_realm_id: string
+          p_refresh_token: string
+        }
+        Returns: string
       }
       redeem_film_pass: {
         Args: { p_amount: number; p_pass_id: string; p_ticket_id: string }
