@@ -1,5 +1,9 @@
 import { Heart } from 'lucide-react';
 import { SEO } from '@/components/SEO';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { SponsorshipOpportunityCard } from '@/components/SponsorshipOpportunityCard';
+import type { SponsorshipOpportunity } from '@/lib/sponsorshipPdf';
 import iccu from '@/assets/sponsors/iccu.jpg.asset.json';
 import ihc from '@/assets/sponsors/ihc.jpeg.asset.json';
 import lsi from '@/assets/sponsors/lsi.jpg.asset.json';
@@ -43,6 +47,17 @@ const SPONSORS: { name: string; src: string }[] = [
 ];
 
 export default function Sponsors() {
+  const [opportunities, setOpportunities] = useState<(SponsorshipOpportunity & { id: string })[]>([]);
+
+  useEffect(() => {
+    (supabase as any)
+      .from('sponsorship_opportunities')
+      .select('*')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true })
+      .then(({ data }: any) => setOpportunities(data || []));
+  }, []);
+
   return (
     <div className="container py-16 max-w-5xl">
       <SEO
@@ -64,6 +79,24 @@ export default function Sponsors() {
           operations.
         </p>
       </header>
+
+      {opportunities.length > 0 && (
+        <section className="mb-20">
+          <div className="text-center mb-8">
+            <p className="text-xs uppercase tracking-[0.3em] text-accent font-display mb-3">
+              Now Accepting
+            </p>
+            <h2 className="font-display text-3xl md:text-4xl uppercase tracking-wide text-foreground">
+              Current Sponsorship Opportunities
+            </h2>
+          </div>
+          <div className="space-y-8">
+            {opportunities.map((o) => (
+              <SponsorshipOpportunityCard key={o.id} opportunity={o} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mb-16">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">

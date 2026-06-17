@@ -1539,6 +1539,84 @@ export type Database = {
         }
         Relationships: []
       }
+      sponsorship_opportunities: {
+        Row: {
+          availability_text: string | null
+          benefits: Json
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          contact_title: string | null
+          created_at: string
+          created_by: string | null
+          cta_label: string | null
+          display_order: number
+          hero_image_url: string | null
+          hook_text: string | null
+          id: string
+          intro_text: string | null
+          is_active: boolean
+          price_text: string | null
+          section_body: string | null
+          section_heading: string | null
+          slug: string
+          stats_text: string | null
+          tagline: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          availability_text?: string | null
+          benefits?: Json
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          contact_title?: string | null
+          created_at?: string
+          created_by?: string | null
+          cta_label?: string | null
+          display_order?: number
+          hero_image_url?: string | null
+          hook_text?: string | null
+          id?: string
+          intro_text?: string | null
+          is_active?: boolean
+          price_text?: string | null
+          section_body?: string | null
+          section_heading?: string | null
+          slug: string
+          stats_text?: string | null
+          tagline?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          availability_text?: string | null
+          benefits?: Json
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          contact_title?: string | null
+          created_at?: string
+          created_by?: string | null
+          cta_label?: string | null
+          display_order?: number
+          hero_image_url?: string | null
+          hook_text?: string | null
+          id?: string
+          intro_text?: string | null
+          is_active?: boolean
+          price_text?: string | null
+          section_body?: string | null
+          section_heading?: string | null
+          slug?: string
+          stats_text?: string | null
+          tagline?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       staff_square_links: {
         Row: {
           created_at: string
