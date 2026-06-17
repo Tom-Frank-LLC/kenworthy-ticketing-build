@@ -118,17 +118,15 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs defaultValue="movies" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-12">
+        <TabsList className="grid w-full grid-cols-10">
           <TabsTrigger value="movies">Movies</TabsTrigger>
           <TabsTrigger value="events">Events</TabsTrigger>
-          <TabsTrigger value="concerts">Live Performances</TabsTrigger>
+          <TabsTrigger value="concerts">Performances</TabsTrigger>
           <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1 inline" />Concessions</TabsTrigger>
           <TabsTrigger value="passes"><CreditCard className="h-4 w-4 mr-1 inline" />Passes</TabsTrigger>
-          <TabsTrigger value="hosts"><Users className="h-4 w-4 mr-1 inline" />Hosts</TabsTrigger>
           <TabsTrigger value="rentals"><KeyRound className="h-4 w-4 mr-1 inline" />Rentals</TabsTrigger>
-          <TabsTrigger value="labor"><Clock className="h-4 w-4 mr-1 inline" />Labor</TabsTrigger>
+          <TabsTrigger value="labor"><Clock className="h-4 w-4 mr-1 inline" />Staff</TabsTrigger>
           <TabsTrigger value="analytics"><BarChart3 className="h-4 w-4 mr-1 inline" />Analytics</TabsTrigger>
-          <TabsTrigger value="accounting"><Wallet className="h-4 w-4 mr-1 inline" />Accounting</TabsTrigger>
           <TabsTrigger value="bor"><FileText className="h-4 w-4 mr-1 inline" />BOR</TabsTrigger>
           <TabsTrigger value="archive"><Archive className="h-4 w-4 mr-1 inline" />Archive</TabsTrigger>
         </TabsList>
@@ -259,7 +257,7 @@ export default function AdminDashboard() {
         {/* Live Performances Tab */}
         <TabsContent value="concerts">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-xl font-bold">Live Performances</h2>
+            <h2 className="font-display text-xl font-bold">Performances</h2>
             <Button size="sm" asChild>
               <Link to="/admin/concerts/new"><Plus className="h-4 w-4 mr-1" /> Add Performance</Link>
             </Button>
@@ -328,14 +326,20 @@ export default function AdminDashboard() {
           <FilmPassesTab />
         </TabsContent>
 
-        {/* Hosts Tab */}
-        <TabsContent value="hosts">
-          <HostManagementTab />
-        </TabsContent>
-
-        {/* Analytics Tab */}
+        {/* Analytics Tab (with Accounting sub-tab) */}
         <TabsContent value="analytics">
-          <AnalyticsTab />
+          <Tabs defaultValue="overview" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="overview"><BarChart3 className="h-4 w-4 mr-1 inline" />Overview</TabsTrigger>
+              <TabsTrigger value="accounting"><Wallet className="h-4 w-4 mr-1 inline" />Accounting</TabsTrigger>
+            </TabsList>
+            <TabsContent value="overview">
+              <AnalyticsTab />
+            </TabsContent>
+            <TabsContent value="accounting">
+              <AccountingTab />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         {/* Archive Tab */}
@@ -343,18 +347,24 @@ export default function AdminDashboard() {
           <ArchiveTab />
         </TabsContent>
 
-        {/* Accounting Tab */}
-        <TabsContent value="accounting">
-          <AccountingTab />
-        </TabsContent>
-
         <TabsContent value="bor">
           <BoxOfficeReceiptsTab />
         </TabsContent>
 
-        {/* Rentals Tab */}
+        {/* Rentals Tab (with Hosts sub-tab) */}
         <TabsContent value="rentals">
-          <RentalRequestsTab />
+          <Tabs defaultValue="requests" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="requests"><KeyRound className="h-4 w-4 mr-1 inline" />Requests</TabsTrigger>
+              <TabsTrigger value="hosts"><Users className="h-4 w-4 mr-1 inline" />Hosts</TabsTrigger>
+            </TabsList>
+            <TabsContent value="requests">
+              <RentalRequestsTab />
+            </TabsContent>
+            <TabsContent value="hosts">
+              <HostManagementTab />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="labor">
