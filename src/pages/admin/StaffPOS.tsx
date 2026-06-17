@@ -23,6 +23,7 @@ import { TransactionHistory, type SessionTransaction } from '@/components/pos/Tr
 import { PaymentMethodSelector, type PaymentMethod } from '@/components/pos/PaymentMethodSelector';
 import { ConcessionPOS } from '@/components/pos/ConcessionPOS';
 import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
+import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, TAX_RATE } from '@/lib/booking';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -478,6 +479,10 @@ export default function StaffPOS() {
         <Badge variant="secondary">Box Office</Badge>
       </div>
       <p className="text-muted-foreground mb-6">Sell tickets and concessions to walk-in patrons</p>
+
+      <div className="mb-4">
+        <TimeClockWidget />
+      </div>
 
       <DailySalesSummary
         revenue={dailyStats.revenue}
