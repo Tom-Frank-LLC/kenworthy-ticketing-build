@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Copy, ExternalLink, Trash2, Eye, FileText, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import RentalInvoiceLines from './RentalInvoiceLines';
 
 type RentalRequest = any;
 
@@ -246,6 +247,10 @@ function RequestDetail({ request: r, onStatus, onSaveNotes, onDelete }: {
       <DetailSection title="Description">
         <KV k="Event description" v={r.event_description} multiline />
         <KV k="Activity order" v={r.activity_order} multiline />
+      </DetailSection>
+
+      <DetailSection title="Invoice">
+        <RentalInvoiceLines rentalRequestId={r.id} />
       </DetailSection>
 
       <DetailSection title="Admin notes">
