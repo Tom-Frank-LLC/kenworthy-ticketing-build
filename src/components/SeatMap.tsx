@@ -7,6 +7,12 @@ interface SeatMapProps {
   selectedSeats: Set<string>;
   onToggleSeat: (seatId: string) => void;
   loading?: boolean;
+  /**
+   * Optional per-seat tier overlay. Keyed by seat id. When provided,
+   * unselected/available seats are tinted with the tier color so the
+   * customer can see what each seat costs at a glance.
+   */
+  seatTierMeta?: Record<string, { color: string; tierName: string; price: number }>;
 }
 
 // Canonical column positions for the Kenworthy auditorium.
@@ -23,12 +29,15 @@ function SeatButton({
   taken,
   selected,
   onToggleSeat,
+  tierMeta,
 }: {
   seat: Seat;
   taken: boolean;
   selected: boolean;
   onToggleSeat: (id: string) => void;
+  tierMeta?: { color: string; tierName: string; price: number };
 }) {
+  const tinted = !!tierMeta && !taken && !selected;
   return (
     <button
       onClick={() => onToggleSeat(seat.id)}
@@ -36,18 +45,20 @@ function SeatButton({
       className={cn(
         'h-7 w-7 shrink-0 rounded-t-md text-[10px] font-medium transition-all',
         taken && 'bg-muted-foreground/30 cursor-not-allowed text-muted-foreground',
-        !taken && !selected && 'bg-secondary hover:bg-primary/20 border border-border hover:border-primary/60 text-foreground',
+        !taken && !selected && !tinted && 'bg-secondary hover:bg-primary/20 border border-border hover:border-primary/60 text-foreground',
+        tinted && 'border border-transparent text-white hover:brightness-110',
         selected && 'bg-primary text-primary-foreground border border-primary glow-primary',
       )}
-      title={`Row ${seat.seat_row} · Seat ${seat.seat_number}`}
-      aria-label={`Row ${seat.seat_row} seat ${seat.seat_number}${taken ? ' (taken)' : ''}`}
+      style={tinted ? { backgroundColor: tierMeta!.color } : undefined}
+      title={`Row ${seat.seat_row} · Seat ${seat.seat_number}${tierMeta ? ` · ${tierMeta.tierName} ($${tierMeta.price.toFixed(2)})` : ''}`}
+      aria-label={`Row ${seat.seat_row} seat ${seat.seat_number}${tierMeta ? `, ${tierMeta.tierName}, $${tierMeta.price.toFixed(2)}` : ''}${taken ? ' (taken)' : ''}`}
     >
       {seat.seat_number}
     </button>
   );
 }
 
-export function SeatMap({ seats, takenSeatIds, selectedSeats, onToggleSeat, loading }: SeatMapProps) {
+export function SeatMap({ seats, takenSeatIds, selectedSeats, onToggleSeat, loading, seatTierMeta }: SeatMapProps) {
   if (loading) {
     return <p className="text-center text-muted-foreground py-8">Loading seats...</p>;
   }
@@ -72,6 +83,7 @@ export function SeatMap({ seats, takenSeatIds, selectedSeats, onToggleSeat, load
         taken={takenSeatIds.has(seat.id)}
         selected={selectedSeats.has(seat.id)}
         onToggleSeat={onToggleSeat}
+        tierMeta={seatTierMeta?.[seat.id]}
       />
     );
   };
