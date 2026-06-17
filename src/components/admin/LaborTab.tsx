@@ -11,7 +11,7 @@ export default function LaborTab() {
         <CardContent className="py-3 flex items-start gap-2 text-sm">
           <Info className="h-4 w-4 text-primary mt-0.5" />
           <span>
-            Labor data flows live to your Square <strong>sandbox</strong> account. When you wire production credentials, the same UI will operate against real team members and shifts — no rebuild required.
+            Staff data flows live to your Square <strong>sandbox</strong> account. When you wire production credentials, the same UI will operate against real team members and shifts — no rebuild required.
           </span>
         </CardContent>
       </Card>

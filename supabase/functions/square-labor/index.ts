@@ -166,7 +166,7 @@ async function clockIn(token: string, locationId: string, supabase: any, userId:
     .eq("user_id", userId)
     .maybeSingle();
   if (!link?.square_team_member_id) {
-    return json({ error: "No Square team member linked to your account. Ask an admin to link you in the Labor tab." }, 400);
+    return json({ error: "No Square team member linked to your account. Ask an admin to link you in the Staff tab." }, 400);
   }
   const { ok, status, data } = await squareFetch(token, "/labor/shifts", {
     method: "POST",

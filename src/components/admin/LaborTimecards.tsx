@@ -178,7 +178,7 @@ export function LaborTimecards() {
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
     const lines: string[] = [];
     lines.push('Pay Period Subtotals');
-    lines.push(['Staff', 'Week Start', 'Week End', 'Regular Hours', 'Overtime Hours', 'Total Hours', 'Labor Cost'].map(esc).join(','));
+    lines.push(['Staff', 'Week Start', 'Week End', 'Regular Hours', 'Overtime Hours', 'Total Hours', 'Staff Cost'].map(esc).join(','));
     periodRows.forEach((p) => {
       lines.push([
         p.name,
@@ -199,7 +199,7 @@ export function LaborTimecards() {
     ].map(esc).join(','));
     lines.push('');
     lines.push('Shift Detail');
-    lines.push(['Staff', 'Clock In', 'Clock Out', 'Hours', 'Labor Cost'].map(esc).join(','));
+    lines.push(['Staff', 'Clock In', 'Clock Out', 'Hours', 'Staff Cost'].map(esc).join(','));
     rows.forEach((r) => {
       lines.push([r.name, r.start, r.end || '', r.hours.toFixed(2), r.cost.toFixed(2)].map(esc).join(','));
     });
@@ -220,7 +220,7 @@ export function LaborTimecards() {
     doc.setFontSize(16);
     doc.text('Kenworthy Performing Arts Centre', 40, 50);
     doc.setFontSize(12);
-    doc.text('Labor Timecard Report', 40, 70);
+    doc.text('Staff Timecard Report', 40, 70);
     doc.setFontSize(10);
     doc.setTextColor(110);
     doc.text(`Range: ${begin} → ${end}`, 40, 88);
@@ -238,7 +238,7 @@ export function LaborTimecards() {
 
     autoTable(doc, {
       startY: 120,
-      head: [['Staff', 'Hours', 'Labor Cost']],
+      head: [['Staff', 'Hours', 'Staff Cost']],
       body: Array.from(byStaff.entries()).map(([name, t]) => [
         name,
         t.hours.toFixed(2),
@@ -252,7 +252,7 @@ export function LaborTimecards() {
 
     // Pay-period subtotals with overtime
     autoTable(doc, {
-      head: [['Staff', 'Week', 'Regular', 'Overtime', 'Total Hrs', 'Labor Cost']],
+      head: [['Staff', 'Week', 'Regular', 'Overtime', 'Total Hrs', 'Staff Cost']],
       body: periodRows.map((p) => [
         p.name,
         `${format(p.weekStart, 'MMM d')} – ${format(p.weekEnd, 'MMM d')}`,
@@ -274,7 +274,7 @@ export function LaborTimecards() {
     });
 
     autoTable(doc, {
-      head: [['Staff', 'Clock In', 'Clock Out', 'Hours', 'Labor Cost']],
+      head: [['Staff', 'Clock In', 'Clock Out', 'Hours', 'Staff Cost']],
       body: rows.map((r) => [
         r.name,
         format(new Date(r.start), 'MMM d, h:mm a'),
@@ -291,7 +291,7 @@ export function LaborTimecards() {
     doc.setFontSize(8);
     doc.setTextColor(140);
     doc.text(
-      'Sandbox data — labor figures reflect Square sandbox shifts until production credentials are wired.',
+      'Sandbox data — staff figures reflect Square sandbox shifts until production credentials are wired.',
       40,
       Math.min(finalY + 24, doc.internal.pageSize.getHeight() - 30),
       { maxWidth: pageWidth - 80 },
@@ -313,7 +313,7 @@ export function LaborTimecards() {
             <div className="ml-auto text-sm text-muted-foreground">
               <span className="mr-4">Total: <strong className="text-foreground">{totalHours.toFixed(2)} h</strong></span>
               <span className="mr-4">OT: <strong className="text-foreground">{totalOvertime.toFixed(2)} h</strong></span>
-              <span>Labor cost: <strong className="text-foreground">${totalOtCost.toFixed(2)}</strong></span>
+              <span>Staff cost: <strong className="text-foreground">${totalOtCost.toFixed(2)}</strong></span>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
@@ -355,7 +355,7 @@ export function LaborTimecards() {
           <Table>
             <TableHeader><TableRow>
               <TableHead>Staff</TableHead><TableHead>Clock In</TableHead><TableHead>Clock Out</TableHead>
-              <TableHead className="text-right">Hours</TableHead><TableHead className="text-right">Labor cost</TableHead>
+              <TableHead className="text-right">Hours</TableHead><TableHead className="text-right">Staff cost</TableHead>
             </TableRow></TableHeader>
             <TableBody>
               {rows.length === 0 ? (
