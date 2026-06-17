@@ -2,11 +2,16 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Download, AlertTriangle } from 'lucide-react';
-import { format, differenceInMinutes, startOfWeek, endOfWeek } from 'date-fns';
+import { Loader2, Download, AlertTriangle, CalendarIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  format, differenceInMinutes, startOfWeek, endOfWeek,
+  startOfMonth, endOfMonth, subDays, subWeeks, subMonths, parseISO,
+} from 'date-fns';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -47,6 +52,10 @@ export function LaborTimecards() {
   const [simulated, setSimulated] = useState(false);
 
   const load = useCallback(async () => {
+    if (new Date(begin) > new Date(end)) {
+      toast.error('Start date must be on or before end date.');
+      return;
+    }
     setLoading(true);
     try {
       const beginIso = new Date(begin + 'T00:00:00').toISOString();
