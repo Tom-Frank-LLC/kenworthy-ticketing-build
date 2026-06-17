@@ -492,23 +492,24 @@ export default function Showing() {
               {hasTiers && (
                 <Card className="glass">
                   <CardHeader>
-                    <CardTitle className="font-display text-lg">Select Ticket Type</CardTitle>
+                    <CardTitle className="font-display text-lg">Seating Tiers</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {priceTiers.map(tier => (
-                        <Button
-                          key={tier.id}
-                          variant={selectedTierId === tier.id ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setSelectedTierId(tier.id)}
-                        >
-                          {tier.tier_name} — ${tier.price.toFixed(2)}
-                        </Button>
-                      ))}
+                    <div className="flex flex-wrap gap-3 text-sm">
+                      {priceTiers.map(tier => {
+                        const t: any = (tier as any);
+                        const color = t.color || 'hsl(var(--primary))';
+                        return (
+                          <div key={tier.id} className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
+                            <span className="h-4 w-4 rounded-sm border border-border" style={{ backgroundColor: color }} />
+                            <span className="font-medium">{tier.tier_name}</span>
+                            <span className="text-muted-foreground">${tier.price.toFixed(2)}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Select a ticket type, then pick your seats below
+                    <p className="text-xs text-muted-foreground mt-3">
+                      Each seat is colored by its tier. Hover or tap a seat to see its tier and price.
                     </p>
                   </CardContent>
                 </Card>
@@ -523,6 +524,12 @@ export default function Showing() {
                     takenSeatIds={takenSeatIds}
                     selectedSeats={selectedSeats}
                     onToggleSeat={toggleSeat}
+                    seatTierMeta={hasTiers ? Object.fromEntries(
+                      Object.entries(seatTierMap).map(([seatId, t]) => [
+                        seatId,
+                        { color: t.color, tierName: t.tierName, price: t.price },
+                      ]),
+                    ) : undefined}
                   />
                 </CardContent>
               </Card>
