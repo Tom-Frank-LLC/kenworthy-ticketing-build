@@ -8,6 +8,7 @@ import { resolveTrailer } from '@/lib/trailer';
 
 export interface FeedItem {
   id: string;
+  productionId: string;
   title: string;
   posterUrl: string | null;
   trailerUrl: string | null;
