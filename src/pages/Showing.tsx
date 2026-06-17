@@ -253,9 +253,10 @@ export default function Showing() {
 
       if (hasTiers) {
         if (isAssignedSeating) {
-          const tier = priceTiers.find(t => t.id === selectedTierId);
+          const fallback = priceTiers.reduce((m, t) => (t.price < m.price ? t : m), priceTiers[0]);
           for (const seatId of selectedSeats) {
-            ticketDescriptors.push({ seat_id: seatId, tier_id: tier?.id });
+            const tierId = seatTierMap[seatId]?.tierId ?? fallback.id;
+            ticketDescriptors.push({ seat_id: seatId, tier_id: tierId });
           }
         } else {
           for (const tier of priceTiers) {
@@ -320,15 +321,28 @@ export default function Showing() {
 
       if (hasTiers) {
         if (isAssignedSeating) {
-          const tier = priceTiers.find(t => t.id === selectedTierId)!;
-          ticketRows = buildTicketRows({
-            lineItems: [{
-              tierId: tier.id,
+          const fallback = priceTiers.reduce((m, t) => (t.price < m.price ? t : m), priceTiers[0]);
+          // Group selected seats by tier so each line item has a single price.
+          const grouped = new Map<string, string[]>();
+          for (const seatId of selectedSeats) {
+            const tierId = seatTierMap[seatId]?.tierId ?? fallback.id;
+            const arr = grouped.get(tierId) ?? [];
+            arr.push(seatId);
+            grouped.set(tierId, arr);
+          }
+          const lineItems: TicketLineItem[] = [];
+          for (const [tierId, seatIds] of grouped) {
+            const tier = priceTiers.find(t => t.id === tierId)!;
+            lineItems.push({
+              tierId,
               tierName: tier.tier_name,
               price: tier.price,
-              quantity: selectedSeats.size,
-              seatIds: Array.from(selectedSeats),
-            }],
+              quantity: seatIds.length,
+              seatIds,
+            });
+          }
+          ticketRows = buildTicketRows({
+            lineItems,
             userId: user.id,
             showingId: id!,
             paymentMethod,
