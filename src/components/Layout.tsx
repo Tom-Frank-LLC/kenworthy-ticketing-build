@@ -1,7 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Ticket, LogOut, Shield, User, CreditCard, Home, MapPin, Mail, Phone, Heart, Building2 } from 'lucide-react';
+import { Ticket, LogOut, Shield, User, CreditCard, Home, MapPin, Mail, Phone, Heart, Building2, ChevronDown } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -63,21 +70,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Button>
             {user ? (
               <>
-                <Button variant="ghost" size="sm" asChild className="h-10">
-                  <Link to="/my-tickets">
-                    <Ticket className="h-4 w-4 mr-1" /> My Tickets
-                  </Link>
-                </Button>
-                <Button variant="ghost" size="sm" asChild className="h-10">
-                  <Link to="/my-passes">
-                    <CreditCard className="h-4 w-4 mr-1" /> Film Passes
-                  </Link>
-                </Button>
-                <Button variant="ghost" size="sm" asChild className="h-10">
-                  <Link to="/profile">
-                    <User className="h-4 w-4 mr-1" /> Profile
-                  </Link>
-                </Button>
                 {isAdmin && (
                   <Button variant="ghost" size="sm" asChild className="h-10">
                     <Link to="/admin">
@@ -92,9 +84,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </Link>
                   </Button>
                 )}
-                <Button variant="outline" size="sm" onClick={handleSignOut} className="h-10">
-                  <LogOut className="h-4 w-4 mr-1" /> Sign Out
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-10">
+                      <User className="h-4 w-4 mr-1" /> Me <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 bg-background">
+                    <DropdownMenuItem asChild>
+                      <Link to="/my-tickets"><Ticket className="h-4 w-4 mr-2" /> My Tickets</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/my-passes"><CreditCard className="h-4 w-4 mr-2" /> Film Passes</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/profile"><User className="h-4 w-4 mr-2" /> Profile</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={handleSignOut}>
+                      <LogOut className="h-4 w-4 mr-2" /> Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             ) : (
               <>
