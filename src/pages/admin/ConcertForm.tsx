@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { PosterUpload } from '@/components/admin/PosterUpload';
+import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
 
 const SUBCATEGORIES = [
   { value: 'concert', label: 'Concert' },
@@ -83,8 +84,9 @@ export default function ConcertForm() {
   if (authLoading) return null;
 
   return (
-    <div className="container py-8 px-4 max-w-lg">
+    <div className={`container py-8 px-4 ${isEdit ? 'max-w-4xl' : 'max-w-lg'}`}>
       <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="mb-4">← Back</Button>
+      <div className={isEdit ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}>
       <Card className="glass">
         <CardHeader>
           <CardTitle className="font-display">{isEdit ? 'Edit Live Performance' : 'Add Live Performance'}</CardTitle>
@@ -144,6 +146,20 @@ export default function ConcertForm() {
           </form>
         </CardContent>
       </Card>
+      {isEdit && id && (
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display">Seat Pricing</CardTitle>
+            <p className="text-xs text-muted-foreground font-serif">
+              Group seats into price tiers. New showings inherit this map; staff can override per showing.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <SeatTierEditor mode="production" productionType="concert" productionId={id} />
+          </CardContent>
+        </Card>
+      )}
+      </div>
     </div>
   );
 }
