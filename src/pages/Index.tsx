@@ -144,13 +144,9 @@ export default function Index() {
   }, []);
 
   const handleSelect = (item: FeedItem) => {
-    const prod = productionsById.get(`${item.type}:${item.id.split('-')[1]}`);
-    // The id format is `${type}-${prodId}-${showingId|standalone}`.
-    // Pull the production by reconstructing the key from the type and the
-    // production id segment (the second hyphen-separated chunk).
-    const segs = item.id.split('-');
-    const key = `${item.type}:${segs[1]}`;
-    const fullProd = productionsById.get(key) ?? prod;
+    // Production ids are UUIDs (contain hyphens), so we can't parse them
+    // out of the composite item.id. Use the explicit productionId.
+    const fullProd = productionsById.get(`${item.type}:${item.productionId}`);
     if (fullProd) {
       setSelectedProduction({ ...fullProd, type: item.type });
       setDrawerOpen(true);
