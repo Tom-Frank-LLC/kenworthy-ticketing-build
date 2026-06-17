@@ -120,11 +120,9 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      <Tabs defaultValue="movies" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-10">
-          <TabsTrigger value="movies">Movies</TabsTrigger>
-          <TabsTrigger value="events">Events</TabsTrigger>
-          <TabsTrigger value="concerts">Performances</TabsTrigger>
+      <Tabs defaultValue="schedule" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-8">
+          <TabsTrigger value="schedule"><Calendar className="h-4 w-4 mr-1 inline" />Schedule</TabsTrigger>
           <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1 inline" />Concessions</TabsTrigger>
           <TabsTrigger value="passes"><CreditCard className="h-4 w-4 mr-1 inline" />Passes</TabsTrigger>
           <TabsTrigger value="rentals"><KeyRound className="h-4 w-4 mr-1 inline" />Rentals</TabsTrigger>
@@ -134,8 +132,15 @@ export default function AdminDashboard() {
           <TabsTrigger value="archive"><Archive className="h-4 w-4 mr-1 inline" />Archive</TabsTrigger>
         </TabsList>
 
-        {/* Movies Tab */}
-        <TabsContent value="movies">
+        {/* Schedule Tab (Movies, Events, Performances) */}
+        <TabsContent value="schedule">
+          <Tabs defaultValue="movies" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="movies">Movies</TabsTrigger>
+              <TabsTrigger value="events">Events</TabsTrigger>
+              <TabsTrigger value="concerts">Performances</TabsTrigger>
+            </TabsList>
+            <TabsContent value="movies">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-xl font-bold">Movies</h2>
             <div className="flex gap-2">
@@ -209,10 +214,8 @@ export default function AdminDashboard() {
             })}
             {movies.length === 0 && <p className="text-muted-foreground text-center py-8">No movies yet.</p>}
           </div>
-        </TabsContent>
-
-        {/* Events Tab */}
-        <TabsContent value="events">
+            </TabsContent>
+            <TabsContent value="events">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-xl font-bold">Events</h2>
             <Button size="sm" asChild>
@@ -255,10 +258,8 @@ export default function AdminDashboard() {
             ))}
             {events.length === 0 && <p className="text-muted-foreground text-center py-8">No events yet.</p>}
           </div>
-        </TabsContent>
-
-        {/* Live Performances Tab */}
-        <TabsContent value="concerts">
+            </TabsContent>
+            <TabsContent value="concerts">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-xl font-bold">Performances</h2>
             <Button size="sm" asChild>
@@ -306,6 +307,8 @@ export default function AdminDashboard() {
             ))}
             {concerts.length === 0 && <p className="text-muted-foreground text-center py-8">No live performances yet.</p>}
           </div>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         {/* Concessions Tab */}
