@@ -214,8 +214,6 @@ export default function AdminDashboard() {
             })}
             {movies.length === 0 && <p className="text-muted-foreground text-center py-8">No movies yet.</p>}
           </div>
-        </TabsContent>
-
             </TabsContent>
             <TabsContent value="events">
           <div className="flex items-center justify-between mb-4">
@@ -260,8 +258,6 @@ export default function AdminDashboard() {
             ))}
             {events.length === 0 && <p className="text-muted-foreground text-center py-8">No events yet.</p>}
           </div>
-        </TabsContent>
-
             </TabsContent>
             <TabsContent value="concerts">
           <div className="flex items-center justify-between mb-4">
