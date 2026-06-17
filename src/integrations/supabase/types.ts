@@ -14,6 +14,100 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_mappings: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          is_default: boolean
+          notes: string | null
+          source_key: string
+          source_type: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          notes?: string | null
+          source_key: string
+          source_type: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          notes?: string | null
+          source_key?: string
+          source_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_mappings_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chart_of_accounts: {
+        Row: {
+          account_type: Database["public"]["Enums"]["coa_account_type"]
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          parent_id: string | null
+          qbo_account_id: string | null
+          qbo_account_name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          account_type: Database["public"]["Enums"]["coa_account_type"]
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          parent_id?: string | null
+          qbo_account_id?: string | null
+          qbo_account_name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          account_type?: Database["public"]["Enums"]["coa_account_type"]
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          parent_id?: string | null
+          qbo_account_id?: string | null
+          qbo_account_name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chart_of_accounts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       concession_combo_items: {
         Row: {
           child_item_id: string
@@ -384,6 +478,9 @@ export type Database = {
       }
       financial_entries: {
         Row: {
+          account_id: string | null
+          account_source_key: string | null
+          account_source_type: string | null
           adult: number | null
           attendance: number | null
           box_office: number | null
@@ -407,6 +504,7 @@ export type Database = {
           matched_movie_id: string | null
           matched_showing_id: string | null
           merch: number | null
+          needs_account_review: boolean
           net: number | null
           net_plus_pass: number | null
           notes: string | null
@@ -433,6 +531,9 @@ export type Database = {
           weekday: string | null
         }
         Insert: {
+          account_id?: string | null
+          account_source_key?: string | null
+          account_source_type?: string | null
           adult?: number | null
           attendance?: number | null
           box_office?: number | null
@@ -456,6 +557,7 @@ export type Database = {
           matched_movie_id?: string | null
           matched_showing_id?: string | null
           merch?: number | null
+          needs_account_review?: boolean
           net?: number | null
           net_plus_pass?: number | null
           notes?: string | null
@@ -482,6 +584,9 @@ export type Database = {
           weekday?: string | null
         }
         Update: {
+          account_id?: string | null
+          account_source_key?: string | null
+          account_source_type?: string | null
           adult?: number | null
           attendance?: number | null
           box_office?: number | null
@@ -505,6 +610,7 @@ export type Database = {
           matched_movie_id?: string | null
           matched_showing_id?: string | null
           merch?: number | null
+          needs_account_review?: boolean
           net?: number | null
           net_plus_pass?: number | null
           notes?: string | null
@@ -531,6 +637,13 @@ export type Database = {
           weekday?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "financial_entries_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "financial_entries_matched_movie_id_fkey"
             columns: ["matched_movie_id"]
@@ -831,6 +944,98 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      qbo_connection: {
+        Row: {
+          access_token: string | null
+          connected_at: string | null
+          connected_by: string | null
+          created_at: string
+          environment: string
+          id: string
+          is_active: boolean
+          realm_id: string | null
+          refresh_token: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          connected_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          realm_id?: string | null
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          connected_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          realm_id?: string | null
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qbo_sync_jobs: {
+        Row: {
+          account_id: string | null
+          attempts: number
+          created_at: string
+          entry_id: string
+          entry_table: string
+          error_message: string | null
+          id: string
+          qbo_txn_id: string | null
+          status: string
+          synced_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          attempts?: number
+          created_at?: string
+          entry_id: string
+          entry_table: string
+          error_message?: string | null
+          id?: string
+          qbo_txn_id?: string | null
+          status?: string
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          attempts?: number
+          created_at?: string
+          entry_id?: string
+          entry_table?: string
+          error_message?: string | null
+          id?: string
+          qbo_txn_id?: string | null
+          status?: string
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_sync_jobs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rental_requests: {
         Row: {
@@ -1475,9 +1680,20 @@ export type Database = {
         Args: { p_amount: number; p_pass_id: string; p_ticket_id: string }
         Returns: boolean
       }
+      resolve_account_id: {
+        Args: { p_source_key: string; p_source_type: string }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "regular_user" | "staff" | "host"
+      coa_account_type:
+        | "income"
+        | "contra_income"
+        | "expense"
+        | "contra_expense"
+        | "other_income"
+        | "other_expense"
       event_ticket_type: "ticketed" | "rsvp" | "info_only"
       live_performance_subcategory:
         | "concert"
@@ -1618,6 +1834,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "regular_user", "staff", "host"],
+      coa_account_type: [
+        "income",
+        "contra_income",
+        "expense",
+        "contra_expense",
+        "other_income",
+        "other_expense",
+      ],
       event_ticket_type: ["ticketed", "rsvp", "info_only"],
       live_performance_subcategory: [
         "concert",
