@@ -22,6 +22,7 @@ import TicketScanner from "./pages/admin/TicketScanner";
 import ResetPassword from "./pages/ResetPassword";
 import HostDashboard from "./pages/admin/HostDashboard";
 import SponsorshipForm from "./pages/admin/SponsorshipForm";
+import AuditLog from "./pages/admin/AuditLog";
 import Sponsors from "./pages/Sponsors";
 import NotFound from "./pages/NotFound";
 import HistoryPage from "./pages/History";
@@ -62,6 +63,7 @@ const App = () => (
               <Route path="/admin/showings/:id" element={<ShowingForm />} />
               <Route path="/admin/sponsorships/new" element={<SponsorshipForm />} />
               <Route path="/admin/sponsorships/:id" element={<SponsorshipForm />} />
+              <Route path="/admin/audit-log" element={<AuditLog />} />
               <Route path="/admin/pos" element={<StaffPOS />} />
               <Route path="/admin/scanner" element={<TicketScanner />} />
               <Route path="/host" element={<HostDashboard />} />
