@@ -1037,6 +1037,63 @@ export type Database = {
           },
         ]
       }
+      rental_invoice_lines: {
+        Row: {
+          account_id: string | null
+          created_at: string
+          description: string
+          id: string
+          is_taxable: boolean
+          line_kind: string
+          quantity: number
+          rental_request_id: string
+          sort_order: number
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          is_taxable?: boolean
+          line_kind?: string
+          quantity?: number
+          rental_request_id: string
+          sort_order?: number
+          unit_price?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          is_taxable?: boolean
+          line_kind?: string
+          quantity?: number
+          rental_request_id?: string
+          sort_order?: number
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_invoice_lines_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_invoice_lines_rental_request_id_fkey"
+            columns: ["rental_request_id"]
+            isOneToOne: false
+            referencedRelation: "rental_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rental_requests: {
         Row: {
           accessibility_requirements: string | null
