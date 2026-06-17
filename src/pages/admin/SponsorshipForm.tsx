@@ -127,9 +127,11 @@ export default function SponsorshipForm() {
           {isNew ? 'New Sponsorship Opportunity' : 'Edit Sponsorship Opportunity'}
         </h1>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5">
             <Switch checked={form.is_active} onCheckedChange={(v) => set('is_active', v)} />
-            <Label className="text-sm">Active</Label>
+            <Label className="text-sm">
+              {form.is_active ? 'Published' : 'Draft'}
+            </Label>
           </div>
           <Button variant="outline" onClick={() => downloadSponsorshipPdf(form)}>
             <Download className="h-4 w-4 mr-1" /> Preview PDF

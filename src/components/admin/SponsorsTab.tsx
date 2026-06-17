@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Edit, Trash2, Download, Eye, EyeOff } from 'lucide-react';
+import { Plus, Edit, Trash2, Download, Globe, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { downloadSponsorshipPdf } from '@/lib/sponsorshipPdf';
 
@@ -33,7 +33,10 @@ export default function SponsorsTab() {
       .update({ is_active: !current })
       .eq('id', id);
     if (error) toast.error(error.message);
-    else load();
+    else {
+      toast.success(!current ? 'Published to Sponsors page' : 'Unpublished');
+      load();
+    }
   }
 
   async function remove(id: string) {
@@ -77,23 +80,28 @@ export default function SponsorsTab() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-medium">{o.title}</p>
                     <Badge variant={o.is_active ? 'default' : 'secondary'} className="text-xs">
-                      {o.is_active ? 'Active' : 'Hidden'}
+                      {o.is_active ? 'Published' : 'Draft'}
                     </Badge>
                   </div>
                   {o.tagline && (
                     <p className="text-xs text-muted-foreground mt-1">{o.tagline}</p>
                   )}
                 </div>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => downloadSponsorshipPdf(o)}>
-                    <Download className="h-4 w-4" />
-                  </Button>
+                <div className="flex gap-1 items-center">
                   <Button
-                    variant="ghost"
+                    variant={o.is_active ? 'outline' : 'default'}
                     size="sm"
                     onClick={() => toggleActive(o.id, o.is_active)}
+                    title={o.is_active ? 'Unpublish from public Sponsors page' : 'Publish to public Sponsors page'}
                   >
-                    {o.is_active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {o.is_active ? (
+                      <><EyeOff className="h-4 w-4 mr-1" /> Unpublish</>
+                    ) : (
+                      <><Globe className="h-4 w-4 mr-1" /> Publish</>
+                    )}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => downloadSponsorshipPdf(o)}>
+                    <Download className="h-4 w-4" />
                   </Button>
                   <Button variant="ghost" size="sm" asChild>
                     <Link to={`/admin/sponsorships/${o.id}`}>
