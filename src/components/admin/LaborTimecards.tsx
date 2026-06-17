@@ -88,12 +88,85 @@ export function LaborTimecards() {
   const totalHours = rows.reduce((a, r) => a + r.hours, 0);
   const totalCost = rows.reduce((a, r) => a + r.cost, 0);
 
+  // Pay-period subtotals: group by staff + ISO week (Mon start). Overtime = hours > 40/week per staff.
+  const OT_THRESHOLD = 40;
+  const periodRows = useMemo(() => {
+    const buckets = new Map<string, {
+      name: string;
+      weekStart: Date;
+      weekEnd: Date;
+      hours: number;
+      rateCentsSum: number; // weighted avg helper
+      rateMinutes: number;
+    }>();
+    shifts.forEach((s) => {
+      const m = memberMap.get(s.team_member_id);
+      const name = m ? [m.given_name, m.family_name].filter(Boolean).join(' ') : s.team_member_id;
+      const ws = startOfWeek(new Date(s.start_at), { weekStartsOn: 1 });
+      const we = endOfWeek(new Date(s.start_at), { weekStartsOn: 1 });
+      const key = `${s.team_member_id}|${ws.toISOString()}`;
+      const mins = shiftMinutes(s);
+      const rateCents = m?.wage?.hourly_rate_cents || 0;
+      const cur = buckets.get(key) || { name, weekStart: ws, weekEnd: we, hours: 0, rateCentsSum: 0, rateMinutes: 0 };
+      cur.hours += mins / 60;
+      cur.rateCentsSum += rateCents * mins;
+      cur.rateMinutes += mins;
+      buckets.set(key, cur);
+    });
+    return Array.from(buckets.values())
+      .sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime() || a.name.localeCompare(b.name))
+      .map((b) => {
+        const regular = Math.min(b.hours, OT_THRESHOLD);
+        const overtime = Math.max(0, b.hours - OT_THRESHOLD);
+        const avgRate = b.rateMinutes ? b.rateCentsSum / b.rateMinutes / 100 : 0;
+        const cost = regular * avgRate + overtime * avgRate * 1.5;
+        return {
+          name: b.name,
+          weekStart: b.weekStart,
+          weekEnd: b.weekEnd,
+          regular,
+          overtime,
+          totalHours: b.hours,
+          cost,
+        };
+      });
+  }, [shifts, memberMap]);
+
+  const totalRegular = periodRows.reduce((a, r) => a + r.regular, 0);
+  const totalOvertime = periodRows.reduce((a, r) => a + r.overtime, 0);
+  const totalOtCost = periodRows.reduce((a, r) => a + r.cost, 0);
+
   const exportCsv = () => {
-    const header = 'Staff,Clock In,Clock Out,Hours,Labor Cost\n';
-    const body = rows.map((r) =>
-      [r.name, r.start, r.end || '', r.hours.toFixed(2), r.cost.toFixed(2)].map((v) => `"${v}"`).join(',')
-    ).join('\n');
-    const blob = new Blob([header + body], { type: 'text/csv' });
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const lines: string[] = [];
+    lines.push('Pay Period Subtotals');
+    lines.push(['Staff', 'Week Start', 'Week End', 'Regular Hours', 'Overtime Hours', 'Total Hours', 'Labor Cost'].map(esc).join(','));
+    periodRows.forEach((p) => {
+      lines.push([
+        p.name,
+        format(p.weekStart, 'yyyy-MM-dd'),
+        format(p.weekEnd, 'yyyy-MM-dd'),
+        p.regular.toFixed(2),
+        p.overtime.toFixed(2),
+        p.totalHours.toFixed(2),
+        p.cost.toFixed(2),
+      ].map(esc).join(','));
+    });
+    lines.push([
+      'TOTAL', '', '',
+      totalRegular.toFixed(2),
+      totalOvertime.toFixed(2),
+      (totalRegular + totalOvertime).toFixed(2),
+      totalOtCost.toFixed(2),
+    ].map(esc).join(','));
+    lines.push('');
+    lines.push('Shift Detail');
+    lines.push(['Staff', 'Clock In', 'Clock Out', 'Hours', 'Labor Cost'].map(esc).join(','));
+    rows.forEach((r) => {
+      lines.push([r.name, r.start, r.end || '', r.hours.toFixed(2), r.cost.toFixed(2)].map(esc).join(','));
+    });
+    lines.push(['TOTAL', '', '', totalHours.toFixed(2), totalCost.toFixed(2)].map(esc).join(','));
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -139,6 +212,29 @@ export function LaborTimecards() {
       footStyles: { fillColor: [220, 220, 220], textColor: 0, fontStyle: 'bold' },
     });
 
+    // Pay-period subtotals with overtime
+    autoTable(doc, {
+      head: [['Staff', 'Week', 'Regular', 'Overtime', 'Total Hrs', 'Labor Cost']],
+      body: periodRows.map((p) => [
+        p.name,
+        `${format(p.weekStart, 'MMM d')} – ${format(p.weekEnd, 'MMM d')}`,
+        p.regular.toFixed(2),
+        p.overtime.toFixed(2),
+        p.totalHours.toFixed(2),
+        `$${p.cost.toFixed(2)}`,
+      ]),
+      foot: [[
+        'Total', '',
+        totalRegular.toFixed(2),
+        totalOvertime.toFixed(2),
+        (totalRegular + totalOvertime).toFixed(2),
+        `$${totalOtCost.toFixed(2)}`,
+      ]],
+      theme: 'striped',
+      headStyles: { fillColor: [40, 40, 40] },
+      footStyles: { fillColor: [220, 220, 220], textColor: 0, fontStyle: 'bold' },
+    });
+
     autoTable(doc, {
       head: [['Staff', 'Clock In', 'Clock Out', 'Hours', 'Labor Cost']],
       body: rows.map((r) => [
@@ -177,7 +273,8 @@ export function LaborTimecards() {
           <Button variant="outline" onClick={exportPdf} disabled={!rows.length}><Download className="h-4 w-4 mr-1" /> PDF</Button>
           <div className="ml-auto text-sm text-muted-foreground">
             <span className="mr-4">Total: <strong className="text-foreground">{totalHours.toFixed(2)} h</strong></span>
-            <span>Labor cost: <strong className="text-foreground">${totalCost.toFixed(2)}</strong></span>
+            <span className="mr-4">OT: <strong className="text-foreground">{totalOvertime.toFixed(2)} h</strong></span>
+            <span>Labor cost: <strong className="text-foreground">${totalOtCost.toFixed(2)}</strong></span>
           </div>
         </CardContent>
       </Card>
