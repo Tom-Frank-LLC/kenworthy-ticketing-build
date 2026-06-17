@@ -208,13 +208,18 @@ export default function Showing() {
 
   if (hasTiers) {
     if (isAssignedSeating) {
-      // Assigned seating + tiers: all selected seats use the selected tier
-      const tier = priceTiers.find(t => t.id === selectedTierId);
+      // Assigned seating + tiers: each seat is priced by its own tier
+      // mapping. Seats with no mapping fall back to the lowest tier so we
+      // never give away a free ticket.
+      const fallback = priceTiers.reduce((m, t) => (t.price < m.price ? t : m), priceTiers[0]);
       ticketCount = selectedSeats.size;
-      const result = computeOrderTotals(ticketCount, tier?.price || 0);
-      subtotal = result.subtotal;
-      tax = result.tax;
-      total = result.total;
+      let sub = 0;
+      for (const seatId of selectedSeats) {
+        sub += seatTierMap[seatId]?.price ?? fallback.price;
+      }
+      subtotal = Math.round(sub * 100) / 100;
+      tax = Math.round(subtotal * TAX_RATE * 100) / 100;
+      total = Math.round((subtotal + tax) * 100) / 100;
     } else {
       // GA + tiers: per-tier quantities
       const items: TicketLineItem[] = priceTiers
