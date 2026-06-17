@@ -1,77 +1,70 @@
-# Labor & Time Clock — Square-backed staff management
+## Goal
 
-## Context on "real vs sandbox"
+Tag every dollar that moves through the app (revenue and expenses) to a QuickBooks Online account, seeded from your 2025 Statement of Activity, editable in admin, exportable to QBO today, and ready to sync live to QBO later.
 
-Yes — your Square sandbox account is a real Square account, just sandboxed. When you signed up for Square dev access, Square provisioned a paired **Production account** (same login, same dashboard, toggle in the top-left). Sandbox uses fake locations, fake team members, and fake cards; Production is the live business. Same APIs, different tokens (`SQUARE_SANDBOX_ACCESS_TOKEN` vs a future `SQUARE_PRODUCTION_ACCESS_TOKEN`). Code we write against sandbox endpoints will work against production by swapping the base URL + token — no app rewrite.
+## Phase 1 — Chart of Accounts foundation
 
-Caveat we already know: a few APIs (notably **Labor scheduled shifts** and parts of **Team wages**) have partial sandbox coverage. We'll build defensively so the UI degrades gracefully when sandbox returns empty/unsupported, and lights up automatically in production.
+**New tables**
 
-## What we'll build
+- `chart_of_accounts` — `code` (e.g. `4100-RNT-GEN`), `name`, `qbo_account_name` (exact QBO match), `qbo_account_id` (nullable, filled after live sync), `account_type` (`income` | `expense` | `other_income` | `other_expense` | `contra_income`), `parent_id` (self-FK for groups like Sponsorships → Film sponsorships), `is_active`, `sort_order`, `notes`.
+- `account_mappings` — links app-side sources to a `chart_of_accounts.id`. Source is a `(source_type, source_key)` pair:
+  - `source_type` ∈ `ticket_type`, `pass_type`, `concession_item`, `concession_category`, `merch_item`, `rental_line_kind`, `donation_designation`, `sponsorship_program`, `tip`, `sales_tax`, `expense_category`, `payroll_category`, `discount`, `refund`, `square_fee`, `bank_fee`, `interest`, `grant_program`, `capital_line`.
+  - `source_key` is a free-text or FK-string (e.g. `film`, `met_live`, `silent_film_fest`, or a specific `concession_items.id`).
+  - One row per source; `default = true` means fallback when no specific override.
+- `financial_entries` already exists (47 cols) — we add `account_id uuid references chart_of_accounts` and a backfill that resolves it from `account_mappings` based on the entry's source.
 
-A new admin tab **"Labor"** (admin-only) with three sub-sections:
+**Seed migration** loads the ~60 accounts from your 2025 Statement of Activity, grouped exactly as in the PDF (Contributed income → Sponsorships → Film sponsorships, etc., and Expenditures → Event expenses → Film Expenses → Film Licensing, etc., including contra accounts like Non-profit discounts, Discounts, Returns).
 
-### 1. Team Roster
-- List Square team members (name, email, role, hourly wage, active/inactive)
-- Pulled live from Square `Team API` → `SearchTeamMembers`
-- Read-only for v1 (creating team members in Square is better done in the Square dashboard)
-- Map each Square `team_member_id` to a Lovable `profiles.id` via a new `staff_square_links` table so POS sales can already attribute correctly
+## Phase 2 — Admin: Chart of Accounts editor
 
-### 2. Time Clock (Punch In / Out)
-- Big "Clock In" / "Clock Out" / "Start Break" / "End Break" buttons on the POS for the currently signed-in staff user
-- Backed by Square `Labor API` → `CreateShift` / `UpdateShift` (open shift = `end_at` null)
-- Current shift status badge in POS header ("On the clock since 4:12 PM")
-- Admin view: today's open shifts across all staff, with force-close
+New tab under **Analytics → Accounting** (Chart of Accounts):
 
-### 3. Timecards & Hours
-- Date-range picker (default: this pay period)
-- Table of shifts per staff member: clock-in, clock-out, breaks, total hours, wage × hours = labor cost
-- CSV export
-- Pulled from `Labor API` → `SearchShifts`
+- Tree view of accounts (collapsible parents).
+- Add / rename / deactivate accounts, edit `qbo_account_name`, reorder, set parent.
+- Per-source mapping panels:
+  - **Ticket types** (Film, Live Event, Met Live, NT Live) → income accounts
+  - **Pass types** (Film Pass, Met Live Pass, Movie Night Gift Cards, Silent Film Fest Pass) → income accounts
+  - **Concession items / categories** → Concessions income; Discounts contra
+  - **Merchandise** → Merchandise / Discounts on Merchandise
+  - **Rental line kinds** (General, Live Theater, Fees, Film Licensing Fees, Non-profit discount, Poster print, Marquee, Rental Ticket Sales) → Rentals accounts
+  - **Donation designations** (Business, Individual, Monthly, Jar, Marquee Restoration, EOY, Unrestricted Capital, Fall Banquet) → Donations / Capital accounts
+  - **Sponsorship programs** (Black History Month, Film, Live event, Met Live, Saturday Cartoons, Silent Film Festival, Summer Family Matinee) → Sponsorships accounts
+  - **Tips** → Tips
+  - **Sales Tax Collected / Sales Tax (expense)** → tax accounts
+  - **Expense categories** (everything under Expenditures: Advertising sub-accounts, Contract labor → Artist fees / Sound tech, Contracted Programming → Met Live / NT Live, Film Expenses → DVD/Bluray / Booking / Licensing / Shipping, Facilities → Maintenance × 3 / Utilities × 3, G&A → Bank fees / Square Fees / Accounting / Insurance / etc., Payroll → Tax / Salaries × 4 / Wages, Capital sub-lines)
+- "Default" toggle so unmapped sources fall back to a configured catch-all per source_type.
 
-### 4. (Stretch, behind a feature flag) Scheduling
-- Read scheduled shifts from `Labor API`
-- Calendar view by week
-- Create/edit scheduled shifts — **sandbox-limited**, so we'll show a banner: "Scheduling writes require production Square account"
+## Phase 3 — Tagging at the source
 
-## Technical details
+Wherever we already write to `financial_entries` (ticket sales, pass sales, concession sales, rental invoices, donations, sponsorships, refunds, tips, sales tax, manual expense entries), resolve `account_id` at write time using `account_mappings`. A trigger on `financial_entries` enforces it: if `account_id` is null at insert, look up the mapping; if no mapping exists, fall back to source_type default; if still null, flag the row `needs_account_review = true` rather than failing.
 
-**New edge function** `supabase/functions/square-labor/index.ts`
-- Mirrors `square-terminal` pattern: admin-only JWT check, sandbox base URL, graceful sandbox-fallback responses
-- Actions: `list_team`, `list_shifts`, `current_shift`, `clock_in`, `clock_out`, `start_break`, `end_break`, `force_close_shift`, `list_scheduled_shifts`
+Rental invoices specifically: each invoice line gets `account_id`, defaulting from `rental_line_kind`, overridable per line by staff before sending.
 
-**New migration**
-```sql
-CREATE TABLE public.staff_square_links (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  square_team_member_id text NOT NULL UNIQUE,
-  created_at timestamptz DEFAULT now()
-);
--- GRANTs + RLS: admin full, staff select own
-```
+## Phase 4 — QBO-formatted export
 
-**New UI files**
-- `src/components/admin/LaborTab.tsx` — tab container with sub-tabs (Roster / Timecards / Scheduling)
-- `src/components/admin/LaborRoster.tsx`
-- `src/components/admin/LaborTimecards.tsx`
-- `src/components/pos/TimeClockWidget.tsx` — punch in/out card shown at top of `StaffPOS`
-- Add "Labor" tab to `AdminDashboard.tsx`
+New admin screen **Analytics → Accounting → Export**:
 
-**Sandbox behavior**
-- `list_team` returns Square sandbox seed team members (Square creates a few by default)
-- `clock_in`/`clock_out` work fully in sandbox against Labor API
-- `list_scheduled_shifts` returns `{ simulated: true, shifts: [] }` if endpoint 4xxs in sandbox, with banner in UI
-- Wage data falls back to `$0.00` with "Set in production" tooltip if `Team Wages` returns nothing
+- Date range picker, account filter, "include unmapped" toggle.
+- Two output formats:
+  1. **Journal Entry CSV** — one row per (account, date), debit/credit, memo. Importable into QBO via Transaction Pro / SaaSAnt or copy-paste into a Journal Entry.
+  2. **IIF** — classic QBO desktop format, useful as a universal fallback.
+- Group by QBO account name, not internal code, so the file matches the user's QBO chart.
+- Warns on any `needs_account_review` rows in range and links to a fix-up queue.
 
-## What "flipping to production" will require later
-1. Add `SQUARE_PRODUCTION_ACCESS_TOKEN` + `SQUARE_PRODUCTION_LOCATION_ID` secrets
-2. Add an env flag `SQUARE_ENV=production` read by the edge function to switch base URL + token
-3. Re-link each Lovable staff user to their real production `team_member_id` (one-time admin action — UI we're building already supports this)
-4. Test punch-in flow end-to-end on one staff member before rolling out
+## Phase 5 — Live QBO sync (deferred wiring, built but inactive)
 
-## Scope NOT included in v1
-- Editing team members from inside Lovable (use Square dashboard)
-- Payroll runs / paystubs (Square Payroll is a separate paid product with its own API)
-- Tip distribution
-- Schedule publishing & shift-swap requests
-- Mobile-optimized standalone time clock kiosk (POS works on tablets, that's enough for v1)
+- Edge function `qbo-sync` with stubs for: OAuth start/callback, refresh token storage, account list pull (to populate `qbo_account_id` by exact-name match against `qbo_account_name`), invoice push, journal entry push.
+- Requires Intuit Developer app credentials when activated: `QBO_CLIENT_ID`, `QBO_CLIENT_SECRET`, `QBO_ENVIRONMENT` (sandbox/production), `QBO_REDIRECT_URI`. We don't ask for them now — admin screen surfaces a "Connect QuickBooks" button that prompts for these when first clicked.
+- Sync queue table `qbo_sync_jobs` with status (`pending`, `synced`, `failed`, `skipped_unmapped`) so nothing pushes to QBO with a missing account.
+
+## What ships in this build
+
+Phases 1–4 fully shipped. Phase 5 scaffolding (tables, edge function shell, admin "Connect" button) included but disabled until you provide Intuit creds.
+
+## Technical notes
+
+- All new tables: `GRANT` to `authenticated` (admin reads via RLS using `has_role`), `service_role` full; only admins can mutate accounts/mappings.
+- Seed uses stable `code` values so admins can rename without breaking mappings.
+- Contra accounts (Non-profit discounts, Discounts, Returns, Discounts on Merchandise) are negative-balance income — exported as credits to the same parent, debits to contra child, matching how QBO expects.
+- Capital section in your PDF mixes income and expense lines; we model those as `other_income` / `other_expense` so they don't pollute operating P&L.
+- No client-side price/account trust — `account_id` is resolved server-side from the mapping table.

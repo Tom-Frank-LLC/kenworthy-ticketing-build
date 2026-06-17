@@ -14,6 +14,9 @@ import FilmPassesTab from '@/components/admin/FilmPassesTab';
 import HostManagementTab from '@/components/admin/HostManagementTab';
 import ArchiveTab from '@/components/admin/ArchiveTab';
 import AccountingTab from '@/components/admin/AccountingTab';
+import ChartOfAccountsTab from '@/components/admin/accounting/ChartOfAccountsTab';
+import AccountMappingsTab from '@/components/admin/accounting/AccountMappingsTab';
+import QboExportTab from '@/components/admin/accounting/QboExportTab';
 import RentalRequestsTab from '@/components/admin/RentalRequestsTab';
 import BoxOfficeReceiptsTab from '@/components/admin/BoxOfficeReceiptsTab';
 import LaborTab from '@/components/admin/LaborTab';
@@ -331,7 +334,10 @@ export default function AdminDashboard() {
           <Tabs defaultValue="overview" className="space-y-4">
             <TabsList>
               <TabsTrigger value="overview"><BarChart3 className="h-4 w-4 mr-1 inline" />Overview</TabsTrigger>
-              <TabsTrigger value="accounting"><Wallet className="h-4 w-4 mr-1 inline" />Accounting</TabsTrigger>
+              <TabsTrigger value="accounting"><Wallet className="h-4 w-4 mr-1 inline" />Imports</TabsTrigger>
+              <TabsTrigger value="coa">Chart of Accounts</TabsTrigger>
+              <TabsTrigger value="mappings">Mappings</TabsTrigger>
+              <TabsTrigger value="qbo-export">QBO Export</TabsTrigger>
             </TabsList>
             <TabsContent value="overview">
               <AnalyticsTab />
@@ -339,6 +345,9 @@ export default function AdminDashboard() {
             <TabsContent value="accounting">
               <AccountingTab />
             </TabsContent>
+            <TabsContent value="coa"><ChartOfAccountsTab /></TabsContent>
+            <TabsContent value="mappings"><AccountMappingsTab /></TabsContent>
+            <TabsContent value="qbo-export"><QboExportTab /></TabsContent>
           </Tabs>
         </TabsContent>
 
