@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
+import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
 
 type Category = 'movie' | 'event' | 'concert';
 
@@ -45,6 +46,7 @@ export default function ShowingForm() {
 
   const [tiers, setTiers] = useState<TierRow[]>([...DEFAULT_TIERS]);
   const [useTiers, setUseTiers] = useState(true);
+  const [savedShowingId, setSavedShowingId] = useState<string | null>(isEdit ? (id ?? null) : null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -137,6 +139,10 @@ export default function ShowingForm() {
       const { data, error } = await supabase.from('showings').insert(showingData).select('id').single();
       if (error) { toast.error(error.message); setSaving(false); return; }
       showingId = data.id;
+      // Seed seat-tier template from the production, if any
+      try {
+        await supabase.rpc('apply_production_template_to_showing', { p_showing_id: showingId });
+      } catch (_) { /* no template — fine */ }
     }
 
     // Save price tiers
@@ -162,15 +168,30 @@ export default function ShowingForm() {
     }
 
     toast.success(isEdit ? 'Showing updated!' : 'Showing created!');
-    navigate('/admin');
+    if (!isEdit && showingId) {
+      setSavedShowingId(showingId);
+      navigate(`/admin/showings/${showingId}`, { replace: true });
+    } else {
+      navigate('/admin');
+    }
     setSaving(false);
   };
 
   if (authLoading) return null;
 
+  const showingIdForEditor = savedShowingId ?? (isEdit ? id ?? null : null);
+  const venueForEditor = venues.find(v => v.id === venueId);
+  const showSeatOverride = !!showingIdForEditor && !!venueForEditor?.has_assigned_seating;
+
+  const seedProd = category === 'movie' && itemId ? { type: 'movie' as const, id: itemId }
+    : category === 'event' && itemId ? { type: 'event' as const, id: itemId }
+    : category === 'concert' && itemId ? { type: 'concert' as const, id: itemId }
+    : undefined;
+
   return (
-    <div className="container py-8 px-4 max-w-lg">
+    <div className={`container py-8 px-4 ${showSeatOverride ? 'max-w-4xl' : 'max-w-lg'}`}>
       <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="mb-4">← Back</Button>
+      <div className={showSeatOverride ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}>
       <Card className="glass">
         <CardHeader>
           <CardTitle className="font-display">{isEdit ? 'Edit Showing' : 'Add Showing'}</CardTitle>
@@ -276,6 +297,25 @@ export default function ShowingForm() {
           </form>
         </CardContent>
       </Card>
+      {showSeatOverride && showingIdForEditor && (
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display">Seat Pricing — This Showing</CardTitle>
+            <p className="text-xs text-muted-foreground font-serif">
+              Inherits the production's seat map. Any change here applies only to this showing.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <SeatTierEditor
+              mode="showing"
+              showingId={showingIdForEditor}
+              venueId={venueId || undefined}
+              seedFromProduction={seedProd}
+            />
+          </CardContent>
+        </Card>
+      )}
+      </div>
     </div>
   );
 }
