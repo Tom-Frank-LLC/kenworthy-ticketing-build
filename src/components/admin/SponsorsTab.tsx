@@ -28,24 +28,12 @@ export default function SponsorsTab() {
   }, []);
 
   async function toggleActive(id: string, current: boolean) {
-    const item = items.find((i) => i.id === id);
     const { error } = await (supabase as any)
       .from('sponsorship_opportunities')
       .update({ is_active: !current })
       .eq('id', id);
     if (error) toast.error(error.message);
     else {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await (supabase as any).from('admin_audit_log').insert({
-          actor_id: user.id,
-          actor_email: user.email,
-          action: !current ? 'sponsorship.publish' : 'sponsorship.unpublish',
-          entity_type: 'sponsorship_opportunity',
-          entity_id: id,
-          details: { title: item?.title, slug: item?.slug, previous_is_active: current, new_is_active: !current },
-        });
-      }
       toast.success(!current ? 'Published to Sponsors page' : 'Unpublished');
       load();
     }
