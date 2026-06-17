@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
-import { Calendar as CalendarIcon, Film, Sparkles, Music, Ticket, PlayCircle } from 'lucide-react';
+import { List as ListIcon, Calendar as CalendarIcon, Film, Sparkles, Music, Ticket, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { MonthCalendar } from './MonthCalendar';
 import type { FeedItem } from './TrailerFeed';
@@ -31,20 +30,13 @@ export function UpcomingList({
     [items],
   );
   const [activeId, setActiveId] = useState<string | null>(dated[0]?.id ?? null);
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'calendar'>('list');
 
   const active = dated.find((i) => i.id === activeId) ?? dated[0] ?? null;
 
   const handleCalendarPick = (item: FeedItem) => {
-    setCalendarOpen(false);
-    setActiveId(item.id);
-    // Scroll the row into view if rendered.
-    requestAnimationFrame(() => {
-      document.getElementById(`upcoming-${item.id}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    });
+    // From the calendar view, picking a title opens its detail drawer.
+    onSelect?.(item);
   };
 
   if (dated.length === 0) return null;
@@ -64,20 +56,41 @@ export function UpcomingList({
               Pick a showing on the left to preview it.
             </p>
           </div>
-          <Dialog open={calendarOpen} onOpenChange={setCalendarOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <CalendarIcon className="h-4 w-4" />
-                Calendar
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-5xl p-0 max-h-[90vh] overflow-y-auto">
-              <DialogTitle className="sr-only">Full calendar</DialogTitle>
-              <MonthCalendar items={items} onSelect={handleCalendarPick} />
-            </DialogContent>
-          </Dialog>
+          <div
+            role="tablist"
+            aria-label="Choose view"
+            className="inline-flex items-center rounded-md border border-accent/30 bg-card p-1"
+          >
+            <Button
+              type="button"
+              role="tab"
+              aria-selected={view === 'list'}
+              variant={view === 'list' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-2 h-8"
+              onClick={() => setView('list')}
+            >
+              <ListIcon className="h-4 w-4" />
+              List
+            </Button>
+            <Button
+              type="button"
+              role="tab"
+              aria-selected={view === 'calendar'}
+              variant={view === 'calendar' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-2 h-8"
+              onClick={() => setView('calendar')}
+            >
+              <CalendarIcon className="h-4 w-4" />
+              Calendar
+            </Button>
+          </div>
         </div>
 
+        {view === 'calendar' ? (
+          <MonthCalendar items={items} onSelect={handleCalendarPick} />
+        ) : (
         <div className="grid lg:grid-cols-[1fr_1.2fr] gap-6 lg:gap-10">
           {/* List */}
           <ul className="space-y-2 lg:max-h-[560px] lg:overflow-y-auto lg:pr-2">
@@ -180,6 +193,7 @@ export function UpcomingList({
             </div>
           )}
         </div>
+        )}
       </div>
     </section>
   );
