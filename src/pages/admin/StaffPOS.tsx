@@ -24,7 +24,7 @@ import { PaymentMethodSelector, type PaymentMethod } from '@/components/pos/Paym
 import { ConcessionPOS } from '@/components/pos/ConcessionPOS';
 import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
-import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, TAX_RATE } from '@/lib/booking';
+import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, computeProcessingFee, TAX_RATE } from '@/lib/booking';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ShowingOption {
