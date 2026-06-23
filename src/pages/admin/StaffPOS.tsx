@@ -339,7 +339,7 @@ export default function StaffPOS() {
 
     try {
       const idempotencyKey = crypto.randomUUID();
-      const amountCents = Math.round(total * 100);
+      const amountCents = Math.round(grandTotal * 100);
 
       const { data, error } = await supabase.functions.invoke('square-terminal', {
         body: {
