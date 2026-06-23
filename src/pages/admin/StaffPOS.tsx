@@ -294,13 +294,13 @@ export default function StaffPOS() {
       ticketIds,
       movieTitle: selectedShowing?.movie_title || 'Unknown',
       seatLabels,
-      total,
+      total: grandTotal,
       paymentMethod: method,
       timestamp: new Date(),
       refunded: false,
     };
     setTransactions(prev => [tx, ...prev]);
-  }, [selectedSeats, seats, selectedShowing, total, isAssignedSeating, gaQuantity, hasTiers, lineItems]);
+  }, [selectedSeats, seats, selectedShowing, grandTotal, isAssignedSeating, gaQuantity, hasTiers, lineItems]);
 
   const resetForm = useCallback(() => {
     setSelectedSeats(new Set());
