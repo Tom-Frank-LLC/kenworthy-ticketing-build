@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { Film, Calendar, Clock, DollarSign, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard } from 'lucide-react';
 import { SeatMap } from '@/components/SeatMap';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
-import { type Seat, type PriceTier, TAX_RATE, buildTicketRows, computeOrderTotals, computeLineItemTotals, type TicketLineItem } from '@/lib/booking';
+import { type Seat, type PriceTier, TAX_RATE, buildTicketRows, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { SEO } from '@/components/SEO';
 
@@ -240,6 +240,12 @@ export default function Showing() {
     tax = result.tax;
     total = result.total;
   }
+
+  // Optional buyer-paid Square processing fee (per production toggle).
+  // Film-pass redemptions don't run through Square, so skip the surcharge.
+  const passProcessingFee = !!production?.pass_processing_fee && !useFilmPass && total > 0;
+  const processingFee = passProcessingFee ? computeProcessingFee(total, 'online').fee : 0;
+  const grandTotal = Math.round((total + processingFee) * 100) / 100;
 
   // Film pass: check if selected pass covers the total
   const selectedPass = userPasses.find((p: any) => p.id === selectedPassId);
