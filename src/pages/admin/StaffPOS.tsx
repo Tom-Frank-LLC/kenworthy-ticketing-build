@@ -225,6 +225,13 @@ export default function StaffPOS() {
     ? computeLineItemTotals(lineItems)
     : computeOrderTotals(ticketCount, selectedShowing?.ticket_price || 0);
 
+  // Buyer-paid Square processing fee, only when host opted in AND the buyer
+  // is paying by card on the Terminal. Cash sales never carry the surcharge.
+  const passProcessingFee =
+    !!selectedShowing?.pass_processing_fee && paymentMethod === 'card' && total > 0;
+  const processingFee = passProcessingFee ? computeProcessingFee(total, 'in_person').fee : 0;
+  const grandTotal = Math.round((total + processingFee) * 100) / 100;
+
   const toggleSeat = (seatId: string) => {
     if (takenSeatIds.has(seatId)) return;
     setSelectedSeats(prev => {
