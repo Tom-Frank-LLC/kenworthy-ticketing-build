@@ -32,6 +32,7 @@ export function buildTicketRows({
   selectedSeats,
   quantity,
   ticketPrice,
+  processingFee = 0,
 }: {
   lineItems?: TicketLineItem[];
   userId: string;
@@ -41,7 +42,16 @@ export function buildTicketRows({
   selectedSeats?: Set<string>;
   quantity?: number;
   ticketPrice?: number;
+  // Buyer-paid Square processing surcharge for the whole order.
+  // Attributed entirely to the first ticket row so refunds can recover it
+  // without needing a separate orders table.
+  processingFee?: number;
 }) {
+  const fee = Math.max(0, Math.round((processingFee || 0) * 100) / 100);
+  const stamp = (rows: any[]) => {
+    if (rows.length > 0 && fee > 0) rows[0].processing_fee = fee;
+    return rows;
+  };
   // New tiered path
   if (lineItems && lineItems.length > 0) {
     const rows: any[] = [];
@@ -86,7 +96,7 @@ export function buildTicketRows({
         }
       }
     }
-    return rows;
+    return stamp(rows);
   }
 
   // Legacy single-price path (no tiers configured)
@@ -107,19 +117,19 @@ export function buildTicketRows({
   };
 
   if (selectedSeats && selectedSeats.size > 0) {
-    return Array.from(selectedSeats).map(seatId => ({
+    return stamp(Array.from(selectedSeats).map(seatId => ({
       ...baseRow,
       seat_id: seatId,
       qr_code: crypto.randomUUID(),
-    }));
+    })));
   }
 
   const count = quantity || 0;
-  return Array.from({ length: count }, () => ({
+  return stamp(Array.from({ length: count }, () => ({
     ...baseRow,
     seat_id: null,
     qr_code: crypto.randomUUID(),
-  }));
+  })));
 }
 
 export function computeOrderTotals(ticketCount: number, ticketPrice: number) {
