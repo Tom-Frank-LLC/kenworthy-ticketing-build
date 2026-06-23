@@ -397,6 +397,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_featured: boolean
+          pass_processing_fee: boolean
           poster_url: string | null
           rating: string | null
           rsvp_url: string | null
@@ -412,6 +413,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_featured?: boolean
+          pass_processing_fee?: boolean
           poster_url?: string | null
           rating?: string | null
           rsvp_url?: string | null
@@ -427,6 +429,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_featured?: boolean
+          pass_processing_fee?: boolean
           poster_url?: string | null
           rating?: string | null
           rsvp_url?: string | null
@@ -851,6 +854,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_featured: boolean
+          pass_processing_fee: boolean
           poster_url: string | null
           rating: string | null
           subcategory: Database["public"]["Enums"]["live_performance_subcategory"]
@@ -865,6 +869,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_featured?: boolean
+          pass_processing_fee?: boolean
           poster_url?: string | null
           rating?: string | null
           subcategory?: Database["public"]["Enums"]["live_performance_subcategory"]
@@ -879,6 +884,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_featured?: boolean
+          pass_processing_fee?: boolean
           poster_url?: string | null
           rating?: string | null
           subcategory?: Database["public"]["Enums"]["live_performance_subcategory"]
@@ -899,6 +905,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_featured: boolean
+          pass_processing_fee: boolean
           poster_url: string | null
           rating: string | null
           release_label: string | null
@@ -918,6 +925,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_featured?: boolean
+          pass_processing_fee?: boolean
           poster_url?: string | null
           rating?: string | null
           release_label?: string | null
@@ -937,6 +945,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_featured?: boolean
+          pass_processing_fee?: boolean
           poster_url?: string | null
           rating?: string | null
           release_label?: string | null
@@ -1676,7 +1685,10 @@ export type Database = {
       }
       tickets: {
         Row: {
+          comp_recipient_email: string | null
+          comp_recipient_name: string | null
           id: string
+          issued_by_user_id: string | null
           payment_method: string
           price: number
           purchased_at: string
@@ -1692,7 +1704,10 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          comp_recipient_email?: string | null
+          comp_recipient_name?: string | null
           id?: string
+          issued_by_user_id?: string | null
           payment_method?: string
           price: number
           purchased_at?: string
@@ -1708,7 +1723,10 @@ export type Database = {
           user_id: string
         }
         Update: {
+          comp_recipient_email?: string | null
+          comp_recipient_name?: string | null
           id?: string
+          issued_by_user_id?: string | null
           payment_method?: string
           price?: number
           purchased_at?: string
@@ -1973,6 +1991,19 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_host_of: {
+        Args: {
+          _event_id: string
+          _live_performance_id: string
+          _movie_id: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_host_of_showing: {
+        Args: { _showing_id: string; _user_id: string }
         Returns: boolean
       }
       qbo_disconnect: { Args: { p_environment?: string }; Returns: boolean }
