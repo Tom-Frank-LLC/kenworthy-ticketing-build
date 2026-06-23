@@ -448,6 +448,20 @@ export default function StaffPOS() {
     if (!refundingTx) return;
     setRefunding(true);
     try {
+      // Re-read authoritative amounts from the DB so the refund matches what
+      // the buyer was actually charged (ticket total + tax + grossed-up Square
+      // processing fee). The session value is a fallback for display only.
+      const { data: ticketRows, error: readErr } = await supabase
+        .from('tickets')
+        .select('total_price, processing_fee, payment_method')
+        .in('id', refundingTx.ticketIds);
+      if (readErr) throw readErr;
+
+      const refundAmount = (ticketRows || []).reduce(
+        (sum, t) => sum + Number(t.total_price || 0) + Number(t.processing_fee || 0),
+        0,
+      );
+
       const { error } = await supabase
         .from('tickets')
         .update({ status: 'refunded' })
@@ -456,10 +470,10 @@ export default function StaffPOS() {
       if (error) throw error;
 
       setTransactions(prev =>
-        prev.map(tx => tx.id === refundingTx.id ? { ...tx, refunded: true } : tx)
+        prev.map(tx => tx.id === refundingTx.id ? { ...tx, refunded: true, total: refundAmount } : tx)
       );
 
-      toast.success(`Refunded ${refundingTx.seatLabels.length} ticket(s) — $${refundingTx.total.toFixed(2)}`);
+      toast.success(`Refunded ${refundingTx.seatLabels.length} ticket(s) — $${refundAmount.toFixed(2)}`);
       setRefundDialogOpen(false);
       loadDailyStats();
       setRefundingTx(null);
