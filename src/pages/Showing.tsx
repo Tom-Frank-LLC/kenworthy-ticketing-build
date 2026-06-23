@@ -353,6 +353,7 @@ export default function Showing() {
             userId: user.id,
             showingId: id!,
             paymentMethod,
+            processingFee,
           });
         } else {
           const items: TicketLineItem[] = priceTiers
@@ -363,6 +364,7 @@ export default function Showing() {
             userId: user.id,
             showingId: id!,
             paymentMethod,
+            processingFee,
           });
         }
       } else {
@@ -373,6 +375,7 @@ export default function Showing() {
           showingId: id!,
           ticketPrice: showing.ticket_price,
           paymentMethod,
+          processingFee,
         });
       }
 
