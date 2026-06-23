@@ -745,7 +745,7 @@ export default function Showing() {
                   ) : (
                     <GuestCheckoutForm
                       ticketCount={ticketCount}
-                      total={total}
+                      total={grandTotal}
                       purchasing={purchasing}
                       onPurchase={handleGuestPurchase}
                     />
