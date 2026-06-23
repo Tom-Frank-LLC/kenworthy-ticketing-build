@@ -1691,6 +1691,7 @@ export type Database = {
           issued_by_user_id: string | null
           payment_method: string
           price: number
+          processing_fee: number
           purchased_at: string
           qr_code: string | null
           scanned_at: string | null
@@ -1710,6 +1711,7 @@ export type Database = {
           issued_by_user_id?: string | null
           payment_method?: string
           price: number
+          processing_fee?: number
           purchased_at?: string
           qr_code?: string | null
           scanned_at?: string | null
@@ -1729,6 +1731,7 @@ export type Database = {
           issued_by_user_id?: string | null
           payment_method?: string
           price?: number
+          processing_fee?: number
           purchased_at?: string
           qr_code?: string | null
           scanned_at?: string | null
