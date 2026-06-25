@@ -846,6 +846,36 @@ export type Database = {
         }
         Relationships: []
       }
+      labor_settings: {
+        Row: {
+          created_at: string
+          id: string
+          ot_weekly_hours: number
+          role_wage_defaults: Json
+          tip_method: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ot_weekly_hours?: number
+          role_wage_defaults?: Json
+          tip_method?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ot_weekly_hours?: number
+          role_wage_defaults?: Json
+          tip_method?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       live_performances: {
         Row: {
           created_at: string
@@ -953,6 +983,45 @@ export type Database = {
           terms_percent?: number | null
           title?: string
           trailer_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      payroll_exports: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          exported_by: string | null
+          id: string
+          period_end: string
+          period_start: string
+          qbo_batch_id: string | null
+          status: string
+          totals: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          exported_by?: string | null
+          id?: string
+          period_end: string
+          period_start: string
+          qbo_batch_id?: string | null
+          status?: string
+          totals?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          exported_by?: string | null
+          id?: string
+          period_end?: string
+          period_start?: string
+          qbo_batch_id?: string | null
+          status?: string
+          totals?: Json
           updated_at?: string
         }
         Relationships: []
@@ -1390,6 +1459,54 @@ export type Database = {
           seat_row?: string
           seat_type?: string
           section?: string
+        }
+        Relationships: []
+      }
+      shift_requests: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          request_type: string
+          requester_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          shift_end: string | null
+          shift_id: string | null
+          shift_start: string | null
+          status: string
+          target_user_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          request_type: string
+          requester_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shift_end?: string | null
+          shift_id?: string | null
+          shift_start?: string | null
+          status?: string
+          target_user_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          request_type?: string
+          requester_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shift_end?: string | null
+          shift_id?: string | null
+          shift_start?: string | null
+          status?: string
+          target_user_id?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
