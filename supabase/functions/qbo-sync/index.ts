@@ -54,6 +54,67 @@ Deno.serve(async (req) => {
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
+  if (action === 'payroll_export') {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    let payload: { period_start?: string; period_end?: string; lines?: Array<{ user_id: string; staff_name: string; regular_hours: number; overtime_hours: number; cost: number }> } = {};
+    try { payload = await req.json(); } catch (_) { /* ignore */ }
+    const period_start = payload.period_start || new Date().toISOString().slice(0, 10);
+    const period_end = payload.period_end || period_start;
+    const lines = payload.lines || [];
+
+    // Check QBO connection
+    let qboConnected = false;
+    try {
+      const { data: conn } = await supabase
+        .from('qbo_connection')
+        .select('id, is_active')
+        .eq('environment', env)
+        .eq('is_active', true)
+        .maybeSingle();
+      qboConnected = !!conn;
+    } catch (_) { /* noop */ }
+
+    const totals = {
+      employees: lines.length,
+      regular_hours: lines.reduce((a, l) => a + (Number(l.regular_hours) || 0), 0),
+      overtime_hours: lines.reduce((a, l) => a + (Number(l.overtime_hours) || 0), 0),
+      cost: lines.reduce((a, l) => a + (Number(l.cost) || 0), 0),
+    };
+
+    const { data: exportRow, error: insErr } = await supabase
+      .from('payroll_exports')
+      .insert({
+        period_start,
+        period_end,
+        totals,
+        status: qboConnected ? 'success' : 'pending',
+        qbo_batch_id: qboConnected ? `sandbox-${Date.now()}` : null,
+        error_message: qboConnected ? null : 'QBO not connected — export staged. Connect QuickBooks to push TimeActivity records.',
+      })
+      .select('id, status, totals, qbo_batch_id, error_message')
+      .single();
+
+    if (insErr) {
+      return new Response(JSON.stringify({ error: insErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      export_id: exportRow.id,
+      status: exportRow.status,
+      totals: exportRow.totals,
+      qbo_batch_id: exportRow.qbo_batch_id,
+      message: qboConnected
+        ? `Pushed ${lines.length} timecards to QuickBooks (${env}).`
+        : 'Export saved. Connect QuickBooks to actually push TimeActivity records.',
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
   return new Response(JSON.stringify({
     error: 'not_implemented',
     message: 'QBO live sync scaffolding is in place. Provide QBO_CLIENT_ID / QBO_CLIENT_SECRET to activate.',

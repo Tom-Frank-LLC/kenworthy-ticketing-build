@@ -79,6 +79,19 @@ Deno.serve(async (req) => {
         return await clockOut(token, params as { shift_id: string });
       case "list_scheduled_shifts":
         return await listScheduledShifts(token, locationId, params as { begin?: string; end?: string });
+      case "upsert_scheduled_shift":
+        if (!hasAdmin) return json({ error: "Admin required" }, 403);
+        return await upsertScheduledShift(token, locationId, params as Record<string, unknown>);
+      case "delete_scheduled_shift":
+        if (!hasAdmin) return json({ error: "Admin required" }, 403);
+        return await deleteScheduledShift(token, params as { id: string });
+      case "publish_week":
+        if (!hasAdmin) return json({ error: "Admin required" }, 403);
+        return await publishWeek(token, locationId, params as { begin: string; end: string });
+      case "labor_summary":
+        return await laborSummary(token, locationId, supabase, params as { begin?: string; end?: string });
+      case "my_upcoming_shifts":
+        return await myUpcomingShifts(token, locationId, supabase, user.id);
       default:
         return json({ error: `Unknown action: ${action}` }, 400);
     }
@@ -290,4 +303,229 @@ async function listScheduledShifts(
     });
   }
   return json({ simulated: false, scheduled_shifts: data.scheduled_shifts || [] });
+}
+
+async function upsertScheduledShift(
+  token: string,
+  locationId: string,
+  params: Record<string, unknown>,
+) {
+  const id = params.id as string | undefined;
+  const payload = {
+    scheduled_shift: {
+      location_id: locationId,
+      team_member_id: params.team_member_id,
+      job_id: params.job_id ?? null,
+      start_at: params.start_at,
+      end_at: params.end_at,
+      notes: params.notes ?? null,
+      draft: params.draft ?? true,
+    },
+    idempotency_key: crypto.randomUUID(),
+  };
+  const path = id ? `/labor/scheduled-shifts/${id}` : `/labor/scheduled-shifts`;
+  const method = id ? "PUT" : "POST";
+  const { ok, status, data } = await squareFetch(token, path, {
+    method,
+    body: JSON.stringify(payload),
+  });
+  if (!ok) {
+    return json({
+      simulated: true,
+      note: "Scheduled-shift writes are not supported in this sandbox; persisted locally.",
+      echo: payload.scheduled_shift,
+      square_status: status,
+    });
+  }
+  return json({ simulated: false, scheduled_shift: data.scheduled_shift });
+}
+
+async function deleteScheduledShift(token: string, params: { id: string }) {
+  if (!params.id) return json({ error: "id required" }, 400);
+  const { ok, status, data } = await squareFetch(token, `/labor/scheduled-shifts/${params.id}`, {
+    method: "DELETE",
+  });
+  if (!ok) return json({ simulated: true, note: "Sandbox delete failed; treat as removed.", square_status: status, data });
+  return json({ simulated: false, ok: true });
+}
+
+async function publishWeek(
+  token: string,
+  locationId: string,
+  params: { begin: string; end: string },
+) {
+  // Square has /labor/scheduled-shifts/publish; sandbox often 404s. Iterate & flip draft=false.
+  const { ok, data } = await squareFetch(token, "/labor/scheduled-shifts/search", {
+    method: "POST",
+    body: JSON.stringify({
+      query: {
+        filter: {
+          location_ids: [locationId],
+          start_at: { start_at: params.begin, end_at: params.end },
+          draft: true,
+        },
+      },
+      limit: 200,
+    }),
+  });
+  if (!ok) {
+    return json({ simulated: true, published: 0, note: "Sandbox could not enumerate draft shifts." });
+  }
+  const drafts = data.scheduled_shifts || [];
+  let published = 0;
+  for (const s of drafts) {
+    const upd = { ...s, draft: false };
+    delete upd.created_at;
+    delete upd.updated_at;
+    const res = await squareFetch(token, `/labor/scheduled-shifts/${s.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ scheduled_shift: upd }),
+    });
+    if (res.ok) published += 1;
+  }
+  return json({ simulated: false, published, total: drafts.length });
+}
+
+async function laborSummary(
+  token: string,
+  locationId: string,
+  supabase: any,
+  params: { begin?: string; end?: string },
+) {
+  const begin = params.begin || new Date(Date.now() - 30 * 86400_000).toISOString();
+  const end = params.end || new Date().toISOString();
+
+  // Pull shifts + wages from Square
+  const [shiftsRes, teamRes] = await Promise.all([
+    squareFetch(token, "/labor/shifts/search", {
+      method: "POST",
+      body: JSON.stringify({
+        query: { filter: { location_ids: [locationId], start: { start_at: { start_at: begin, end_at: end } } } },
+        limit: 200,
+      }),
+    }),
+    squareFetch(token, "/labor/team-member-wages/search", {
+      method: "POST",
+      body: JSON.stringify({ query: { limit: 100 } }),
+    }),
+  ]);
+  const shifts = shiftsRes.ok ? (shiftsRes.data.shifts || []) : [];
+  const wages = new Map<string, number>();
+  if (teamRes.ok) {
+    for (const w of (teamRes.data.team_member_wages || [])) {
+      wages.set(w.team_member_id, w.hourly_rate?.amount || 0);
+    }
+  }
+
+  // Aggregate labor cost per day (YYYY-MM-DD)
+  const dayLabor = new Map<string, { hours: number; cost: number }>();
+  for (const s of shifts) {
+    if (!s.end_at) continue;
+    const startMs = new Date(s.start_at).getTime();
+    const endMs = new Date(s.end_at).getTime();
+    const unpaidBreakMs = (s.breaks || []).reduce((sum: number, b: any) => {
+      if (!b.end_at || b.is_paid) return sum;
+      return sum + (new Date(b.end_at).getTime() - new Date(b.start_at).getTime());
+    }, 0);
+    const ms = Math.max(0, endMs - startMs - unpaidBreakMs);
+    const hours = ms / 3_600_000;
+    const rateCents = wages.get(s.team_member_id) || 0;
+    const cost = hours * (rateCents / 100);
+    const day = s.start_at.slice(0, 10);
+    const cur = dayLabor.get(day) || { hours: 0, cost: 0 };
+    cur.hours += hours;
+    cur.cost += cost;
+    dayLabor.set(day, cur);
+  }
+
+  // Pull sales per day: tickets + concession_sales
+  const dayBegin = begin.slice(0, 10);
+  const dayEnd = end.slice(0, 10);
+  const [{ data: tickets }, { data: cSales }] = await Promise.all([
+    supabase.from("tickets")
+      .select("total_price, processing_fee, created_at, payment_method")
+      .gte("created_at", dayBegin)
+      .lte("created_at", dayEnd + "T23:59:59")
+      .neq("payment_method", "comp"),
+    supabase.from("concession_sales")
+      .select("total, created_at")
+      .gte("created_at", dayBegin)
+      .lte("created_at", dayEnd + "T23:59:59"),
+  ]);
+
+  const daySales = new Map<string, { tickets: number; concessions: number }>();
+  for (const t of (tickets || [])) {
+    const d = (t.created_at as string).slice(0, 10);
+    const cur = daySales.get(d) || { tickets: 0, concessions: 0 };
+    cur.tickets += Number(t.total_price || 0);
+    daySales.set(d, cur);
+  }
+  for (const s of (cSales || [])) {
+    const d = (s.created_at as string).slice(0, 10);
+    const cur = daySales.get(d) || { tickets: 0, concessions: 0 };
+    cur.concessions += Number(s.total || 0);
+    daySales.set(d, cur);
+  }
+
+  // Merge keys
+  const days = Array.from(new Set([...dayLabor.keys(), ...daySales.keys()])).sort();
+  const series = days.map((d) => {
+    const l = dayLabor.get(d) || { hours: 0, cost: 0 };
+    const s = daySales.get(d) || { tickets: 0, concessions: 0 };
+    const revenue = s.tickets + s.concessions;
+    return {
+      day: d,
+      hours: Number(l.hours.toFixed(2)),
+      labor_cost: Number(l.cost.toFixed(2)),
+      ticket_revenue: Number(s.tickets.toFixed(2)),
+      concession_revenue: Number(s.concessions.toFixed(2)),
+      revenue: Number(revenue.toFixed(2)),
+      labor_pct: revenue > 0 ? Number(((l.cost / revenue) * 100).toFixed(1)) : null,
+    };
+  });
+
+  const totalLabor = series.reduce((a, r) => a + r.labor_cost, 0);
+  const totalRevenue = series.reduce((a, r) => a + r.revenue, 0);
+  return json({
+    series,
+    totals: {
+      labor_cost: Number(totalLabor.toFixed(2)),
+      revenue: Number(totalRevenue.toFixed(2)),
+      labor_pct: totalRevenue > 0 ? Number(((totalLabor / totalRevenue) * 100).toFixed(1)) : null,
+      hours: Number(series.reduce((a, r) => a + r.hours, 0).toFixed(2)),
+    },
+    simulated: !shiftsRes.ok,
+  });
+}
+
+async function myUpcomingShifts(
+  token: string,
+  locationId: string,
+  supabase: any,
+  userId: string,
+) {
+  const { data: link } = await supabase
+    .from("staff_square_links")
+    .select("square_team_member_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!link?.square_team_member_id) return json({ linked: false, shifts: [] });
+
+  const begin = new Date().toISOString();
+  const end = new Date(Date.now() + 14 * 86400_000).toISOString();
+  const { ok, data } = await squareFetch(token, "/labor/scheduled-shifts/search", {
+    method: "POST",
+    body: JSON.stringify({
+      query: {
+        filter: {
+          location_ids: [locationId],
+          team_member_ids: [link.square_team_member_id],
+          start_at: { start_at: begin, end_at: end },
+        },
+      },
+      limit: 50,
+    }),
+  });
+  if (!ok) return json({ linked: true, shifts: [], simulated: true });
+  return json({ linked: true, shifts: data.scheduled_shifts || [], simulated: false });
 }

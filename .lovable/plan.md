@@ -1,58 +1,61 @@
-## What gets built
+# Square Plus optimization plan
 
-A visual seat-group → price-tier editor that lives on each Movie, Event, and Live Performance form. Showings inherit that map, and any admin/staff can override the map on a single showing without touching the production template.
+A focused build that turns the admin hub into a labor/scheduling control center on top of Square Plus, with a clean push to QuickBooks Payroll. We'll extend the existing `square-labor` edge function rather than introduce a new integration surface.
 
-## Data model
+## What you'll get
 
-Two new tables, both venue-aware:
+1. **Scheduling tab** in Admin Dashboard — build/publish weekly shifts per staff member, drag to assign, copy last week.
+2. **Staff side** — in the POS time-clock widget, staff see their upcoming shifts and can request a swap or time-off; managers approve in admin.
+3. **Labor vs sales dashboard** — daily/weekly labor cost (from Square Shifts) plotted against ticket + concession revenue, labor % KPI.
+4. **Wage & tip rules editor** — per-role wage defaults, OT threshold (default 40 hr/wk Idaho), tip pool method (pooled equally / by hours / off).
+5. **QBO payroll export** — one-click "Send approved timecards to QuickBooks" for a pay period; pushes hours per employee against the existing QBO connection. Status pill shows last export.
 
-- `production_price_tiers` — tier templates owned by a production.
-  - `production_type` ('movie' | 'event' | 'concert'), `production_id`
-  - `tier_name`, `price`, `color` (hex for the map swatch), `display_order`
-- `production_seat_tiers` — which template tier each seat belongs to.
-  - `production_type`, `production_id`, `venue_seat_id`, `tier_template_id`
-  - unique on (production_type, production_id, venue_seat_id)
+## Architecture
 
-Per-showing override table:
+```text
+Admin Dashboard
+ └─ Labor tab (new)
+     ├─ Schedule builder        → square-labor: shifts.upsert / publish
+     ├─ Swap/time-off inbox     → public.shift_requests (new table)
+     ├─ Labor vs Sales report   → square-labor: shifts.search + local sales
+     ├─ Wage & tip rules        → public.labor_settings (new table)
+     └─ Payroll export to QBO   → qbo-sync: payroll.timecards.push
+```
 
-- `showing_seat_tiers` — seat → tier mapping for a specific showing.
-  - `showing_id`, `venue_seat_id`, `tier_id` (FK to existing `showing_price_tiers`)
-  - unique on (showing_id, venue_seat_id)
+### Backend changes
 
-`showing_price_tiers` already exists and stays as the live, billable source of truth (the `enforce_ticket_pricing` trigger keeps reading it). When a showing is created from a production, both `showing_price_tiers` and `showing_seat_tiers` are populated by copying the production template.
+- Extend `supabase/functions/square-labor/index.ts` with actions:
+  `list_team`, `list_shifts`, `upsert_shift`, `publish_week`, `approve_timecard`, `labor_summary`.
+  All sandbox-safe; reuses existing `SQUARE_SANDBOX_*` secrets.
+- Extend `supabase/functions/qbo-sync/index.ts` with `payroll_export` action that maps Square team members → QBO employees (via `staff_square_links`) and posts a `TimeActivity` per shift.
+- New tables (migration):
+  - `shift_requests` — type (swap/time_off), shift_id, requester user_id, target user_id, status, note.
+  - `labor_settings` — singleton row: ot_weekly_hours, tip_method, role_wage_defaults jsonb.
+  - `payroll_exports` — period_start, period_end, qbo_batch_id, status, totals.
 
-A `gain_color` column is added to `showing_price_tiers` so the seat map can show consistent tier colors on the customer side.
+### Frontend changes
 
-## UI
+- `src/components/admin/LaborTab.tsx` — promote from roster-only to four sub-tabs: **Roster · Schedule · Requests · Payroll**.
+- `src/components/admin/labor/ScheduleBuilder.tsx` (new) — week grid, click-to-add shift, publish button.
+- `src/components/admin/labor/LaborVsSales.tsx` (new) — chart pulling shifts + tickets + concession_sales.
+- `src/components/admin/labor/WageTipRules.tsx` (new) — settings form.
+- `src/components/admin/labor/PayrollExport.tsx` (new) — period picker, preview table, "Push to QuickBooks" button.
+- `src/components/pos/TimeClockWidget.tsx` — add upcoming-shifts list + "Request swap / time off" buttons.
 
-**Movie / Event / Performance forms**
+## Out of scope (call out, don't build)
 
-A new "Seat pricing" section appears when the production has at least one venue with assigned seating. It shows:
+- Switching to Square Payroll (you chose to keep QBO Payroll).
+- Real Square production credentials — stays in sandbox per existing constraint.
+- Mobile push for swap requests — in-app inbox only.
 
-1. A tier list (name, price, color swatch, +/- buttons) — same controls already used on the Showing form, with a color picker added.
-2. The venue seat map (using the existing `SeatMap` layout, repurposed for editing). Admin picks a tier from the list, then clicks individual seats or click-and-drags to paint a region. Seats not assigned to any tier fall back to the lowest-priced tier on save.
-3. A "Reset all" button and a per-tier count read-out (e.g. "Main Floor — 142 seats · $12").
+## Order of work
 
-The selected venue for the production template is the venue with assigned seating most commonly used (in practice, the main Kenworthy auditorium). If a production spans multiple venues, the editor switches via a venue picker.
+1. Migration: `shift_requests`, `labor_settings`, `payroll_exports` (+ grants, RLS, audit triggers).
+2. Extend `square-labor` edge function with schedule + summary actions.
+3. Build LaborTab shell + Roster (existing) + Schedule sub-tab.
+4. Wire staff-side shift view & swap requests in TimeClockWidget.
+5. Labor vs Sales chart + Wage/Tip rules.
+6. Extend `qbo-sync` with payroll export, then build PayrollExport UI.
+7. Smoke test end-to-end in sandbox.
 
-**Showing form**
-
-The existing tier list stays. A new collapsible "Customize seat map for this showing" panel below it loads the production's seat map as the starting state, then lets the admin paint over it for this showing only. Saving writes `showing_price_tiers` + `showing_seat_tiers` for that showing without touching the production template.
-
-**Customer Showing page**
-
-`SeatMap` is updated to render each seat in its tier color (with a legend showing tier name + price). When the customer selects seats from multiple tiers, the cart line items break out by tier. Tier color falls back to neutral if a seat has no mapping.
-
-## Server-side integrity
-
-- `enforce_ticket_pricing` is extended: when a `seat_id` is present and the showing has `showing_seat_tiers` rows, the trigger looks up the seat's tier and uses that tier's price — the client cannot send a cheaper tier than the seat allows.
-- A helper `apply_production_template_to_showing(showing_id)` copies the production's tiers + seat map into a fresh showing row, called both from the Showing form and as a fallback in a trigger when a new showing has no tiers of its own.
-
-## RLS
-
-- `production_price_tiers`, `production_seat_tiers`, `showing_seat_tiers`: admins/staff can manage; public can SELECT (needed for the customer seat map to render tier colors and prices).
-
-## Out of scope for this PR
-
-- Lasso (drag-rectangle) selection — first cut uses click + shift-click ranges; drag-paint can be added later if the click-only flow feels slow.
-- Tier-aware reporting in QBO export — current account mapping is by ticket type, not tier; revisit if needed.
+Approve and I'll start with step 1.
