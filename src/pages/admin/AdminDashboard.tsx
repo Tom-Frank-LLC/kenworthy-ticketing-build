@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
 
 export default function AdminDashboard() {
-  const { isAdmin, loading: authLoading } = useAuth();
+  const { isAdmin, isSuperadmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [movies, setMovies] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
@@ -153,7 +153,7 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs defaultValue="schedule" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-10">
+        <TabsList className={`grid w-full ${isSuperadmin ? 'grid-cols-10' : 'grid-cols-9'}`}>
           <TabsTrigger value="schedule"><Calendar className="h-4 w-4 mr-1 inline" />Schedule</TabsTrigger>
           <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1 inline" />Concessions</TabsTrigger>
           <TabsTrigger value="passes"><CreditCard className="h-4 w-4 mr-1 inline" />Passes</TabsTrigger>
@@ -163,7 +163,9 @@ export default function AdminDashboard() {
           <TabsTrigger value="sponsors"><Handshake className="h-4 w-4 mr-1 inline" />Sponsors</TabsTrigger>
           <TabsTrigger value="analytics"><BarChart3 className="h-4 w-4 mr-1 inline" />Analytics</TabsTrigger>
           <TabsTrigger value="bor"><FileText className="h-4 w-4 mr-1 inline" />BOR</TabsTrigger>
-          <TabsTrigger value="archive"><Archive className="h-4 w-4 mr-1 inline" />Archive</TabsTrigger>
+          {isSuperadmin && (
+            <TabsTrigger value="archive"><Archive className="h-4 w-4 mr-1 inline" />Archive</TabsTrigger>
+          )}
         </TabsList>
 
         {/* Schedule Tab (Movies, Events, Performances) */}
@@ -402,10 +404,12 @@ export default function AdminDashboard() {
           </Tabs>
         </TabsContent>
 
-        {/* Archive Tab */}
-        <TabsContent value="archive">
-          <ArchiveTab />
-        </TabsContent>
+        {/* Archive Tab — superadmin only */}
+        {isSuperadmin && (
+          <TabsContent value="archive">
+            <ArchiveTab />
+          </TabsContent>
+        )}
 
         <TabsContent value="bor">
           <BoxOfficeReceiptsTab />
