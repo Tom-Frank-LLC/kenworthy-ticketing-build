@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Download, Loader2, FileText } from 'lucide-react';
+import { Download, Loader2, FileText, Link2, Unlink, CheckCircle2 } from 'lucide-react';
 
 type Aggregated = { account_id: string | null; code: string; qbo_account_name: string; account_type: string; amount: number; count: number; };
 
@@ -27,6 +27,61 @@ export default function QboExportTab() {
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<Aggregated[] | null>(null);
+  const [qbo, setQbo] = useState<{ connected: boolean; environment: string; realm_id?: string | null; token_expires_at?: string | null; configured: boolean } | null>(null);
+  const [qboBusy, setQboBusy] = useState(false);
+
+  async function loadStatus() {
+    const { data, error } = await supabase.functions.invoke('qbo-sync?action=status', { method: 'POST' });
+    if (!error && data) setQbo(data as any);
+  }
+  useEffect(() => { loadStatus(); }, []);
+
+  // After OAuth callback redirects us back with ?qbo=connected, toast and reload.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const flag = params.get('qbo');
+    if (flag === 'connected') {
+      toast.success(`QuickBooks connected${params.get('realm') ? ` (realm ${params.get('realm')})` : ''}`);
+      params.delete('qbo'); params.delete('realm');
+      const search = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (search ? `?${search}` : ''));
+      loadStatus();
+    } else if (flag === 'error') {
+      toast.error(`QuickBooks connection failed: ${params.get('message') || 'unknown error'}`);
+      params.delete('qbo'); params.delete('message');
+      const search = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (search ? `?${search}` : ''));
+    }
+  }, []);
+
+  async function connectQbo() {
+    setQboBusy(true);
+    try {
+      const returnTo = window.location.pathname + window.location.search;
+      const { data, error } = await supabase.functions.invoke('qbo-sync?action=oauth_start', {
+        method: 'POST', body: { return_to: returnTo },
+      });
+      if (error) throw error;
+      const url = (data as any)?.authorize_url;
+      if (!url) throw new Error('No authorize URL returned');
+      window.location.href = url;
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to start QuickBooks connection');
+    } finally { setQboBusy(false); }
+  }
+
+  async function disconnectQbo() {
+    if (!confirm('Disconnect QuickBooks? Tokens will be revoked and cleared.')) return;
+    setQboBusy(true);
+    try {
+      const { error } = await supabase.functions.invoke('qbo-sync?action=disconnect', { method: 'POST' });
+      if (error) throw error;
+      toast.success('QuickBooks disconnected');
+      loadStatus();
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to disconnect');
+    } finally { setQboBusy(false); }
+  }
 
   async function aggregate(): Promise<Aggregated[]> {
     const fromIso = new Date(from).toISOString();
@@ -169,6 +224,41 @@ export default function QboExportTab() {
 
   return (
     <div className="space-y-4">
+      <Card className="glass">
+        <CardHeader>
+          <CardTitle className="font-display flex items-center gap-2">
+            <Link2 className="h-5 w-5" /> QuickBooks Connection
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!qbo ? (
+            <p className="text-sm text-muted-foreground"><Loader2 className="h-4 w-4 inline animate-spin mr-2" /> Checking status…</p>
+          ) : !qbo.configured ? (
+            <p className="text-sm text-muted-foreground">QBO credentials are not configured in this environment.</p>
+          ) : qbo.connected ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Connected</Badge>
+              <span className="text-sm text-muted-foreground">Realm <span className="font-mono">{qbo.realm_id}</span> • {qbo.environment}</span>
+              {qbo.token_expires_at && (
+                <span className="text-xs text-muted-foreground">Token expires {new Date(qbo.token_expires_at).toLocaleString()}</span>
+              )}
+              <Button variant="outline" size="sm" onClick={disconnectQbo} disabled={qboBusy} className="ml-auto">
+                <Unlink className="h-4 w-4 mr-1" /> Disconnect
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge variant="outline">Not connected</Badge>
+              <span className="text-sm text-muted-foreground">Environment: {qbo.environment}</span>
+              <Button onClick={connectQbo} disabled={qboBusy} className="ml-auto">
+                {qboBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
+                Connect QuickBooks
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="glass">
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2"><FileText className="h-5 w-5" /> QuickBooks Export</CardTitle>

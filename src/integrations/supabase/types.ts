@@ -2308,6 +2308,17 @@ export type Database = {
         }
         Returns: string
       }
+      qbo_save_tokens_service: {
+        Args: {
+          p_access_token: string
+          p_environment?: string
+          p_expires_at: string
+          p_realm_id: string
+          p_refresh_token: string
+          p_user_id: string
+        }
+        Returns: string
+      }
       redeem_film_pass: {
         Args: { p_amount: number; p_pass_id: string; p_ticket_id: string }
         Returns: boolean
