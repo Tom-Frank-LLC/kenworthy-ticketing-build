@@ -86,6 +86,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 {isStaff && !isAdmin && (
                   <>
                     <Button variant="ghost" size="sm" asChild className="h-10">
+                      <Link to="/admin">
+                        <Shield className="h-4 w-4 mr-1" /> Admin
+                      </Link>
+                    </Button>
+                    <Button variant="ghost" size="sm" asChild className="h-10">
                       <Link to="/admin/pos">
                         <ShoppingCart className="h-4 w-4 mr-1" /> POS
                       </Link>
