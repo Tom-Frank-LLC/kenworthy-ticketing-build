@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
   const action = url.searchParams.get('action') || 'status';
-  const redirectUri = `${functionsBaseUrl(req)}?action=oauth_callback`;
+  const redirectUri = configuredRedirectUri(req);
 
   if (action === 'status') {
     // Report connection metadata only — never the token values.
