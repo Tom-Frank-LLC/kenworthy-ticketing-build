@@ -8,6 +8,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isStaff: boolean;
   isHost: boolean;
+  isSuperadmin: boolean;
   loading: boolean;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
@@ -22,6 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
   const [isHost, setIsHost] = useState(false);
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const checkRoles = (userId: string) => {
@@ -31,8 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('user_id', userId)
       .then(({ data }) => {
         const roles = (data || []).map(r => r.role);
-        setIsAdmin(roles.includes('admin'));
-        setIsStaff(roles.includes('staff') || roles.includes('admin'));
+        const superadmin = roles.includes('superadmin');
+        setIsSuperadmin(superadmin);
+        setIsAdmin(roles.includes('admin') || superadmin);
+        setIsStaff(roles.includes('staff') || roles.includes('admin') || superadmin);
         setIsHost(roles.includes('host'));
       });
   };
@@ -54,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(false);
         setIsStaff(false);
         setIsHost(false);
+        setIsSuperadmin(false);
       }
       setLoading(false);
     });
@@ -81,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAdmin, isStaff, isHost, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, isAdmin, isStaff, isHost, isSuperadmin, loading, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
