@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Shield, ShieldCheck, X, Plus } from 'lucide-react';
+import { Shield, ShieldCheck, X, Plus, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
 
@@ -29,6 +29,8 @@ export default function Superadmin() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const [refetching, setRefetching] = useState(false);
+  const [refetchSummary, setRefetchSummary] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -81,6 +83,28 @@ export default function Superadmin() {
     (r.display_name || '').toLowerCase().includes(q.toLowerCase())
   );
 
+  async function runRefetch(dryRun: boolean) {
+    setRefetching(true);
+    setRefetchSummary(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('refetch-posters', {
+        body: { dryRun },
+      });
+      if (error) throw error;
+      const s = data as any;
+      toast.success(
+        dryRun
+          ? `Would update ${s.total} poster${s.total === 1 ? '' : 's'}.`
+          : `Updated ${s.updated} · failed ${s.failed}.`
+      );
+      setRefetchSummary(JSON.stringify(s, null, 2));
+    } catch (e: any) {
+      toast.error(e.message || 'Re-fetch failed');
+    } finally {
+      setRefetching(false);
+    }
+  }
+
   if (authLoading || !isSuperadmin) return null;
 
   return (
@@ -103,6 +127,41 @@ export default function Superadmin() {
           onChange={e => setQ(e.target.value)}
           className="max-w-md"
         />
+
+        <Card className="glass">
+          <CardContent className="p-4 space-y-2">
+            <p className="font-display uppercase tracking-wider text-sm flex items-center gap-2">
+              <ImageIcon className="h-4 w-4" /> Re-fetch posters
+            </p>
+            <p className="text-xs font-serif text-muted-foreground">
+              Scans movies, events, and live performances for poster URLs with a WordPress size
+              suffix (e.g. <code>-198x300.jpg</code>), downloads the full-size original from
+              kenworthy.org, uploads it to storage, and replaces the URL.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={refetching}
+                onClick={() => runRefetch(true)}
+              >
+                Preview (dry run)
+              </Button>
+              <Button
+                size="sm"
+                disabled={refetching}
+                onClick={() => runRefetch(false)}
+              >
+                {refetching ? 'Working…' : 'Run re-fetch'}
+              </Button>
+            </div>
+            {refetchSummary && (
+              <pre className="text-[10px] font-mono bg-muted/40 rounded p-2 max-h-64 overflow-auto whitespace-pre-wrap">
+                {refetchSummary}
+              </pre>
+            )}
+          </CardContent>
+        </Card>
 
         {loading ? (
           <p className="text-muted-foreground font-serif">Loading…</p>
