@@ -284,3 +284,151 @@ function Field({ label, children, className }: { label: string; children: React.
     </div>
   );
 }
+
+function ReportsPanel() {
+  const [range, setRange] = useState<'30' | '90'>('30');
+  const [rentals, setRentals] = useState<any[]>([]);
+  const [dvds, setDvds] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    setLoading(true);
+    const since = subDays(new Date(), 90).toISOString();
+    const [{ data: r }, { data: d }] = await Promise.all([
+      (supabase as any).from('dvd_rentals')
+        .select('id, dvd_id, status, reserved_at, checked_out_at, returned_at, due_at, rental_price, tax_amount, late_fee, total_paid, dvds(title)')
+        .gte('reserved_at', since)
+        .order('reserved_at', { ascending: false }),
+      (supabase as any).from('dvds').select('id, title, copies_total, copies_available'),
+    ]);
+    setRentals(r || []);
+    setDvds(d || []);
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  const days = Number(range);
+  const cutoff = subDays(new Date(), days);
+  const windowRentals = rentals.filter(r => new Date(r.reserved_at) >= cutoff && r.status !== 'cancelled');
+
+  const revenue = windowRentals.reduce((s, r) => s + Number(r.rental_price || 0), 0);
+  const lateFees = windowRentals.reduce((s, r) => s + Number(r.late_fee || 0), 0);
+  const tax = windowRentals.reduce((s, r) => s + Number(r.tax_amount || 0), 0);
+  const totalCollected = windowRentals.reduce((s, r) => s + Number(r.total_paid || 0), 0);
+  const checkouts = windowRentals.filter(r => r.checked_out_at).length;
+  const returned = windowRentals.filter(r => r.status === 'returned').length;
+  const overdueNow = rentals.filter(r =>
+    ['checked_out','overdue'].includes(r.status) &&
+    r.due_at && new Date(r.due_at) < new Date()
+  ).length;
+
+  // Per-title utilization in the window
+  const byDvd = new Map<string, { title: string; checkouts: number; revenue: number; lateFees: number; copies: number }>();
+  for (const d of dvds) {
+    byDvd.set(d.id, { title: d.title, checkouts: 0, revenue: 0, lateFees: 0, copies: d.copies_total || 0 });
+  }
+  for (const r of windowRentals) {
+    if (!r.dvd_id) continue;
+    const row = byDvd.get(r.dvd_id) || { title: r.dvds?.title || '—', checkouts: 0, revenue: 0, lateFees: 0, copies: 0 };
+    row.checkouts += r.checked_out_at ? 1 : 0;
+    row.revenue += Number(r.rental_price || 0);
+    row.lateFees += Number(r.late_fee || 0);
+    byDvd.set(r.dvd_id, row);
+  }
+  const titleRows = Array.from(byDvd.values())
+    .map(r => ({ ...r, utilization: r.copies > 0 ? r.checkouts / r.copies : 0 }))
+    .sort((a, b) => b.checkouts - a.checkouts);
+
+  const totalCopies = dvds.reduce((s, d) => s + (d.copies_total || 0), 0);
+  const availableCopies = dvds.reduce((s, d) => s + (d.copies_available || 0), 0);
+  const onLoanCopies = Math.max(0, totalCopies - availableCopies);
+  const fleetUtilization = totalCopies > 0 ? onLoanCopies / totalCopies : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Tabs value={range} onValueChange={(v) => setRange(v as any)}>
+          <TabsList>
+            <TabsTrigger value="30">Last 30 days</TabsTrigger>
+            <TabsTrigger value="90">Last 90 days</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <Button variant="outline" size="sm" onClick={load} className="ml-auto">
+          <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+        </Button>
+      </div>
+
+      {loading ? (
+        <p className="text-muted-foreground font-serif">Loading…</p>
+      ) : (
+        <>
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+            <Stat label="Rental revenue" value={`$${revenue.toFixed(2)}`} sub={`${checkouts} checkouts`} />
+            <Stat label="Late fees" value={`$${lateFees.toFixed(2)}`} sub={`${overdueNow} overdue now`} />
+            <Stat label="Tax collected" value={`$${tax.toFixed(2)}`} sub={`$${totalCollected.toFixed(2)} total in`} />
+            <Stat label="Returned" value={`${returned}`} sub={checkouts ? `${Math.round((returned/checkouts)*100)}% of checkouts` : '—'} />
+          </div>
+
+          <Card className="glass">
+            <CardContent className="p-4 space-y-2">
+              <p className="font-display uppercase text-sm text-accent">Fleet utilization (right now)</p>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full bg-primary" style={{ width: `${Math.round(fleetUtilization * 100)}%` }} />
+                </div>
+                <span className="font-display text-sm w-20 text-right">
+                  {Math.round(fleetUtilization * 100)}%
+                </span>
+              </div>
+              <p className="text-xs font-serif text-muted-foreground">
+                {onLoanCopies} of {totalCopies} copies out on loan • {availableCopies} on the shelf
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="glass">
+            <CardContent className="p-4 space-y-3">
+              <p className="font-display uppercase text-sm text-accent">
+                Per-title utilization ({range} days)
+              </p>
+              {titleRows.filter(r => r.checkouts > 0).length === 0 ? (
+                <p className="text-muted-foreground font-serif text-sm">No checkouts in this window yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {titleRows.slice(0, 25).map((r, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{r.title}</p>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                          <div className="h-full bg-accent" style={{ width: `${Math.min(100, Math.round(r.utilization * 100))}%` }} />
+                        </div>
+                      </div>
+                      <span className="font-display text-xs text-muted-foreground w-24 text-right">
+                        {r.checkouts} / {r.copies} copies
+                      </span>
+                      <span className="font-display text-xs w-20 text-right">
+                        ${(r.revenue + r.lateFees).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <Card className="glass">
+      <CardContent className="p-4">
+        <p className="font-display uppercase text-xs tracking-wider text-muted-foreground">{label}</p>
+        <p className="font-display text-2xl text-primary mt-1">{value}</p>
+        {sub && <p className="font-serif text-xs text-muted-foreground mt-1">{sub}</p>}
+      </CardContent>
+    </Card>
+  );
+}
