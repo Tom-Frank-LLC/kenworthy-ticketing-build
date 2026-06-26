@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Download, Loader2, FileText, Link2, Unlink, CheckCircle2 } from 'lucide-react';
+import QboSyncStatus from './QboSyncStatus';
 
 type Aggregated = { account_id: string | null; code: string; qbo_account_name: string; account_type: string; amount: number; count: number; };
 
@@ -258,6 +259,8 @@ export default function QboExportTab() {
           )}
         </CardContent>
       </Card>
+
+      <QboSyncStatus />
 
       <Card className="glass">
         <CardHeader>
