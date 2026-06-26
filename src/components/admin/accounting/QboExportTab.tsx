@@ -28,7 +28,7 @@ export default function QboExportTab() {
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<Aggregated[] | null>(null);
-  const [qbo, setQbo] = useState<{ connected: boolean; environment: string; realm_id?: string | null; token_expires_at?: string | null; configured: boolean } | null>(null);
+  const [qbo, setQbo] = useState<{ connected: boolean; environment: string; realm_id?: string | null; token_expires_at?: string | null; configured: boolean; redirect_uri?: string | null } | null>(null);
   const [qboBusy, setQboBusy] = useState(false);
 
   async function loadStatus() {
@@ -248,13 +248,21 @@ export default function QboExportTab() {
               </Button>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="outline">Not connected</Badge>
-              <span className="text-sm text-muted-foreground">Environment: {qbo.environment}</span>
-              <Button onClick={connectQbo} disabled={qboBusy} className="ml-auto">
-                {qboBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
-                Connect QuickBooks
-              </Button>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge variant="outline">Not connected</Badge>
+                <span className="text-sm text-muted-foreground">Environment: {qbo.environment}</span>
+                <Button onClick={connectQbo} disabled={qboBusy} className="ml-auto">
+                  {qboBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
+                  Connect QuickBooks
+                </Button>
+              </div>
+              {qbo.redirect_uri && (
+                <div className="rounded-md border border-border/50 bg-muted/30 p-3 text-xs">
+                  <p className="font-medium mb-1">Redirect URI registered in Intuit must match exactly:</p>
+                  <code className="block break-all font-mono text-muted-foreground">{qbo.redirect_uri}</code>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

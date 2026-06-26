@@ -12,12 +12,20 @@ const INTUIT_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bea
 const INTUIT_REVOKE_URL = 'https://developer.api.intuit.com/v2/oauth2/tokens/revoke';
 const SCOPES = 'com.intuit.quickbooks.accounting';
 
-function functionsBaseUrl(req: Request) {
+function configuredRedirectUri(req: Request) {
+  // Prefer an explicit secret so it always matches whatever is registered in Intuit.
+  const envUri = Deno.env.get('QBO_REDIRECT_URI');
+  if (envUri) return envUri;
+
   // Build the public functions URL for this request so the OAuth redirect_uri
-  // matches whatever host Intuit calls us back on.
+  // matches whatever host Intuit calls us back on. Edge runtime may see the request
+  // as http internally, but the public callback is always https.
   const u = new URL(req.url);
-  return `${u.protocol}//${u.host}/functions/v1/qbo-sync`;
+  const host = u.host;
+  return `https://${host}/functions/v1/qbo-sync?action=oauth_callback`;
 }
+
+
 
 async function hmacSign(payload: string, secret: string) {
   const key = await crypto.subtle.importKey(
@@ -57,7 +65,7 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
   const action = url.searchParams.get('action') || 'status';
-  const redirectUri = `${functionsBaseUrl(req)}?action=oauth_callback`;
+  const redirectUri = configuredRedirectUri(req);
 
   if (action === 'status') {
     // Report connection metadata only — never the token values.
@@ -132,11 +140,14 @@ Deno.serve(async (req) => {
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('state', state);
 
+    console.log('QBO oauth_start', { redirect_uri: redirectUri, environment: env, user_id: user.id });
+
     return new Response(JSON.stringify({
       authorize_url: authUrl.toString(),
       redirect_uri: redirectUri,
       environment: env,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
   }
 
   // -------- oauth_callback: Intuit redirects browser here with code+state+realmId --------
