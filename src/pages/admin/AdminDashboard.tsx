@@ -375,6 +375,11 @@ export default function AdminDashboard() {
           <FilmPassesTab />
         </TabsContent>
 
+        {/* DVDs Tab */}
+        <TabsContent value="dvds">
+          <DvdLibraryTab />
+        </TabsContent>
+
         {/* Analytics Tab (with Accounting sub-tab) */}
         <TabsContent value="analytics">
           <Tabs defaultValue="overview" className="space-y-4">
