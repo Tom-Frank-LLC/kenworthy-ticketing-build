@@ -55,6 +55,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               Rentals
             </Link>
+            <Link
+              to="/dvds"
+              className="hidden md:inline font-display uppercase text-sm tracking-[0.25em] text-accent hover:text-primary transition-colors"
+            >
+              DVDs
+            </Link>
           </div>
 
           <nav className="flex items-center gap-1.5" aria-label="Primary">
@@ -96,6 +102,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link to="/my-passes"><CreditCard className="h-4 w-4 mr-2" /> Film Passes</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/dvds"><Ticket className="h-4 w-4 mr-2" /> DVD Rentals</Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link to="/profile"><User className="h-4 w-4 mr-2" /> Profile</Link>
