@@ -389,6 +389,161 @@ export type Database = {
         }
         Relationships: []
       }
+      dvd_rentals: {
+        Row: {
+          checked_out_at: string | null
+          created_at: string
+          due_at: string | null
+          dvd_id: string
+          id: string
+          late_fee: number
+          payment_method: string | null
+          processing_fee: number
+          rental_price: number
+          reserved_at: string
+          returned_at: string | null
+          staff_notes: string | null
+          status: Database["public"]["Enums"]["dvd_rental_status"]
+          tax_amount: number
+          tax_rate: number
+          total_paid: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          checked_out_at?: string | null
+          created_at?: string
+          due_at?: string | null
+          dvd_id: string
+          id?: string
+          late_fee?: number
+          payment_method?: string | null
+          processing_fee?: number
+          rental_price?: number
+          reserved_at?: string
+          returned_at?: string | null
+          staff_notes?: string | null
+          status?: Database["public"]["Enums"]["dvd_rental_status"]
+          tax_amount?: number
+          tax_rate?: number
+          total_paid?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          checked_out_at?: string | null
+          created_at?: string
+          due_at?: string | null
+          dvd_id?: string
+          id?: string
+          late_fee?: number
+          payment_method?: string | null
+          processing_fee?: number
+          rental_price?: number
+          reserved_at?: string
+          returned_at?: string | null
+          staff_notes?: string | null
+          status?: Database["public"]["Enums"]["dvd_rental_status"]
+          tax_amount?: number
+          tax_rate?: number
+          total_paid?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dvd_rentals_dvd_id_fkey"
+            columns: ["dvd_id"]
+            isOneToOne: false
+            referencedRelation: "dvds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dvd_settings: {
+        Row: {
+          created_at: string
+          default_rental_price: number
+          id: string
+          late_fee_per_day: number
+          loan_days: number
+          max_active_per_user: number
+          reservation_hold_hours: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_rental_price?: number
+          id?: string
+          late_fee_per_day?: number
+          loan_days?: number
+          max_active_per_user?: number
+          reservation_hold_hours?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_rental_price?: number
+          id?: string
+          late_fee_per_day?: number
+          loan_days?: number
+          max_active_per_user?: number
+          reservation_hold_hours?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      dvds: {
+        Row: {
+          copies_available: number
+          copies_total: number
+          cover_url: string | null
+          created_at: string
+          director: string | null
+          genre: string | null
+          id: string
+          is_active: boolean
+          notes: string | null
+          rental_price: number
+          synopsis: string | null
+          title: string
+          updated_at: string
+          year: number | null
+        }
+        Insert: {
+          copies_available?: number
+          copies_total?: number
+          cover_url?: string | null
+          created_at?: string
+          director?: string | null
+          genre?: string | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          rental_price?: number
+          synopsis?: string | null
+          title: string
+          updated_at?: string
+          year?: number | null
+        }
+        Update: {
+          copies_available?: number
+          copies_total?: number
+          cover_url?: string | null
+          created_at?: string
+          director?: string | null
+          genre?: string | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          rental_price?: number
+          synopsis?: string | null
+          title?: string
+          updated_at?: string
+          year?: number | null
+        }
+        Relationships: []
+      }
       events: {
         Row: {
           created_at: string
@@ -2165,6 +2320,12 @@ export type Database = {
         | "contra_expense"
         | "other_income"
         | "other_expense"
+      dvd_rental_status:
+        | "reserved"
+        | "checked_out"
+        | "returned"
+        | "overdue"
+        | "cancelled"
       event_ticket_type: "ticketed" | "rsvp" | "info_only"
       live_performance_subcategory:
         | "concert"
@@ -2312,6 +2473,13 @@ export const Constants = {
         "contra_expense",
         "other_income",
         "other_expense",
+      ],
+      dvd_rental_status: [
+        "reserved",
+        "checked_out",
+        "returned",
+        "overdue",
+        "cancelled",
       ],
       event_ticket_type: ["ticketed", "rsvp", "info_only"],
       live_performance_subcategory: [
