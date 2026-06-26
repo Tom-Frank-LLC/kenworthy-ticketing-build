@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
+import { NewsletterSignup } from '@/components/NewsletterSignup';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, isStaff, isHost, isSuperadmin, signOut } = useAuth();
@@ -158,7 +159,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1">{children}</main>
 
       <footer className="mt-auto border-t border-accent/20 bg-card/40">
-        <div className="container py-10 grid gap-8 md:grid-cols-3 text-sm">
+        <div className="container py-10 grid gap-8 md:grid-cols-4 text-sm">
           <div>
             <KenworthyLogo size="footer" className="mb-3" />
             <p className="font-serif italic text-muted-foreground">
@@ -170,6 +171,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-accent" /> 208-882-4127</p>
             <p className="flex items-center gap-2"><Mail className="h-4 w-4 text-accent" /> events@kenworthy.org</p>
           </div>
+          <NewsletterSignup />
           <div className="md:text-right text-muted-foreground">
             <p className="font-serif">Performing Arts Centre</p>
             <p className="font-serif">Celebrating 100 Years · Est. 1926</p>

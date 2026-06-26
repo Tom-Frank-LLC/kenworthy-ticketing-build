@@ -1265,6 +1265,8 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          mailchimp_synced_at: string | null
+          marketing_opt_in: boolean
           phone: string | null
           signer_title: string | null
           updated_at: string
@@ -1274,6 +1276,8 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id: string
+          mailchimp_synced_at?: string | null
+          marketing_opt_in?: boolean
           phone?: string | null
           signer_title?: string | null
           updated_at?: string
@@ -1283,6 +1287,8 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          mailchimp_synced_at?: string | null
+          marketing_opt_in?: boolean
           phone?: string | null
           signer_title?: string | null
           updated_at?: string

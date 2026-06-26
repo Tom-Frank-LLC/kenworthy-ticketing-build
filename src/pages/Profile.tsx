@@ -6,14 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { User } from 'lucide-react';
+import { subscribeToMailchimp } from '@/lib/mailchimp';
 
 export default function Profile() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [initialOptIn, setInitialOptIn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -25,6 +29,8 @@ export default function Profile() {
       if (data) {
         setDisplayName(data.display_name || '');
         setPhone(data.phone || '');
+        setMarketingOptIn(Boolean(data.marketing_opt_in));
+        setInitialOptIn(Boolean(data.marketing_opt_in));
       }
       setLoading(false);
     });
@@ -35,11 +41,24 @@ export default function Profile() {
     setSaving(true);
     const { error } = await supabase
       .from('profiles')
-      .update({ display_name: displayName, phone })
+      .update({ display_name: displayName, phone, marketing_opt_in: marketingOptIn })
       .eq('id', user!.id);
 
     if (error) toast.error(error.message);
-    else toast.success('Profile updated!');
+    else {
+      toast.success('Profile updated!');
+      if (marketingOptIn && !initialOptIn && user?.email) {
+        const [first, ...rest] = (displayName || '').trim().split(/\s+/);
+        subscribeToMailchimp({
+          email: user.email,
+          first_name: first ?? '',
+          last_name: rest.join(' '),
+          tags: ['newsletter'],
+          source: 'profile-settings',
+        });
+      }
+      setInitialOptIn(marketingOptIn);
+    }
     setSaving(false);
   };
 
@@ -70,6 +89,14 @@ export default function Profile() {
               <Label>Phone</Label>
               <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="(208) 555-0123" />
             </div>
+            <label className="flex items-start gap-2 text-sm text-muted-foreground cursor-pointer pt-2 border-t border-border/40">
+              <Checkbox
+                checked={marketingOptIn}
+                onCheckedChange={(v) => setMarketingOptIn(v === true)}
+                className="mt-0.5"
+              />
+              <span>Email me about upcoming films, performances, and Kenworthy news.</span>
+            </label>
             <Button type="submit" className="w-full" disabled={saving}>
               {saving ? 'Saving...' : 'Save Changes'}
             </Button>

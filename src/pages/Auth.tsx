@@ -8,9 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { Film } from 'lucide-react';
 import { SEO } from '@/components/SEO';
+import { subscribeToMailchimp } from '@/lib/mailchimp';
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
@@ -23,6 +25,7 @@ export default function Auth() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupName, setSignupName] = useState('');
+  const [signupNewsletter, setSignupNewsletter] = useState(true);
   const [forgotEmail, setForgotEmail] = useState('');
   const [showForgot, setShowForgot] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -64,6 +67,20 @@ export default function Auth() {
     try {
       await signUp(signupEmail, signupPassword, signupName);
       toast.success('Account created! You are now signed in.');
+      if (signupNewsletter) {
+        const [first, ...rest] = signupName.trim().split(/\s+/);
+        await supabase
+          .from('profiles')
+          .update({ marketing_opt_in: true })
+          .eq('email', signupEmail);
+        subscribeToMailchimp({
+          email: signupEmail,
+          first_name: first ?? '',
+          last_name: rest.join(' '),
+          tags: ['account-signup'],
+          source: 'signup',
+        });
+      }
       navigate('/');
     } catch (err: any) {
       toast.error(err.message);
@@ -125,6 +142,14 @@ export default function Auth() {
                   <Label htmlFor="signup-password">Password</Label>
                   <Input id="signup-password" type="password" required minLength={6} value={signupPassword} onChange={e => setSignupPassword(e.target.value)} />
                 </div>
+                <label className="flex items-start gap-2 text-sm text-muted-foreground cursor-pointer">
+                  <Checkbox
+                    checked={signupNewsletter}
+                    onCheckedChange={(v) => setSignupNewsletter(v === true)}
+                    className="mt-0.5"
+                  />
+                  <span>Email me about upcoming films, performances, and Kenworthy news.</span>
+                </label>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? 'Creating account...' : 'Create Account'}
                 </Button>
