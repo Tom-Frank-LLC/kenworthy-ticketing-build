@@ -32,7 +32,7 @@ const EMPTY = {
   contact_name: 'Colin Mannex',
   contact_title: 'Executive Director',
   contact_email: 'executive@kenworthy.org',
-  contact_phone: '208.892.9752',
+  contact_phone: '208.882.4127',
   display_order: 0,
   is_active: true,
 };
