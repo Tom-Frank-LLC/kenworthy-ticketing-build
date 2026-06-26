@@ -18,10 +18,13 @@ function configuredRedirectUri(req: Request) {
   if (envUri) return envUri;
 
   // Build the public functions URL for this request so the OAuth redirect_uri
-  // matches whatever host Intuit calls us back on.
+  // matches whatever host Intuit calls us back on. Edge runtime may see the request
+  // as http internally, but the public callback is always https.
   const u = new URL(req.url);
-  return `${u.protocol}//${u.host}/functions/v1/qbo-sync?action=oauth_callback`;
+  const host = u.host;
+  return `https://${host}/functions/v1/qbo-sync?action=oauth_callback`;
 }
+
 
 
 async function hmacSign(payload: string, secret: string) {
