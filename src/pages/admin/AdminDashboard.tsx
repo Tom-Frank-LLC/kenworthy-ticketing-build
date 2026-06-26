@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
 
 export default function AdminDashboard() {
-  const { isAdmin, isSuperadmin, loading: authLoading } = useAuth();
+  const { isAdmin, isStaff, isSuperadmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [movies, setMovies] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
@@ -38,9 +38,9 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isAdmin) { navigate('/'); return; }
+    if (!isStaff) { navigate('/'); return; }
     loadData();
-  }, [isAdmin, authLoading, navigate]);
+  }, [isStaff, authLoading, navigate]);
 
   async function loadData() {
     const [moviesRes, eventsRes, concertsRes, showingsRes, ticketsRes] = await Promise.all([
@@ -153,20 +153,33 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs defaultValue="schedule" className="space-y-4">
-        <TabsList className={`grid w-full ${isSuperadmin ? 'grid-cols-10' : 'grid-cols-9'}`}>
-          <TabsTrigger value="schedule"><Calendar className="h-4 w-4 mr-1 inline" />Schedule</TabsTrigger>
-          <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1 inline" />Concessions</TabsTrigger>
-          <TabsTrigger value="passes"><CreditCard className="h-4 w-4 mr-1 inline" />Passes</TabsTrigger>
-          <TabsTrigger value="dvds"><Disc className="h-4 w-4 mr-1 inline" />DVDs</TabsTrigger>
-          <TabsTrigger value="rentals"><KeyRound className="h-4 w-4 mr-1 inline" />Rentals</TabsTrigger>
-          <TabsTrigger value="labor"><Clock className="h-4 w-4 mr-1 inline" />Staff</TabsTrigger>
-          <TabsTrigger value="sponsors"><Handshake className="h-4 w-4 mr-1 inline" />Sponsors</TabsTrigger>
-          <TabsTrigger value="analytics"><BarChart3 className="h-4 w-4 mr-1 inline" />Analytics</TabsTrigger>
-          <TabsTrigger value="bor"><FileText className="h-4 w-4 mr-1 inline" />BOR</TabsTrigger>
-          {isSuperadmin && (
-            <TabsTrigger value="archive"><Archive className="h-4 w-4 mr-1 inline" />Archive</TabsTrigger>
-          )}
-        </TabsList>
+        {(() => {
+          const tabCount = 5 /* schedule, concessions, passes, dvds, rentals */
+            + 1 /* sponsors */
+            + 1 /* bor */
+            + (isAdmin ? 2 : 0) /* labor, analytics */
+            + (isSuperadmin ? 1 : 0); /* archive */
+          return (
+            <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${tabCount}, minmax(0, 1fr))` }}>
+              <TabsTrigger value="schedule"><Calendar className="h-4 w-4 mr-1 inline" />Schedule</TabsTrigger>
+              <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1 inline" />Concessions</TabsTrigger>
+              <TabsTrigger value="passes"><CreditCard className="h-4 w-4 mr-1 inline" />Passes</TabsTrigger>
+              <TabsTrigger value="dvds"><Disc className="h-4 w-4 mr-1 inline" />DVDs</TabsTrigger>
+              <TabsTrigger value="rentals"><KeyRound className="h-4 w-4 mr-1 inline" />Rentals</TabsTrigger>
+              {isAdmin && (
+                <TabsTrigger value="labor"><Clock className="h-4 w-4 mr-1 inline" />Staff</TabsTrigger>
+              )}
+              <TabsTrigger value="sponsors"><Handshake className="h-4 w-4 mr-1 inline" />Sponsors</TabsTrigger>
+              {isAdmin && (
+                <TabsTrigger value="analytics"><BarChart3 className="h-4 w-4 mr-1 inline" />Analytics</TabsTrigger>
+              )}
+              <TabsTrigger value="bor"><FileText className="h-4 w-4 mr-1 inline" />BOR</TabsTrigger>
+              {isSuperadmin && (
+                <TabsTrigger value="archive"><Archive className="h-4 w-4 mr-1 inline" />Archive</TabsTrigger>
+              )}
+            </TabsList>
+          );
+        })()}
 
         {/* Schedule Tab (Movies, Events, Performances) */}
         <TabsContent value="schedule">
@@ -382,7 +395,8 @@ export default function AdminDashboard() {
           <DvdLibraryTab />
         </TabsContent>
 
-        {/* Analytics Tab (with Accounting sub-tab) */}
+        {/* Analytics Tab (with Accounting sub-tab) — admin only */}
+        {isAdmin && (
         <TabsContent value="analytics">
           <Tabs defaultValue="overview" className="space-y-4">
             <TabsList>
@@ -403,6 +417,7 @@ export default function AdminDashboard() {
             <TabsContent value="qbo-export"><QboExportTab /></TabsContent>
           </Tabs>
         </TabsContent>
+        )}
 
         {/* Archive Tab — superadmin only */}
         {isSuperadmin && (
@@ -431,9 +446,11 @@ export default function AdminDashboard() {
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="labor">
-          <LaborTab />
-        </TabsContent>
+        {isAdmin && (
+          <TabsContent value="labor">
+            <LaborTab />
+          </TabsContent>
+        )}
 
         <TabsContent value="sponsors">
           <SponsorsTab />
