@@ -83,6 +83,28 @@ export default function Superadmin() {
     (r.display_name || '').toLowerCase().includes(q.toLowerCase())
   );
 
+  async function runRefetch(dryRun: boolean) {
+    setRefetching(true);
+    setRefetchSummary(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('refetch-posters', {
+        body: { dryRun },
+      });
+      if (error) throw error;
+      const s = data as any;
+      toast.success(
+        dryRun
+          ? `Would update ${s.total} poster${s.total === 1 ? '' : 's'}.`
+          : `Updated ${s.updated} · failed ${s.failed}.`
+      );
+      setRefetchSummary(JSON.stringify(s, null, 2));
+    } catch (e: any) {
+      toast.error(e.message || 'Re-fetch failed');
+    } finally {
+      setRefetching(false);
+    }
+  }
+
   if (authLoading || !isSuperadmin) return null;
 
   return (
