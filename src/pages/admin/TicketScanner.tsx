@@ -26,7 +26,7 @@ interface ScanResult {
 }
 
 export default function TicketScanner() {
-  const { isAdmin, isHost, loading: authLoading } = useAuth();
+  const { isAdmin, isStaff, isHost, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [scanning, setScanning] = useState(false);
@@ -42,8 +42,8 @@ export default function TicketScanner() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isAdmin && !isHost) { navigate('/'); return; }
-  }, [isAdmin, isHost, authLoading, navigate]);
+    if (!isStaff && !isHost) { navigate('/'); return; }
+  }, [isStaff, isHost, authLoading, navigate]);
 
   const playBeep = useCallback((success: boolean) => {
     try {
