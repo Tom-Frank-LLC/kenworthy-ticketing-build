@@ -137,11 +137,14 @@ Deno.serve(async (req) => {
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('state', state);
 
+    console.log('QBO oauth_start', { redirect_uri: redirectUri, environment: env, user_id: user.id });
+
     return new Response(JSON.stringify({
       authorize_url: authUrl.toString(),
       redirect_uri: redirectUri,
       environment: env,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
   }
 
   // -------- oauth_callback: Intuit redirects browser here with code+state+realmId --------
