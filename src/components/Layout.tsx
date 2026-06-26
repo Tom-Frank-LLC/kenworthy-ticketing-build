@@ -104,6 +104,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <Link to="/my-passes"><CreditCard className="h-4 w-4 mr-2" /> Film Passes</Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
+                      <Link to="/dvds"><Ticket className="h-4 w-4 mr-2" /> DVD Rentals</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
                       <Link to="/profile"><User className="h-4 w-4 mr-2" /> Profile</Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
