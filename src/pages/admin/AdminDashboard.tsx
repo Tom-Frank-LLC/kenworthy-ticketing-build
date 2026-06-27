@@ -470,7 +470,7 @@ export default function AdminDashboard() {
             </Button>
           </div>
           <div className="space-y-3">
-            {concerts.filter(c => !scheduleQuery || (c.title || '').toLowerCase().includes(scheduleQuery.toLowerCase())).map(concert => {
+            {filteredConcerts.map(concert => {
               const { sold, capacity } = getTicketsSoldForConcert(concert.id);
               return (
                 <Card key={concert.id} className="glass">
@@ -512,7 +512,7 @@ export default function AdminDashboard() {
                 </Card>
               );
             })}
-            {concerts.length === 0 && <p className="text-muted-foreground text-center py-8">No live performances yet.</p>}
+            {filteredConcerts.length === 0 && <p className="text-muted-foreground text-center py-8">No live performances match the filters.</p>}
           </div>
             </TabsContent>
           </Tabs>
