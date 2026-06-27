@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent } from '@/components/ui/card';
@@ -31,19 +31,42 @@ import { exportContactsCsv } from '@/lib/exportContacts';
 export default function AdminDashboard() {
   const { isAdmin, isStaff, isSuperadmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [movies, setMovies] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [concerts, setConcerts] = useState<any[]>([]);
   const [showings, setShowings] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
   const [ticketCount, setTicketCount] = useState(0);
-  const [scheduleQuery, setScheduleQuery] = useState('');
-  const [activeScheduleTab, setActiveScheduleTab] = useState('movies');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [ratingFilter, setRatingFilter] = useState<string>('all');
-  const [genreFilter, setGenreFilter] = useState<string>('all');
-  const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
-  const [concertSubcategoryFilter, setConcertSubcategoryFilter] = useState<string>('all');
+  const [scheduleQuery, setScheduleQuery] = useState(() => searchParams.get('q') || '');
+  const [activeScheduleTab, setActiveScheduleTab] = useState(() => searchParams.get('tab') || 'movies');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>(
+    () => (searchParams.get('status') as any) || 'all'
+  );
+  const [ratingFilter, setRatingFilter] = useState<string>(() => searchParams.get('rating') || 'all');
+  const [genreFilter, setGenreFilter] = useState<string>(() => searchParams.get('genre') || 'all');
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>(() => searchParams.get('etype') || 'all');
+  const [concertSubcategoryFilter, setConcertSubcategoryFilter] = useState<string>(
+    () => searchParams.get('csub') || 'all'
+  );
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    const setOrDel = (key: string, value: string, fallback: string) => {
+      if (value && value !== fallback) next.set(key, value);
+      else next.delete(key);
+    };
+    setOrDel('q', scheduleQuery, '');
+    setOrDel('tab', activeScheduleTab, 'movies');
+    setOrDel('status', statusFilter, 'all');
+    setOrDel('rating', ratingFilter, 'all');
+    setOrDel('genre', genreFilter, 'all');
+    setOrDel('etype', eventTypeFilter, 'all');
+    setOrDel('csub', concertSubcategoryFilter, 'all');
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [scheduleQuery, activeScheduleTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter]);
 
   useEffect(() => {
     if (authLoading) return;
