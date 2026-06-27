@@ -38,6 +38,12 @@ export default function AdminDashboard() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [ticketCount, setTicketCount] = useState(0);
   const [scheduleQuery, setScheduleQuery] = useState('');
+  const [activeScheduleTab, setActiveScheduleTab] = useState('movies');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [ratingFilter, setRatingFilter] = useState<string>('all');
+  const [genreFilter, setGenreFilter] = useState<string>('all');
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
+  const [concertSubcategoryFilter, setConcertSubcategoryFilter] = useState<string>('all');
 
   useEffect(() => {
     if (authLoading) return;
