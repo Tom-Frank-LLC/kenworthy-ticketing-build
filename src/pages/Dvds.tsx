@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -6,7 +6,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Disc, Search } from 'lucide-react';
+import { Disc, Search, X } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
 
@@ -18,6 +19,10 @@ export default function Dvds() {
   const [settings, setSettings] = useState<any>(null);
   const [myRentals, setMyRentals] = useState<any[]>([]);
   const [q, setQ] = useState('');
+  const [yearFilter, setYearFilter] = useState('all');
+  const [genreFilter, setGenreFilter] = useState('all');
+  const [formatFilter, setFormatFilter] = useState('all');
+  const [keywordFilter, setKeywordFilter] = useState('all');
   const [loading, setLoading] = useState(true);
 
   async function load() {
@@ -53,7 +58,45 @@ export default function Dvds() {
     if (error) toast.error(error.message); else { toast.success('Reservation cancelled'); load(); }
   }
 
-  const filtered = dvds.filter(d => !q || `${d.title} ${d.director||''} ${d.genre||''}`.toLowerCase().includes(q.toLowerCase()));
+  const parseNote = (notes: string | null | undefined, label: 'Format' | 'Keywords') => {
+    if (!notes) return '';
+    const m = notes.match(new RegExp(`${label}:\\s*([^|]+)`));
+    return m ? m[1].trim() : '';
+  };
+
+  const { years, genres, formats, keywords } = useMemo(() => {
+    const y = new Set<string>();
+    const g = new Set<string>();
+    const f = new Set<string>();
+    const k = new Set<string>();
+    for (const d of dvds) {
+      if (d.year) y.add(String(d.year));
+      if (d.genre) String(d.genre).split(',').forEach((s: string) => { const t = s.trim(); if (t) g.add(t); });
+      const fmt = parseNote(d.notes, 'Format'); if (fmt) f.add(fmt);
+      const kw = parseNote(d.notes, 'Keywords');
+      if (kw) kw.split(',').forEach(s => { const t = s.trim(); if (t) k.add(t); });
+    }
+    return {
+      years: Array.from(y).sort((a, b) => Number(b) - Number(a)),
+      genres: Array.from(g).sort(),
+      formats: Array.from(f).sort(),
+      keywords: Array.from(k).sort(),
+    };
+  }, [dvds]);
+
+  const filtered = dvds.filter(d => {
+    if (q && !`${d.title} ${d.director || ''} ${d.genre || ''} ${d.notes || ''}`.toLowerCase().includes(q.toLowerCase())) return false;
+    if (yearFilter !== 'all' && String(d.year || '') !== yearFilter) return false;
+    if (genreFilter !== 'all' && !(d.genre || '').toLowerCase().split(',').map((s: string) => s.trim()).includes(genreFilter.toLowerCase())) return false;
+    if (formatFilter !== 'all' && parseNote(d.notes, 'Format').toLowerCase() !== formatFilter.toLowerCase()) return false;
+    if (keywordFilter !== 'all' && !parseNote(d.notes, 'Keywords').toLowerCase().split(',').map(s => s.trim()).includes(keywordFilter.toLowerCase())) return false;
+    return true;
+  });
+
+  const hasFilters = q || yearFilter !== 'all' || genreFilter !== 'all' || formatFilter !== 'all' || keywordFilter !== 'all';
+  const resetFilters = () => {
+    setQ(''); setYearFilter('all'); setGenreFilter('all'); setFormatFilter('all'); setKeywordFilter('all');
+  };
   const active = myRentals.filter(r => ['reserved','checked_out','overdue'].includes(r.status));
 
   return (
@@ -96,9 +139,49 @@ export default function Dvds() {
           </section>
         )}
 
-        <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search title, director, genre…" value={q} onChange={e => setQ(e.target.value)} className="max-w-md" />
+        <div className="space-y-3">
+          <div className="relative max-w-md">
+            <Search className="h-4 w-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+            <Input placeholder="Search title, director, genre…" value={q} onChange={e => setQ(e.target.value)} className="pl-9" />
+          </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <Select value={yearFilter} onValueChange={setYearFilter}>
+              <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder="Year" /></SelectTrigger>
+              <SelectContent className="max-h-72">
+                <SelectItem value="all">All years</SelectItem>
+                {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={genreFilter} onValueChange={setGenreFilter}>
+              <SelectTrigger className="w-[170px] h-9"><SelectValue placeholder="Genre" /></SelectTrigger>
+              <SelectContent className="max-h-72">
+                <SelectItem value="all">All genres</SelectItem>
+                {genres.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={formatFilter} onValueChange={setFormatFilter}>
+              <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="Format" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All formats</SelectItem>
+                {formats.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {keywords.length > 0 && (
+              <Select value={keywordFilter} onValueChange={setKeywordFilter}>
+                <SelectTrigger className="w-[170px] h-9"><SelectValue placeholder="Keyword" /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  <SelectItem value="all">All keywords</SelectItem>
+                  {keywords.map(k => <SelectItem key={k} value={k}>{k}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            {hasFilters && (
+              <Button variant="ghost" size="sm" onClick={resetFilters} className="h-9 px-2 text-muted-foreground">
+                <X className="h-4 w-4 mr-1" /> Clear
+              </Button>
+            )}
+            <span className="text-xs font-serif text-muted-foreground ml-auto">{filtered.length} of {dvds.length}</span>
+          </div>
         </div>
 
         {loading ? (
