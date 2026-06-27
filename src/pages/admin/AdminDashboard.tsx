@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Archive, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Archive, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X } from 'lucide-react';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
 import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
@@ -37,6 +38,12 @@ export default function AdminDashboard() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [ticketCount, setTicketCount] = useState(0);
   const [scheduleQuery, setScheduleQuery] = useState('');
+  const [activeScheduleTab, setActiveScheduleTab] = useState('movies');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [ratingFilter, setRatingFilter] = useState<string>('all');
+  const [genreFilter, setGenreFilter] = useState<string>('all');
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
+  const [concertSubcategoryFilter, setConcertSubcategoryFilter] = useState<string>('all');
 
   useEffect(() => {
     if (authLoading) return;
@@ -79,6 +86,49 @@ export default function AdminDashboard() {
     const capacity = concertShowings.reduce((sum, sh) => sum + (sh.total_seats || 0), 0);
     return { sold, capacity };
   };
+
+  const uniqueRatings = Array.from(new Set(movies.map(m => m.rating).filter(Boolean))).sort();
+  const uniqueMovieGenres = Array.from(new Set(movies.map(m => m.genre).filter(Boolean))).sort();
+  const uniqueEventTypes = Array.from(new Set(events.map(e => e.ticket_type).filter(Boolean))).sort();
+  const uniqueConcertSubcategories = Array.from(new Set(concerts.map(c => c.subcategory).filter(Boolean))).sort();
+  const uniqueConcertGenres = Array.from(new Set(concerts.map(c => c.genre).filter(Boolean))).sort();
+
+  const resetScheduleFilters = () => {
+    setScheduleQuery('');
+    setStatusFilter('all');
+    setRatingFilter('all');
+    setGenreFilter('all');
+    setEventTypeFilter('all');
+    setConcertSubcategoryFilter('all');
+  };
+
+  const matchesSearch = (title: string) =>
+    !scheduleQuery || (title || '').toLowerCase().includes(scheduleQuery.toLowerCase());
+
+  const matchesStatus = (isActive: boolean) =>
+    statusFilter === 'all' ||
+    (statusFilter === 'active' && isActive) ||
+    (statusFilter === 'inactive' && !isActive);
+
+  const filteredMovies = movies.filter(m =>
+    matchesSearch(m.title) &&
+    matchesStatus(!!m.is_active) &&
+    (ratingFilter === 'all' || m.rating === ratingFilter) &&
+    (genreFilter === 'all' || m.genre === genreFilter)
+  );
+
+  const filteredEvents = events.filter(e =>
+    matchesSearch(e.title) &&
+    matchesStatus(!!e.is_active) &&
+    (eventTypeFilter === 'all' || e.ticket_type === eventTypeFilter)
+  );
+
+  const filteredConcerts = concerts.filter(c =>
+    matchesSearch(c.title) &&
+    matchesStatus(!!c.is_active) &&
+    (concertSubcategoryFilter === 'all' || c.subcategory === concertSubcategoryFilter) &&
+    (genreFilter === 'all' || c.genre === genreFilter)
+  );
 
   const TicketCountBadge = ({ sold, capacity }: { sold: number; capacity: number }) => (
     <Badge variant="secondary" className="text-xs whitespace-nowrap" title={`${sold} of ${capacity} tickets sold`}>
@@ -185,21 +235,107 @@ export default function AdminDashboard() {
 
         {/* Schedule Tab (Movies, Events, Performances) */}
         <TabsContent value="schedule">
-          <Tabs defaultValue="movies" className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Tabs value={activeScheduleTab} onValueChange={setActiveScheduleTab} defaultValue="movies" className="space-y-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <TabsList>
                 <TabsTrigger value="movies">Movies</TabsTrigger>
                 <TabsTrigger value="events">Events</TabsTrigger>
                 <TabsTrigger value="concerts">Performances</TabsTrigger>
               </TabsList>
-              <div className="relative sm:max-w-xs sm:w-full">
-                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={scheduleQuery}
-                  onChange={e => setScheduleQuery(e.target.value)}
-                  placeholder="Search title…"
-                  className="pl-9"
-                />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+                <div className="relative w-full sm:w-56">
+                  <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={scheduleQuery}
+                    onChange={e => setScheduleQuery(e.target.value)}
+                    placeholder="Search title…"
+                    className="pl-9"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Select value={statusFilter} onValueChange={v => setStatusFilter(v as any)}>
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {activeScheduleTab === 'movies' && (
+                    <>
+                      <Select value={ratingFilter} onValueChange={setRatingFilter}>
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue placeholder="Rating" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All ratings</SelectItem>
+                          {uniqueRatings.map(r => (
+                            <SelectItem key={r} value={r}>{r}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={genreFilter} onValueChange={setGenreFilter}>
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Genre" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All genres</SelectItem>
+                          {uniqueMovieGenres.map(g => (
+                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  )}
+
+                  {activeScheduleTab === 'events' && (
+                    <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                      <SelectTrigger className="w-[150px]">
+                        <SelectValue placeholder="Ticket type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All ticket types</SelectItem>
+                        {uniqueEventTypes.map(t => (
+                          <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {activeScheduleTab === 'concerts' && (
+                    <>
+                      <Select value={concertSubcategoryFilter} onValueChange={setConcertSubcategoryFilter}>
+                        <SelectTrigger className="w-[150px]">
+                          <SelectValue placeholder="Subcategory" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All subcategories</SelectItem>
+                          {uniqueConcertSubcategories.map(s => (
+                            <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={genreFilter} onValueChange={setGenreFilter}>
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Genre" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All genres</SelectItem>
+                          {uniqueConcertGenres.map(g => (
+                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  )}
+
+                  <Button variant="ghost" size="sm" onClick={resetScheduleFilters} className="h-9 px-2 text-muted-foreground">
+                    <X className="h-4 w-4 mr-1" /> Reset
+                  </Button>
+                </div>
               </div>
             </div>
             <TabsContent value="movies">
@@ -215,7 +351,7 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="space-y-4">
-            {movies.filter(m => !scheduleQuery || (m.title || '').toLowerCase().includes(scheduleQuery.toLowerCase())).map(movie => {
+            {filteredMovies.map(movie => {
               const movieShowings = getMovieShowings(movie.id);
               return (
                 <Card key={movie.id} className="glass">
@@ -275,7 +411,7 @@ export default function AdminDashboard() {
                 </Card>
               );
             })}
-            {movies.length === 0 && <p className="text-muted-foreground text-center py-8">No movies yet.</p>}
+            {filteredMovies.length === 0 && <p className="text-muted-foreground text-center py-8">No movies match the filters.</p>}
           </div>
             </TabsContent>
             <TabsContent value="events">
@@ -286,7 +422,7 @@ export default function AdminDashboard() {
             </Button>
           </div>
           <div className="space-y-3">
-            {events.filter(e => !scheduleQuery || (e.title || '').toLowerCase().includes(scheduleQuery.toLowerCase())).map(event => {
+            {filteredEvents.map(event => {
               const { sold, capacity } = getTicketsSoldForEvent(event.id);
               return (
                 <Card key={event.id} className="glass">
@@ -323,7 +459,7 @@ export default function AdminDashboard() {
                 </Card>
               );
             })}
-            {events.length === 0 && <p className="text-muted-foreground text-center py-8">No events yet.</p>}
+            {filteredEvents.length === 0 && <p className="text-muted-foreground text-center py-8">No events match the filters.</p>}
           </div>
             </TabsContent>
             <TabsContent value="concerts">
@@ -334,7 +470,7 @@ export default function AdminDashboard() {
             </Button>
           </div>
           <div className="space-y-3">
-            {concerts.filter(c => !scheduleQuery || (c.title || '').toLowerCase().includes(scheduleQuery.toLowerCase())).map(concert => {
+            {filteredConcerts.map(concert => {
               const { sold, capacity } = getTicketsSoldForConcert(concert.id);
               return (
                 <Card key={concert.id} className="glass">
@@ -376,7 +512,7 @@ export default function AdminDashboard() {
                 </Card>
               );
             })}
-            {concerts.length === 0 && <p className="text-muted-foreground text-center py-8">No live performances yet.</p>}
+            {filteredConcerts.length === 0 && <p className="text-muted-foreground text-center py-8">No live performances match the filters.</p>}
           </div>
             </TabsContent>
           </Tabs>
