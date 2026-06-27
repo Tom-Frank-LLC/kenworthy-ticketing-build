@@ -235,21 +235,107 @@ export default function AdminDashboard() {
 
         {/* Schedule Tab (Movies, Events, Performances) */}
         <TabsContent value="schedule">
-          <Tabs defaultValue="movies" className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Tabs value={activeScheduleTab} onValueChange={setActiveScheduleTab} defaultValue="movies" className="space-y-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <TabsList>
                 <TabsTrigger value="movies">Movies</TabsTrigger>
                 <TabsTrigger value="events">Events</TabsTrigger>
                 <TabsTrigger value="concerts">Performances</TabsTrigger>
               </TabsList>
-              <div className="relative sm:max-w-xs sm:w-full">
-                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={scheduleQuery}
-                  onChange={e => setScheduleQuery(e.target.value)}
-                  placeholder="Search title…"
-                  className="pl-9"
-                />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+                <div className="relative w-full sm:w-56">
+                  <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={scheduleQuery}
+                    onChange={e => setScheduleQuery(e.target.value)}
+                    placeholder="Search title…"
+                    className="pl-9"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Select value={statusFilter} onValueChange={v => setStatusFilter(v as any)}>
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {activeScheduleTab === 'movies' && (
+                    <>
+                      <Select value={ratingFilter} onValueChange={setRatingFilter}>
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue placeholder="Rating" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All ratings</SelectItem>
+                          {uniqueRatings.map(r => (
+                            <SelectItem key={r} value={r}>{r}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={genreFilter} onValueChange={setGenreFilter}>
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Genre" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All genres</SelectItem>
+                          {uniqueMovieGenres.map(g => (
+                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  )}
+
+                  {activeScheduleTab === 'events' && (
+                    <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                      <SelectTrigger className="w-[150px]">
+                        <SelectValue placeholder="Ticket type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All ticket types</SelectItem>
+                        {uniqueEventTypes.map(t => (
+                          <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {activeScheduleTab === 'concerts' && (
+                    <>
+                      <Select value={concertSubcategoryFilter} onValueChange={setConcertSubcategoryFilter}>
+                        <SelectTrigger className="w-[150px]">
+                          <SelectValue placeholder="Subcategory" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All subcategories</SelectItem>
+                          {uniqueConcertSubcategories.map(s => (
+                            <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={genreFilter} onValueChange={setGenreFilter}>
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue placeholder="Genre" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All genres</SelectItem>
+                          {uniqueConcertGenres.map(g => (
+                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  )}
+
+                  <Button variant="ghost" size="sm" onClick={resetScheduleFilters} className="h-9 px-2 text-muted-foreground">
+                    <X className="h-4 w-4 mr-1" /> Reset
+                  </Button>
+                </div>
               </div>
             </div>
             <TabsContent value="movies">
