@@ -167,6 +167,50 @@ Deno.serve(async (req) => {
       })
       .eq("id", pending.id);
 
+    // Fire-and-forget Mailchimp sync — donor tag + e-commerce order.
+    // Never block on success/failure.
+    try {
+      const [first, ...rest] = donorName.split(/\s+/);
+      void fetch(`${supabaseUrl}/functions/v1/mailchimp-subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": anonKey },
+        body: JSON.stringify({
+          email: donorEmail,
+          first_name: first ?? "",
+          last_name: rest.join(" "),
+          tags: ["donor"],
+          source: "donation",
+        }),
+      }).catch(() => {});
+      void fetch(`${supabaseUrl}/functions/v1/mailchimp-ecommerce`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": anonKey,
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          email: donorEmail,
+          first_name: first ?? "",
+          last_name: rest.join(" "),
+          order: {
+            id: `donation:${pending.id}`,
+            total: amountCents / 100,
+            lines: [{
+              id: pending.id,
+              product_id: "donation",
+              product_title: "Donation to the Kenworthy",
+              quantity: 1,
+              price: amountCents / 100,
+              category: "donation",
+            }],
+          },
+        }),
+      }).catch(() => {});
+    } catch (e) {
+      console.warn("[square-donation] mailchimp sync threw", e);
+    }
+
     return json({
       success: true,
       donationId: pending.id,
