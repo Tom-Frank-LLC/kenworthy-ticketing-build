@@ -70,10 +70,11 @@ export default function AdminDashboard() {
     setOrDel('genre', genreFilter, 'all');
     setOrDel('etype', eventTypeFilter, 'all');
     setOrDel('csub', concertSubcategoryFilter, 'all');
+    setOrDel('sort', sortOrder, 'title_asc');
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [scheduleQuery, activeScheduleTab, activeTopTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter]);
+  }, [scheduleQuery, activeScheduleTab, activeTopTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter, sortOrder]);
 
   useEffect(() => {
     if (authLoading) return;
