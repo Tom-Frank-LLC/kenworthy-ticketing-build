@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -42,7 +42,7 @@ export default function AdminDashboard() {
   const [ticketCount, setTicketCount] = useState(0);
   const [scheduleQuery, setScheduleQuery] = useState(() => searchParams.get('q') || '');
   const [activeScheduleTab, setActiveScheduleTab] = useState(() => searchParams.get('tab') || 'movies');
-  const [activeTopTab, setActiveTopTab] = useState(() => searchParams.get('section') || 'schedule');
+  const [activeTopTab, setActiveTopTab] = useState(() => searchParams.get('section') || 'listings');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>(
     () => (searchParams.get('status') as any) || 'all'
   );
@@ -51,6 +51,9 @@ export default function AdminDashboard() {
   const [eventTypeFilter, setEventTypeFilter] = useState<string>(() => searchParams.get('etype') || 'all');
   const [concertSubcategoryFilter, setConcertSubcategoryFilter] = useState<string>(
     () => searchParams.get('csub') || 'all'
+  );
+  const [liveEventKindFilter, setLiveEventKindFilter] = useState<'all' | 'event' | 'concert'>(
+    () => (searchParams.get('kind') as any) || 'all'
   );
   const [sortOrder, setSortOrder] = useState<'title_asc' | 'title_desc' | 'newest' | 'oldest'>(
     () => (searchParams.get('sort') as any) || 'title_asc'
@@ -64,17 +67,18 @@ export default function AdminDashboard() {
     };
     setOrDel('q', scheduleQuery, '');
     setOrDel('tab', activeScheduleTab, 'movies');
-    setOrDel('section', activeTopTab, 'schedule');
+    setOrDel('section', activeTopTab, 'listings');
     setOrDel('status', statusFilter, 'all');
     setOrDel('rating', ratingFilter, 'all');
     setOrDel('genre', genreFilter, 'all');
     setOrDel('etype', eventTypeFilter, 'all');
     setOrDel('csub', concertSubcategoryFilter, 'all');
+    setOrDel('kind', liveEventKindFilter, 'all');
     setOrDel('sort', sortOrder, 'title_asc');
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [scheduleQuery, activeScheduleTab, activeTopTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter, sortOrder]);
+  }, [scheduleQuery, activeScheduleTab, activeTopTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter, liveEventKindFilter, sortOrder]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -131,6 +135,7 @@ export default function AdminDashboard() {
     setGenreFilter('all');
     setEventTypeFilter('all');
     setConcertSubcategoryFilter('all');
+    setLiveEventKindFilter('all');
     setSortOrder('title_asc');
   };
 
@@ -168,18 +173,24 @@ export default function AdminDashboard() {
     (genreFilter === 'all' || m.genre === genreFilter)
   ));
 
-  const filteredEvents = sortItems(events.filter(e =>
-    matchesSearch(e.title) &&
-    matchesStatus(!!e.is_active) &&
-    (eventTypeFilter === 'all' || e.ticket_type === eventTypeFilter)
-  ));
+  const liveEvents = useMemo(() => {
+    const eventsWithKind = (events || []).map((e) => ({ ...e, kind: 'event' as const }));
+    const concertsWithKind = (concerts || []).map((c) => ({ ...c, kind: 'concert' as const }));
+    return [...eventsWithKind, ...concertsWithKind];
+  }, [events, concerts]);
 
-  const filteredConcerts = sortItems(concerts.filter(c =>
-    matchesSearch(c.title) &&
-    matchesStatus(!!c.is_active) &&
-    (concertSubcategoryFilter === 'all' || c.subcategory === concertSubcategoryFilter) &&
-    (genreFilter === 'all' || c.genre === genreFilter)
-  ));
+  const filteredLiveEvents = sortItems(liveEvents.filter((item) => {
+    const isEvent = item.kind === 'event';
+    const isConcert = item.kind === 'concert';
+    return (
+      matchesSearch(item.title) &&
+      matchesStatus(!!item.is_active) &&
+      (liveEventKindFilter === 'all' || item.kind === liveEventKindFilter) &&
+      (eventTypeFilter === 'all' || !isEvent || item.ticket_type === eventTypeFilter) &&
+      (concertSubcategoryFilter === 'all' || !isConcert || item.subcategory === concertSubcategoryFilter) &&
+      (genreFilter === 'all' || !isConcert || item.genre === genreFilter)
+    );
+  }));
 
   const TicketCountBadge = ({ sold, capacity }: { sold: number; capacity: number }) => (
     <Badge variant="secondary" className="text-xs whitespace-nowrap" title={`${sold} of ${capacity} tickets sold`}>
@@ -228,19 +239,22 @@ export default function AdminDashboard() {
         </Card>
         <Card className="glass">
           <CardContent className="p-4 flex items-center gap-3">
-            <PartyPopper className="h-6 w-6 text-primary" />
+            <div className="flex -space-x-2">
+              <PartyPopper className="h-6 w-6 text-primary" />
+              <Music className="h-6 w-6 text-primary" />
+            </div>
             <div>
-              <p className="text-xl font-bold">{events.length}</p>
-              <p className="text-xs text-muted-foreground">Events</p>
+              <p className="text-xl font-bold">{events.length + concerts.length}</p>
+              <p className="text-xs text-muted-foreground">Live Events</p>
             </div>
           </CardContent>
         </Card>
         <Card className="glass">
           <CardContent className="p-4 flex items-center gap-3">
-            <Music className="h-6 w-6 text-primary" />
+            <Calendar className="h-6 w-6 text-primary" />
             <div>
-              <p className="text-xl font-bold">{concerts.length}</p>
-              <p className="text-xs text-muted-foreground">Live Performances</p>
+              <p className="text-xl font-bold">{showings.length}</p>
+              <p className="text-xs text-muted-foreground">Showings</p>
             </div>
           </CardContent>
         </Card>
@@ -258,7 +272,7 @@ export default function AdminDashboard() {
       <Tabs value={activeTopTab} onValueChange={setActiveTopTab} className="space-y-4">
         {(() => {
           const topTabs = [
-            { value: 'schedule', label: 'Schedule', icon: Calendar, show: true },
+            { value: 'listings', label: 'Listings', icon: Calendar, show: true },
             { value: 'concessions', label: 'Concessions', icon: UtensilsCrossed, show: true },
             { value: 'passes', label: 'Passes', icon: CreditCard, show: true },
             { value: 'dvds', label: 'DVDs', icon: Disc, show: true },
@@ -325,14 +339,13 @@ export default function AdminDashboard() {
           );
         })()}
 
-        {/* Schedule Tab (Movies, Events, Performances) */}
-        <TabsContent value="schedule">
+        {/* Listings Tab (Movies, Live Events) */}
+        <TabsContent value="listings">
           <Tabs value={activeScheduleTab} onValueChange={setActiveScheduleTab} defaultValue="movies" className="space-y-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <TabsList>
                 <TabsTrigger value="movies">Movies</TabsTrigger>
-                <TabsTrigger value="events">Events</TabsTrigger>
-                <TabsTrigger value="concerts">Performances</TabsTrigger>
+                <TabsTrigger value="live-events">Live Events</TabsTrigger>
               </TabsList>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
                 <div className="relative w-full sm:w-56">
@@ -383,22 +396,29 @@ export default function AdminDashboard() {
                     </>
                   )}
 
-                  {activeScheduleTab === 'events' && (
-                    <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Ticket type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All ticket types</SelectItem>
-                        {uniqueEventTypes.map(t => (
-                          <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  {activeScheduleTab === 'concerts' && (
+                  {activeScheduleTab === 'live-events' && (
                     <>
+                      <Select value={liveEventKindFilter} onValueChange={v => setLiveEventKindFilter(v as any)}>
+                        <SelectTrigger className="w-[130px]">
+                          <SelectValue placeholder="Kind" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All kinds</SelectItem>
+                          <SelectItem value="event">Event</SelectItem>
+                          <SelectItem value="concert">Performance</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                        <SelectTrigger className="w-[150px]">
+                          <SelectValue placeholder="Ticket type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All ticket types</SelectItem>
+                          {uniqueEventTypes.map(t => (
+                            <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Select value={concertSubcategoryFilter} onValueChange={setConcertSubcategoryFilter}>
                         <SelectTrigger className="w-[150px]">
                           <SelectValue placeholder="Subcategory" />
@@ -518,80 +538,44 @@ export default function AdminDashboard() {
             {filteredMovies.length === 0 && <p className="text-muted-foreground text-center py-8">No movies match the filters.</p>}
           </div>
             </TabsContent>
-            <TabsContent value="events">
+            <TabsContent value="live-events">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-xl font-bold">Events</h2>
-            <Button size="sm" asChild>
-              <Link to="/admin/events/new"><Plus className="h-4 w-4 mr-1" /> Add Event</Link>
-            </Button>
+            <h2 className="font-display text-xl font-bold">Live Events</h2>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/admin/concerts/new"><Plus className="h-4 w-4 mr-1" /> Add Performance</Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link to="/admin/events/new"><Plus className="h-4 w-4 mr-1" /> Add Event</Link>
+              </Button>
+            </div>
           </div>
           <div className="space-y-3">
-            {filteredEvents.map(event => {
-              const { sold, capacity } = getTicketsSoldForEvent(event.id);
+            {filteredLiveEvents.map(item => {
+              const isEvent = item.kind === 'event';
+              const isConcert = item.kind === 'concert';
+              const { sold, capacity } = isEvent
+                ? getTicketsSoldForEvent(item.id)
+                : getTicketsSoldForConcert(item.id);
               return (
-                <Card key={event.id} className="glass">
+                <Card key={`${item.kind}-${item.id}`} className="glass">
                   <CardContent className="p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <PartyPopper className="h-5 w-5 text-primary" />
+                      {isEvent ? <PartyPopper className="h-5 w-5 text-primary" /> : <Music className="h-5 w-5 text-primary" />}
                       <div>
-                        <p className="font-medium">{event.title}</p>
+                        <p className="font-medium">{item.title}</p>
                         <div className="flex gap-2 mt-1">
-                          <Badge variant="outline" className="text-xs capitalize">{event.ticket_type.replace('_', ' ')}</Badge>
-                          <Badge variant={event.is_active ? 'default' : 'secondary'} className="text-xs">
-                            {event.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <TicketCountBadge sold={sold} capacity={capacity} />
-                      <Button variant="ghost" size="sm" title="Export contacts" onClick={async () => {
-                        const count = await exportContactsCsv('event', event.id, event.title);
-                        if (count === null) toast.info('No attendees found');
-                        else toast.success(`Exported ${count} contacts`);
-                      }}>
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link to={`/admin/events/${event.id}`}><Edit className="h-4 w-4" /></Link>
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteItem('events', event.id, 'Event')}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-            {filteredEvents.length === 0 && <p className="text-muted-foreground text-center py-8">No events match the filters.</p>}
-          </div>
-            </TabsContent>
-            <TabsContent value="concerts">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-xl font-bold">Performances</h2>
-            <Button size="sm" asChild>
-              <Link to="/admin/concerts/new"><Plus className="h-4 w-4 mr-1" /> Add Performance</Link>
-            </Button>
-          </div>
-          <div className="space-y-3">
-            {filteredConcerts.map(concert => {
-              const { sold, capacity } = getTicketsSoldForConcert(concert.id);
-              return (
-                <Card key={concert.id} className="glass">
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Music className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="font-medium">{concert.title}</p>
-                        <div className="flex gap-2 mt-1">
-                          {concert.subcategory && (
+                          {isEvent && (
+                            <Badge variant="outline" className="text-xs capitalize">{item.ticket_type.replace('_', ' ')}</Badge>
+                          )}
+                          {isConcert && item.subcategory && (
                             <Badge variant="outline" className="text-xs capitalize">
-                              {concert.subcategory.replace(/_/g, ' ')}
+                              {item.subcategory.replace(/_/g, ' ')}
                             </Badge>
                           )}
-                          {concert.genre && <Badge variant="outline" className="text-xs">{concert.genre}</Badge>}
-                          <Badge variant={concert.is_active ? 'default' : 'secondary'} className="text-xs">
-                            {concert.is_active ? 'Active' : 'Inactive'}
+                          {isConcert && item.genre && <Badge variant="outline" className="text-xs">{item.genre}</Badge>}
+                          <Badge variant={item.is_active ? 'default' : 'secondary'} className="text-xs">
+                            {item.is_active ? 'Active' : 'Inactive'}
                           </Badge>
                         </div>
                       </div>
@@ -599,16 +583,16 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-1">
                       <TicketCountBadge sold={sold} capacity={capacity} />
                       <Button variant="ghost" size="sm" title="Export contacts" onClick={async () => {
-                        const count = await exportContactsCsv('concert', concert.id, concert.title);
+                        const count = await exportContactsCsv(item.kind, item.id, item.title);
                         if (count === null) toast.info('No attendees found');
                         else toast.success(`Exported ${count} contacts`);
                       }}>
                         <Download className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="sm" asChild>
-                        <Link to={`/admin/concerts/${concert.id}`}><Edit className="h-4 w-4" /></Link>
+                        <Link to={`/admin/${item.kind}s/${item.id}`}><Edit className="h-4 w-4" /></Link>
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteItem('live_performances', concert.id, 'Live Performance')}>
+                      <Button variant="ghost" size="sm" onClick={() => deleteItem(item.kind === 'event' ? 'events' : 'live_performances', item.id, item.kind === 'event' ? 'Event' : 'Live Performance')}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
@@ -616,7 +600,7 @@ export default function AdminDashboard() {
                 </Card>
               );
             })}
-            {filteredConcerts.length === 0 && <p className="text-muted-foreground text-center py-8">No live performances match the filters.</p>}
+            {filteredLiveEvents.length === 0 && <p className="text-muted-foreground text-center py-8">No live events match the filters.</p>}
           </div>
             </TabsContent>
           </Tabs>
