@@ -40,6 +40,7 @@ export default function AdminDashboard() {
   const [ticketCount, setTicketCount] = useState(0);
   const [scheduleQuery, setScheduleQuery] = useState(() => searchParams.get('q') || '');
   const [activeScheduleTab, setActiveScheduleTab] = useState(() => searchParams.get('tab') || 'movies');
+  const [activeTopTab, setActiveTopTab] = useState(() => searchParams.get('section') || 'schedule');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>(
     () => (searchParams.get('status') as any) || 'all'
   );
