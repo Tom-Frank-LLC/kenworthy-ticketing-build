@@ -51,6 +51,20 @@ Deno.serve(async (req) => {
   if (d.status !== "completed") return json({ error: `Donation status is ${d.status}, skipping` }, 400);
   if (d.lgl_gift_id && !force) return json({ ok: true, skipped: "already synced", giftId: d.lgl_gift_id });
 
+  // Dev-stage kill switch. When app_config.lgl_sync_paused = true, no
+  // donations sync to the live LGL account. Manual "force" calls from the
+  // admin dashboard still respect the pause so a superadmin can't accidentally
+  // push demo data live. Delete this block once we're off the sandbox period.
+  const { data: pauseRow } = await admin
+    .from("app_config").select("value").eq("key", "lgl_sync_paused").maybeSingle();
+  const paused = (pauseRow?.value as any)?.paused === true;
+  if (paused) {
+    await admin.from("donations")
+      .update({ lgl_sync_error: "Skipped: LGL sync is paused (superadmin toggle)." })
+      .eq("id", d.id);
+    return json({ ok: true, skipped: "lgl_sync_paused" });
+  }
+
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
