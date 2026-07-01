@@ -14,6 +14,7 @@ import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
 import { type Seat, type PriceTier, TAX_RATE, buildTicketRows, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { SEO } from '@/components/SEO';
+import { syncMailchimpProfile, recordMailchimpOrder } from '@/lib/mailchimp';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -396,6 +397,32 @@ export default function Showing() {
       }
 
       toast.success(`${ticketCount} ticket(s) ${useFilmPass ? 'redeemed with Film Pass' : 'purchased'}!`);
+      // Fire-and-forget Mailchimp sync (only runs if user has consented)
+      try {
+        const kind = productionType === 'movie' ? 'Films' : productionType === 'event' ? 'Special Events' : 'Live Performances';
+        void syncMailchimpProfile({
+          extraTags: ['ticket-buyer'],
+          source: 'showing-checkout',
+          addInterests: [kind as any],
+        });
+        if (user?.email && ticketData?.[0]) {
+          void recordMailchimpOrder({
+            email: user.email,
+            order: {
+              id: `tickets:${ticketData[0].id}`,
+              total: subtotal,
+              lines: ticketData.map((t: any) => ({
+                id: t.id,
+                product_id: showing.id,
+                product_title: (showing.movie?.title || showing.event?.title || showing.live_performance?.title || 'Kenworthy showing'),
+                quantity: 1,
+                price: subtotal / ticketCount,
+                category: productionType,
+              })),
+            },
+          });
+        }
+      } catch { /* noop */ }
       navigate('/my-tickets');
     } catch (err: any) {
       toast.error(err.message || 'Failed to purchase tickets');
