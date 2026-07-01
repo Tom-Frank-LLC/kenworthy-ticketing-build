@@ -135,6 +135,7 @@ export default function AdminDashboard() {
     setGenreFilter('all');
     setEventTypeFilter('all');
     setConcertSubcategoryFilter('all');
+    setLiveEventKindFilter('all');
     setSortOrder('title_asc');
   };
 
@@ -172,18 +173,31 @@ export default function AdminDashboard() {
     (genreFilter === 'all' || m.genre === genreFilter)
   ));
 
-  const filteredEvents = sortItems(events.filter(e =>
-    matchesSearch(e.title) &&
-    matchesStatus(!!e.is_active) &&
-    (eventTypeFilter === 'all' || e.ticket_type === eventTypeFilter)
+  const filteredMovies = sortItems(movies.filter(m =>
+    matchesSearch(m.title) &&
+    matchesStatus(!!m.is_active) &&
+    (ratingFilter === 'all' || m.rating === ratingFilter) &&
+    (genreFilter === 'all' || m.genre === genreFilter)
   ));
 
-  const filteredConcerts = sortItems(concerts.filter(c =>
-    matchesSearch(c.title) &&
-    matchesStatus(!!c.is_active) &&
-    (concertSubcategoryFilter === 'all' || c.subcategory === concertSubcategoryFilter) &&
-    (genreFilter === 'all' || c.genre === genreFilter)
-  ));
+  const liveEvents = useMemo(() => {
+    const eventsWithKind = (events || []).map((e) => ({ ...e, kind: 'event' as const }));
+    const concertsWithKind = (concerts || []).map((c) => ({ ...c, kind: 'concert' as const }));
+    return [...eventsWithKind, ...concertsWithKind];
+  }, [events, concerts]);
+
+  const filteredLiveEvents = sortItems(liveEvents.filter((item) => {
+    const isEvent = item.kind === 'event';
+    const isConcert = item.kind === 'concert';
+    return (
+      matchesSearch(item.title) &&
+      matchesStatus(!!item.is_active) &&
+      (liveEventKindFilter === 'all' || item.kind === liveEventKindFilter) &&
+      (eventTypeFilter === 'all' || !isEvent || item.ticket_type === eventTypeFilter) &&
+      (concertSubcategoryFilter === 'all' || !isConcert || item.subcategory === concertSubcategoryFilter) &&
+      (genreFilter === 'all' || !isConcert || item.genre === genreFilter)
+    );
+  }));
 
   const TicketCountBadge = ({ sold, capacity }: { sold: number; capacity: number }) => (
     <Badge variant="secondary" className="text-xs whitespace-nowrap" title={`${sold} of ${capacity} tickets sold`}>
