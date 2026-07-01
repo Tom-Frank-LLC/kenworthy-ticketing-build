@@ -211,6 +211,21 @@ Deno.serve(async (req) => {
       console.warn("[square-donation] mailchimp sync threw", e);
     }
 
+    // Fire-and-forget Little Green Light sync (constituent + gift).
+    try {
+      void fetch(`${supabaseUrl}/functions/v1/lgl-sync-donation`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": anonKey,
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ donationId: pending.id }),
+      }).catch(() => {});
+    } catch (e) {
+      console.warn("[square-donation] lgl sync threw", e);
+    }
+
     return json({
       success: true,
       donationId: pending.id,
