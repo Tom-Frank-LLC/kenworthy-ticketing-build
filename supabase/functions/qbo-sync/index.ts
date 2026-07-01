@@ -251,6 +251,26 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'QBO credentials not configured' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+    const authHeader = req.headers.get('Authorization') || '';
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user }, error: uErr } = await userClient.auth.getUser();
+    if (uErr || !user) {
+      return new Response(JSON.stringify({ error: 'Not authenticated' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    {
+      const svcRole = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const { data: roleRows } = await svcRole.from('user_roles').select('role').eq('user_id', user.id);
+      const isAdmin = (roleRows || []).some((r: { role: string }) => r.role === 'admin');
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Admin role required' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
     const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const { data: tokens, error: tokErr } = await svc.rpc('qbo_get_active_tokens', { p_environment: env });
     if (tokErr || !tokens || tokens.length === 0) {
@@ -290,6 +310,26 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'payroll_export') {
+    const authHeader = req.headers.get('Authorization') || '';
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: { user }, error: uErr } = await userClient.auth.getUser();
+    if (uErr || !user) {
+      return new Response(JSON.stringify({ error: 'Not authenticated' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    {
+      const svcRole = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const { data: roleRows } = await svcRole.from('user_roles').select('role').eq('user_id', user.id);
+      const isAdmin = (roleRows || []).some((r: { role: string }) => r.role === 'admin');
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Admin role required' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
