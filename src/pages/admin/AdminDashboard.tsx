@@ -336,14 +336,13 @@ export default function AdminDashboard() {
           );
         })()}
 
-        {/* Schedule Tab (Movies, Events, Performances) */}
-        <TabsContent value="schedule">
+        {/* Listings Tab (Movies, Live Events) */}
+        <TabsContent value="listings">
           <Tabs value={activeScheduleTab} onValueChange={setActiveScheduleTab} defaultValue="movies" className="space-y-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <TabsList>
                 <TabsTrigger value="movies">Movies</TabsTrigger>
-                <TabsTrigger value="events">Events</TabsTrigger>
-                <TabsTrigger value="concerts">Performances</TabsTrigger>
+                <TabsTrigger value="live-events">Live Events</TabsTrigger>
               </TabsList>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
                 <div className="relative w-full sm:w-56">
