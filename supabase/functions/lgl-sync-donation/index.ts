@@ -34,6 +34,7 @@ Deno.serve(async (req) => {
   let body: any = {};
   try { body = await req.json(); } catch { return json({ error: "Bad JSON" }, 400); }
   const donationId: string | undefined = body?.donationId;
+  const force: boolean = !!body?.force;
   if (!donationId) return json({ error: "donationId required" }, 400);
 
   const admin = createClient(
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (dErr || !d) return json({ error: "Donation not found" }, 404);
   if (d.status !== "completed") return json({ error: `Donation status is ${d.status}, skipping` }, 400);
-  if (d.lgl_gift_id) return json({ ok: true, skipped: "already synced", giftId: d.lgl_gift_id });
+  if (d.lgl_gift_id && !force) return json({ ok: true, skipped: "already synced", giftId: d.lgl_gift_id });
 
   const headers = {
     Authorization: `Bearer ${apiKey}`,
