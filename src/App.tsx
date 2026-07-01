@@ -33,6 +33,16 @@ import VerifyContract from "./pages/VerifyContract";
 import Donate from "./pages/Donate";
 import Dvds from "./pages/Dvds";
 import Superadmin from "./pages/admin/Superadmin";
+import CalendarPage from "./pages/Calendar";
+import {
+  AboutPage,
+  SilentFilmFestivalPage,
+  PressPage,
+  HiringPage,
+  AccessibilityPage,
+  PlanAVisitPage,
+  VolunteerPage,
+} from "./pages/ComingSoon";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +56,7 @@ const App = () => (
           <Layout>
             <Routes>
               <Route path="/" element={<Index />} />
+              <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/showing/:id" element={<Showing />} />
@@ -75,6 +86,13 @@ const App = () => (
               <Route path="/rentals" element={<Rentals />} />
               <Route path="/donate" element={<Donate />} />
               <Route path="/dvds" element={<Dvds />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/silent-film-festival" element={<SilentFilmFestivalPage />} />
+              <Route path="/press" element={<PressPage />} />
+              <Route path="/hiring" element={<HiringPage />} />
+              <Route path="/accessibility" element={<AccessibilityPage />} />
+              <Route path="/plan-a-visit" element={<PlanAVisitPage />} />
+              <Route path="/volunteer" element={<VolunteerPage />} />
               <Route path="/superadmin" element={<Superadmin />} />
               <Route path="/contract/:token" element={<RentalContract />} />
               <Route path="/verify/:id" element={<VerifyContract />} />
