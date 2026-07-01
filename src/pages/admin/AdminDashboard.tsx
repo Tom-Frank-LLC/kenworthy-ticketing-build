@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -165,13 +165,6 @@ export default function AdminDashboard() {
     statusFilter === 'all' ||
     (statusFilter === 'active' && isActive) ||
     (statusFilter === 'inactive' && !isActive);
-
-  const filteredMovies = sortItems(movies.filter(m =>
-    matchesSearch(m.title) &&
-    matchesStatus(!!m.is_active) &&
-    (ratingFilter === 'all' || m.rating === ratingFilter) &&
-    (genreFilter === 'all' || m.genre === genreFilter)
-  ));
 
   const filteredMovies = sortItems(movies.filter(m =>
     matchesSearch(m.title) &&
