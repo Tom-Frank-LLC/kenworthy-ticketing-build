@@ -10,6 +10,7 @@ import { Disc, Search, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
+import { syncMailchimpProfile } from '@/lib/mailchimp';
 
 type Dvd = any;
 
@@ -50,7 +51,11 @@ export default function Dvds() {
       dvd_id: dvd.id, user_id: user.id, status: 'reserved',
     });
     if (error) toast.error(error.message);
-    else { toast.success('Reserved. Pick up at the box office.'); load(); }
+    else {
+      toast.success('Reserved. Pick up at the box office.');
+      void syncMailchimpProfile({ extraTags: ['dvd-renter'], source: 'dvd-reservation' });
+      load();
+    }
   }
 
   async function cancel(rentalId: string) {
