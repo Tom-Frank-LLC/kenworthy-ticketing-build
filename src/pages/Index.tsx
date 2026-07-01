@@ -10,6 +10,8 @@ import { InstagramFeed } from '@/components/home/InstagramFeed';
 import { RenovationCard } from '@/components/home/RenovationCard';
 import { HomeMarquee } from '@/components/home/HomeMarquee';
 import { SEO } from '@/components/SEO';
+import { SearchBar } from '@/components/SearchBar';
+import { filterFeed } from '@/hooks/useFeed';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -113,6 +115,8 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedProduction, setSelectedProduction] = useState<any>(null);
+  const [query, setQuery] = useState('');
+  const filteredFeed = useMemo(() => filterFeed(feed, query), [feed, query]);
 
   useEffect(() => {
     async function fetchAll() {
