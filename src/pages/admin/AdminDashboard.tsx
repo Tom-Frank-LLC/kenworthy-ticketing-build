@@ -42,7 +42,7 @@ export default function AdminDashboard() {
   const [ticketCount, setTicketCount] = useState(0);
   const [scheduleQuery, setScheduleQuery] = useState(() => searchParams.get('q') || '');
   const [activeScheduleTab, setActiveScheduleTab] = useState(() => searchParams.get('tab') || 'movies');
-  const [activeTopTab, setActiveTopTab] = useState(() => searchParams.get('section') || 'schedule');
+  const [activeTopTab, setActiveTopTab] = useState(() => searchParams.get('section') || 'listings');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>(
     () => (searchParams.get('status') as any) || 'all'
   );
@@ -51,6 +51,9 @@ export default function AdminDashboard() {
   const [eventTypeFilter, setEventTypeFilter] = useState<string>(() => searchParams.get('etype') || 'all');
   const [concertSubcategoryFilter, setConcertSubcategoryFilter] = useState<string>(
     () => searchParams.get('csub') || 'all'
+  );
+  const [liveEventKindFilter, setLiveEventKindFilter] = useState<'all' | 'event' | 'concert'>(
+    () => (searchParams.get('kind') as any) || 'all'
   );
   const [sortOrder, setSortOrder] = useState<'title_asc' | 'title_desc' | 'newest' | 'oldest'>(
     () => (searchParams.get('sort') as any) || 'title_asc'
