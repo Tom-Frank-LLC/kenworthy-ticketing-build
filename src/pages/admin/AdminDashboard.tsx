@@ -174,9 +174,9 @@ export default function AdminDashboard() {
 
   return (
     <div className="container py-8 px-4">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8">
         <h1 className="font-display text-3xl font-bold">Admin Dashboard</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" asChild>
             <Link to="/admin/pos"><ShoppingCart className="h-4 w-4 mr-1" /> Staff POS</Link>
           </Button>

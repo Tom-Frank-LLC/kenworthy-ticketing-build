@@ -122,12 +122,12 @@ export default function SponsorshipForm() {
         <ArrowLeft className="h-4 w-4 mr-1" /> Back to Admin
       </Button>
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="font-display text-3xl font-bold">
           {isNew ? 'New Sponsorship Opportunity' : 'Edit Sponsorship Opportunity'}
         </h1>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 items-stretch">
+          <div className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 justify-center">
             <Switch checked={form.is_active} onCheckedChange={(v) => set('is_active', v)} />
             <Label className="text-sm">
               {form.is_active ? 'Published' : 'Draft'}

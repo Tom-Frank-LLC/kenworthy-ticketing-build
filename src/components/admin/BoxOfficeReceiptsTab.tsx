@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { FileText, Download, Loader2 } from 'lucide-react';
+import { FileText, Download, Loader2, Search, X } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 
 interface Showing {
@@ -55,6 +55,9 @@ export default function BoxOfficeReceiptsTab() {
   const [active, setActive] = useState<Showing | null>(null);
   const [tickets, setTickets] = useState<TicketRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   // Editable receipt header fields
   const [distributor, setDistributor] = useState('');
@@ -198,11 +201,76 @@ export default function BoxOfficeReceiptsTab() {
             Generate a per-showing receipt to submit to distributors via Comscore. Pulls ticket
             counts and gross/net from confirmed sales for each past film showing.
           </p>
-          {showings.length === 0 ? (
+          <div className="mb-4 space-y-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                placeholder="Search by title, distributor, circuit, year, weekday…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex-1">
+                <Label className="text-xs">From</Label>
+                <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </div>
+              <div className="flex-1">
+                <Label className="text-xs">To</Label>
+                <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              </div>
+              {(query || fromDate || toDate) && (
+                <div className="flex items-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setQuery(''); setFromDate(''); setToDate(''); }}
+                  >
+                    <X className="h-4 w-4 mr-1" /> Clear
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+          {(() => {
+            const q = query.trim().toLowerCase();
+            const from = fromDate ? new Date(fromDate) : null;
+            const to = toDate ? new Date(toDate) : null;
+            if (to) to.setHours(23, 59, 59, 999);
+            const filtered = showings.filter((s) => {
+              const d = new Date(s.start_time);
+              if (from && d < from) return false;
+              if (to && d > to) return false;
+              if (!q) return true;
+              const m = s.movies;
+              const hay = [
+                m?.title,
+                m?.distributor,
+                m?.circuit,
+                m?.release_label,
+                m?.release_year != null ? String(m.release_year) : '',
+                format(d, 'EEEE MMMM d yyyy h:mm a'),
+                format(d, 'yyyy-MM-dd'),
+                'film movie showing',
+              ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+              return hay.includes(q);
+            });
+            return (
+              <>
+                <p className="text-xs text-muted-foreground mb-2">
+                  {filtered.length} of {showings.length} showings
+                </p>
+                {showings.length === 0 ? (
             <p className="text-sm text-muted-foreground">No past film showings yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {showings.map((s) => (
+                ) : filtered.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No showings match your search.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {filtered.map((s) => (
                 <div
                   key={s.id}
                   className="flex items-center justify-between p-3 rounded-md border border-border/40 hover:bg-accent/5"
@@ -217,9 +285,12 @@ export default function BoxOfficeReceiptsTab() {
                     <FileText className="h-4 w-4 mr-1" /> Receipt
                   </Button>
                 </div>
-              ))}
-            </div>
-          )}
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </CardContent>
       </Card>
 
