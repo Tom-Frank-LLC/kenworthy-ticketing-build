@@ -88,6 +88,24 @@ export type Database = {
         }
         Relationships: []
       }
+      app_config: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
       chart_of_accounts: {
         Row: {
           account_type: Database["public"]["Enums"]["coa_account_type"]
@@ -1277,6 +1295,11 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          mailchimp_fav_genre: string | null
+          mailchimp_interest_ids: Json | null
+          mailchimp_last_purchase_at: string | null
+          mailchimp_ltv_donations: number
+          mailchimp_ltv_tickets: number
           mailchimp_synced_at: string | null
           marketing_opt_in: boolean
           phone: string | null
@@ -1288,6 +1311,11 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id: string
+          mailchimp_fav_genre?: string | null
+          mailchimp_interest_ids?: Json | null
+          mailchimp_last_purchase_at?: string | null
+          mailchimp_ltv_donations?: number
+          mailchimp_ltv_tickets?: number
           mailchimp_synced_at?: string | null
           marketing_opt_in?: boolean
           phone?: string | null
@@ -1299,6 +1327,11 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          mailchimp_fav_genre?: string | null
+          mailchimp_interest_ids?: Json | null
+          mailchimp_last_purchase_at?: string | null
+          mailchimp_ltv_donations?: number
+          mailchimp_ltv_tickets?: number
           mailchimp_synced_at?: string | null
           marketing_opt_in?: boolean
           phone?: string | null
