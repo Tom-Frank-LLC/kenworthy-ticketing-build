@@ -37,10 +37,10 @@ export default function LglTab() {
   }
   useEffect(() => { load(); }, []);
 
-  async function syncOne(id: string) {
+  async function syncOne(id: string, force = false) {
     setBusy(id);
     try {
-      const { data, error } = await supabase.functions.invoke('lgl-sync-donation', { body: { donationId: id } });
+      const { data, error } = await supabase.functions.invoke('lgl-sync-donation', { body: { donationId: id, force } });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       toast.success('Synced to LGL');
@@ -132,7 +132,7 @@ export default function LglTab() {
                 size="sm"
                 variant={r.lgl_gift_id ? 'outline' : 'default'}
                 disabled={busy === r.id}
-                onClick={() => syncOne(r.id)}
+                onClick={() => syncOne(r.id, !!r.lgl_gift_id)}
               >
                 {busy === r.id
                   ? <Loader2 className="h-4 w-4 animate-spin" />
