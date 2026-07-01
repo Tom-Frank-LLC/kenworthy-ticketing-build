@@ -393,22 +393,29 @@ export default function AdminDashboard() {
                     </>
                   )}
 
-                  {activeScheduleTab === 'events' && (
-                    <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Ticket type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All ticket types</SelectItem>
-                        {uniqueEventTypes.map(t => (
-                          <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  {activeScheduleTab === 'concerts' && (
+                  {activeScheduleTab === 'live-events' && (
                     <>
+                      <Select value={liveEventKindFilter} onValueChange={v => setLiveEventKindFilter(v as any)}>
+                        <SelectTrigger className="w-[130px]">
+                          <SelectValue placeholder="Kind" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All kinds</SelectItem>
+                          <SelectItem value="event">Event</SelectItem>
+                          <SelectItem value="concert">Performance</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                        <SelectTrigger className="w-[150px]">
+                          <SelectValue placeholder="Ticket type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All ticket types</SelectItem>
+                          {uniqueEventTypes.map(t => (
+                            <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Select value={concertSubcategoryFilter} onValueChange={setConcertSubcategoryFilter}>
                         <SelectTrigger className="w-[150px]">
                           <SelectValue placeholder="Subcategory" />
