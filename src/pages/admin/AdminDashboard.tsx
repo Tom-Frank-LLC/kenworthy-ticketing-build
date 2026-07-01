@@ -67,17 +67,18 @@ export default function AdminDashboard() {
     };
     setOrDel('q', scheduleQuery, '');
     setOrDel('tab', activeScheduleTab, 'movies');
-    setOrDel('section', activeTopTab, 'schedule');
+    setOrDel('section', activeTopTab, 'listings');
     setOrDel('status', statusFilter, 'all');
     setOrDel('rating', ratingFilter, 'all');
     setOrDel('genre', genreFilter, 'all');
     setOrDel('etype', eventTypeFilter, 'all');
     setOrDel('csub', concertSubcategoryFilter, 'all');
+    setOrDel('kind', liveEventKindFilter, 'all');
     setOrDel('sort', sortOrder, 'title_asc');
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [scheduleQuery, activeScheduleTab, activeTopTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter, sortOrder]);
+  }, [scheduleQuery, activeScheduleTab, activeTopTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter, liveEventKindFilter, sortOrder]);
 
   useEffect(() => {
     if (authLoading) return;
