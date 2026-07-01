@@ -161,25 +161,25 @@ export default function AdminDashboard() {
     (statusFilter === 'active' && isActive) ||
     (statusFilter === 'inactive' && !isActive);
 
-  const filteredMovies = movies.filter(m =>
+  const filteredMovies = sortItems(movies.filter(m =>
     matchesSearch(m.title) &&
     matchesStatus(!!m.is_active) &&
     (ratingFilter === 'all' || m.rating === ratingFilter) &&
     (genreFilter === 'all' || m.genre === genreFilter)
-  );
+  ));
 
-  const filteredEvents = events.filter(e =>
+  const filteredEvents = sortItems(events.filter(e =>
     matchesSearch(e.title) &&
     matchesStatus(!!e.is_active) &&
     (eventTypeFilter === 'all' || e.ticket_type === eventTypeFilter)
-  );
+  ));
 
-  const filteredConcerts = concerts.filter(c =>
+  const filteredConcerts = sortItems(concerts.filter(c =>
     matchesSearch(c.title) &&
     matchesStatus(!!c.is_active) &&
     (concertSubcategoryFilter === 'all' || c.subcategory === concertSubcategoryFilter) &&
     (genreFilter === 'all' || c.genre === genreFilter)
-  );
+  ));
 
   const TicketCountBadge = ({ sold, capacity }: { sold: number; capacity: number }) => (
     <Badge variant="secondary" className="text-xs whitespace-nowrap" title={`${sold} of ${capacity} tickets sold`}>
