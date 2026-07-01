@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Edit, Trash2, UtensilsCrossed, Package, X } from 'lucide-react';
+import { Plus, Edit, Trash2, UtensilsCrossed, Package, X, RefreshCw, Cloud, CloudOff } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
@@ -18,6 +18,8 @@ interface ConcessionItem {
   category: string;
   is_active: boolean;
   is_combo: boolean;
+  square_catalog_id?: string | null;
+  square_synced_at?: string | null;
 }
 
 interface ComboChild {
@@ -38,6 +40,7 @@ export default function ConcessionItemsTab() {
   const [category, setCategory] = useState('Snacks');
   const [isCombo, setIsCombo] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   // Combo management
   const [comboDialogOpen, setComboDialogOpen] = useState(false);
@@ -53,6 +56,27 @@ export default function ConcessionItemsTab() {
       .order('category')
       .order('name');
     setItems((data as ConcessionItem[]) || []);
+  };
+
+  const pushToSquare = async (itemId: string, isCombo: boolean) => {
+    if (isCombo) return; // combos not synced
+    const { data, error } = await supabase.functions.invoke('square-catalog-sync', {
+      body: { action: 'push_item', itemId },
+    });
+    if (error) toast.error(`Square push failed: ${error.message}`);
+    else if ((data as any)?.error) toast.error(`Square: ${(data as any).error}`);
+  };
+
+  const pullFromSquare = async () => {
+    setSyncing(true);
+    const { data, error } = await supabase.functions.invoke('square-catalog-sync', {
+      body: { action: 'pull' },
+    });
+    setSyncing(false);
+    if (error) { toast.error(`Sync failed: ${error.message}`); return; }
+    if ((data as any)?.error) { toast.error(`Sync: ${(data as any).error}`); return; }
+    toast.success(`Pulled ${(data as any)?.pulled ?? 0} items from Square (sandbox)`);
+    loadItems();
   };
 
   useEffect(() => { loadItems(); }, []);
@@ -88,11 +112,11 @@ export default function ConcessionItemsTab() {
     if (editing) {
       const { error } = await supabase.from('concession_items').update(row).eq('id', editing.id);
       if (error) toast.error(error.message);
-      else toast.success('Item updated');
+      else { toast.success('Item updated'); await pushToSquare(editing.id, row.is_combo); }
     } else {
-      const { error } = await supabase.from('concession_items').insert(row);
+      const { data: inserted, error } = await supabase.from('concession_items').insert(row).select('id').single();
       if (error) toast.error(error.message);
-      else toast.success('Item added');
+      else { toast.success('Item added'); if (inserted?.id) await pushToSquare(inserted.id, row.is_combo); }
     }
     setSaving(false);
     setDialogOpen(false);
@@ -105,14 +129,21 @@ export default function ConcessionItemsTab() {
       .update({ is_active: !item.is_active })
       .eq('id', item.id);
     if (error) toast.error(error.message);
-    else loadItems();
+    else { await pushToSquare(item.id, item.is_combo); loadItems(); }
   };
 
   const deleteItem = async (id: string) => {
     if (!confirm('Delete this concession item?')) return;
+    const target = items.find(i => i.id === id);
     const { error } = await supabase.from('concession_items').delete().eq('id', id);
-    if (error) toast.error(error.message);
-    else { toast.success('Item deleted'); loadItems(); }
+    if (error) { toast.error(error.message); return; }
+    toast.success('Item deleted');
+    if (target?.square_catalog_id) {
+      await supabase.functions.invoke('square-catalog-sync', {
+        body: { action: 'delete_item', square_catalog_id: target.square_catalog_id },
+      });
+    }
+    loadItems();
   };
 
   const openComboManager = async (item: ConcessionItem) => {
@@ -192,11 +223,22 @@ export default function ConcessionItemsTab() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-display text-xl font-bold">Concession Menu</h2>
-        <Button size="sm" onClick={openNew}>
-          <Plus className="h-4 w-4 mr-1" /> Add Item
-        </Button>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div>
+          <h2 className="font-display text-xl font-bold">Concession Menu</h2>
+          <p className="text-xs text-muted-foreground">
+            Two-way synced with Square <span className="font-semibold">sandbox</span>. Changes here push to Square; use “Pull from Square” to import.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={pullFromSquare} disabled={syncing}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing…' : 'Pull from Square'}
+          </Button>
+          <Button size="sm" onClick={openNew}>
+            <Plus className="h-4 w-4 mr-1" /> Add Item
+          </Button>
+        </div>
       </div>
 
       {Object.entries(grouped).map(([cat, catItems]) => (
@@ -218,6 +260,15 @@ export default function ConcessionItemsTab() {
                         {item.is_combo && (
                           <Badge variant="outline" className="text-[10px] uppercase tracking-wide">Combo</Badge>
                         )}
+                        {!item.is_combo && (item.square_catalog_id ? (
+                          <span title={`Synced${item.square_synced_at ? ' ' + new Date(item.square_synced_at).toLocaleString() : ''}`}>
+                            <Cloud className="h-3 w-3 text-accent" />
+                          </span>
+                        ) : (
+                          <span title="Not yet in Square">
+                            <CloudOff className="h-3 w-3 text-muted-foreground" />
+                          </span>
+                        ))}
                       </p>
                       <p className="text-sm text-muted-foreground">${Number(item.price).toFixed(2)}</p>
                     </div>

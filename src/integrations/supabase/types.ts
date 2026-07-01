@@ -192,6 +192,10 @@ export type Database = {
           is_combo: boolean
           name: string
           price: number
+          square_catalog_id: string | null
+          square_synced_at: string | null
+          square_variation_id: string | null
+          square_version: number | null
           updated_at: string
         }
         Insert: {
@@ -202,6 +206,10 @@ export type Database = {
           is_combo?: boolean
           name: string
           price?: number
+          square_catalog_id?: string | null
+          square_synced_at?: string | null
+          square_variation_id?: string | null
+          square_version?: number | null
           updated_at?: string
         }
         Update: {
@@ -212,6 +220,10 @@ export type Database = {
           is_combo?: boolean
           name?: string
           price?: number
+          square_catalog_id?: string | null
+          square_synced_at?: string | null
+          square_variation_id?: string | null
+          square_version?: number | null
           updated_at?: string
         }
         Relationships: []
