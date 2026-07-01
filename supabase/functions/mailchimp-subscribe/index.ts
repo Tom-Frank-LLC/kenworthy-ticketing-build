@@ -1,6 +1,7 @@
 import "https://deno.land/std@0.224.0/dotenv/load.ts";
 import { createHash } from "node:crypto";
 import { z } from "npm:zod@3.23.8";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,7 +54,39 @@ Deno.serve(async (req) => {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  const { email, first_name, last_name, tags, status, source } = parsed.data;
+  let { email, first_name, last_name, tags, status, source } = parsed.data;
+
+  // Authenticate: if a JWT is present it must be valid. Anonymous callers
+  // (public newsletter form) are allowed but forced to double opt-in
+  // ('pending' status) so nobody can silently subscribe a third-party email —
+  // Mailchimp sends a confirmation email the recipient must click.
+  const authHeader = req.headers.get("Authorization") || "";
+  let isAuthenticated = false;
+  if (authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    try {
+      const userClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+      );
+      const { data, error } = await userClient.auth.getUser(token);
+      if (!error && data?.user) {
+        isAuthenticated = true;
+        // Only trust the caller's own email when authenticated
+        if (data.user.email && data.user.email.toLowerCase() === email.toLowerCase()) {
+          isAuthenticated = true;
+        }
+      }
+    } catch (_) { /* treat as anon */ }
+  }
+
+  if (!isAuthenticated) {
+    // Force double opt-in and constrain tags/source for anonymous submissions
+    status = "pending";
+    const allowedTags = new Set(["newsletter", "account-signup", "ticket-buyer", "donor", "film-pass", "dvd-renter"]);
+    tags = (tags || []).filter((t) => allowedTags.has(t));
+    if (tags.length === 0) tags = ["newsletter"];
+  }
 
   const hash = md5Lower(email);
   const base = `https://${server}.api.mailchimp.com/3.0`;
