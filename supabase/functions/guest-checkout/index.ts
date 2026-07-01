@@ -169,6 +169,69 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Fire-and-forget Mailchimp sync — guest gets tagged as ticket-buyer and
+    // added to the Films/Events/Performances interest group. Never blocks
+    // ticket creation.
+    if (guest_email) {
+      try {
+        const displayName = String(guest_name || "").trim();
+        const [first, ...rest] = displayName.split(/\s+/);
+        const anonUrl = `${SUPABASE_URL}/functions/v1/mailchimp-subscribe`;
+        // Fetch showing/production type + title for the e-commerce line
+        const { data: showRow } = await supabaseAdmin
+          .from("showings")
+          .select("id, movie:movies(title), event:events(title), performance:live_performances(title), movie_id, event_id, live_performance_id")
+          .eq("id", showing_id).maybeSingle();
+        const category = showRow?.movie_id ? "Films"
+          : showRow?.event_id ? "Special Events"
+          : showRow?.live_performance_id ? "Live Performances" : "Films";
+        const title = (showRow?.movie as any)?.title || (showRow?.event as any)?.title || (showRow?.performance as any)?.title || "Kenworthy showing";
+
+        // 1) subscribe/tag (anonymous — server forces double opt-in)
+        void fetch(anonUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "apikey": Deno.env.get("SUPABASE_ANON_KEY")! },
+          body: JSON.stringify({
+            email: guest_email,
+            first_name: first ?? "",
+            last_name: rest.join(" "),
+            tags: ["ticket-buyer"],
+            source: "guest-checkout",
+          }),
+        }).catch(() => {});
+
+        // 2) e-commerce order
+        const total = createdTickets.reduce((s: number, t: any) => s + Number(t.total_price || 0), 0);
+        void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-ecommerce`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": Deno.env.get("SUPABASE_ANON_KEY")!,
+            "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            email: guest_email,
+            first_name: first ?? "",
+            last_name: rest.join(" "),
+            order: {
+              id: `tickets:${createdTickets[0].id}`,
+              total,
+              lines: createdTickets.map((t: any) => ({
+                id: t.id,
+                product_id: showing_id,
+                product_title: title,
+                quantity: 1,
+                price: Number(t.total_price || 0),
+                category,
+              })),
+            },
+          }),
+        }).catch(() => {});
+      } catch (e) {
+        console.warn("[guest-checkout] mailchimp sync threw", e);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
