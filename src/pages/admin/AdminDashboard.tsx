@@ -84,9 +84,9 @@ export default function AdminDashboard() {
 
   async function loadData() {
     const [moviesRes, eventsRes, concertsRes, showingsRes, ticketsRes] = await Promise.all([
-      supabase.from('movies').select('*').order('created_at', { ascending: false }),
-      supabase.from('events').select('*').order('created_at', { ascending: false }),
-      supabase.from('live_performances').select('*').order('created_at', { ascending: false }),
+      supabase.from('movies').select('*').order('title'),
+      supabase.from('events').select('*').order('title'),
+      supabase.from('live_performances').select('*').order('title'),
       supabase.from('showings').select('*, movies(title), events(title), live_performances(title), venues(name)').order('start_time', { ascending: false }),
       supabase.from('tickets').select('id, showing_id'),
     ]);
