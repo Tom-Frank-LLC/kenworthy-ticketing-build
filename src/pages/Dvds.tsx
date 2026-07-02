@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent } from '@/components/ui/card';
@@ -16,6 +16,7 @@ type Dvd = any;
 
 export default function Dvds() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [dvds, setDvds] = useState<Dvd[]>([]);
   const [settings, setSettings] = useState<any>(null);
   const [myRentals, setMyRentals] = useState<any[]>([]);
@@ -46,7 +47,11 @@ export default function Dvds() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [user?.id]);
 
   async function reserve(dvd: Dvd) {
-    if (!user) { toast.error('Sign in to reserve a DVD.'); return; }
+    if (!user) {
+      toast.error('Sign in to reserve a DVD.');
+      navigate('/auth?redirect=' + encodeURIComponent('/dvds'));
+      return;
+    }
     const { error } = await (supabase as any).from('dvd_rentals').insert({
       dvd_id: dvd.id, user_id: user.id, status: 'reserved',
     });
@@ -217,7 +222,7 @@ export default function Dvds() {
                     <div className="flex items-center justify-between">
                       <span className="font-display text-primary">${Number(d.rental_price).toFixed(2)}</span>
                       {!user ? (
-                        <Button size="sm" variant="outline" asChild><Link to="/auth">Sign in</Link></Button>
+                        <Button size="sm" variant="outline" asChild><Link to="/auth?redirect=/dvds">Sign in</Link></Button>
                       ) : alreadyHas ? (
                         <Badge variant="outline" className="text-xs">Reserved</Badge>
                       ) : (

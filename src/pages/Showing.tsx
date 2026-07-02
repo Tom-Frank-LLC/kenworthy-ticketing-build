@@ -313,7 +313,7 @@ export default function Showing() {
   };
 
   const handlePurchase = async () => {
-    if (!user) { navigate('/auth'); return; }
+    if (!user) { navigate('/auth?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)); return; }
     if (ticketCount === 0) { toast.error('Please select at least one ticket'); return; }
 
     if (useFilmPass && !selectedPass) {

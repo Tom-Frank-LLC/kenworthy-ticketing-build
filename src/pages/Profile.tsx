@@ -23,7 +23,7 @@ export default function Profile() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) { navigate('/auth'); return; }
+    if (!user) { navigate('/auth?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)); return; }
 
     supabase.from('profiles').select('*').eq('id', user.id).single().then(({ data }) => {
       if (data) {

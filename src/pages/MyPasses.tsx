@@ -34,7 +34,7 @@ export default function MyPasses() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) { navigate('/auth'); return; }
+    if (!user) { navigate('/auth?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)); return; }
     loadData();
   }, [user, authLoading, navigate]);
 

@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Ticket, LogOut, Shield, ShieldCheck, User, CreditCard, Home, MapPin, Mail, Phone, Heart, Building2, ChevronDown, ShoppingCart, ScanLine } from 'lucide-react';
@@ -34,6 +34,12 @@ const supportLinks: Array<[string, string]> = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, isStaff, isHost, isSuperadmin, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const authHref = (() => {
+    const path = location.pathname + location.search;
+    if (path === '/' || path.startsWith('/auth')) return '/auth';
+    return `/auth?redirect=${encodeURIComponent(path)}`;
+  })();
 
   const handleSignOut = async () => {
     try {
@@ -174,7 +180,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             ) : (
               <>
                 <Button variant="ghost" size="sm" asChild className="h-10">
-                  <Link to="/auth">Sign In</Link>
+                  <Link to={authHref}>Sign In</Link>
                 </Button>
                 <Button size="sm" asChild className="h-10 px-5">
                   <Link to="/#calendar">Get Tickets</Link>
