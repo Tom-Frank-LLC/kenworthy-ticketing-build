@@ -17,6 +17,7 @@ import { subscribeToMailchimp } from '@/lib/mailchimp';
 export default function Auth() {
   const [searchParams] = useSearchParams();
   const defaultTab = searchParams.get('tab') === 'signup' ? 'signup' : 'signin';
+  const redirectTo = searchParams.get('redirect') || '/';
   const navigate = useNavigate();
   const { signIn, signUp } = useAuth();
 
@@ -36,7 +37,7 @@ export default function Auth() {
     try {
       await signIn(signinEmail, signinPassword);
       toast.success('Welcome back!');
-      navigate('/');
+      navigate(redirectTo);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -81,7 +82,7 @@ export default function Auth() {
           source: 'signup',
         });
       }
-      navigate('/');
+      navigate(redirectTo);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
