@@ -17,8 +17,8 @@ interface ScanResult {
     id: string;
     movie_title: string;
     start_time: string;
-    seat_row: string;
-    seat_number: number;
+    seat_row: string | null;
+    seat_number: number | null;
     scanned_at: string | null;
     patron_status: string;
   };
@@ -70,8 +70,8 @@ export default function TicketScanner() {
       .from('tickets')
       .select(`
         id, status, scanned_at, qr_code,
-        seats!inner(seat_row, seat_number),
-        showings!inner(start_time, movies!inner(title))
+        seats(seat_row, seat_number),
+        showings(start_time, movies(title), events(title), live_performances(title))
       `)
       .eq('qr_code', qrCode)
       .maybeSingle();
@@ -80,12 +80,17 @@ export default function TicketScanner() {
       return { status: 'invalid', message: 'Ticket not found — invalid QR code' };
     }
 
+    const showing: any = (data as any).showings;
     const ticket = {
       id: data.id,
-      movie_title: (data as any).showings?.movies?.title || 'Unknown',
-      start_time: (data as any).showings?.start_time || '',
-      seat_row: (data as any).seats?.seat_row || '',
-      seat_number: (data as any).seats?.seat_number || 0,
+      movie_title:
+        showing?.movies?.title ||
+        showing?.events?.title ||
+        showing?.live_performances?.title ||
+        'Unknown',
+      start_time: showing?.start_time || '',
+      seat_row: (data as any).seats?.seat_row ?? null,
+      seat_number: (data as any).seats?.seat_number ?? null,
       scanned_at: data.scanned_at as string | null,
       patron_status: data.status,
     };
@@ -264,7 +269,11 @@ export default function TicketScanner() {
                 <div className="text-sm space-y-1 text-muted-foreground">
                   <p className="font-medium text-foreground text-lg">{lastResult.ticket.movie_title}</p>
                   <p>{format(new Date(lastResult.ticket.start_time), 'MMM d, yyyy h:mm a')}</p>
-                  <p>Row {lastResult.ticket.seat_row}, Seat {lastResult.ticket.seat_number}</p>
+                  {lastResult.ticket.seat_row ? (
+                    <p>Row {lastResult.ticket.seat_row}, Seat {lastResult.ticket.seat_number}</p>
+                  ) : (
+                    <p>General Admission</p>
+                  )}
                 </div>
               )}
             </CardContent>
