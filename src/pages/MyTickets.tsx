@@ -18,7 +18,7 @@ interface TicketWithDetails {
   status: string;
   purchased_at: string;
   seat: { seat_row: string; seat_number: number } | null;
-  showing: { start_time: string; movie: { title: string } | null } | null;
+  showing: { start_time: string; title: string } | null;
 }
 
 export default function MyTickets() {
@@ -36,16 +36,25 @@ export default function MyTickets() {
         .from('tickets')
         .select(`
           id, price, tax_amount, total_price, qr_code, status, purchased_at,
-          seats!inner(seat_row, seat_number),
-          showings!inner(start_time, movies!inner(title))
+          seats(seat_row, seat_number),
+          showings(start_time, movies(title), events(title), live_performances(title))
         `)
         .eq('user_id', user!.id)
         .order('purchased_at', { ascending: false });
 
       const mapped = (data || []).map((t: any) => ({
         ...t,
-        seat: t.seats,
-        showing: { ...t.showings, movie: t.showings?.movies },
+        seat: t.seats || null,
+        showing: t.showings
+          ? {
+              start_time: t.showings.start_time,
+              title:
+                t.showings.movies?.title ||
+                t.showings.events?.title ||
+                t.showings.live_performances?.title ||
+                'Showing',
+            }
+          : null,
       }));
 
       setTickets(mapped);
@@ -82,16 +91,18 @@ export default function MyTickets() {
               <CardContent className="p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
-                    <h3 className="font-display text-lg font-bold">{ticket.showing?.movie?.title}</h3>
+                    <h3 className="font-display text-lg font-bold">{ticket.showing?.title}</h3>
                     <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
                         {ticket.showing ? format(new Date(ticket.showing.start_time), 'MMM d, yyyy h:mm a') : ''}
                       </span>
-                      <span className="flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5" />
-                        Row {ticket.seat?.seat_row}, Seat {ticket.seat?.seat_number}
-                      </span>
+                      {ticket.seat && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5" />
+                          Row {ticket.seat.seat_row}, Seat {ticket.seat.seat_number}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant={ticket.status === 'confirmed' ? 'default' : 'secondary'}>
@@ -128,13 +139,17 @@ export default function MyTickets() {
                           </div>
                         </div>
                         <div className="text-sm space-y-1">
-                          <p className="font-bold">{ticket.showing?.movie?.title}</p>
+                          <p className="font-bold">{ticket.showing?.title}</p>
                           <p className="text-muted-foreground">
                             {ticket.showing && format(new Date(ticket.showing.start_time), 'MMM d, yyyy h:mm a')}
                           </p>
-                          <p className="text-muted-foreground">
-                            Row {ticket.seat?.seat_row}, Seat {ticket.seat?.seat_number}
-                          </p>
+                          {ticket.seat ? (
+                            <p className="text-muted-foreground">
+                              Row {ticket.seat.seat_row}, Seat {ticket.seat.seat_number}
+                            </p>
+                          ) : (
+                            <p className="text-muted-foreground">General Admission</p>
+                          )}
                           <p className="text-xs text-muted-foreground font-mono mt-2 break-all">
                             {ticket.qr_code}
                           </p>
