@@ -14,7 +14,7 @@
 | **Built by** | Tom Frank |
 | **Tech stack** | React + Vite, Tailwind CSS, Supabase, Cloudflare Pages |
 | **Repository** | https://github.com/mrtomfrank/kenworthy-ticketing-build |
-| **Production URL** | [To be added after Cloudflare deploy] |
+| **Production URL** | https://kenworthy-ticketing-build.mrtomfrank.workers.dev |
 | **Staging URL** | [To be added after Cloudflare deploy] |
 
 ---
