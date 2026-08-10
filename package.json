@@ -11,6 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
+    "build:staging": "vite build --mode staging",
+    "build:production": "vite build --mode production"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
