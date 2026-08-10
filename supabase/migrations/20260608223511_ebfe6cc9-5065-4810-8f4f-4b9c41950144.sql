@@ -45,7 +45,7 @@ CREATE TABLE public.rental_requests (
   -- Admin/workflow
   status public.rental_request_status NOT NULL DEFAULT 'pending',
   admin_notes text,
-  invite_token text UNIQUE DEFAULT encode(gen_random_bytes(16), 'hex'),
+  invite_token text UNIQUE DEFAULT encode(extensions.gen_random_bytes(16), 'hex'),
   linked_event_id uuid REFERENCES public.events(id) ON DELETE SET NULL,
   submitted_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
