@@ -8,5 +8,10 @@
   },
   "observability": {
     "enabled": true
+  },
+  "env": {
+    "staging": {
+      "name": "kenworthy-ticketing-staging"
+    }
   }
 }
