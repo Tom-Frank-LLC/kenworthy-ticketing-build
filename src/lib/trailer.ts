@@ -8,10 +8,22 @@ export type TrailerEmbed =
   | { kind: 'vimeo'; id: string; src: string }
   | { kind: 'file'; src: string };
 
-export function resolveTrailer(url: string | null | undefined, opts?: { autoplay?: boolean; muted?: boolean }): TrailerEmbed | null {
+export function resolveTrailer(
+  url: string | null | undefined,
+  opts?: {
+    autoplay?: boolean;
+    muted?: boolean;
+    /** Show the player's own controls. Off by default — the home marquee is ambient. */
+    controls?: boolean;
+    /** Loop the clip. On by default, again for the marquee. */
+    loop?: boolean;
+  },
+): TrailerEmbed | null {
   if (!url) return null;
   const autoplay = opts?.autoplay ? 1 : 0;
   const muted = opts?.muted ? 1 : 0;
+  const controls = opts?.controls ? 1 : 0;
+  const loop = opts?.loop === false ? 0 : 1;
   let trimmed = url.trim();
   if (!trimmed) return null;
 
@@ -23,13 +35,13 @@ export function resolveTrailer(url: string | null | undefined, opts?: { autoplay
     const params = new URLSearchParams({
       autoplay: String(autoplay),
       mute: String(muted),
-      controls: '0',
+      controls: String(controls),
       modestbranding: '1',
       rel: '0',
       playsinline: '1',
-      loop: '1',
-      playlist: id, // required for loop on YouTube
+      loop: String(loop),
     });
+    if (loop) params.set('playlist', id); // required for loop on YouTube
     return { kind: 'youtube', id, src: `https://www.youtube.com/embed/${id}?${params.toString()}` };
   }
 
@@ -40,9 +52,10 @@ export function resolveTrailer(url: string | null | undefined, opts?: { autoplay
     const params = new URLSearchParams({
       autoplay: String(autoplay),
       muted: String(muted),
-      loop: '1',
-      background: '1',
-      controls: '0',
+      loop: String(loop),
+      // background=1 is Vimeo's chromeless ambient mode; it also suppresses controls.
+      background: controls ? '0' : '1',
+      controls: String(controls),
     });
     return { kind: 'vimeo', id, src: `https://player.vimeo.com/video/${id}?${params.toString()}` };
   }

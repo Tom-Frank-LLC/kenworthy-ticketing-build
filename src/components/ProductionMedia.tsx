@@ -1,21 +1,8 @@
 import { Badge } from '@/components/ui/badge';
 import { Clock, Film, Music, Sparkles } from 'lucide-react';
+import { resolveTrailer } from '@/lib/trailer';
 
 export type ProductionMediaType = 'movie' | 'event' | 'concert';
-
-export function getEmbedUrl(url: string): string | null {
-  // YouTube
-  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
-  // Vimeo
-  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-  if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
-  return null;
-}
-
-export function isDirectVideo(url: string): boolean {
-  return /\.(mp4|webm|ogg)(\?|$)/i.test(url);
-}
 
 const typeIcons = {
   movie: Film,
@@ -54,25 +41,25 @@ export function ProductionMedia({
   className,
 }: ProductionMediaProps) {
   const Icon = typeIcons[type];
-  const embedUrl = trailerUrl ? getEmbedUrl(trailerUrl) : null;
-  const directVideo = !!trailerUrl && isDirectVideo(trailerUrl);
+  // resolveTrailer is the app's one trailer parser (also behind the home
+  // marquee). It understands more of what an admin actually pastes than the
+  // drawer's old inline regexes did — youtu.be, /shorts/, .mov, .m4v.
+  const trailer = resolveTrailer(trailerUrl, { controls: true, loop: false });
 
   if (trailerUrl) {
     return (
       <div className={`aspect-video w-full bg-black ${className ?? ''}`}>
-        {embedUrl ? (
+        {trailer?.kind === 'file' ? (
+          <video src={trailer.src} controls className="w-full h-full object-contain" />
+        ) : (
+          // An unrecognised URL still gets an iframe attempt — same as before.
           <iframe
-            src={embedUrl}
+            src={trailer?.src ?? trailerUrl}
             className="w-full h-full"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
             title={`${title} trailer`}
           />
-        ) : directVideo ? (
-          <video src={trailerUrl} controls className="w-full h-full object-contain" />
-        ) : (
-          // Fallback: try as iframe
-          <iframe src={trailerUrl} className="w-full h-full" allowFullScreen title={`${title} trailer`} />
         )}
       </div>
     );
