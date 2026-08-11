@@ -4,16 +4,16 @@ import { Badge } from '@/components/ui/badge';
 import { Film, Building2, Sparkles, Hammer, Star, Users } from 'lucide-react';
 import { SEO } from '@/components/SEO';
 
-import img1928 from '@/assets/history/kenworthy-1928-facade.jpg.asset.json';
-import imgAuditorium from '@/assets/history/kenworthy-1926-auditorium.jpg.asset.json';
-import img1935 from '@/assets/history/kenworthy-circa-1935.jpg.asset.json';
-import imgHistoricInterior from '@/assets/history/kenworthy-historic-interior.jpg.asset.json';
-import img1950s from '@/assets/history/moscow-main-street-1950s-night.jpg.asset.json';
-import img1952 from '@/assets/history/moscow-main-street-1952.jpg.asset.json';
-import img1953 from '@/assets/history/moscow-main-street-1953.jpg.asset.json';
-import img1965 from '@/assets/history/moscow-main-street-1965.jpg.asset.json';
-import img2025Restoration from '@/assets/history/kenworthy-2025-marquee-restoration.jpg.asset.json';
-import imgToday from '@/assets/history/kenworthy-today-marquee-night.jpg.asset.json';
+import img1928 from '@/assets/history/kenworthy-1928-facade.jpg';
+import imgAuditorium from '@/assets/history/kenworthy-1926-auditorium.jpg';
+import img1935 from '@/assets/history/kenworthy-circa-1935.jpg';
+import imgHistoricInterior from '@/assets/history/kenworthy-historic-interior.jpg';
+import img1950s from '@/assets/history/moscow-main-street-1950s-night.jpg';
+import img1952 from '@/assets/history/moscow-main-street-1952.jpg';
+import img1953 from '@/assets/history/moscow-main-street-1953.jpg';
+import img1965 from '@/assets/history/moscow-main-street-1965.jpg';
+import img2025Restoration from '@/assets/history/kenworthy-2025-marquee-restoration.jpg';
+import imgToday from '@/assets/history/kenworthy-today-marquee-night.jpg';
 
 const KENWORTHY_SOURCE = 'https://www.kenworthy.org/history/';
 
@@ -66,7 +66,7 @@ const SEED: Milestone[] = [
     title: 'Opening night on Main Street',
     description:
       'The Kenworthy opens to the public on January 4, 1926. The premiere film is "We Moderns" — a silent picture that is now lost.',
-    image_url: imgAuditorium.url,
+    image_url: imgAuditorium,
     source_url: KENWORTHY_SOURCE,
   },
   {
@@ -86,7 +86,7 @@ const SEED: Milestone[] = [
     title: 'The brick building is enlarged',
     description:
       'The original brick structure is extended twenty feet to the south.',
-    image_url: img1928.url,
+    image_url: img1928,
     source_url: KENWORTHY_SOURCE,
   },
   {
@@ -96,7 +96,7 @@ const SEED: Milestone[] = [
     title: 'A decade in: the family movie house',
     description:
       'By the mid-1930s the Kenworthy is woven into downtown — the vertical blade sign and chained marquee a fixture of Main Street.',
-    image_url: img1935.url,
+    image_url: img1935,
     source_url: KENWORTHY_SOURCE,
   },
   {
@@ -126,7 +126,7 @@ const SEED: Milestone[] = [
     title: 'Quo Vadis and the postwar Main Street',
     description:
       'A summer afternoon on S. Main: the Kenworthy blade sign rises over a row of parked sedans, "Quo Vadis" on the marquee next door to the Nuart.',
-    image_url: img1952.url,
+    image_url: img1952,
     source_url: null,
   },
   {
@@ -136,7 +136,7 @@ const SEED: Milestone[] = [
     title: 'Kirk Douglas in The Bad and the Beautiful',
     description:
       'A real-photo postcard of Main Street, Moscow — the Nuart marquee playing "The Band Wagon" and Kirk Douglas, with the Kenworthy a block south.',
-    image_url: img1953.url,
+    image_url: img1953,
     source_url: null,
   },
   {
@@ -146,7 +146,7 @@ const SEED: Milestone[] = [
     title: 'A wet night under the neon',
     description:
       "Saturday night downtown: rain on the asphalt, Fonk's and the Paper House lit up, holiday lights strung across Main.",
-    image_url: img1950s.url,
+    image_url: img1950s,
     source_url: null,
   },
   {
@@ -156,7 +156,7 @@ const SEED: Milestone[] = [
     title: 'Davids\u2019, Drugs, and the long blue hour',
     description:
       'Postcard dusk on Main Street in the mid-1960s — the Kenworthy still anchoring the block as downtown rebuilds around it.',
-    image_url: img1965.url,
+    image_url: img1965,
     source_url: null,
   },
   {
@@ -216,7 +216,7 @@ const SEED: Milestone[] = [
     title: 'Live theater returns after 75 years',
     description:
       'The nonprofit Kenworthy Performing Arts Centre, Inc. forms and begins restoration. On November 2, Moscow Community Theater stages Little Shop of Horrors — complete with the original Broadway Audrey II puppet — and live theater is back at the Kenworthy after a 75-year absence.',
-    image_url: imgHistoricInterior.url,
+    image_url: imgHistoricInterior,
     source_url: KENWORTHY_SOURCE,
   },
   {
@@ -286,7 +286,7 @@ const SEED: Milestone[] = [
     title: 'Marquee comes down for restoration',
     description:
       'Crews strip the 1949 marquee back to its frame — original timbers, rusted steel, and all — to rebuild it for the next hundred years.',
-    image_url: img2025Restoration.url,
+    image_url: img2025Restoration,
     source_url: null,
   },
   {
@@ -296,7 +296,7 @@ const SEED: Milestone[] = [
     title: '100 years on Main Street',
     description:
       'A full centennial season — retrospectives, restorations, and a town-wide birthday party for the theater that has outlasted almost everything around it.',
-    image_url: imgToday.url,
+    image_url: imgToday,
     source_url: null,
   },
 ];
@@ -548,7 +548,7 @@ export default function HistoryPage() {
       <header className="relative overflow-hidden border-b border-border/40">
         <div className="absolute inset-0">
           <img
-            src={imgToday.url}
+            src={imgToday}
             alt=""
             width={1280}
             height={800}
