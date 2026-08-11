@@ -109,124 +109,124 @@ function buildFeed(
 }
 
 export default function Index() {
-  const [feed, setFeed] = useState<FeedItem[]>([]);
-  const [productionsById, setProductionsById] = useState<
+    const [feed, setFeed] = useState<FeedItem[]>([]);
+    const [productionsById, setProductionsById] = useState<
     Map<string, RawProduction & { type: ProductionType }>
-  >(new Map());
-  const [loading, setLoading] = useState(true);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedProduction, setSelectedProduction] = useState<any>(null);
-  const [query, setQuery] = useState('');
-  const filteredFeed = useMemo(() => filterFeed(feed, query), [feed, query]);
-
-  useEffect(() => {
-    async function fetchAll() {
-      const now = new Date().toISOString();
-      const [moviesRes, eventsRes, concertsRes, showingsRes] = await Promise.all([
-        supabase
-          .from('movies')
-          .select('id,title,description,poster_url,duration_minutes,rating,genre,is_active,created_at,updated_at,trailer_url,is_featured,release_year,release_label,pass_processing_fee')
-          .eq('is_active', true),
-        supabase.from('events').select('*').eq('is_active', true),
-        supabase.from('live_performances').select('*').eq('is_active', true),
-        supabase
-          .from('showings')
-          .select('*')
-          .eq('is_active', true)
-          .gte('start_time', now)
-          .order('start_time'),
-      ]);
-
-      const productions: Array<{ row: RawProduction; type: ProductionType }> = [
-        ...(moviesRes.data || []).map((row) => ({ row: row as RawProduction, type: 'movie' as const })),
-        ...(eventsRes.data || []).map((row) => ({ row: row as RawProduction, type: 'event' as const })),
-        ...(concertsRes.data || []).map((row) => ({ row: row as RawProduction, type: 'concert' as const })),
-      ];
-
-      const { feed, productionsById } = buildFeed(productions, (showingsRes.data || []) as RawShowing[]);
-      setFeed(feed);
-      setProductionsById(productionsById);
-      setLoading(false);
-    }
-    fetchAll();
-  }, []);
-
+    >(new Map());
+    const [loading, setLoading] = useState(true);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+    const [selectedProduction, setSelectedProduction] = useState<any>(null);
+    const [query, setQuery] = useState('');
+    const filteredFeed = useMemo(() => filterFeed(feed, query), [feed, query]);
+    
+    useEffect(() => {
+        async function fetchAll() {
+            const now = new Date().toISOString();
+            const [moviesRes, eventsRes, concertsRes, showingsRes] = await Promise.all([
+                supabase
+                .from('movies')
+                .select('id,title,description,poster_url,duration_minutes,rating,genre,is_active,created_at,updated_at,trailer_url,is_featured,release_year,release_label,pass_processing_fee')
+                .eq('is_active', true),
+                supabase.from('events').select('*').eq('is_active', true),
+                supabase.from('live_performances').select('*').eq('is_active', true),
+                supabase
+                .from('showings')
+                .select('*')
+                .eq('is_active', true)
+                .gte('start_time', now)
+                .order('start_time'),
+            ]);
+            
+            const productions: Array<{ row: RawProduction; type: ProductionType }> = [
+                ...(moviesRes.data || []).map((row) => ({ row: row as RawProduction, type: 'movie' as const })),
+                   ...(eventsRes.data || []).map((row) => ({ row: row as RawProduction, type: 'event' as const })),
+                   ...(concertsRes.data || []).map((row) => ({ row: row as RawProduction, type: 'concert' as const })),
+            ];
+            
+            const { feed, productionsById } = buildFeed(productions, (showingsRes.data || []) as RawShowing[]);
+            setFeed(feed);
+            setProductionsById(productionsById);
+            setLoading(false);
+        }
+        fetchAll();
+    }, []);
+    
     const handleSelect = (item: FeedItem) => {
-      // Production ids are UUIDs (contain hyphens), so we can't parse them
-      // out of the composite item.id. Use the explicit productionId.
-      const fullProd = productionsById.get(`${item.type}:${item.productionId}`);
-      if (fullProd) {
-        const showings = feed
-          .filter(f => f.type === item.type && f.productionId === item.productionId)
-          .map(f => ({ id: f.showingId, start_time: f.startTime, ticket_price: f.ticketPrice ?? 0 }));
-        setSelectedProduction({ ...fullProd, type: item.type, showings });
-        setDrawerOpen(true);
-      }
+        // Production ids are UUIDs (contain hyphens), so we can't parse them
+        // out of the composite item.id. Use the explicit productionId.
+        const fullProd = productionsById.get(`${item.type}:${item.productionId}`);
+        if (fullProd) {
+            const showings = feed
+            .filter(f => f.type === item.type && f.productionId === item.productionId)
+            .map(f => ({ id: f.showingId, start_time: f.startTime, ticket_price: f.ticketPrice ?? 0 }));
+            setSelectedProduction({ ...fullProd, type: item.type, showings });
+            setDrawerOpen(true);
+        }
     };
+    
+    const empty = !loading && feed.length === 0;
+    
+    return (
+            <>
+            <SEO
+            title="The Kenworthy — Films, Performances & Events in Moscow, ID"
+            description="A century of stories on Main Street. Browse upcoming films, live performances, and events at The Kenworthy Performing Arts Centre in Moscow, Idaho."
+            path="/"
+            />
+            <HomeMarquee />
+            
+            {/* Guest search — filter the calendar and trailer rails by keyword */}
+            {!loading && feed.length > 0 && (
+                                             <section className="border-b border-accent/20 bg-background">
+                                             <div className="container py-5 flex flex-wrap items-center gap-4">
+                                             <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold">
+                                             Find a showing
+                                             </p>
+                                             <SearchBar value={query} onChange={setQuery} />
+                                             {query && (
+                                                        <p className="font-serif text-sm text-muted-foreground">
+                                                        {filteredFeed.length} match{filteredFeed.length === 1 ? '' : 'es'}
+                                                        </p>
+                                                        )}
+                                             </div>
+                                             </section>
+                                             )}
+            
+            {/* Clean upcoming list with a live preview pane. The full month
+              calendar is tucked behind a "Calendar" button so the default view
+              stays scannable. */}
+            {!loading && filteredFeed.length > 0 && (
+                                                     <UpcomingList items={filteredFeed} onSelect={handleSelect} />
+                                                     )}
+            {/*
 
-  const empty = !loading && feed.length === 0;
-
-  return (
-    <>
-      <SEO
-        title="The Kenworthy — Films, Performances & Events in Moscow, ID"
-        description="A century of stories on Main Street. Browse upcoming films, live performances, and events at The Kenworthy Performing Arts Centre in Moscow, Idaho."
-        path="/"
-      />
-      <HomeMarquee />
-
-      {/* Guest search — filter the calendar and trailer rails by keyword */}
-      {!loading && feed.length > 0 && (
-        <section className="border-b border-accent/20 bg-background">
-          <div className="container py-5 flex flex-wrap items-center gap-4">
-            <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold">
-              Find a showing
-            </p>
-            <SearchBar value={query} onChange={setQuery} />
-            {query && (
-              <p className="font-serif text-sm text-muted-foreground">
-                {filteredFeed.length} match{filteredFeed.length === 1 ? '' : 'es'}
-              </p>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Clean upcoming list with a live preview pane. The full month
-          calendar is tucked behind a "Calendar" button so the default view
-          stays scannable. */}
-      {!loading && filteredFeed.length > 0 && (
-        <UpcomingList items={filteredFeed} onSelect={handleSelect} />
-      )}
-
-          {/* Featured — the trailer/featured listing, now its own full-width section */}
-                <section className="border-b border-accent/20">
-                  <div className="h-[80vh] lg:h-[70vh]">
-                    {loading ? (
-                      <div className="h-full flex items-center justify-center">
+            <section className="border-b border-accent/20">
+            <div className="h-[80vh] lg:h-[70vh]">
+            {loading ? (
+                        <div className="h-full flex items-center justify-center">
                         <div className="font-serif italic text-muted-foreground">
-                          Warming up the projector…
+                        Warming up the projector…
                         </div>
-                      </div>
-                    ) : empty ? (
-                      <div className="h-full flex items-center justify-center p-8 text-center">
-                        <p className="font-serif text-muted-foreground max-w-sm">
-                          The marquee is dark for the moment. Check back soon for what's
-                          coming next on Main Street.
-                        </p>
-                      </div>
-                    ) : (
-                      <TrailerFeed items={filteredFeed.length > 0 ? filteredFeed : feed} onSelect={handleSelect} />
-                    )}
-                  </div>
-                </section>
+                        </div>
+                        ) : empty ? (
+                                     <div className="h-full flex items-center justify-center p-8 text-center">
+                                     <p className="font-serif text-muted-foreground max-w-sm">
+                                     The marquee is dark for the moment. Check back soon for what's
+                                     coming next on Main Street.
+                                     </p>
+                                     </div>
+                                     ) : (
+                                          <TrailerFeed items={filteredFeed.length > 0 ? filteredFeed : feed} onSelect={handleSelect} />
+                                          )}
+            </div>
+            </section>
+            
 
-                {/* Instagram + renovation — now its own section below the featured listing */}
-                <section className="border-b border-accent/20">
-                  <InstagramFeed />
-                  <RenovationCard />
-                </section>
-
+            <section className="border-b border-accent/20">
+            <InstagramFeed />
+            <RenovationCard />
+            </section>
+            */}
       {/* Concessions menu — pulled live from the editable concession_items
           table, so the admin Concessions tab is the single source of truth. */}
       <ConcessionsPreview />
