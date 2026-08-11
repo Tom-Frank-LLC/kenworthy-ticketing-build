@@ -199,52 +199,33 @@ export default function Index() {
         <UpcomingList items={filteredFeed} onSelect={handleSelect} />
       )}
 
-      {/* Mobile: stacked. Desktop (lg+): split-scroll, three independently scrolling rails. */}
-      <div className="lg:h-[calc(100vh-68px-1px)] lg:overflow-hidden">
-        <div className="lg:grid lg:grid-cols-[45fr_35fr_20fr] lg:h-full">
-          {/* LEFT — Trailer feed */}
-          <div className="lg:h-full lg:border-r lg:border-accent/20 lg:relative">
-            <div className="h-[80vh] lg:h-full">
-              {loading ? (
-                <div className="h-full flex items-center justify-center">
-                  <div className="font-serif italic text-muted-foreground">
-                    Warming up the projector…
+          {/* Featured — the trailer/featured listing, now its own full-width section */}
+                <section className="border-b border-accent/20">
+                  <div className="h-[80vh] lg:h-[70vh]">
+                    {loading ? (
+                      <div className="h-full flex items-center justify-center">
+                        <div className="font-serif italic text-muted-foreground">
+                          Warming up the projector…
+                        </div>
+                      </div>
+                    ) : empty ? (
+                      <div className="h-full flex items-center justify-center p-8 text-center">
+                        <p className="font-serif text-muted-foreground max-w-sm">
+                          The marquee is dark for the moment. Check back soon for what's
+                          coming next on Main Street.
+                        </p>
+                      </div>
+                    ) : (
+                      <TrailerFeed items={filteredFeed.length > 0 ? filteredFeed : feed} onSelect={handleSelect} />
+                    )}
                   </div>
-                </div>
-              ) : empty ? (
-                <div className="h-full flex items-center justify-center p-8 text-center">
-                  <p className="font-serif text-muted-foreground max-w-sm">
-                    The marquee is dark for the moment. Check back soon for what's
-                    coming next on Main Street.
-                  </p>
-                </div>
-              ) : (
-                <TrailerFeed items={filteredFeed.length > 0 ? filteredFeed : feed} onSelect={handleSelect} />
-              )}
-            </div>
-          </div>
+                </section>
 
-          {/* MIDDLE — Editorial calendar */}
-          <div className="lg:h-full lg:border-r lg:border-accent/20 lg:overflow-hidden">
-            {loading ? (
-              <div className="p-10 space-y-6">
-                <div className="h-4 w-40 bg-muted rounded animate-pulse" />
-                <div className="h-12 w-3/4 bg-muted rounded animate-pulse" />
-                <div className="h-4 w-2/3 bg-muted rounded animate-pulse" />
-                <div className="h-64 bg-muted rounded animate-pulse" />
-              </div>
-            ) : (
-              <EditorialCalendar items={filteredFeed} onSelect={handleSelect} />
-            )}
-          </div>
-
-          {/* RIGHT — Instagram feed (sidebar on desktop, stacked below on mobile) */}
-          <div className="lg:h-full lg:overflow-y-auto">
-            <InstagramFeed />
-            <RenovationCard />
-          </div>
-        </div>
-      </div>
+                {/* Instagram + renovation — now its own section below the featured listing */}
+                <section className="border-b border-accent/20">
+                  <InstagramFeed />
+                  <RenovationCard />
+                </section>
 
       {/* Concessions menu — pulled live from the editable concession_items
           table, so the admin Concessions tab is the single source of truth. */}
