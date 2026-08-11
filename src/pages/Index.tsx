@@ -72,6 +72,7 @@ function buildFeed(
       rsvpUrl: prod.rsvp_url,
       curatorNote: prod.description,
       isFeatured: prod.is_featured ?? false,
+      ticketPrice: s.ticket_price,
     });
   }
 
