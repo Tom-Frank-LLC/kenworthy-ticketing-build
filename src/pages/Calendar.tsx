@@ -12,7 +12,7 @@ import { List as ListIcon, Calendar as CalendarIcon } from 'lucide-react';
 export default function CalendarPage() {
   const { feed, productionsById, loading } = useFeed();
   const [query, setQuery] = useState('');
-  const [view, setView] = useState<'list' | 'month'>('list');
+  const [view, setView] = useState<'list' | 'month'>('month');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selected, setSelected] = useState<any>(null);
 
