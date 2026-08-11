@@ -150,15 +150,18 @@ export default function Index() {
     fetchAll();
   }, []);
 
-  const handleSelect = (item: FeedItem) => {
-    // Production ids are UUIDs (contain hyphens), so we can't parse them
-    // out of the composite item.id. Use the explicit productionId.
-    const fullProd = productionsById.get(`${item.type}:${item.productionId}`);
-    if (fullProd) {
-      setSelectedProduction({ ...fullProd, type: item.type });
-      setDrawerOpen(true);
-    }
-  };
+    const handleSelect = (item: FeedItem) => {
+      // Production ids are UUIDs (contain hyphens), so we can't parse them
+      // out of the composite item.id. Use the explicit productionId.
+      const fullProd = productionsById.get(`${item.type}:${item.productionId}`);
+      if (fullProd) {
+        const showings = feed
+          .filter(f => f.type === item.type && f.productionId === item.productionId)
+          .map(f => ({ id: f.showingId, start_time: f.startTime, ticket_price: f.ticketPrice ?? 0 }));
+        setSelectedProduction({ ...fullProd, type: item.type, showings });
+        setDrawerOpen(true);
+      }
+    };
 
   const empty = !loading && feed.length === 0;
 
