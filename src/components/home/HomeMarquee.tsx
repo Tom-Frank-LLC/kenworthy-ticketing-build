@@ -1,5 +1,5 @@
 import { MapPin, Sparkles } from 'lucide-react';
-import heroPhoto from '@/assets/home/kenworthy-relighting-marquee.jpg.asset.json';
+import heroPhoto from '@/assets/KPACmarquee.jpg';
 
 /**
  * Full-width marquee header that sits above the three-column split-scroll.
@@ -18,7 +18,7 @@ export function HomeMarquee() {
           vertically (cropping the silhouetted tree canopy off the top). */}
       <div className="absolute inset-0">
         <img
-          src={heroPhoto.url}
+          src={heroPhoto}
           alt="The Kenworthy marquee glowing on Main Street during the 2025 relighting ceremony"
           className="h-full w-full object-cover"
           style={{ objectPosition: 'center 92%' }}
