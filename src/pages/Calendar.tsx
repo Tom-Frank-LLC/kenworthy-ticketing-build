@@ -19,12 +19,15 @@ export default function CalendarPage() {
   const filtered = useMemo(() => filterFeed(feed, query), [feed, query]);
 
   const handleSelect = (item: FeedItem) => {
-    const prod = productionsById.get(`${item.type}:${item.productionId}`);
-    if (prod) {
-      setSelected({ ...prod, type: item.type });
-      setDrawerOpen(true);
-    }
-  };
+      const prod = productionsById.get(`${item.type}:${item.productionId}`);
+      if (prod) {
+        const showings = feed
+          .filter(f => f.type === item.type && f.productionId === item.productionId)
+          .map(f => ({ id: f.showingId, start_time: f.startTime, ticket_price: 0 }));
+        setSelected({ ...prod, type: item.type, showings });
+        setDrawerOpen(true);
+      }
+    };
 
   return (
     <>
