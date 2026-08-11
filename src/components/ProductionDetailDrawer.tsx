@@ -2,8 +2,9 @@ import { Link } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, Film, Music, Sparkles } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { format } from 'date-fns';
+import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 
 interface ShowingInfo {
   id: string;
@@ -32,77 +33,29 @@ interface ProductionDetailDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function getEmbedUrl(url: string): string | null {
-  // YouTube
-  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
-  // Vimeo
-  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-  if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
-  return null;
-}
-
-function isDirectVideo(url: string): boolean {
-  return /\.(mp4|webm|ogg)(\?|$)/i.test(url);
-}
-
-const typeIcons = {
-  movie: Film,
-  event: Sparkles,
-  concert: Music,
-};
-
 export function ProductionDetailDrawer({ production, open, onOpenChange }: ProductionDetailDrawerProps) {
   if (!production) return null;
-
-  const Icon = typeIcons[production.type];
-  const embedUrl = production.trailer_url ? getEmbedUrl(production.trailer_url) : null;
-  const directVideo = production.trailer_url && isDirectVideo(production.trailer_url);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto p-0">
         {/* Poster / Trailer */}
         <div className="relative">
-          {production.trailer_url ? (
-            <div className="aspect-video w-full bg-black">
-              {embedUrl ? (
-                <iframe
-                  src={embedUrl}
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  title={`${production.title} trailer`}
-                />
-              ) : directVideo ? (
-                <video src={production.trailer_url} controls className="w-full h-full object-contain" />
-              ) : (
-                // Fallback: try as iframe
-                <iframe src={production.trailer_url} className="w-full h-full" allowFullScreen title={`${production.title} trailer`} />
-              )}
-            </div>
-          ) : production.poster_url ? (
-            <div className="aspect-video w-full bg-secondary flex items-center justify-center overflow-hidden">
-              <img src={production.poster_url} alt={production.title} className="w-full h-full object-cover" />
-            </div>
-          ) : (
-            <div className="aspect-video w-full bg-secondary flex items-center justify-center">
-              <Icon className="h-16 w-16 text-muted-foreground" />
-            </div>
-          )}
+          <ProductionMedia
+            title={production.title}
+            type={production.type}
+            posterUrl={production.poster_url}
+            trailerUrl={production.trailer_url}
+          />
         </div>
 
         <div className="p-6 space-y-5">
           <SheetHeader className="p-0 space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {production.rating && <Badge>{production.rating}</Badge>}
-              {production.genre && <Badge variant="secondary">{production.genre}</Badge>}
-              {production.duration_minutes && (
-                <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5" /> {production.duration_minutes} min
-                </span>
-              )}
-            </div>
+            <ProductionMetaBadges
+              rating={production.rating}
+              genre={production.genre}
+              durationMinutes={production.duration_minutes}
+            />
             <SheetTitle className="font-display text-2xl">{production.title}</SheetTitle>
           </SheetHeader>
 

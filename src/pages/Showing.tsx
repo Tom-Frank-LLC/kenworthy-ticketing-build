@@ -13,6 +13,7 @@ import { SeatMap } from '@/components/SeatMap';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
 import { type Seat, type PriceTier, TAX_RATE, buildTicketRows, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
+import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, recordMailchimpOrder } from '@/lib/mailchimp';
 
@@ -441,6 +442,10 @@ export default function Showing() {
 
   const meta = getProductionMeta(productionType);
   const Icon = meta.icon;
+  // Trailer/poster come from the production row we already fetched — no extra
+  // query. When neither exists we keep the small type-icon tile instead of
+  // reserving a media column for nothing.
+  const hasMedia = !!(production?.trailer_url || production?.poster_url);
 
   // Price display: show range if tiers, otherwise single price
   const priceDisplay = hasTiers
@@ -488,10 +493,22 @@ export default function Showing() {
       {/* Production info */}
       <div className="mb-8">
         <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="mb-4">← Back</Button>
-        <div className="flex items-start gap-4">
-          <div className="h-16 w-16 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-            <Icon className="h-8 w-8 text-primary" />
-          </div>
+        <div className={hasMedia ? 'grid gap-6 md:grid-cols-[minmax(0,26rem)_1fr] md:items-start' : 'flex items-start gap-4'}>
+          {hasMedia ? (
+            <ProductionMedia
+              title={production?.title ?? meta.label}
+              type={productionType}
+              posterUrl={production?.poster_url}
+              trailerUrl={production?.trailer_url}
+              aspect="auto"
+              fallback="none"
+              className="rounded-lg overflow-hidden border border-border"
+            />
+          ) : (
+            <div className="h-16 w-16 rounded-lg bg-secondary flex items-center justify-center shrink-0">
+              <Icon className="h-8 w-8 text-primary" />
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-display text-3xl font-bold">{production?.title}</h1>
@@ -499,10 +516,16 @@ export default function Showing() {
                 {meta.label}
               </span>
             </div>
+            <ProductionMetaBadges
+              rating={production?.rating}
+              genre={production?.genre}
+              durationMinutes={production?.duration_minutes}
+              className="mt-2"
+            />
             {production?.description && (
-              <p className="text-sm text-muted-foreground mt-1 max-w-2xl">{production.description}</p>
+              <p className="text-sm text-muted-foreground mt-2 max-w-2xl">{production.description}</p>
             )}
-            <div className="flex flex-wrap gap-3 mt-2 text-muted-foreground text-sm">
+            <div className="flex flex-wrap gap-3 mt-3 text-muted-foreground text-sm">
               <span className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" /> {format(new Date(showing.start_time), 'EEEE, MMMM d, yyyy')}
               </span>
