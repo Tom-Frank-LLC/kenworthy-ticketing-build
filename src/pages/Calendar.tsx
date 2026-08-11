@@ -23,7 +23,7 @@ export default function CalendarPage() {
       if (prod) {
         const showings = feed
           .filter(f => f.type === item.type && f.productionId === item.productionId)
-          .map(f => ({ id: f.showingId, start_time: f.startTime, ticket_price: 0 }));
+          .map(f => ({ id: f.showingId, start_time: f.startTime, ticket_price: f.ticketPrice ?? 0 }));
         setSelected({ ...prod, type: item.type, showings });
         setDrawerOpen(true);
       }
