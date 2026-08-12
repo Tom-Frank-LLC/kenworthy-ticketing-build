@@ -1,5 +1,16 @@
 import { MapPin, Sparkles } from 'lucide-react';
-import heroPhoto from '@/assets/KPACmarquee.jpg';
+// Responsive variants of src/assets/KPACmarquee.jpg (3810×2542, 1.9MB). A
+// phone now pulls ~38KB instead of the full-res original. The archival
+// master stays in src/assets/ — it is just no longer shipped to browsers.
+import hero768 from '@/assets/optimized/hero-768.jpg';
+import hero1280 from '@/assets/optimized/hero-1280.jpg';
+import hero1920 from '@/assets/optimized/hero-1920.jpg';
+import hero768Webp from '@/assets/optimized/hero-768.webp';
+import hero1280Webp from '@/assets/optimized/hero-1280.webp';
+import hero1920Webp from '@/assets/optimized/hero-1920.webp';
+
+const heroWebpSrcSet = `${hero768Webp} 768w, ${hero1280Webp} 1280w, ${hero1920Webp} 1920w`;
+const heroJpegSrcSet = `${hero768} 768w, ${hero1280} 1280w, ${hero1920} 1920w`;
 
 /**
  * Full-width marquee header that sits above the three-column split-scroll.
@@ -17,14 +28,20 @@ export function HomeMarquee() {
           object-position is tuned so the marquee sign sits roughly centered
           vertically (cropping the silhouetted tree canopy off the top). */}
       <div className="absolute inset-0">
-        <img
-          src={heroPhoto}
-          alt="The Kenworthy marquee glowing on Main Street during the 2025 relighting ceremony"
-          className="h-full w-full object-cover"
-          style={{ objectPosition: 'center 92%' }}
-          loading="eager"
-          decoding="async"
-        />
+        <picture>
+          <source type="image/webp" srcSet={heroWebpSrcSet} sizes="100vw" />
+          <img
+            src={hero1280}
+            srcSet={heroJpegSrcSet}
+            sizes="100vw"
+            alt="The Kenworthy marquee glowing on Main Street during the 2025 relighting ceremony"
+            className="h-full w-full object-cover"
+            style={{ objectPosition: 'center 92%' }}
+            loading="eager"
+            fetchPriority="high"
+            decoding="async"
+          />
+        </picture>
         {/* Scrim — keep the marquee itself clear by concentrating darkness
             at the top (above the sign) and bottom (over the crowd
             silhouettes where the headline lives). */}

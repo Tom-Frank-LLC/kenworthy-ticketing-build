@@ -4,18 +4,18 @@ import { Badge } from '@/components/ui/badge';
 import { Film, Building2, Sparkles, Hammer, Star, Users } from 'lucide-react';
 import { SEO } from '@/components/SEO';
 
-import img1908 from '@/assets/history/Crystal-Theatre-1908.jpg';
-import img1926 from '@/assets/history/Kenworthy-1926.jpg';
-import img1928 from '@/assets/history/kenworthy-1928-facade.jpg';
-import imgAuditorium from '@/assets/history/kenworthy-1926-auditorium.jpg';
-import img1935 from '@/assets/history/kenworthy-circa-1935.jpg';
-import imgHistoricInterior from '@/assets/history/kenworthy-historic-interior.jpg';
-import img1950s from '@/assets/history/moscow-main-street-1950s-night.jpg';
-import img1952 from '@/assets/history/moscow-main-street-1952.jpg';
-import img1953 from '@/assets/history/moscow-main-street-1953.jpg';
-import img1965 from '@/assets/history/moscow-main-street-1965.jpg';
-import img2025Restoration from '@/assets/history/kenworthy-2025-marquee-restoration.jpg';
-import imgToday from '@/assets/history/kenworthy-today-marquee-night.jpg';
+import img1908 from '@/assets/optimized/history/Crystal-Theatre-1908.webp';
+import img1926 from '@/assets/optimized/history/Kenworthy-1926.webp';
+import img1928 from '@/assets/optimized/history/kenworthy-1928-facade.webp';
+import imgAuditorium from '@/assets/optimized/history/kenworthy-1926-auditorium.webp';
+import img1935 from '@/assets/optimized/history/kenworthy-circa-1935.webp';
+import imgHistoricInterior from '@/assets/optimized/history/kenworthy-historic-interior.webp';
+import img1950s from '@/assets/optimized/history/moscow-main-street-1950s-night.webp';
+import img1952 from '@/assets/optimized/history/moscow-main-street-1952.webp';
+import img1953 from '@/assets/optimized/history/moscow-main-street-1953.webp';
+import img1965 from '@/assets/optimized/history/moscow-main-street-1965.webp';
+import img2025Restoration from '@/assets/optimized/history/kenworthy-2025-marquee-restoration.webp';
+import imgToday from '@/assets/optimized/history/kenworthy-today-marquee-night.webp';
 
 const KENWORTHY_SOURCE = 'https://www.kenworthy.org/history/';
 

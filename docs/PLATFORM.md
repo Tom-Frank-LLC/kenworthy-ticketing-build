@@ -10,113 +10,212 @@
 |---|---|
 | **Platform name** | Kenworthy Ticketing |
 | **Client** | Kenworthy Performing Arts Centre |
-| **Primary contact** | [Client name, email, phone] |
+| **Primary contact** | Colin Mannex (Executive Director) — see `CONTACTS.md` (private, not in repo) |
 | **Built by** | Tom Frank |
-| **Tech stack** | React + Vite, Tailwind CSS, Supabase, Cloudflare Pages |
-| **Repository** | https://github.com/mrtomfrank/kenworthy-ticketing-build |
+| **Tech stack** | React + Vite, Tailwind CSS, Supabase (Postgres + Edge Functions), Cloudflare **Workers** |
+| **Repository** | https://github.com/Tom-Frank-LLC/kenworthy-ticketing-build |
 | **Production URL** | https://kenworthy-ticketing-build.mrtomfrank.workers.dev |
-| **Staging URL** | [To be added after Cloudflare deploy] |
+| **Staging URL** | https://kenworthy-ticketing-staging.mrtomfrank.workers.dev |
+
+> **Not Cloudflare Pages.** The frontend is a Cloudflare **Worker** serving static
+> assets, configured by `wrangler.jsonc` at the repo root. This distinction matters:
+> Pages-style dashboard environment variables do not exist here, and the deploy
+> command is `wrangler deploy`, not a git-triggered Pages build. See §3 and §4.
 
 ---
 
 ## 2. Services & Accounts
 
 ### 2.1 GitHub
-- **Account:** mrtomfrank (Tom Frank)
+- **Account:** Tom-Frank-LLC (Tom Frank)
 - **Repo:** `kenworthy-ticketing-build` (public)
 - **Purpose:** Version control and source of truth for all code
-- **Access:** Tom Frank owns the repo. To hand off: transfer repo to client org or add collaborators under Settings → Collaborators.
+- **Branches:** `main` (production), `staging` (integration/testing), plus short-lived `feat/*` and `fix/*` branches
+- **Access:** Tom Frank LLC owns the repo. To hand off: transfer the repo to a client org, or add collaborators under Settings → Collaborators.
 
 ### 2.2 Supabase
+
+There are **two separate Supabase projects** — one per environment. They have
+independent databases, auth users, and edge function secrets. Nothing is shared.
+
+| Environment | Project ref | URL |
+|---|---|---|
+| **Staging** | `rpqzrpboyhshdrfdwayk` | https://rpqzrpboyhshdrfdwayk.supabase.co |
+| **Production** | `vlmslygnimfbamrtwvyo` | https://vlmslygnimfbamrtwvyo.supabase.co |
+
 - **Account:** [Email used to create account — to be filled in]
 - **Organization:** Kenworthy Performing Arts Centre *(to be created)*
-- **Project name:** [To be filled in]
-- **Project ID:** `lbgkfdqjcvjkteecatas`
 - **Dashboard:** https://supabase.com/dashboard
 - **Purpose:** Database, authentication, and backend logic (Edge Functions)
 - **To hand off:** Invite client's email as Organization Owner via Settings → Members, then remove Tom Frank.
-- **⚠️ Never commit:** The service role key (distinct from the anon/publishable key). The anon key is safe for client-side use but the service role key has full database access.
+- **⚠️ Never commit:** The service role key (distinct from the anon/publishable key). The anon key is safe for client-side use; the service role key has full database access and bypasses row-level security.
+- **⚠️ Know which project you're pointed at.** `supabase/config.toml` pins
+  `project_id = "vlmslygnimfbamrtwvyo"` (**production**), and the CLI's link can be
+  moved by any previous `supabase link`. Before any `db push` or `functions deploy`,
+  pass `--project-ref` explicitly rather than trusting the current link — see §5.
 
-### 2.3 Cloudflare Pages
-- **Account:** [Email used — to be filled in]
-- **Project name:** [To be filled in after setup]
+### 2.3 Cloudflare Workers
+- **Account:** A Tom Frank LLC Cloudflare account (the `*.mrtomfrank.workers.dev` subdomain belongs to it)
 - **Dashboard:** https://dash.cloudflare.com
-- **Purpose:** Hosts and deploys the frontend application
-- **To hand off:** Add client's email as Account Member with Admin role via Manage Account → Members, then remove Tom Frank. Or transfer to a new account they own.
+- **Config file:** `wrangler.jsonc` (repo root) — serves the built `./dist` directory, with `not_found_handling: "single-page-application"` so client-side routes resolve
+- **Purpose:** Hosts and serves the frontend application
+
+| Environment | Worker name | Wrangler target |
+|---|---|---|
+| **Production** | `kenworthy-ticketing-build` | `npx wrangler deploy` (top-level config) |
+| **Staging** | `kenworthy-ticketing-staging` | `npx wrangler deploy --env staging` |
+
+- **To hand off:** Add the client's email as an Account Member with Admin role via Manage Account → Members, then remove Tom Frank. Alternatively, transfer the Worker to a Cloudflare account the client owns. Either way the `workers.dev` hostnames change with the account, so plan the custom domain (§7) before the transfer if the URLs need to stay stable.
+- **Custom domain:** Not configured yet. Planned — see §7.
 
 ### 2.4 Square (Payments)
 - **Account:** [Theater's existing Square account]
 - **Developer console:** https://developer.squareup.com
-- **Application name:** [To be created — e.g. "Kenworthy Ticketing"]
-- **Environment:** Sandbox during development; Production for go-live
-- **Purpose:** Payment processing for ticket purchases
+- **Environment:** Currently **sandbox**. Going live is a secret change, not a code change.
+- **Purpose:** Payment processing for tickets, film passes, donations, box-office Terminal, and refunds
+- **How the switch works:** a single `SQUARE_ENV` edge-function secret selects both the Square API host and which credential set is read. Missing or misspelled falls back to sandbox, deliberately. Full secret list and the go-live procedure are in `SQUARE-PAYMENTS.md`.
+- **⚠️ Square credentials are server-side only.** They live as Supabase edge function secrets, never as `VITE_*` build variables — see §3.
 - **To hand off:** The Square developer application should live in the theater's own Square account from the start. Tom Frank works with their credentials.
 
 ---
 
 ## 3. Environment Variables
 
-These variables must be set in **Cloudflare Pages → Settings → Environment Variables**. They are never committed to the repository.
+There are **two distinct kinds**, and they are set in two different places.
 
-| Variable | Where to find it | Environment |
+### 3.1 Frontend (`VITE_*`) — baked in at **build time**
+
+These are read from a local dotfile by Vite when the bundle is built, and are
+compiled into the JavaScript. **The Cloudflare Worker holds none of them**, so
+there is no dashboard where you can change one — changing a value means
+rebuilding and redeploying.
+
+| File | Used by | Committed? |
 |---|---|---|
-| `VITE_SUPABASE_URL` | Supabase dashboard → Project Settings → API | Both |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase dashboard → Project Settings → API (anon key) | Both |
-| `VITE_SQUARE_APP_ID` | Square Developer Console → Credentials | Both |
-| `VITE_SQUARE_ENV` | Set to `sandbox` for staging, `production` for prod | Per environment |
-| `VITE_SQUARE_LOCATION_ID` | Square Developer Console → Locations | Both |
+| `.env.staging` | `npm run build:staging` (`vite build --mode staging`) | No — gitignored |
+| `.env.production` | `npm run build:production` (`vite build --mode production`) | No — gitignored |
 
-> **Note:** Cloudflare Pages supports per-environment variables. Staging and Production can have different values for the same key — use this to keep Square sandbox credentials on staging and live credentials on production.
+| Variable | Where to find it |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase dashboard → Project Settings → API (that environment's project) |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase dashboard → Project Settings → API (anon/publishable key) |
+
+> These two are the only `VITE_*` variables the application code actually reads
+> (`src/integrations/supabase/client.ts`, `src/lib/tickets.ts`,
+> `src/components/admin/labor/PayrollExport.tsx`). The env files also carry
+> `VITE_SUPABASE_PROJECT_ID` and unprefixed `SUPABASE_*` copies, which are
+> inert for the frontend build.
+
+> **⚠️ Never deploy a plain `npm run build`.** With no `--mode`, Vite reads the
+> default `.env`, which points at a retired project. Always
+> `npm run build:staging` or `npm run build:production`.
+
+> **Restoring these files:** they are gitignored, so a fresh clone has neither.
+> Recreate each with the two variables above, taken from the corresponding
+> Supabase project's API settings.
+
+### 3.2 Backend — Supabase **edge function secrets**
+
+Everything that must stay private (Square, Resend, Twilio, Mailchimp, QuickBooks,
+Little Green Light, the service role key) is a secret on the Supabase project,
+set per environment:
+
+```bash
+npx supabase secrets set NAME=value --project-ref <staging-or-production-ref>
+```
+
+Because staging and production are separate projects, **secrets must be set
+twice** — once on each. Setting a secret does not require a redeploy, but a
+function that read a missing secret at boot may need one.
+
+| Group | Secrets | Documented in |
+|---|---|---|
+| Square | `SQUARE_ENV`, `SQUARE_{SANDBOX,PRODUCTION}_{APPLICATION_ID,ACCESS_TOKEN,LOCATION_ID}` (unprefixed names also accepted as a fallback) | `SQUARE-PAYMENTS.md` |
+| Ticket delivery | `RESEND_API_KEY`, `SITE_URL`, `TICKET_FROM_EMAIL`, `TICKET_REPLY_TO`, `TWILIO_*` | `TICKET-DELIVERY.md` |
+| Auth email | `SEND_EMAIL_HOOK_SECRET` | `TICKET-DELIVERY.md` |
+| Marketing / finance | `MAILCHIMP_*`, `QBO_*`, `LGL_API_KEY` | function source in `supabase/functions/` |
+| Supabase-provided | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | injected automatically |
+| Venue | `VENUE_TIME_ZONE` | function source |
 
 ---
 
 ## 4. Deployment
 
-### Branch strategy
-| Branch | Deploys to | Purpose |
+Frontend and backend deploy **separately**. A frontend-only change needs nothing
+from §4.3.
+
+### 4.1 Branch strategy
+
+| Branch | Corresponds to | Purpose |
 |---|---|---|
-| `main` | Production URL | What the public sees. Only merge here when tested. |
-| `staging` | Preview URL | Testing ground. All development work goes here first. |
+| `main` | Production Worker + production Supabase | What the public sees. Only merge here when staging is verified. |
+| `staging` | Staging Worker + staging Supabase | Testing ground. All development work goes here first. |
 
-### Deploy process
-1. Make changes locally on a feature branch
-2. Test locally with `npm run dev`
-3. Run `npm run build` — must pass clean before pushing
-4. Merge to `staging` → Cloudflare auto-deploys to preview URL
-5. Test on the preview URL
-6. Merge `staging` → `main` → Cloudflare auto-deploys to production
+### 4.2 Frontend runbook
 
-### Build settings (Cloudflare Pages)
-| Setting | Value |
-|---|---|
-| Framework preset | Vite |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-| Node version | 20 (set via environment variable `NODE_VERSION=20`) |
+```bash
+# ---- staging ----
+git checkout staging && git merge <feature-branch> && git push origin staging
+npm run build:staging && npx wrangler deploy --env staging
+#   verify: https://kenworthy-ticketing-staging.mrtomfrank.workers.dev
+
+# ---- production (only after staging is verified) ----
+git checkout main && git merge staging && git push origin main
+npm run build:production && npx wrangler deploy
+#   verify: https://kenworthy-ticketing-build.mrtomfrank.workers.dev
+```
+
+Before pushing: `npm run lint` and `npm test` should pass, and the build for the
+target environment must complete clean.
+
+> **⚠️ TODO — unverified: is Cloudflare Workers Builds connected?** If the Worker
+> is connected to the GitHub repo (dashboard → the Worker → **Builds**), the
+> `git push` lines above deploy on their own and the `wrangler deploy` lines are a
+> confirm/fallback. If it is not connected, `wrangler deploy` is the *only* thing
+> that ships code and a push alone changes nothing live. The stale
+> `cloudflare/workers-autoconfig` branch on the remote suggests the connect flow
+> was started at some point, but that is not proof it is still active. **Check the
+> Builds tab and replace this note with the answer** — running `wrangler deploy`
+> explicitly is correct and harmless either way.
+
+### 4.3 Backend runbook (Supabase)
+
+Migrations and edge functions are deployed with the Supabase CLI, always with an
+explicit `--project-ref` (see the warning in §2.2):
+
+```bash
+npx supabase db push --project-ref <ref>
+npx supabase functions deploy <name> --project-ref <ref>
+```
+
+Staging first, production after. Full procedure, including the post-deploy curl
+check that catches a dead function, is in `TICKET-DELIVERY.md`.
 
 ---
 
 ## 5. Database
 
-- **Platform:** Supabase (Postgres)
-- **Schema migrations:** Located in `/supabase/migrations/` in the repo
-- **To apply migrations:** `npx supabase db push` (requires Supabase CLI and project linked)
-- **Backups:** Supabase Pro plan includes daily backups. Confirm plan level before go-live.
+- **Platform:** Supabase (Postgres), one project per environment (§2.2)
+- **Schema migrations:** `/supabase/migrations/` in the repo
+- **To apply migrations:** `npx supabase db push --project-ref <ref>` — never rely on whatever the CLI is currently linked to
+- **Backups:** Supabase Pro plan includes daily backups. Confirm plan level on the production project before go-live.
 
 ### Key tables
-| Table | Purpose |
+
+The schema is larger than this list; these are the ones an operator meets first.
+
+| Area | Tables |
 |---|---|
-| `profiles` | Extended user data (name, role) linked to Supabase auth |
-| `user_roles` | Assigns `admin` or `regular_user` role to each user |
-| `movies` | Film and event listings |
-| `showings` | Scheduled screenings tied to a movie |
-| `seats` | Seat map for assigned-seating showings |
-| `bookings` | Ticket purchase records |
-| `tickets` | Individual tickets with QR code UUIDs |
+| People & access | `profiles`, `user_roles`, `admin_audit_log` |
+| Programming | `movies`, `showings`, `events`, `concerts`, `venues`, `historical_screenings` |
+| Seating & pricing | `seats`, `venue_seats`, `showing_seat_tiers`, `showing_price_tiers`, `production_seat_tiers`, `production_price_tiers` |
+| Sales | `tickets`, `film_pass_types`, `user_film_passes`, `film_pass_redemptions`, `donations` |
+| Concessions & rentals | `concession_menus`, `concession_items`, `concession_sales`, `dvds`, `dvd_rentals`, `rental_requests` |
+| Staff & finance | `labor_settings`, `shift_requests`, `staff_square_links`, `payroll_exports`, `financial_entries`, `chart_of_accounts`, `qbo_connection` |
 
 ### Granting admin access to a new staff member
 1. Have them sign up via the app at `/auth`
-2. Go to Supabase dashboard → Table Editor → `user_roles`
+2. Go to the Supabase dashboard for the right project → Table Editor → `user_roles`
 3. Insert a row: `user_id` = their UUID (found in Authentication → Users), `role` = `admin`
 4. Have them sign out and back in
 
@@ -124,31 +223,40 @@ These variables must be set in **Cloudflare Pages → Settings → Environment V
 
 ## 6. Known Issues & Technical Debt
 
-These are issues identified during the build audit. They should be resolved before go-live.
+**The live list is `TASKS.md`** — it is maintained as work lands and is the
+authoritative record of launch blockers, planned refactors, and backlog. Do not
+track status here; this section only orients a new owner.
 
-| Priority | Issue | Status |
-|---|---|---|
-| 🔴 High | Payment processing is simulated — no real Square integration | Not started |
-| 🔴 High | No email confirmation sent after ticket purchase | Not started |
-| 🟡 Medium | No race condition protection on seat booking (two users could book the same seat simultaneously) | Not started |
-| 🟡 Medium | Tax rate hardcoded as Idaho 6% — confirm correct jurisdiction | Needs client confirmation |
-| 🟡 Medium | Seat map not tied to specific venue/room — single global pool | Not started |
-| 🟢 Low | `lovable-tagger` dev dependency is a Lovable-specific residual | Low risk; harmless in production |
-| 🟢 Low | Only two roles (`admin`, `regular_user`) — no `staff` role for box office without full admin | Not started |
+Standing themes as of August 2026:
+
+| Theme | Where it's tracked |
+|---|---|
+| Square is still on sandbox credentials — the production flip is a secrets change | `SQUARE-PAYMENTS.md`, `TASKS.md` |
+| Ticket email/SMS delivery is built and shipped, but needs `RESEND_API_KEY` set (and Twilio decided) to actually send | `TICKET-DELIVERY.md`, `TASKS.md` |
+| No custom SMTP on either Supabase project for auth email at volume | `TASKS.md` |
+| History page images are Lovable CDN stubs, not real files | `TASKS.md` |
+| Seat-booking race condition; tax jurisdiction confirmation; no `staff` role short of full admin | `TASKS.md` |
+| `lovable-tagger` dev dependency and hardcoded `*.lovable.app` origins in four edge functions are Lovable residuals | `TASKS.md` |
 
 ---
 
 ## 7. Go-Live Checklist
 
 - [ ] Square sandbox testing complete — all purchase flows verified
-- [ ] Square production credentials added to Cloudflare (production environment only)
-- [ ] Email confirmation system live and tested
-- [ ] Custom domain configured in Cloudflare
-- [ ] Supabase project confirmed on paid plan (for backups and scale)
+- [ ] Square production secrets set on the **production** Supabase project and `SQUARE_ENV=production` (see `SQUARE-PAYMENTS.md`)
+- [ ] `RESEND_API_KEY` + `SITE_URL` set on both Supabase projects; confirmation email verified end to end
+- [ ] SMS provider decided (Twilio vs. Mailchimp) and configured, or phone-only purchase disabled
+- [ ] Custom SMTP configured for Supabase auth email
+- [ ] Custom domain — decide the hostname (`kenworthy.org` or a subdomain), add the Worker route and DNS record, then document it in §2.3
+- [ ] Cloudflare Workers Builds status confirmed and §4.2 updated to state it plainly
+- [ ] Production build deployed from `main` with `npm run build:production` (never a bare `npm run build`)
+- [ ] Supabase production project confirmed on a paid plan (backups and scale)
 - [ ] Tax rate confirmed with client
+- [ ] Test/diagnostic purchase data cleaned out of production
 - [ ] Admin accounts created for all staff who need them
 - [ ] Client trained on admin panel
-- [ ] Handoff doc reviewed with client's designated owner
+- [ ] Handoff doc reviewed with the client's designated owner
+- [ ] Ownership transferred: Supabase org, Cloudflare account, GitHub repo, Square app
 - [ ] Tom Frank removed from Supabase org (or role reduced to Member)
 
 ---
@@ -163,5 +271,17 @@ These are issues identified during the build audit. They should be resolved befo
 
 ---
 
-*Last updated: July 2026*
+## 9. Related Documents
+
+| Document | Covers |
+|---|---|
+| `TASKS.md` | Live issue list, refactor log, launch blockers |
+| `SQUARE-PAYMENTS.md` | How money is taken; Square secrets and the sandbox → production flip |
+| `TICKET-DELIVERY.md` | Confirmation email/SMS, the QR ticket page, edge-function deploy runbook |
+| `CONTACTS.md` | Client contact details (private, not in repo) |
+| `briefs/` | Per-feature work briefs, written before implementation |
+
+---
+
+*Last updated: August 12, 2026*
 *Maintained by: Tom Frank*
