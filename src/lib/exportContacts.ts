@@ -18,7 +18,9 @@ export async function exportContactsCsv(productionType: 'event' | 'concert' | 'm
   const { data: tickets } = await supabase
     .from('tickets')
     .select('user_id')
-    .in('showing_id', showingIds);
+    .in('showing_id', showingIds)
+    // Someone whose card was declined is not an attendee.
+    .eq('status', 'confirmed');
 
   if (!tickets || tickets.length === 0) {
     return null;

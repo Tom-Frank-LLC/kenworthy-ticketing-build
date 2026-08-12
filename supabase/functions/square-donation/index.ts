@@ -1,26 +1,20 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-const SQUARE_SANDBOX_BASE = "https://connect.squareupsandbox.com/v2";
+import { corsHeaders } from "../_shared/http.ts";
+import {
+  createPayment,
+  loadSquareConfig,
+  publishableConfig,
+  squareErrorMessage,
+} from "../_shared/square.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const APPLICATION_ID = Deno.env.get("SQUARE_SANDBOX_APPLICATION_ID");
-  const ACCESS_TOKEN = Deno.env.get("SQUARE_SANDBOX_ACCESS_TOKEN");
-  const LOCATION_ID = Deno.env.get("SQUARE_SANDBOX_LOCATION_ID");
-
-  if (!APPLICATION_ID || !ACCESS_TOKEN || !LOCATION_ID) {
-    return json({ error: "Square sandbox credentials not configured" }, 500);
-  }
+  // Sandbox vs production is a secrets decision now, not a code one — the same
+  // resolution every other Square call in this project uses.
+  const square = loadSquareConfig();
 
   let body: Record<string, unknown> = {};
   try {
@@ -33,12 +27,11 @@ Deno.serve(async (req) => {
 
   // Public: return the publishable IDs the browser SDK needs
   if (action === "get_config") {
-    return json({
-      applicationId: APPLICATION_ID,
-      locationId: LOCATION_ID,
-      environment: "sandbox",
-    });
+    if (!square.ok) return json({ error: square.error }, 500);
+    return json(publishableConfig(square.config));
   }
+
+  if (!square.ok) return json({ error: square.error }, 500);
 
   if (action !== "create_payment") {
     return json({ error: `Unknown action: ${action}` }, 400);
@@ -122,42 +115,25 @@ Deno.serve(async (req) => {
     }
     const note = noteParts.join(" — ").slice(0, 500);
 
-    const sqResponse = await fetch(`${SQUARE_SANDBOX_BASE}/payments`, {
-      method: "POST",
-      headers: {
-        "Square-Version": "2024-01-18",
-        Authorization: `Bearer ${ACCESS_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        idempotency_key: idempotencyKey,
-        source_id: sourceId,
-        amount_money: { amount: amountCents, currency: "USD" },
-        location_id: LOCATION_ID,
-        autocomplete: true,
-        reference_id: pending.id.slice(0, 40),
-        note,
-        buyer_email_address: donorEmail,
-        statement_description_identifier: "KENWORTHY",
-      }),
+    const sqResult = await createPayment(square.config, {
+      sourceId,
+      amountCents,
+      idempotencyKey,
+      referenceId: pending.id,
+      note,
+      buyerEmail: donorEmail,
     });
 
-    const sqData = await sqResponse.json();
-
-    if (!sqResponse.ok || !sqData.payment) {
-      console.error("Square payment error:", JSON.stringify(sqData));
+    if (!sqResult.ok || !sqResult.data?.payment) {
+      console.error("Square payment error:", JSON.stringify(sqResult.data));
       await admin
         .from("donations")
         .update({ status: "failed" })
         .eq("id", pending.id);
-      const msg =
-        sqData?.errors?.[0]?.detail ||
-        sqData?.errors?.[0]?.code ||
-        "Card was declined";
-      return json({ error: msg }, 400);
+      return json({ error: squareErrorMessage(sqResult.data) }, 400);
     }
 
-    const payment = sqData.payment;
+    const payment = sqResult.data.payment;
     await admin
       .from("donations")
       .update({

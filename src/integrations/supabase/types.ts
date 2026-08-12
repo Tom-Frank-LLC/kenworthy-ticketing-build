@@ -2020,18 +2020,28 @@ export type Database = {
       }
       tickets: {
         Row: {
+          checkout_idempotency_key: string | null
           comp_recipient_email: string | null
           comp_recipient_name: string | null
+          confirmation_channel: string | null
+          confirmation_error: string | null
+          confirmation_sent_at: string | null
           id: string
           issued_by_user_id: string | null
+          order_token: string
+          payment_error: string | null
           payment_method: string
           price: number
           processing_fee: number
           purchased_at: string
           qr_code: string | null
+          refunded_at: string | null
           scanned_at: string | null
           seat_id: string | null
           showing_id: string
+          square_payment_id: string | null
+          square_receipt_url: string | null
+          square_refund_id: string | null
           status: string
           tax_amount: number
           tax_rate: number
@@ -2040,18 +2050,28 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          checkout_idempotency_key?: string | null
           comp_recipient_email?: string | null
           comp_recipient_name?: string | null
+          confirmation_channel?: string | null
+          confirmation_error?: string | null
+          confirmation_sent_at?: string | null
           id?: string
           issued_by_user_id?: string | null
+          order_token?: string
+          payment_error?: string | null
           payment_method?: string
           price: number
           processing_fee?: number
           purchased_at?: string
           qr_code?: string | null
+          refunded_at?: string | null
           scanned_at?: string | null
           seat_id?: string | null
           showing_id: string
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          square_refund_id?: string | null
           status?: string
           tax_amount: number
           tax_rate?: number
@@ -2060,18 +2080,28 @@ export type Database = {
           user_id: string
         }
         Update: {
+          checkout_idempotency_key?: string | null
           comp_recipient_email?: string | null
           comp_recipient_name?: string | null
+          confirmation_channel?: string | null
+          confirmation_error?: string | null
+          confirmation_sent_at?: string | null
           id?: string
           issued_by_user_id?: string | null
+          order_token?: string
+          payment_error?: string | null
           payment_method?: string
           price?: number
           processing_fee?: number
           purchased_at?: string
           qr_code?: string | null
+          refunded_at?: string | null
           scanned_at?: string | null
           seat_id?: string | null
           showing_id?: string
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          square_refund_id?: string | null
           status?: string
           tax_amount?: number
           tax_rate?: number
@@ -2112,33 +2142,51 @@ export type Database = {
       }
       user_film_passes: {
         Row: {
+          checkout_idempotency_key: string | null
           created_at: string
           expires_at: string | null
           id: string
           pass_type_id: string
           payment_method: string
+          price_paid: number | null
           purchased_at: string
           remaining_balance: number
+          sold_by_user_id: string | null
+          square_payment_id: string | null
+          square_receipt_url: string | null
+          status: string
           user_id: string
         }
         Insert: {
+          checkout_idempotency_key?: string | null
           created_at?: string
           expires_at?: string | null
           id?: string
           pass_type_id: string
           payment_method?: string
+          price_paid?: number | null
           purchased_at?: string
           remaining_balance: number
+          sold_by_user_id?: string | null
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          status?: string
           user_id: string
         }
         Update: {
+          checkout_idempotency_key?: string | null
           created_at?: string
           expires_at?: string | null
           id?: string
           pass_type_id?: string
           payment_method?: string
+          price_paid?: number | null
           purchased_at?: string
           remaining_balance?: number
+          sold_by_user_id?: string | null
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          status?: string
           user_id?: string
         }
         Relationships: [

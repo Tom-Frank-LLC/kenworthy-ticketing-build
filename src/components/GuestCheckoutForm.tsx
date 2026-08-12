@@ -1,21 +1,39 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Check, User, Mail, Phone } from 'lucide-react';
+import { Check, User, Mail, Phone, CreditCard, Loader2 } from 'lucide-react';
+import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 
 interface GuestCheckoutFormProps {
   ticketCount: number;
   total: number;
   purchasing: boolean;
-  onPurchase: (guestInfo: { name: string; email: string; phone: string }) => void;
+  /** Receives the buyer's details plus a single-use Square card token. */
+  onPurchase: (
+    guestInfo: { name: string; email: string; phone: string },
+    sourceId: string,
+  ) => void;
 }
 
+/**
+ * Guest checkout — now with the card step it never had.
+ *
+ * This form used to collect a name and an email and hand back a free ticket:
+ * there was no card field anywhere on it, and the note under the button said
+ * "Simulated checkout — no real charge", which was accurate. The card input
+ * below is Square's own iframe; tokenising is the only thing that leaves it,
+ * and the price is recomputed server-side regardless of what this component
+ * displays.
+ */
 export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }: GuestCheckoutFormProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [tokenizing, setTokenizing] = useState(false);
+  const [cardReady, setCardReady] = useState(false);
+  const cardRef = useRef<SquareCardFormHandle>(null);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -28,10 +46,22 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
-    onPurchase({ name: name.trim(), email: email.trim(), phone: phone.trim() });
+    if (!cardRef.current) return;
+
+    setTokenizing(true);
+    try {
+      const sourceId = await cardRef.current.tokenize();
+      onPurchase({ name: name.trim(), email: email.trim(), phone: phone.trim() }, sourceId);
+    } catch (err) {
+      setErrors({ card: err instanceof Error ? err.message : 'Please check your card details.' });
+    } finally {
+      setTokenizing(false);
+    }
   };
+
+  const busy = purchasing || tokenizing;
 
   return (
     <div className="space-y-3">
@@ -85,17 +115,28 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
         </div>
       </div>
 
+      <div className="border-t border-border pt-3">
+        <p className="text-sm font-medium mb-3 flex items-center gap-1">
+          <CreditCard className="h-4 w-4" /> Payment
+        </p>
+        <SquareCardForm source="ticket-checkout" onReadyChange={setCardReady} />
+        {errors.card && <p className="text-xs text-destructive mt-1">{errors.card}</p>}
+      </div>
+
       <Button
         className="w-full"
         size="lg"
         onClick={handleSubmit}
-        disabled={purchasing}
+        disabled={busy || !cardReady}
       >
-        <Check className="h-4 w-4 mr-1" />
-        {purchasing ? 'Processing...' : `Purchase ${ticketCount} Ticket(s)`}
+        {busy ? (
+          <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Processing…</>
+        ) : (
+          <><Check className="h-4 w-4 mr-1" /> Pay ${total.toFixed(2)} — {ticketCount} Ticket(s)</>
+        )}
       </Button>
       <p className="text-xs text-muted-foreground text-center">
-        Simulated checkout — no real charge
+        Payments are processed securely by Square. Your card details never reach our servers.
       </p>
     </div>
   );

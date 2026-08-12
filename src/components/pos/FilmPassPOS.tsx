@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { CreditCard, DollarSign, Search, ShoppingCart } from 'lucide-react';
 import { PaymentMethodSelector, type PaymentMethod } from './PaymentMethodSelector';
-import { subscribeToMailchimp } from '@/lib/mailchimp';
+import { invokeFunction } from '@/lib/functions';
 
 interface PassType {
   id: string;
@@ -31,6 +31,9 @@ export function FilmPassPOS() {
   const [foundPasses, setFoundPasses] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
 
+  // Reused if the same sale is submitted twice, replaced after a failure.
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
+
   useEffect(() => {
     supabase.from('film_pass_types').select('*').eq('is_active', true).order('price')
       .then(({ data }) => {
@@ -41,63 +44,81 @@ export function FilmPassPOS() {
 
   const selectedType = passTypes.find(t => t.id === selectedTypeId);
 
+  /**
+   * Take a card on the Square Terminal and wait for it to complete.
+   *
+   * Same sequencing as the ticket POS: the pass is not created until Square
+   * says COMPLETED. Returns the Square payment id when there is one, which is
+   * what makes the sale refundable later.
+   */
+  async function collectTerminalPayment(amountCents: number, note: string): Promise<string | null> {
+    const created = await invokeFunction<{
+      simulated?: boolean;
+      checkout?: { id?: string; status?: string };
+    }>('square-terminal', {
+      action: 'create_checkout',
+      amount_cents: amountCents,
+      note,
+      idempotency_key: crypto.randomUUID(),
+    });
+
+    if (created.simulated) return null;
+
+    const checkoutId = created.checkout?.id;
+    if (!checkoutId) throw new Error('The terminal did not start a payment.');
+
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const status = await invokeFunction<{
+        checkout?: { status?: string };
+        payment_id?: string | null;
+      }>('square-terminal', {
+        action: 'get_checkout',
+        checkout_id: checkoutId,
+      });
+      const state = status.checkout?.status;
+      if (state === 'COMPLETED') return status.payment_id ?? null;
+      if (state === 'CANCELED' || state === 'CANCEL_REQUESTED') {
+        throw new Error('Payment was canceled on the terminal.');
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    throw new Error('Payment timed out. Check the terminal.');
+  }
+
   async function handleSell() {
     if (!selectedType) { toast.error('Select a pass type'); return; }
     if (!patronEmail.trim()) { toast.error('Enter patron email'); return; }
 
     setSelling(true);
     try {
-      // Look up user by email via profiles
-      const { data: { users }, error: lookupErr } = await supabase.auth.admin.listUsers();
-      // Since we can't use admin API from client, we look up by email in profiles
-      // Instead, we'll create the pass under the staff user's ID and use the email as a note
-      // Better approach: find user by querying profiles with display_name = email
-      
-      // Actually, let's look up the profile by querying the auth user
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('id, display_name')
-        .eq('display_name', patronEmail.trim())
-        .maybeSingle();
-
-      let userId: string;
-      if (profileData) {
-        userId = profileData.id;
-      } else {
-        // Try with the current staff user as owner (staff selling to walk-in)
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-        // For walk-in sales, we'll use the staff user's ID
-        // In production, you'd create a guest account or lookup by email
-        userId = user.id;
+      // Card first, then the pass — a pass that was never paid for must not
+      // exist. Cash sales are attested by the staff member ringing them up.
+      let squarePaymentId: string | null = null;
+      if (paymentMethod === 'card') {
+        squarePaymentId = await collectTerminalPayment(
+          Math.round(selectedType.price * 100),
+          `${selectedType.name} film pass`,
+        );
       }
 
-      const expiresAt = selectedType.expiration_days
-        ? new Date(Date.now() + selectedType.expiration_days * 86400000).toISOString()
-        : null;
-
-      const { error } = await supabase.from('user_film_passes').insert({
-        user_id: userId,
+      // The pass is created for the *patron*, server-side. It used to be
+      // created under the staff member's own account whenever the patron had no
+      // profile, which handed the balance to the employee.
+      const data = await invokeFunction<{ pass_name: string; balance: number }>('film-pass-checkout', {
+        action: 'staff_sale',
         pass_type_id: selectedType.id,
-        remaining_balance: selectedType.initial_balance,
+        email: patronEmail.trim(),
         payment_method: paymentMethod,
-        expires_at: expiresAt,
+        square_payment_id: squarePaymentId,
+        idempotency_key: idempotencyKeyRef.current,
       });
 
-      if (error) throw error;
-      toast.success(`${selectedType.name} sold! Balance: $${selectedType.initial_balance.toFixed(2)}`);
-      // Fire-and-forget tag on the patron's Mailchimp record.
-      // Called anonymously (staff JWT isn't the patron's) — server forces
-      // 'pending' double opt-in and restricts tags.
-      if (patronEmail.trim().includes('@')) {
-        void subscribeToMailchimp({
-          email: patronEmail.trim(),
-          tags: ['film-pass'],
-          source: 'pos-film-pass',
-        });
-      }
+      toast.success(`${data.pass_name} sold! Balance: $${Number(data.balance).toFixed(2)}`);
+      idempotencyKeyRef.current = crypto.randomUUID();
       setPatronEmail('');
     } catch (err: any) {
+      idempotencyKeyRef.current = crypto.randomUUID();
       toast.error(err.message || 'Failed to sell pass');
     } finally {
       setSelling(false);
@@ -108,37 +129,34 @@ export function FilmPassPOS() {
     if (!lookupEmail.trim()) return;
     setSearching(true);
     try {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, display_name')
-        .ilike('display_name', `%${lookupEmail.trim()}%`);
+      // Resolved server-side against auth.users. The old client-side version
+      // searched profiles.display_name for an email address, which is not where
+      // email is stored — so it found almost nobody.
+      const term = lookupEmail.trim();
+      const data = await invokeFunction<{
+        patron: { user_id: string; display_name: string } | null;
+        passes: {
+          id: string;
+          remaining_balance: number;
+          expires_at: string | null;
+          pass_type_name: string;
+        }[];
+      }>('film-pass-checkout', {
+        action: 'lookup',
+        email: term.includes('@') ? term : undefined,
+        phone: term.includes('@') ? undefined : term,
+      });
 
-      if (!profiles || profiles.length === 0) {
-        setFoundPasses([]);
-        toast.info('No passes found for this email');
-        setSearching(false);
-        return;
-      }
-
-      const userIds = profiles.map(p => p.id);
-      const { data: passes } = await supabase
-        .from('user_film_passes')
-        .select('*, film_pass_types!user_film_passes_pass_type_id_fkey(name)')
-        .in('user_id', userIds)
-        .gt('remaining_balance', 0)
-        .order('purchased_at', { ascending: false });
-
-      setFoundPasses((passes || []).map((p: any) => ({
+      const passes = (data.passes || []).map((p: any) => ({
         ...p,
-        pass_type_name: p.film_pass_types?.name || 'Film Pass',
-        display_name: profiles.find(pr => pr.id === p.user_id)?.display_name || 'Unknown',
-      })));
+        display_name: data.patron?.display_name || term,
+      }));
+      setFoundPasses(passes);
 
-      if (!passes || passes.length === 0) {
-        toast.info('No active passes found');
-      }
+      if (passes.length === 0) toast.info('No active passes found');
     } catch (err: any) {
-      toast.error(err.message);
+      setFoundPasses([]);
+      toast.error(err.message || 'Lookup failed');
     } finally {
       setSearching(false);
     }

@@ -178,7 +178,9 @@ export default function AdminDashboard() {
           .order('id')
           .range(from, to)
       ),
-      fetchAllPages((from, to) => supabase.from('tickets').select('id, showing_id').order('id').range(from, to)),
+      // Sold counts, so unpaid checkout attempts (pending) and declines
+      // (failed) are excluded.
+      fetchAllPages((from, to) => supabase.from('tickets').select('id, showing_id').eq('status', 'confirmed').order('id').range(from, to)),
     ]);
     setMovies(moviesRes);
     setEvents(eventsRes);
