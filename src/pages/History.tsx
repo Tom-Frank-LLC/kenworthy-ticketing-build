@@ -4,6 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Film, Building2, Sparkles, Hammer, Star, Users } from 'lucide-react';
 import { SEO } from '@/components/SEO';
 
+import img1908 from '@/assets/history/Crystal-Theatre-1908.jpg';
+import img1926 from '@/assets/history/Kenworthy-1926.jpg';
 import img1928 from '@/assets/history/kenworthy-1928-facade.jpg';
 import imgAuditorium from '@/assets/history/kenworthy-1926-auditorium.jpg';
 import img1935 from '@/assets/history/kenworthy-circa-1935.jpg';
@@ -46,7 +48,7 @@ const SEED: Milestone[] = [
     title: 'The Crystal Theater opens',
     description:
       "Part of the building at 508 S. Main first operates as The Crystal Theater — Moscow's opera house.",
-    image_url: null,
+    image_url: img1908,
     source_url: KENWORTHY_SOURCE,
   },
   {
@@ -56,7 +58,7 @@ const SEED: Milestone[] = [
     title: 'Milburn Kenworthy buys the theater',
     description:
       'Milburn Kenworthy purchases the theater and gives it the name it still carries a century later.',
-    image_url: null,
+    image_url: img1926,
     source_url: KENWORTHY_SOURCE,
   },
   {
