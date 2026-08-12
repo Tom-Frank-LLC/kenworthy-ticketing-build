@@ -121,6 +121,10 @@ Deno.serve(async (req: Request) => {
   const signedIn = await authenticatedUser(createClient, req);
   let contact: BuyerContact = readContact(body);
   let userId: string;
+  // Whether this purchase silently created an account. The confirmation email
+  // uses it to decide whether to offer a password-set link, so a returning
+  // customer is not told an account was made for them.
+  let accountCreated = false;
 
   if (signedIn) {
     userId = signedIn.id;
@@ -138,7 +142,9 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Sign in to redeem a film pass' }, 401);
     }
     try {
-      userId = await findOrCreateBuyer(admin, contact);
+      const buyer = await findOrCreateBuyer(admin, contact);
+      userId = buyer.userId;
+      accountCreated = buyer.created;
     } catch (err) {
       console.error('[ticket-checkout] buyer resolution failed', err);
       return json({ error: err instanceof Error ? err.message : 'Could not create account' }, 500);
@@ -401,6 +407,7 @@ Deno.serve(async (req: Request) => {
       email: contact.email || undefined,
       phone: contact.phone || undefined,
       name: contact.name || undefined,
+      account_created: accountCreated,
     }),
   }).catch((e) => console.error('[ticket-checkout] confirmation dispatch failed', e));
 
