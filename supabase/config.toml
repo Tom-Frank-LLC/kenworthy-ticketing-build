@@ -2,3 +2,9 @@ project_id = "vlmslygnimfbamrtwvyo"
 
 [functions.mailchimp-webhook]
 verify_jwt = false
+
+# Public: fetched directly by browsers following an emailed/texted ticket link,
+# and by mail-client image proxies loading the QR <img>. Neither can present a
+# JWT. Authorization is the unguessable order_token in the query string.
+[functions.ticket-access]
+verify_jwt = false

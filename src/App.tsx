@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Showing from "./pages/Showing";
 import MyTickets from "./pages/MyTickets";
+import PublicTicket from "./pages/PublicTicket";
 import MyPasses from "./pages/MyPasses";
 import Profile from "./pages/Profile";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -61,6 +62,8 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/showing/:id" element={<Showing />} />
               <Route path="/my-tickets" element={<MyTickets />} />
+              {/* Public ticket link from confirmation email/SMS — no auth. */}
+              <Route path="/t/:token" element={<PublicTicket />} />
               <Route path="/my-passes" element={<MyPasses />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/admin" element={<AdminDashboard />} />

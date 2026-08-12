@@ -139,7 +139,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4. Build ticket rows — pricing is enforced by DB trigger
+    // 4. Build ticket rows — pricing is enforced by DB trigger.
+    // One token for the whole purchase: it addresses this order in the
+    // confirmation email/SMS and on the public ticket page, so a four-ticket
+    // order is one link rather than four.
+    const orderToken = crypto.randomUUID();
+
     const ticketRows = tickets.map((t: any) => ({
       user_id: userId,
       showing_id,
@@ -149,6 +154,7 @@ Deno.serve(async (req) => {
       tax_amount: 0,
       total_price: 0,
       qr_code: crypto.randomUUID(),
+      order_token: orderToken,
       status: "confirmed",
       payment_method: "online",
     }));
@@ -167,6 +173,38 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
+    }
+
+    // Deliver the ticket to the customer — email with QR, or SMS with a link
+    // to the mobile ticket page for phone-only purchases. Fire-and-forget so a
+    // provider outage can never fail a purchase that already succeeded; the
+    // send function records its own failures onto the ticket rows
+    // (confirmation_error) so nothing goes silently undelivered.
+    //
+    // Handed to EdgeRuntime.waitUntil so it survives this response returning.
+    // A bare `void fetch(...)` can be killed when the isolate is torn down
+    // after the response, which would drop the send silently — the exact
+    // failure mode this whole change exists to eliminate.
+    const confirmationSend = fetch(`${SUPABASE_URL}/functions/v1/send-ticket-confirmation`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": Deno.env.get("SUPABASE_ANON_KEY")!,
+        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        order_token: orderToken,
+        email: guest_email || undefined,
+        phone: guest_phone || undefined,
+        name: guest_name,
+      }),
+    }).catch((e) => console.error("[guest-checkout] confirmation dispatch failed", e));
+
+    // @ts-ignore — EdgeRuntime is provided by the Supabase edge runtime and is
+    // absent when running the function under plain Deno.
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(confirmationSend);
     }
 
     // Fire-and-forget Mailchimp sync — guest gets tagged as ticket-buyer and
@@ -236,6 +274,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         user_id: userId,
+        order_token: orderToken,
         tickets: createdTickets,
         message: `${createdTickets.length} ticket(s) purchased successfully`,
       }),

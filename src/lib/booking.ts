@@ -24,6 +24,18 @@ export interface TicketLineItem {
   seatIds?: string[]; // for assigned seating
 }
 
+/**
+ * Token shared by every ticket in one purchase.
+ *
+ * Stands in for the orders table this schema does not have: it is what the
+ * confirmation email/SMS and the public ticket page use to address a whole
+ * order, so a four-ticket purchase is one link rather than four. Random and
+ * unguessable, because holding it is what proves you were sent the ticket.
+ */
+export function newOrderToken(): string {
+  return crypto.randomUUID();
+}
+
 export function buildTicketRows({
   lineItems,
   userId,
@@ -33,6 +45,7 @@ export function buildTicketRows({
   quantity,
   ticketPrice,
   processingFee = 0,
+  orderToken,
 }: {
   lineItems?: TicketLineItem[];
   userId: string;
@@ -46,10 +59,15 @@ export function buildTicketRows({
   // Attributed entirely to the first ticket row so refunds can recover it
   // without needing a separate orders table.
   processingFee?: number;
+  // Groups these rows into one deliverable order. Generated per purchase by
+  // the caller so it can pass the same token to the confirmation sender.
+  orderToken?: string;
 }) {
   const fee = Math.max(0, Math.round((processingFee || 0) * 100) / 100);
+  const token = orderToken || newOrderToken();
   const stamp = (rows: any[]) => {
     if (rows.length > 0 && fee > 0) rows[0].processing_fee = fee;
+    for (const row of rows) row.order_token = token;
     return rows;
   };
   // New tiered path

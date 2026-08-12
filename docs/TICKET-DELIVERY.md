@@ -1,0 +1,304 @@
+# Ticket Delivery — Confirmation Email & SMS
+
+> How a purchased ticket actually reaches the customer. Written while fixing
+> the launch blocker in `docs/briefs/BRIEF-ticket-email.md`, August 11 2026.
+
+---
+
+## What was broken
+
+A live production purchase produced a ticket in the database and nothing else.
+Three separate defects, all of which had to be fixed for a customer to end up
+holding a scannable ticket:
+
+**1. Nothing sent the ticket.** `guest-checkout` created the account, inserted
+the ticket rows, fired a Mailchimp sync, and returned success. The Mailchimp
+calls are marketing list management — tagging the buyer, recording an
+e-commerce order. They do not deliver anything to the customer. There was no
+transactional send at all, so "checkout succeeded" and "the customer has their
+ticket" were unrelated facts.
+
+**2. The signed-in path had the same hole.** The brief framed this as a guest
+checkout problem, but `Showing.tsx`'s `handlePurchase` — the authenticated
+path — inserted tickets client-side and navigated to `/my-tickets` with no send
+either. Fixing only `guest-checkout` would have left every logged-in buyer
+equally undelivered.
+
+**3. The QR code was decorative.** `MyTickets.tsx` rendered an 8×8 grid whose
+cells were coloured from `charCodeAt` of the ticket UUID. It looked like a QR
+code. It could not be scanned, and it encoded nothing. Meanwhile
+`TicketScanner.tsx` scans a real QR and matches the decoded string against
+`tickets.qr_code`. So even a customer who found their way to their tickets had
+nothing usable at the door.
+
+Only the "forgot password" flow worked, which is why a password reset appeared
+to fix things: it let the tester reach `/my-tickets`, where the ticket was
+indeed stored — just not in a form anyone could scan.
+
+**Not broken:** account creation, ticket storage, and pricing were all correct
+throughout. The gap was entirely in delivery.
+
+---
+
+## How it works now
+
+```
+  purchase (guest or signed-in)
+        │
+        │  one order_token stamped on every ticket row in the purchase
+        ▼
+  send-ticket-confirmation          ← fire-and-forget, never blocks a purchase
+        │
+        ├── has email ──►  Resend  ──►  HTML email: a scannable QR per ticket,
+        │                                order summary, link to the ticket page,
+        │                                link to set a password
+        │
+        └── phone only ─►  Twilio  ──►  SMS: title, showtime, seats, and a link
+                                         to the ticket page (an SMS cannot carry
+                                         a scannable QR)
+        │
+        ▼
+  outcome written back to every ticket row
+  (confirmation_sent_at / confirmation_channel / confirmation_error)
+```
+
+### The order token
+
+Tickets have no orders table. A shared random `order_token` per purchase stands
+in for one, so a four-ticket purchase is **one** link rather than four. It is
+also the bearer credential for the public ticket page: RLS never exposes it to
+`anon`, so the only way to hold one is to have been sent it.
+
+This is the same trade every emailed ticket makes — whoever holds the link
+holds the ticket. It is deliberate, and it is what makes phone-only delivery
+possible at all, since those customers have no session and may never create one.
+
+### Pieces
+
+| Piece | Path | Notes |
+|---|---|---|
+| Shared order model | `supabase/functions/_shared/tickets.ts` | Loading, showtime formatting, QR PNG rendering, URL building |
+| Message composition | `supabase/functions/_shared/notify.ts` | Email HTML/text, SMS body, phone normalization — pure, unit-tested |
+| Delivery | `supabase/functions/send-ticket-confirmation/` | Branches email/SMS, records the outcome |
+| Public ticket endpoint | `supabase/functions/ticket-access/` | `?token=` → JSON, `?token=&qr=` → PNG. `verify_jwt = false` |
+| Mobile ticket page | `src/pages/PublicTicket.tsx` (`/t/:token`) | The SMS link destination |
+| Client helpers | `src/lib/tickets.ts` | Order fetch, ticket page path |
+| Schema | `supabase/migrations/20260811120000_ticket_delivery.sql` | `order_token`, `confirmation_*` |
+| Tests | `supabase/functions/_shared/tickets_test.ts` | 19 tests, incl. a QR decode round-trip |
+
+### Design decisions worth knowing
+
+**QR codes are rendered twice, on purpose.** In the app (`MyTickets`,
+`PublicTicket`) they are drawn client-side with `qrcode.react` — instant, and
+still works if the connection drops in the lobby once the page has loaded. For
+**email** there is no JS, so `ticket-access?qr=` serves a real PNG over HTTPS
+with a long cache lifetime. It has to be a hosted URL rather than a `data:`
+URI, because Gmail and Outlook strip `data:` URIs in `<img>`.
+
+Both paths encode the same thing: the exact `tickets.qr_code` string the door
+scanner matches on. `tickets_test.ts` decodes the emailed PNG and asserts it
+comes back byte-identical — "it renders" is not the bar, given the previous
+implementation rendered something that looked like a QR and scanned as nothing.
+
+The raw ticket code is also printed as text under every QR, so a customer with
+images blocked still has something the box office can key in.
+
+**Email wins when a customer gives both email and phone.** The email carries
+the QR inline, so it works at the door with no signal in the lobby. The SMS
+requires loading a page.
+
+**The password link is generated, not emailed by Supabase.**
+`auth.admin.generateLink({ type: 'recovery' })` mints the link without sending
+anything; we deliver it ourselves through Resend. That is what closes the
+"account created silently with no way to reach it" gap **without** waiting on
+the Supabase SMTP setup.
+
+**Sends are fire-and-forget, so failures are recorded, not just logged.** A
+provider outage must never fail a purchase that already succeeded. The flip
+side is that silence is the default failure mode — which is exactly the bug
+this replaces. Every outcome is therefore written to the ticket rows. See
+*Monitoring* below.
+
+**The dispatch is handed to `EdgeRuntime.waitUntil`.** A bare `void fetch(...)`
+in an edge function can be killed when the isolate is torn down after the
+response returns, dropping the send with no trace. `waitUntil` keeps it alive.
+(The pre-existing Mailchimp calls in `guest-checkout` still use the bare form
+and may be losing syncs for the same reason — worth revisiting, but it is a
+marketing sync, not a ticket, so it was left alone here.)
+
+**Phone numbers are normalized before sending.** Checkout collects them as
+typed — `(208) 892-9752`, `208.892.9752`. Twilio only accepts E.164 and
+silently rejects anything else, so `toE164` normalizes and refuses numbers it
+cannot make valid, recording a real reason instead of firing a doomed request.
+
+---
+
+## Setup runbook
+
+Nothing below is done yet — this is what turns the code on. **Staging first,
+verify, then production**, for every step.
+
+### 1. Resend (transactional email)
+
+1. Create the account and add `kenworthy.org` as a sending domain.
+2. Add the DNS records Resend provides (SPF/DKIM, and DMARC if not already
+   present). Deliverability will be poor until these verify.
+3. Create an API key.
+
+The from address is `tickets@kenworthy.org` (decided). It is separate from the
+`events@kenworthy.org` inbox staff read; replies are routed there via
+`reply_to`.
+
+> Until the domain verifies, Resend only delivers to the account owner's own
+> address. That is enough to test the email path end to end.
+
+### 2. Twilio (SMS)
+
+1. Create the account, buy a number with SMS capability.
+2. For US A2P 10DLC, register the brand and campaign — **this takes days to
+   approve**, so start it early. Unregistered traffic gets filtered by carriers.
+3. Collect the Account SID, Auth Token, and either the number or a Messaging
+   Service SID.
+
+### 3. Function secrets
+
+Per project (staging and production separately):
+
+```bash
+supabase secrets set \
+  RESEND_API_KEY=re_xxx \
+  TICKET_FROM_EMAIL='The Kenworthy <tickets@kenworthy.org>' \
+  TICKET_REPLY_TO='events@kenworthy.org' \
+  TWILIO_ACCOUNT_SID=ACxxx \
+  TWILIO_AUTH_TOKEN=xxx \
+  TWILIO_FROM_NUMBER='+1208XXXXXXX' \
+  SITE_URL='https://<this-environment-url>'
+```
+
+| Secret | Required for | If missing |
+|---|---|---|
+| `RESEND_API_KEY` | Email | Email path records `RESEND_API_KEY is not configured`, purchase still succeeds |
+| `TICKET_FROM_EMAIL` | Email | Defaults to `The Kenworthy <tickets@kenworthy.org>` |
+| `TICKET_REPLY_TO` | Email | Defaults to `events@kenworthy.org` |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | SMS | SMS path records a not-configured error |
+| `TWILIO_FROM_NUMBER` *or* `TWILIO_MESSAGING_SERVICE_SID` | SMS | As above. Messaging Service is preferred when present |
+| `SITE_URL` | Both | **Set this per environment.** Defaults to the production URL, so an unset staging value puts production links in staging emails |
+| `VENUE_TIME_ZONE` | Both | Defaults to `America/Los_Angeles` |
+
+### 4. Migration and deploy
+
+```bash
+# staging
+supabase link --project-ref rpqzrpboyhshdrfdwayk
+supabase db push
+supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
+
+# production, only after staging is verified
+supabase link --project-ref vlmslygnimfbamrtwvyo
+supabase db push
+supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
+```
+
+`ticket-access` must deploy with `verify_jwt = false`. That is set in
+`supabase/config.toml`; confirm it took, because the QR images and the ticket
+page are fetched by browsers and mail-client image proxies that cannot present
+a JWT. If they 401, this is why.
+
+Then rebuild and deploy the frontend for the new `/t/:token` route
+(`npm run build:staging` / `npm run build:production`).
+
+### 5. Supabase SMTP (auth emails — still pending Kenworthy)
+
+Separate concern, still blocked on Kenworthy's provider details. It covers
+password resets and magic links, *not* ticket delivery — ticket delivery no
+longer depends on it. Configure under Authentication → SMTP Settings on both
+projects when the details arrive.
+
+The built-in Supabase mailer is rate-limited and unsuitable for production
+volume; this is worth closing before launch even though tickets now route
+around it.
+
+---
+
+## Testing end to end
+
+Run on staging, then repeat on production with a real purchase you then clean
+up.
+
+**Email path**
+1. Buy a ticket as a guest with an email address.
+2. Confirm the browser lands on `/t/<token>` showing the ticket.
+3. Confirm the email arrives with a QR image per ticket.
+4. **Scan the QR out of the email with `/admin/scanner`.** This is the real
+   test — it verifies the QR encodes the value the scanner matches on. A QR
+   that renders but does not scan is precisely the bug that was there before.
+5. Click "Set your password", complete it, confirm `/my-tickets` shows the
+   ticket.
+6. Buy a second time as the same person while signed in; confirm that email
+   arrives too (the authenticated path is a separate code path).
+
+**SMS path**
+1. Buy a ticket as a guest with **only** a phone number.
+2. Confirm the SMS arrives and the link opens `/t/<token>` on the phone.
+3. Scan the QR off the phone screen with the scanner.
+
+**Multi-ticket**
+Buy 3 tickets in one order. Confirm one email/SMS, one link, three distinct
+QRs, and that each scans independently.
+
+**Failure handling**
+Temporarily unset `RESEND_API_KEY` on staging and buy a ticket. The purchase
+must still succeed, and `confirmation_error` must be populated on the ticket
+rows. Silence is the thing being engineered out.
+
+---
+
+## Monitoring
+
+Undelivered tickets are visible in SQL. Worth a look after launch, and a
+candidate for an admin panel later:
+
+```sql
+SELECT order_token,
+       MIN(purchased_at)         AS purchased_at,
+       COUNT(*)                  AS tickets,
+       MAX(confirmation_error)   AS last_error
+  FROM public.tickets
+ WHERE confirmation_sent_at IS NULL
+   AND purchased_at > now() - interval '30 days'
+ GROUP BY order_token
+ ORDER BY purchased_at DESC;
+```
+
+A row lingering here for more than a minute or two means a customer did not get
+their ticket.
+
+**Resending** is a POST to `send-ticket-confirmation` with the order token.
+Repeat sends are refused unless forced, so a retry cannot text someone twice:
+
+```bash
+curl -X POST "$SUPABASE_URL/functions/v1/send-ticket-confirmation" \
+  -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"order_token":"...","force":true}'
+```
+
+It also accepts `email`, `phone`, and `name` overrides, which is how a
+confirmation can be redirected to someone other than the account holder.
+
+---
+
+## Known gaps
+
+- **Comp tickets** issued from `HostDashboard.tsx` do not send a confirmation.
+  They carry `comp_recipient_email`, so they could — wiring is straightforward
+  and was left out as beyond this brief's scope.
+- **Refunds and cancellations** send nothing. Out of scope here.
+- **No admin UI** for undelivered tickets; the SQL above is the current answer.
+- **Legacy tickets** each got their own `order_token` in the backfill rather
+  than being grouped into their original purchases — there was no reliable
+  grouping to recover retroactively. They display and scan correctly; they just
+  are not grouped.
+- **Supabase SMTP** is still unconfigured, so auth emails (password resets not
+  originating from a ticket confirmation) still ride the rate-limited built-in
+  mailer.

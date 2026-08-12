@@ -11,11 +11,12 @@ import { format } from 'date-fns';
 import { Film, Calendar, Clock, DollarSign, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard } from 'lucide-react';
 import { SeatMap } from '@/components/SeatMap';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
-import { type Seat, type PriceTier, TAX_RATE, buildTicketRows, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
+import { type Seat, type PriceTier, TAX_RATE, buildTicketRows, newOrderToken, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, recordMailchimpOrder } from '@/lib/mailchimp';
+import { ticketPagePath } from '@/lib/tickets';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -304,8 +305,18 @@ export default function Showing() {
       if (error) throw new Error(error.message || 'Checkout failed');
       if (data?.error) throw new Error(data.error);
 
-      toast.success(`${ticketCount} ticket(s) purchased! Check your email/phone for your QR code(s).`);
-      navigate('/');
+      toast.success(
+        `${ticketCount} ticket(s) purchased! ${
+          guestInfo.email ? 'Your confirmation is on its way by email.' : 'Your ticket link is on its way by text.'
+        }`,
+      );
+
+      // Land the buyer on their tickets rather than the home page. Delivery is
+      // fire-and-forget, so this is the one moment we can be certain they can
+      // see what they just bought — and it is the answer to "a guest account
+      // was created silently and they have no way to reach it".
+      if (data?.order_token) navigate(ticketPagePath(data.order_token));
+      else navigate('/');
     } catch (err: any) {
       toast.error(err.message || 'Failed to purchase tickets');
     } finally {
@@ -330,6 +341,9 @@ export default function Showing() {
     setPurchasing(true);
     try {
       const paymentMethod = useFilmPass ? 'film_pass' : 'online';
+      // Groups this purchase into one deliverable order, and is the handle the
+      // confirmation email uses to render the QR codes.
+      const orderToken = newOrderToken();
       let ticketRows;
 
       if (hasTiers) {
@@ -360,6 +374,7 @@ export default function Showing() {
             showingId: id!,
             paymentMethod,
             processingFee,
+            orderToken,
           });
         } else {
           const items: TicketLineItem[] = priceTiers
@@ -371,6 +386,7 @@ export default function Showing() {
             showingId: id!,
             paymentMethod,
             processingFee,
+            orderToken,
           });
         }
       } else {
@@ -382,6 +398,7 @@ export default function Showing() {
           ticketPrice: showing.ticket_price,
           paymentMethod,
           processingFee,
+          orderToken,
         });
       }
 
@@ -402,6 +419,16 @@ export default function Showing() {
       }
 
       toast.success(`${ticketCount} ticket(s) ${useFilmPass ? 'redeemed with Film Pass' : 'purchased'}!`);
+
+      // Deliver the tickets. Signed-in buyers were missing this just as guests
+      // were — storing a ticket is not the same as handing it to the customer.
+      // Fire-and-forget: the tickets already exist and are visible in
+      // /my-tickets, so a provider outage must not surface as a failed
+      // purchase. The function records its own failures on the ticket rows.
+      void supabase.functions
+        .invoke('send-ticket-confirmation', { body: { order_token: orderToken } })
+        .catch((e) => console.error('[showing] confirmation dispatch failed', e));
+
       // Fire-and-forget Mailchimp sync (only runs if user has consented)
       try {
         const kind = productionType === 'movie' ? 'Films' : productionType === 'event' ? 'Special Events' : 'Live Performances';

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -123,20 +124,23 @@ export default function MyTickets() {
                         <DialogTitle className="font-display">Digital Ticket</DialogTitle>
                       </DialogHeader>
                       <div className="space-y-4 py-4">
-                        <div className="mx-auto w-48 h-48 bg-foreground rounded-lg flex items-center justify-center p-4">
-                          {/* Simple QR code visualization using the UUID */}
-                          <div className="grid grid-cols-8 gap-0.5 w-full h-full">
-                            {Array.from({ length: 64 }, (_, i) => {
-                              const code = ticket.qr_code || ticket.id;
-                              const hash = code.charCodeAt(i % code.length) + i;
-                              return (
-                                <div
-                                  key={i}
-                                  className={hash % 3 === 0 ? 'bg-background' : 'bg-foreground'}
-                                />
-                              );
-                            })}
-                          </div>
+                        {/* A real, scannable QR encoding the same qr_code the
+                            door scanner matches on. This previously rendered a
+                            decorative grid coloured from charCodeAt of the
+                            ticket UUID — it looked like a QR and encoded
+                            nothing. Rendered client-side: the code is already
+                            loaded, so the ticket draws instantly and still
+                            works if the network drops in the lobby.
+                            Fixed white background — a theme-tinted QR will not
+                            scan. */}
+                        <div className="mx-auto w-48 h-48 bg-white rounded-lg p-3">
+                          <QRCodeSVG
+                            value={ticket.qr_code || ticket.id}
+                            level="M"
+                            marginSize={0}
+                            title="Ticket QR code"
+                            className="w-full h-full block"
+                          />
                         </div>
                         <div className="text-sm space-y-1">
                           <p className="font-bold">{ticket.showing?.title}</p>
