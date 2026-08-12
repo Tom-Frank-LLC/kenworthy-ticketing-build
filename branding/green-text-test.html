@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kenworthy — Green Text Test</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;600&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0F0F0F;color:#F5F1E9;font-family:'Fraunces',serif;padding:32px 24px 70px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto}
+  .eyebrow{font-family:'Fraunces',serif;text-transform:uppercase;color:#D6A94A;letter-spacing:.3em;font-size:12px;margin-bottom:10px}
+  h1{font-family:'Anton',sans-serif;text-transform:uppercase;letter-spacing:.01em;font-size:36px;margin-bottom:8px}
+  .sub{color:#ABA69C;max-width:62ch;margin-bottom:32px;line-height:1.6}
+  h2{font-family:'Anton',sans-serif;text-transform:uppercase;letter-spacing:.02em;font-size:18px;margin:34px 0 14px}
+  .row{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+  .card{border-radius:10px;padding:20px 18px;min-height:150px;display:flex;flex-direction:column;justify-content:space-between;position:relative;border:1px solid rgba(255,255,255,.08)}
+  .card .lab{font-family:'Inter',sans-serif;font-size:12px;font-weight:600;opacity:.9}
+  .card .big{font-family:'Anton',sans-serif;text-transform:uppercase;letter-spacing:.01em;font-size:22px;line-height:1.05;margin:6px 0}
+  .card .bd{font-family:'Fraunces',serif;font-size:15px;line-height:1.45}
+  .card .btn{align-self:flex-start;font-family:'Fraunces',serif;font-size:14px;padding:8px 16px;border-radius:7px;margin-top:10px}
+  .tag{position:absolute;top:12px;right:12px;font-family:'Inter',sans-serif;font-size:10px;font-weight:700;letter-spacing:.03em;padding:3px 7px;border-radius:5px;text-transform:uppercase}
+  .tag.ok{background:rgba(115,169,76,.9);color:#0F0F0F}
+  .tag.bad{background:rgba(220,60,60,.9);color:#fff}
+  .tag.warn{background:rgba(214,169,74,.9);color:#0F0F0F}
+  .meta{font-family:'Inter',monospace;font-size:11px;opacity:.85;margin-top:8px}
+  .note{font-family:'Inter',sans-serif;font-size:13px;color:#ABA69C;background:#171717;border:1px solid #292929;border-radius:8px;padding:14px 16px;margin-top:24px;line-height:1.55}
+  .note b{color:#F5F1E9}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Kenworthy · Green Text Test</div>
+  <h1>White text on green?</h1>
+  <p class="sub">You asked to see Emerald Marquee with white text. Short answer: it fails legibility (2.18:1, below even the 3:1 large-text floor). Here's the direct comparison — and, at the bottom, the darker greens where white text <em>does</em> work, in case that direction appeals.</p>
+
+  <h2>Emerald Marquee #39C68B — three text colors</h2>
+  <div class="row">
+    <div class="card" style="background:#39C68B;color:#FFFFFF">
+      <span class="tag bad">Fails 2.18:1</span>
+      <div><div class="lab" style="color:#FFFFFF">White text</div><div class="big">Get Tickets</div><div class="bd">This vibrates and is hard to read.</div></div>
+      <div class="meta">#FFFFFF on #39C68B</div>
+    </div>
+    <div class="card" style="background:#39C68B;color:#F5F1E9">
+      <span class="tag bad">Fails 1.94:1</span>
+      <div><div class="lab" style="color:#F5F1E9">Cream text</div><div class="big">Get Tickets</div><div class="bd">Even worse than white.</div></div>
+      <div class="meta">#F5F1E9 on #39C68B</div>
+    </div>
+    <div class="card" style="background:#39C68B;color:#0F0F0F">
+      <span class="tag ok">Passes 8.79:1</span>
+      <div><div class="lab" style="color:#0F0F0F">Black text</div><div class="big">Get Tickets</div><div class="bd">Crisp and highly legible.</div></div>
+      <div class="meta">#0F0F0F on #39C68B</div>
+    </div>
+  </div>
+
+  <h2>All the light/mid greens want black text</h2>
+  <div class="row">
+    <div class="card" style="background:#73A94C;color:#0F0F0F"><span class="tag ok">6.9:1</span><div><div class="lab">Antique Green</div><div class="big">Member</div><div class="bd">Black text.</div></div><div class="meta">#73A94C</div></div>
+    <div class="card" style="background:#81AF6A;color:#0F0F0F"><span class="tag ok">7.6:1</span><div><div class="lab">Sage Heritage</div><div class="big">Member</div><div class="bd">Black text.</div></div><div class="meta">#81AF6A</div></div>
+    <div class="card" style="background:#39AC8F;color:#0F0F0F"><span class="tag ok">6.8:1</span><div><div class="lab">Viridian</div><div class="big">Member</div><div class="bd">Black text.</div></div><div class="meta">#39AC8F</div></div>
+  </div>
+
+  <h2>Dark greens — these DO support white text</h2>
+  <div class="row">
+    <div class="card" style="background:#24604A;color:#FFFFFF"><span class="tag ok">White 7.4:1</span><div><div class="lab" style="color:#fff">Forest</div><div class="big">Get Tickets</div><div class="bd">White text reads cleanly.</div></div><button class="btn" style="background:#F5F1E9;color:#24604A">Details</button></div>
+    <div class="card" style="background:#1F5C4C;color:#FFFFFF"><span class="tag ok">White 7.8:1</span><div><div class="lab" style="color:#fff">Pine</div><div class="big">Get Tickets</div><div class="bd">Deep, velvet-curtain green.</div></div><button class="btn" style="background:#F5F1E9;color:#1F5C4C">Details</button></div>
+    <div class="card" style="background:#195738;color:#FFFFFF"><span class="tag ok">White 8.5:1</span><div><div class="lab" style="color:#fff">Bottle</div><div class="big">Get Tickets</div><div class="bd">Richest, most classic.</div></div><button class="btn" style="background:#F5F1E9;color:#195738">Details</button></div>
+  </div>
+
+  <div class="note">
+    <b>The rule underneath this:</b> text color follows the background's <em>lightness</em>, not its hue. The marquee-bright greens (≈50% lightness) are light enough that they need dark text — white on them fails. If the team wants a green that carries <b>white</b> text (to match how the magenta/purple buttons work), it has to be a <b>dark</b> green (≈22–28% lightness) like Forest/Pine/Bottle above. So the real question isn't "white or black text" — it's <b>which green</b>: a bright heritage accent that always pairs with black text, or a deep forest green that pairs with white. Both are valid; they just feel different (bright botanical vs. deep velvet-curtain).
+  </div>
+</div>
+</body>
+</html>
