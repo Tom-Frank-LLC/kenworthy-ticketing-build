@@ -126,6 +126,42 @@ response returns, dropping the send with no trace. `waitUntil` keeps it alive.
 and may be losing syncs for the same reason — worth revisiting, but it is a
 marketing sync, not a ticket, so it was left alone here.)
 
+**Never dispatch delivery over a function-to-function HTTP call.** This one
+cost a full debugging session and produced exactly the failure this feature
+exists to prevent.
+
+`guest-checkout` (and later `ticket-checkout`) used to POST to
+`send-ticket-confirmation` with the anon key in `apikey` and the service-role
+key as a bearer. On 12 Aug 2026 Supabase rotated the auto-injected keys to the
+new format — `SUPABASE_ANON_KEY` became `sb_publishable_…` and
+`SUPABASE_SERVICE_ROLE_KEY` became `sb_secret_…` — and the gateway began
+refusing that pair outright:
+
+```
+401 Conflicting API keys
+"Send the intended sb_ key only in the apikey header."
+```
+
+The request never reached the sibling function. The dispatch is
+fire-and-forget, so nothing ran to record a failure: purchases succeeded, cards
+were charged, `confirmation_error` stayed **null**, and no ticket went out.
+A null error is not the same as no error — it can mean the code never ran.
+
+The sending logic therefore lives in `_shared/deliver.ts` and checkout calls
+`deliverConfirmation()` **in-process**. No gateway, no credential to forward,
+no second cold start on the path that matters. `send-ticket-confirmation`
+remains only as an HTTP endpoint for operator resends.
+
+Two related traps, both hit while diagnosing this:
+
+- `sb_secret_…` is **not** accepted by the Functions gateway at all, in either
+  header. Only the legacy `service_role` JWT and `sb_publishable_` work there.
+- Do **not** authorize a function by string-comparing the bearer against
+  `SUPABASE_SERVICE_ROLE_KEY`. The gateway does not reliably hand the function
+  back the value the caller sent, so genuine service-role calls get refused.
+  Read the `role` claim from the JWT instead — safe to trust, because with
+  `verify_jwt = true` the gateway has already checked the signature.
+
 **Import Supabase via `https://esm.sh/@supabase/supabase-js@2`.** This cost a
 deploy cycle and is worth knowing before writing another edge function.
 
@@ -198,7 +234,8 @@ supabase secrets set \
   TICKET_FROM_EMAIL='The Kenworthy <tickets@kenworthy.org>' \
   TICKET_REPLY_TO='events@kenworthy.org' \
   TWILIO_ACCOUNT_SID=ACxxx \
-  TWILIO_AUTH_TOKEN=xxx \
+  TWILIO_API_KEY_SID=SKxxx \
+  TWILIO_API_KEY_SECRET=xxx \
   TWILIO_FROM_NUMBER='+1208XXXXXXX' \
   SITE_URL='https://<this-environment-url>'
 ```
@@ -208,7 +245,9 @@ supabase secrets set \
 | `RESEND_API_KEY` | Email | Email path records `RESEND_API_KEY is not configured`, purchase still succeeds |
 | `TICKET_FROM_EMAIL` | Email | Defaults to `The Kenworthy <tickets@kenworthy.org>` |
 | `TICKET_REPLY_TO` | Email | Defaults to `events@kenworthy.org` |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | SMS | SMS path records a not-configured error |
+| `TWILIO_ACCOUNT_SID` | SMS | Always required — it identifies the account in the request URL, in both auth modes |
+| `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` | SMS | **Preferred.** Scoped and revocable, so a leak does not expose the master account. The key SID is the Basic Auth *username* and the secret the password; the account SID stays in the URL |
+| `TWILIO_AUTH_TOKEN` | SMS | Fallback when no API key is set. Twilio recommends against it in production |
 | `TWILIO_FROM_NUMBER` *or* `TWILIO_MESSAGING_SERVICE_SID` | SMS | As above. Messaging Service is preferred when present |
 | `SITE_URL` | Both | **Set this per environment.** Defaults to the production URL, so an unset staging value puts production links in staging emails |
 | `VENUE_TIME_ZONE` | Both | Defaults to `America/Los_Angeles` |
@@ -248,16 +287,44 @@ a JWT. If they 401, this is why.
 Then rebuild and deploy the frontend for the new `/t/:token` route
 (`npm run build:staging` / `npm run build:production`).
 
-### 5. Supabase SMTP (auth emails — still pending Kenworthy)
+### 5. Auth emails — Send Email Hook, no SMTP
 
-Separate concern, still blocked on Kenworthy's provider details. It covers
-password resets and magic links, *not* ticket delivery — ticket delivery no
-longer depends on it. Configure under Authentication → SMTP Settings on both
-projects when the details arrive.
+**SMTP is not used anywhere and is not needed.** Auth email goes through
+Resend's API via `send-auth-email`, which implements Supabase's Send Email
+Hook. With the hook enabled, Supabase stops mailing users itself and calls the
+function instead, so password resets, signup confirmations, magic links and
+email changes all route through Resend.
 
-The built-in Supabase mailer is rate-limited and unsuitable for production
-volume; this is worth closing before launch even though tickets now route
-around it.
+Steps, per project (**staging first**):
+
+1. Deploy the function — it must have JWT verification off, which
+   `supabase/config.toml` already sets:
+   ```bash
+   supabase functions deploy send-auth-email --project-ref <ref>
+   ```
+2. Dashboard → **Authentication → Hooks**
+   (direct: `https://supabase.com/dashboard/project/<ref>/auth/hooks`).
+3. Add a **Send Email hook**, hook type **HTTPS**, URL:
+   `https://<ref>.supabase.co/functions/v1/send-auth-email`
+4. Click **Generate Secret**, copy the `v1,whsec_…` value, then **Create**.
+5. Store it immediately:
+   ```bash
+   supabase secrets set SEND_EMAIL_HOOK_SECRET='v1,whsec_…' --project-ref <ref>
+   ```
+6. Test a real password reset from `/auth` before doing the other project.
+
+> ⚠️ Between step 4 and step 5 **all auth email fails**. The function refuses
+> unsigned requests rather than sending them, which is the correct trade — an
+> endpoint that sends password-reset links without checking the signature is an
+> open relay — but it means the gap is real. Have the secret command ready.
+
+The hook contract this function implements: the payload carries `user` and
+`email_data`, and the link is built as
+`${SUPABASE_URL}/auth/v1/verify?token=${token_hash}&type=${email_action_type}&redirect_to=${redirect_to}`.
+An empty 200 means success; anything else surfaces to the user as a failure.
+
+Supabase's built-in mailer is rate-limited and unsuitable for production
+volume, which is the whole reason for routing around it.
 
 ---
 

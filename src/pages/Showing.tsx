@@ -31,6 +31,74 @@ function getProductionMeta(type: ProductionType) {
   }
 }
 
+type Availability = {
+  totalSeats: number;
+  held: number;
+  available: number;
+  takenSeatIds: Set<string>;
+};
+
+/**
+ * How many tickets are left, and which seats are gone.
+ *
+ * This goes through the `showing_availability` RPC instead of querying
+ * `tickets` directly, and that is not a stylistic choice. `tickets` has RLS
+ * with one SELECT policy — `user_id = auth.uid() OR is_admin()` — so for an
+ * anonymous visitor a direct query returns zero rows, always. The page used to
+ * read availability that way, which meant `ticketsSold` was permanently 0 and
+ * `takenSeatIds` permanently empty: the quantity ceiling never engaged, and the
+ * seat map offered seats that were already sold. Verified as the anon role —
+ * `GET /rest/v1/tickets` answers `content-range: */0` on both projects while
+ * showings returns 34 rows. The RPC is SECURITY DEFINER and returns only
+ * aggregates and seat ids, no buyer or price data.
+ *
+ * `held` counts unpaid `pending` rows still inside their hold window, matching
+ * what the server counts when it decides whether an order fits. Counting only
+ * confirmed rows here would advertise seats checkout is about to refuse.
+ */
+async function fetchAvailability(showingId: string): Promise<Availability | null> {
+  const { data, error } = await supabase
+    .rpc('showing_availability', { p_showing_id: showingId })
+    .maybeSingle();
+
+  if (error || !data) {
+    console.error('[Showing] availability lookup failed', error);
+    return null;
+  }
+
+  return {
+    totalSeats: data.total_seats ?? 0,
+    held: data.held ?? 0,
+    available: data.available ?? 0,
+    takenSeatIds: new Set<string>(data.taken_seat_ids ?? []),
+  };
+}
+
+/**
+ * Shown in place of the ticket picker once there is nothing left to pick.
+ *
+ * The reopening note is not a hedge: checkout writes rows as pending before
+ * charging, and an abandoned pending row stops holding its seat after
+ * ticket_hold_window(), so capacity genuinely can come back.
+ */
+function SoldOutNotice({ assigned }: { assigned: boolean }) {
+  return (
+    <div
+      role="status"
+      className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-center"
+    >
+      <p className="font-display text-base font-semibold text-destructive">Sold Out</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {assigned
+          ? 'Every seat for this showing has been taken.'
+          : 'All tickets for this showing have been sold.'}{' '}
+        Seats occasionally reopen when an unfinished checkout expires, so it is worth checking back —
+        or ask the box office about availability.
+      </p>
+    </div>
+  );
+}
+
 export default function Showing() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -68,7 +136,15 @@ export default function Showing() {
   const hasTiers = priceTiers.length > 0;
   const isAssignedSeating = showing?.requires_seat_selection;
   const totalSeats = showing?.total_seats || 200;
-  const gaAvailable = totalSeats - ticketsSold;
+  const gaAvailable = Math.max(0, totalSeats - ticketsSold);
+
+  // Sold out is a different question for each seating model: general admission
+  // runs out of capacity, assigned seating runs out of unclaimed seats. Guard on
+  // seats.length so an assigned showing whose seat map has not loaded yet does
+  // not read as sold out for a moment.
+  const soldOut = isAssignedSeating
+    ? seats.length > 0 && seats.every(s => takenSeatIds.has(s.id))
+    : gaAvailable <= 0;
 
   useEffect(() => {
     async function load() {
@@ -119,16 +195,19 @@ export default function Showing() {
         : Promise.resolve({ data: null });
 
       if (s.requires_seat_selection) {
-        const [prodRes, venueRes, seatsRes, ticketsRes] = await Promise.all([
+        const [prodRes, venueRes, seatsRes, availability] = await Promise.all([
           productionPromise,
           venuePromise,
           supabase.from('seats').select('*').order('seat_row').order('seat_number'),
-          supabase.from('tickets').select('seat_id').eq('showing_id', id).eq('status', 'confirmed'),
+          fetchAvailability(id),
         ]);
         setProduction(prodRes.data);
         setVenue(venueRes.data);
         setSeats(seatsRes.data || []);
-        setTakenSeatIds(new Set((ticketsRes.data || []).map(t => t.seat_id)));
+        if (availability) {
+          setTakenSeatIds(availability.takenSeatIds);
+          setTicketsSold(availability.held);
+        }
 
         // Resolve per-seat tier mapping. showing_seat_tiers links venue_seats
         // to showing_price_tiers. The customer seat picker uses the global
@@ -164,14 +243,14 @@ export default function Showing() {
           setSeatTierMap(map);
         }
       } else {
-        const [prodRes, venueRes, ticketsRes] = await Promise.all([
+        const [prodRes, venueRes, availability] = await Promise.all([
           productionPromise,
           venuePromise,
-          supabase.from('tickets').select('id', { count: 'exact' }).eq('showing_id', id).eq('status', 'confirmed'),
+          fetchAvailability(id),
         ]);
         setProduction(prodRes.data);
         setVenue(venueRes.data);
-        setTicketsSold(ticketsRes.count || 0);
+        if (availability) setTicketsSold(availability.held);
       }
       setLoading(false);
     }
@@ -365,6 +444,38 @@ export default function Showing() {
       // A failed attempt must not reuse its key.
       idempotencyKeyRef.current = crypto.randomUUID();
       toast.error(err.message || 'Failed to purchase tickets');
+
+      // Every rejection on availability grounds — a seat taken a moment ago, or
+      // the last tickets going to someone else — means this page is now showing
+      // stale availability. Re-read it so the seat map greys out the seat that
+      // was just lost and the quantity ceiling drops, instead of leaving the
+      // buyer to retry the identical order and be refused identically.
+      const availability = await fetchAvailability(id!);
+      if (availability) {
+        setTakenSeatIds(availability.takenSeatIds);
+        setTicketsSold(availability.held);
+        setSelectedSeats(prev => {
+          const next = new Set(prev);
+          for (const seatId of prev) {
+            if (availability.takenSeatIds.has(seatId)) next.delete(seatId);
+          }
+          return next;
+        });
+        setGaQuantity(q => Math.min(q, availability.available));
+        setTierQuantities(prev => {
+          // Trim the tier spread down to what is actually left, largest tiers
+          // first, so the running total can never exceed the new ceiling.
+          let budget = availability.available;
+          const next: Record<string, number> = {};
+          for (const tier of priceTiers) {
+            const want = prev[tier.id] || 0;
+            const give = Math.min(want, budget);
+            next[tier.id] = give;
+            budget -= give;
+          }
+          return next;
+        });
+      }
     } finally {
       setPurchasing(false);
     }
@@ -487,6 +598,11 @@ export default function Showing() {
               <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full font-medium">
                 {meta.label}
               </span>
+              {soldOut && (
+                <span className="text-xs bg-destructive/15 text-destructive px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
+                  Sold Out
+                </span>
+              )}
             </div>
             <ProductionMetaBadges
               rating={production?.rating}
@@ -554,7 +670,10 @@ export default function Showing() {
                 <CardHeader>
                   <CardTitle className="font-display text-lg">Select Your Seats</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
+                  {/* The map stays visible when full: seeing every seat greyed
+                      out explains the state better than hiding it does. */}
+                  {soldOut && <SoldOutNotice assigned />}
                   <SeatMap
                     seats={seats}
                     takenSeatIds={takenSeatIds}
@@ -579,7 +698,9 @@ export default function Showing() {
                 <p className="text-sm text-muted-foreground">
                   This is a general admission event — seating is first-come, first-served.
                 </p>
-                {hasTiers ? (
+                {soldOut ? (
+                  <SoldOutNotice assigned={false} />
+                ) : hasTiers ? (
                   <div className="space-y-3">
                     {priceTiers.map(tier => (
                       <div key={tier.id} className="flex items-center justify-between p-4 rounded-lg bg-secondary/50">
@@ -629,7 +750,9 @@ export default function Showing() {
               <CardTitle className="font-display text-lg">Order Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {ticketCount === 0 ? (
+              {soldOut ? (
+                <SoldOutNotice assigned={!!isAssignedSeating} />
+              ) : ticketCount === 0 ? (
                 <p className="text-muted-foreground text-sm">
                   {isAssignedSeating ? 'Select seats to continue' : 'Add tickets to continue'}
                 </p>
@@ -802,7 +925,7 @@ export default function Showing() {
       {/* Mobile order bar. On phones the summary column stacks below the seat
           map, so the running total and the way to checkout would otherwise be
           a full screen of scrolling away from the seat the buyer just tapped. */}
-      {ticketCount > 0 && (
+      {ticketCount > 0 && !soldOut && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-accent/20 glass px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div className="min-w-0">

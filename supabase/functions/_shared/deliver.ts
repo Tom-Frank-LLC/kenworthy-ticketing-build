@@ -42,6 +42,10 @@ const TICKET_REPLY_TO = Deno.env.get('TICKET_REPLY_TO') || 'events@kenworthy.org
 
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') || '';
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') || '';
+// Twilio's preferred credential: scoped and revocable, so a leak does not
+// expose the master account the way the auth token does.
+const TWILIO_API_KEY_SID = Deno.env.get('TWILIO_API_KEY_SID') || '';
+const TWILIO_API_KEY_SECRET = Deno.env.get('TWILIO_API_KEY_SECRET') || '';
 const TWILIO_FROM_NUMBER = Deno.env.get('TWILIO_FROM_NUMBER') || '';
 const TWILIO_MESSAGING_SERVICE_SID = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || '';
 
@@ -76,10 +80,57 @@ async function sendViaResend(
   return { ok: true };
 }
 
-async function sendViaTwilio(to: string, body: string): Promise<SendResult> {
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
-    return { ok: false, error: 'TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN are not configured' };
+/**
+ * Pick the Basic Auth pair for Twilio.
+ *
+ * An API key is username = key SID (SK…), password = key secret. The account
+ * SID stays in the URL path either way — it identifies the account, it is not
+ * the credential. Missing that distinction is the usual way an API key setup
+ * fails, so account SID is required in both modes.
+ *
+ * Falls back to the account SID + auth token pair when no API key is set.
+ */
+export function twilioAuth(env: {
+  accountSid: string;
+  authToken: string;
+  apiKeySid: string;
+  apiKeySecret: string;
+}): { ok: true; header: string; mode: 'api_key' | 'auth_token' } | { ok: false; error: string } {
+  if (!env.accountSid) {
+    return { ok: false, error: 'TWILIO_ACCOUNT_SID is not configured' };
   }
+  if (env.apiKeySid) {
+    if (!env.apiKeySecret) {
+      return { ok: false, error: 'TWILIO_API_KEY_SID is set but TWILIO_API_KEY_SECRET is missing' };
+    }
+    return {
+      ok: true,
+      mode: 'api_key',
+      header: `Basic ${btoa(`${env.apiKeySid}:${env.apiKeySecret}`)}`,
+    };
+  }
+  if (!env.authToken) {
+    return {
+      ok: false,
+      error: 'Configure TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET (preferred), or TWILIO_AUTH_TOKEN',
+    };
+  }
+  return {
+    ok: true,
+    mode: 'auth_token',
+    header: `Basic ${btoa(`${env.accountSid}:${env.authToken}`)}`,
+  };
+}
+
+async function sendViaTwilio(to: string, body: string): Promise<SendResult> {
+  const auth = twilioAuth({
+    accountSid: TWILIO_ACCOUNT_SID,
+    authToken: TWILIO_AUTH_TOKEN,
+    apiKeySid: TWILIO_API_KEY_SID,
+    apiKeySecret: TWILIO_API_KEY_SECRET,
+  });
+  if (!auth.ok) return { ok: false, error: auth.error };
+
   if (!TWILIO_FROM_NUMBER && !TWILIO_MESSAGING_SERVICE_SID) {
     return { ok: false, error: 'TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID must be set' };
   }
@@ -94,7 +145,7 @@ async function sendViaTwilio(to: string, body: string): Promise<SendResult> {
     {
       method: 'POST',
       headers: {
-        Authorization: `Basic ${btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`)}`,
+        Authorization: auth.header,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: form,
@@ -102,7 +153,7 @@ async function sendViaTwilio(to: string, body: string): Promise<SendResult> {
   );
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    return { ok: false, error: `Twilio ${res.status}: ${detail.slice(0, 400)}` };
+    return { ok: false, error: `Twilio ${res.status} (${auth.mode}): ${detail.slice(0, 400)}` };
   }
   return { ok: true };
 }
