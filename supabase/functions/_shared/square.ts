@@ -14,6 +14,20 @@
 //
 // Defaulting to sandbox is deliberate: a missing or misspelled SQUARE_ENV must
 // never silently start charging real cards.
+//
+// Each credential falls back to an unprefixed name — SQUARE_APPLICATION_ID,
+// SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID — because that is how both Supabase
+// projects are actually configured: one credential set whose *values* are
+// swapped at go-live, rather than two sets selected by a flag. (Staging is a
+// mixture: SQUARE_APPLICATION_ID alongside SQUARE_SANDBOX_ACCESS_TOKEN and
+// SQUARE_SANDBOX_LOCATION_ID.) The prefixed names win where they exist, so a
+// project can hold both sets and flip with SQUARE_ENV alone; the fallback is
+// what lets everything else keep working untouched.
+//
+// Note the consequence when going live: if SQUARE_ENV=production is set but no
+// SQUARE_PRODUCTION_* secrets exist, the unprefixed values are used against the
+// live API host. Sandbox credentials there are rejected by Square, so this
+// fails loudly at the card form — it cannot quietly charge the wrong account.
 
 // Deno globals
 declare const Deno: any;
@@ -65,20 +79,26 @@ export function loadSquareConfig():
   const environment = squareEnvironment();
   const prefix = CREDENTIAL_PREFIX[environment];
 
-  const applicationId = Deno.env.get(`${prefix}_APPLICATION_ID`);
-  const accessToken = Deno.env.get(`${prefix}_ACCESS_TOKEN`);
-  const locationId = Deno.env.get(`${prefix}_LOCATION_ID`);
+  /** Env-prefixed name if set, else the unprefixed one this project uses. */
+  const credential = (suffix: string) =>
+    Deno.env.get(`${prefix}_${suffix}`) || Deno.env.get(`SQUARE_${suffix}`);
+
+  const applicationId = credential('APPLICATION_ID');
+  const accessToken = credential('ACCESS_TOKEN');
+  const locationId = credential('LOCATION_ID');
 
   const missing = [
-    !applicationId && `${prefix}_APPLICATION_ID`,
-    !accessToken && `${prefix}_ACCESS_TOKEN`,
-    !locationId && `${prefix}_LOCATION_ID`,
-  ].filter(Boolean);
+    !applicationId && 'APPLICATION_ID',
+    !accessToken && 'ACCESS_TOKEN',
+    !locationId && 'LOCATION_ID',
+  ].filter(Boolean) as string[];
 
   if (missing.length > 0) {
+    // Name both accepted spellings, so the fix is obvious from the error alone.
+    const names = missing.map((s) => `${prefix}_${s} (or SQUARE_${s})`).join(', ');
     return {
       ok: false,
-      error: `Square ${environment} credentials not configured: ${missing.join(', ')} not set`,
+      error: `Square ${environment} credentials not configured: ${names} not set`,
     };
   }
 
