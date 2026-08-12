@@ -87,13 +87,18 @@ export async function findUserByContact(
  * Resolve the buyer for a guest purchase: match an existing account, or create
  * one. The password is random and never disclosed — the customer claims the
  * account through the password-set link in their confirmation email.
+ *
+ * `created` says whether this call actually made the account. The confirmation
+ * email needs it: it should offer "set your password" to someone who has just
+ * had an account made for them silently, and must not tell a returning
+ * customer that an account was created for them when it wasn't.
  */
 export async function findOrCreateBuyer(
   admin: any,
   contact: BuyerContact,
-): Promise<string> {
+): Promise<{ userId: string; created: boolean }> {
   const existing = await findUserByContact(admin, contact.email, contact.phone);
-  if (existing) return existing;
+  if (existing) return { userId: existing, created: false };
 
   const createPayload: Record<string, unknown> = {
     password: crypto.randomUUID() + 'Aa1!',
@@ -113,7 +118,7 @@ export async function findOrCreateBuyer(
     await admin.from('profiles').update({ phone: contact.phone }).eq('id', newUser.user.id);
   }
 
-  return newUser.user.id;
+  return { userId: newUser.user.id, created: true };
 }
 
 /** Normalise and validate the contact block from a request body. */

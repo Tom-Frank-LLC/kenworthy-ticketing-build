@@ -181,7 +181,7 @@ Deno.serve(async (req: Request) => {
       // The pass belongs to the patron. Always. This is the mis-assignment fix:
       // if no account matches, one is created for them rather than falling back
       // to the staff member's own id.
-      userId = await findOrCreateBuyer(admin, contact);
+      userId = (await findOrCreateBuyer(admin, contact)).userId;
     } catch (err) {
       console.error('[film-pass-checkout] patron resolution failed', err);
       return json({ error: err instanceof Error ? err.message : 'Could not create account' }, 500);
