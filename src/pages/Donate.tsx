@@ -293,7 +293,7 @@ export default function Donate() {
             <Label className="font-display uppercase text-xs tracking-[0.2em] text-accent mb-3 block">
               Payment Card
             </Label>
-            <SquareCardForm source="square-donation" onReadyChange={setCardReady} />
+            <SquareCardForm ref={cardRef} source="square-donation" onReadyChange={setCardReady} />
           </div>
 
           <Button

@@ -48,7 +48,13 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
 
   const handleSubmit = async () => {
     if (!validate()) return;
-    if (!cardRef.current) return;
+    if (!cardRef.current) {
+      // Never fail silently here. This guard was a bare `return`, and when the
+      // card form's ref was left unwired the button did nothing at all — no
+      // error, no spinner, no clue.
+      setErrors({ card: 'The card form is not ready yet. Give it a moment, or reload the page.' });
+      return;
+    }
 
     setTokenizing(true);
     try {
@@ -119,7 +125,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
         <p className="text-sm font-medium mb-3 flex items-center gap-1">
           <CreditCard className="h-4 w-4" /> Payment
         </p>
-        <SquareCardForm source="ticket-checkout" onReadyChange={setCardReady} />
+        <SquareCardForm ref={cardRef} source="ticket-checkout" onReadyChange={setCardReady} />
         {errors.card && <p className="text-xs text-destructive mt-1">{errors.card}</p>}
       </div>
 

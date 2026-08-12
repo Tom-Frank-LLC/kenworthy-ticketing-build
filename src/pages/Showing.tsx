@@ -753,7 +753,7 @@ export default function Showing() {
                           <p className="text-sm font-medium mb-3 flex items-center gap-1">
                             <CreditCard className="h-4 w-4" /> Payment
                           </p>
-                          <SquareCardForm source="ticket-checkout" onReadyChange={setCardReady} />
+                          <SquareCardForm ref={cardRef} source="ticket-checkout" onReadyChange={setCardReady} />
                         </div>
                       )}
                       <Button
