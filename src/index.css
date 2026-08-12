@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    /* Kenworthy palette: deep marquee black, magenta gel light, century gold,
+    /* Kenworthy palette: deep marquee black, amethyst, century gold,
        paper-program cream. Pulled from kenworthy.org and the building's
        neon marquee. */
     --background: 0 0% 6%;
@@ -18,9 +18,9 @@
     --popover: 0 0% 9%;
     --popover-foreground: 38 30% 94%;
 
-    /* Magenta — neon marquee tubing, matches the .org Donate button */
-    --primary: 333 78% 52%;
-    --primary-foreground: 38 30% 96%;
+    /* Amethyst — primary action (replaced neon magenta for readability against black) */
+    --primary: 278 58% 64%;
+    --primary-foreground: 0 0% 6%;
 
     --secondary: 0 0% 14%;
     --secondary-foreground: 38 30% 94%;
@@ -41,7 +41,7 @@
 
     --border: 0 0% 16%;
     --input: 0 0% 16%;
-    --ring: 333 78% 52%;
+    --ring: 278 58% 64%;
 
     --radius: 0.5rem;
 
