@@ -16,13 +16,22 @@ The 10 archival photos in `src/assets/history/*.jpg.asset.json` are **Lovable CD
 ### 🔴 Ticket delivery — confirmation email + SMS (see `BRIEF-ticket-email.md`)
 `guest-checkout` never delivers the ticket. It creates the account and stores the ticket, then only fires Mailchimp *marketing* sync — no transactional confirmation. Confirmed via prod test: email purchase → nothing; phone purchase → nothing; account created silently.
 Required: transactional email (likely Resend) with QR; **SMS delivery for phone purchases** (Twilio vs. Mailchimp SMS — see decision note below); account-access path for guest-created accounts; custom SMTP on both Supabase projects for auth email at scale; a public mobile-friendly QR ticket page for the SMS link.
-**In progress:** Claude Code is building the `ticket-access` edge function, `src/lib/tickets.ts`, `_shared/tickets.ts` (server-side QR PNG for email), and the `/t/:token` public ticket page. Not yet committed as of this writing.
-Cleanup: remove test purchase data created in production during diagnosis.
+**Shipped to production 2026-08-11** (`a72aabe`, `23d6bd3`) — full write-up, setup runbook and test plan in `docs/TICKET-DELIVERY.md`.
+Live on prod: migration applied (`order_token` + `confirmation_*` on `tickets`); `ticket-access` and `send-ticket-confirmation` deployed; `guest-checkout` redeployed. Verified end to end against prod — the deployed endpoint serves the ticket page unauthenticated, 404s unknown and cross-order tokens, and the PNG it returns decodes back to the exact `tickets.qr_code` the door scanner matches.
+Also fixed, not in the brief: the **signed-in** checkout path had the same no-delivery gap, and the My Tickets "QR code" was decorative — a grid coloured from `charCodeAt` of the ticket UUID, which could never scan. Both now issue real QRs.
+**Remaining:** set `RESEND_API_KEY` (+ `SITE_URL`) as edge function secrets — until then email records `confirmation_error` and purchases still succeed. Twilio not set up yet, so phone-only purchases still have no delivery path. Scanning and QR issuing are testable now without either.
+**Note on the SMS decision below:** the code is written against Twilio, behind `TWILIO_*` secrets. If Colin's answer points to Mailchimp SMS instead, only the `sendViaTwilio` function in `send-ticket-confirmation` changes — the branching, ticket page and QR work are provider-agnostic.
+Cleanup: remove test purchase data created in production during diagnosis — reviewed script ready at `supabase/scripts/cleanup_test_purchases.sql` (read-only inspection first, DELETEs commented out). Prod currently holds 2 such tickets.
 
 **SMS provider decision (pending Colin):** Mailchimp now offers transactional SMS, but it requires an existing paid SMS marketing plan and shares SMS credits between marketing and transactional (a marketing blast could starve ticket delivery). Twilio is purpose-built, isolates ticket delivery from marketing volume, cheaper to start. **Decision hinges on one question for Colin: does Kenworthy's Mailchimp plan already include SMS credits?** If yes → Mailchimp SMS is the pragmatic consolidation. If no → Twilio.
 
 ### 🔴 SMTP for Supabase auth emails
 No custom SMTP configured on either project. Password resets currently squeak through Supabase's rate-limited built-in service; won't hold at production volume. Awaiting Kenworthy's email provider details.
+**Scope reduced:** ticket delivery no longer depends on this. The "set your password" link in the confirmation email is generated with `generateLink({type:'recovery'})` and sent by us via Resend, so guest account access works without SMTP. This now covers only auth-initiated email — password resets started from the login page, and magic links.
+
+### 🔴 `sign-contract` is boot-erroring in production
+Found while deploying ticket delivery on 2026-08-11: `POST /functions/v1/sign-contract` returns `BOOT_ERROR` (503) on prod, so **rental contract signing is broken**. Cause is the `npm:` import specifier form, which fails to start in the Supabase edge runtime; `npm:@supabase/supabase-js@2/cors` is the specific offender. Fix is to change its three imports to `https://esm.sh/...`, matching `guest-checkout`. Untested locally means untested — `deno check`/`deno test` pass fine with `npm:`, the failure only appears once deployed.
+**Related:** `mailchimp-subscribe`, `mailchimp-ecommerce`, `qbo-sync` and `lgl-sync-donation` are **not deployed to production at all** (404). `guest-checkout` calls the two Mailchimp functions fire-and-forget, so ticket-buyer tagging and e-commerce sync have been silently no-ops on prod.
 
 ### 🔴 Finish poster migration to production
 Staging poster migration is progressing (~200/click due to Edge Function timeout). Production not yet run. Click "Run re-fetch" on each site's Superadmin page until `total: 0`. Confirm with:
