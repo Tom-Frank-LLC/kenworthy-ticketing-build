@@ -17,8 +17,8 @@
 //
 // Requires verify_jwt = false (see supabase/config.toml).
 
-import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
 import { loadOrder, renderQrPng, type Order } from '../_shared/tickets.ts';
 
 // Deno globals

@@ -8,7 +8,15 @@
 // Deno globals
 declare const Deno: any;
 
-import QRCode from 'npm:qrcode@1.5.4';
+// qrcode-generator is pure JavaScript with zero dependencies: it produces the
+// module matrix and nothing else.
+//
+// The obvious choice, `npm:qrcode`, cannot be used here. It works under local
+// Deno but fails to boot in the Supabase edge runtime, because it pulls in
+// pngjs, which needs node streams and zlib. PNG encoding is therefore done
+// below against Web APIs only (CompressionStream), which the edge runtime does
+// support.
+import qrcodeGenerator from 'https://esm.sh/qrcode-generator@1.4.4';
 
 // The Kenworthy is in Moscow, Idaho — Pacific time. Showtimes are stored as
 // timestamptz, so they must be rendered in the venue's zone, not the server's
@@ -131,22 +139,115 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
   };
 }
 
+// --- Minimal PNG encoder ----------------------------------------------------
+//
+// Only what a QR needs: 8-bit greyscale, no interlacing, no palette. Written
+// against Web APIs so it runs in the edge runtime (see the import note above).
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes: Uint8Array): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const typeBytes = new Uint8Array([...type].map((ch) => ch.charCodeAt(0)));
+  const body = new Uint8Array(typeBytes.length + data.length);
+  body.set(typeBytes, 0);
+  body.set(data, typeBytes.length);
+
+  const out = new Uint8Array(4 + body.length + 4);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  out.set(body, 4);
+  view.setUint32(4 + body.length, crc32(body));
+  return out;
+}
+
+/** zlib-wrapped deflate, which is exactly what a PNG IDAT expects. */
+async function zlibDeflate(input: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([input as BlobPart]).stream().pipeThrough(new CompressionStream('deflate'));
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
 /**
  * PNG QR encoding the ticket's qr_code value — the exact string the door
  * scanner matches against `tickets.qr_code`.
  *
- * Copied into a plain Uint8Array because `toBuffer` hands back a Node Buffer,
- * whose ArrayBufferLike backing is not accepted as a Response BodyInit.
+ * Used for the confirmation email, where no JavaScript can run. The app pages
+ * render their QR client-side with qrcode.react instead.
  */
-export async function renderQrPng(value: string): Promise<Uint8Array<ArrayBuffer>> {
-  const buf = await QRCode.toBuffer(value, {
-    type: 'png',
-    errorCorrectionLevel: 'M',
-    margin: 2,
-    scale: 8,
-    color: { dark: '#000000ff', light: '#ffffffff' },
-  });
-  return new Uint8Array(buf);
+export async function renderQrPng(
+  value: string,
+  opts: { scale?: number; margin?: number } = {},
+): Promise<Uint8Array<ArrayBuffer>> {
+  const scale = opts.scale ?? 8;
+  const margin = opts.margin ?? 2;
+
+  // typeNumber 0 = pick the smallest version that fits; 'M' error correction
+  // tolerates ~15% damage, which covers a creased printout or a smudged phone
+  // screen without inflating the module count.
+  const qr = qrcodeGenerator(0, 'M');
+  qr.addData(value);
+  qr.make();
+
+  const modules = qr.getModuleCount();
+  const size = (modules + margin * 2) * scale;
+
+  // One filter byte (0 = None) per scanline, then one byte per pixel.
+  const stride = 1 + size;
+  const raw = new Uint8Array(stride * size).fill(0xff);
+  for (let y = 0; y < size; y++) raw[y * stride] = 0;
+
+  for (let row = 0; row < modules; row++) {
+    for (let col = 0; col < modules; col++) {
+      if (!qr.isDark(row, col)) continue;
+      const x0 = (col + margin) * scale;
+      const y0 = (row + margin) * scale;
+      for (let dy = 0; dy < scale; dy++) {
+        const rowStart = (y0 + dy) * stride + 1 + x0;
+        raw.fill(0x00, rowStart, rowStart + scale);
+      }
+    }
+  }
+
+  const ihdr = new Uint8Array(13);
+  const ihdrView = new DataView(ihdr.buffer);
+  ihdrView.setUint32(0, size); // width
+  ihdrView.setUint32(4, size); // height
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 0; // colour type: greyscale
+  ihdr[10] = 0; // compression: deflate
+  ihdr[11] = 0; // filter: adaptive
+  ihdr[12] = 0; // interlace: none
+
+  const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const parts = [
+    signature,
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', await zlibDeflate(raw)),
+    pngChunk('IEND', new Uint8Array(0)),
+  ];
+
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const png = new Uint8Array(total);
+  let offset = 0;
+  for (const p of parts) {
+    png.set(p, offset);
+    offset += p.length;
+  }
+  return png;
 }
 
 /** Public URL of the mobile ticket page for an order. */

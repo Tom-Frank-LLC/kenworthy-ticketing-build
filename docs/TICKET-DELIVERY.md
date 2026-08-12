@@ -126,6 +126,30 @@ response returns, dropping the send with no trace. `waitUntil` keeps it alive.
 and may be losing syncs for the same reason — worth revisiting, but it is a
 marketing sync, not a ticket, so it was left alone here.)
 
+**Edge runtime imports: use `https://esm.sh/...`, not `npm:...`.** This cost a
+deploy cycle and is worth knowing before writing another function.
+
+`npm:qrcode` and `npm:@supabase/supabase-js@2/cors` both type-check and run
+fine under local Deno, and both make the function fail to boot in the Supabase
+edge runtime — `BOOT_ERROR`, with the failure only visible once deployed.
+`npm:qrcode` pulls in pngjs, which needs node streams and zlib.
+
+Two consequences:
+
+1. QR PNGs are generated from `qrcode-generator` (pure JS, no dependencies)
+   plus a small PNG encoder in `_shared/tickets.ts` written against Web APIs
+   only — `CompressionStream('deflate')` produces exactly the zlib-wrapped
+   stream a PNG IDAT expects.
+2. **Local `deno check` and `deno test` passing proves nothing about whether a
+   function boots.** Always curl the deployed function. A function with
+   `verify_jwt = true` returns a gateway `401` before it ever boots, so an
+   auth-shaped error does not mean the code is healthy — pass a valid key and
+   look for `BOOT_ERROR`.
+
+`sign-contract` uses the `npm:` style and is currently boot-erroring in
+production for this reason. That is a pre-existing bug outside this brief's
+scope, but the fix is the same one-line import change. See *Known gaps*.
+
 **Phone numbers are normalized before sending.** Checkout collects them as
 typed — `(208) 892-9752`, `208.892.9752`. Twilio only accepts E.164 and
 silently rejects anything else, so `toE164` normalizes and refuses numbers it
@@ -287,6 +311,21 @@ It also accepts `email`, `phone`, and `name` overrides, which is how a
 confirmation can be redirected to someone other than the account holder.
 
 ---
+
+## Found while deploying — outside this brief, not fixed
+
+Verified against production on Aug 11 2026 by calling each function with a
+valid anon key:
+
+- **`sign-contract` returns `BOOT_ERROR`.** Rental contract signing is broken
+  in production. Cause is the `npm:@supabase/supabase-js@2/cors` import
+  described above; the fix is to switch its three imports to `https://esm.sh/`.
+  Left alone here to keep this change to one concern.
+- **`mailchimp-subscribe`, `mailchimp-ecommerce`, `qbo-sync` and
+  `lgl-sync-donation` are not deployed to production** (`404`). `guest-checkout`
+  calls the first two fire-and-forget, so the Mailchimp tagging and e-commerce
+  sync have been silently doing nothing on production this whole time. Deploy
+  them, or accept that marketing sync is staging-only for now.
 
 ## Known gaps
 
