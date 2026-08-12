@@ -108,15 +108,15 @@ export function MonthCalendar({
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-[2fr_1fr] gap-8">
+        <div className="flex flex-col lg:flex-row gap-8 lg:items-start">
           {/* Month grid */}
-          <div>
-            <div className="grid grid-cols-7 text-xs uppercase tracking-widest text-muted-foreground mb-2">
+          <div className="lg:shrink-0">
+            <div className="grid grid-cols-7 md:grid-cols-[repeat(7,minmax(0,132px))] justify-start gap-1 md:gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
                 <div key={d} className="px-2 py-1 text-center">{d}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1 md:gap-2">
+            <div className="grid grid-cols-7 md:grid-cols-[repeat(7,minmax(0,132px))] justify-start gap-1 md:gap-2">
               {days.map((day) => {
                 const key = format(day, 'yyyy-MM-dd');
                 const dayItems = byDay.get(key) ?? [];
@@ -125,20 +125,32 @@ export function MonthCalendar({
                 const today = isToday(day);
                 const hasItems = dayItems.length > 0;
 
+                // Fixed, uniform cells: empty or full, every day is the same box.
+                const sorted = dayItems
+                  .slice()
+                  .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
                 return (
-                  <button
+                  <div
                     key={key}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedDay(day)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedDay(day);
+                      }
+                    }}
                     className={cn(
-                      'relative aspect-square md:aspect-[4/3] rounded-md border text-left p-1.5 md:p-2 transition-colors flex flex-col',
+                      'relative h-[112px] md:h-[168px] rounded-md border text-left p-1.5 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
                       'hover:border-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                       inMonth ? 'border-accent/20 bg-card' : 'border-transparent bg-muted/20 text-muted-foreground/60',
                       selected && 'border-primary bg-primary/10 ring-1 ring-primary',
                       today && !selected && 'border-accent/60',
                     )}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between shrink-0">
                       <span className={cn(
                         'font-display text-sm md:text-base',
                         today && 'text-accent',
@@ -146,53 +158,95 @@ export function MonthCalendar({
                         {format(day, 'd')}
                       </span>
                       {hasItems && (
-                        <span className="text-[10px] font-semibold px-1.5 rounded-full bg-primary text-primary-foreground hidden md:inline-block">
+                        <span className="text-[10px] font-semibold px-1.5 rounded-full bg-primary text-primary-foreground">
                           {dayItems.length}
                         </span>
                       )}
                     </div>
+
+                    {/* Mobile: compact dots (grid is too narrow for text). */}
                     {hasItems && (
-                      <div className="mt-auto flex flex-wrap gap-0.5 md:gap-1">
-                        {dayItems.slice(0, 3).map((it) => {
-                          const Icon = TYPE_ICON[it.type];
-                          return (
-                            <span
-                              key={it.id}
-                              className={cn(
-                                'inline-flex items-center justify-center rounded-full w-1.5 h-1.5 md:w-2 md:h-2',
-                                it.type === 'movie' && 'bg-primary',
-                                it.type === 'event' && 'bg-accent',
-                                it.type === 'concert' && 'bg-foreground',
-                              )}
-                            >
-                              <Icon className="hidden" />
-                            </span>
-                          );
-                        })}
-                        {dayItems.length > 3 && (
-                          <span className="text-[10px] text-muted-foreground">+{dayItems.length - 3}</span>
+                      <div className="mt-auto flex flex-wrap gap-0.5 md:hidden">
+                        {sorted.slice(0, 4).map((it) => (
+                          <span
+                            key={it.id}
+                            className={cn(
+                              'rounded-full w-1.5 h-1.5',
+                              it.type === 'movie' && 'bg-primary',
+                              it.type === 'event' && 'bg-accent',
+                              it.type === 'concert' && 'bg-foreground',
+                            )}
+                          />
+                        ))}
+                        {dayItems.length > 4 && (
+                          <span className="text-[10px] text-muted-foreground leading-none">+{dayItems.length - 4}</span>
                         )}
                       </div>
                     )}
-                  </button>
+
+                    {/* md+: title + time + description snippet per listing. */}
+                    {hasItems && (
+                      <div className="mt-1 hidden md:flex flex-col gap-1 overflow-hidden">
+                        {sorted.slice(0, 2).map((it) => (
+                          <button
+                            key={it.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelect?.(it);
+                            }}
+                            className={cn(
+                              'text-left pl-1.5 border-l-2 group/ev',
+                              it.type === 'movie' && 'border-primary',
+                              it.type === 'event' && 'border-accent',
+                              it.type === 'concert' && 'border-foreground',
+                            )}
+                          >
+                            <div className={cn(
+                              'text-[10px] uppercase tracking-wide font-semibold leading-none',
+                              it.type === 'concert' ? 'text-foreground' : 'text-accent',
+                            )}>
+                              {format(parseISO(it.startTime), 'h:mm a')}
+                            </div>
+                            <div className="font-serif text-xs leading-tight line-clamp-1 group-hover/ev:text-primary transition-colors">
+                              {it.title}
+                            </div>
+                            {it.curatorNote && (
+                              <div className="text-[10px] text-muted-foreground leading-tight line-clamp-2">
+                                {it.curatorNote}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                        {dayItems.length > 2 && (
+                          <span className="text-[10px] italic text-muted-foreground pl-1.5">
+                            +{dayItems.length - 2} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
+            {/* Legend shows only the types actually on the calendar. */}
             <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-primary" /> Film
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-accent" /> Event
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-foreground" /> Live
-              </span>
+              {([
+                ['movie', 'Film', 'bg-primary'],
+                ['event', 'Event', 'bg-accent'],
+                ['concert', 'Live', 'bg-foreground'],
+              ] as const)
+                .filter(([type]) => items.some((i) => i.showingId && i.type === type))
+                .map(([type, label, dot]) => (
+                  <span key={type} className="inline-flex items-center gap-1.5">
+                    <span className={cn('w-2 h-2 rounded-full', dot)} /> {label}
+                  </span>
+                ))}
             </div>
           </div>
 
           {/* Selected day list */}
-          <div className="lg:border-l lg:border-accent/20 lg:pl-8">
+          <div className="lg:flex-1 lg:border-l lg:border-accent/20 lg:pl-8">
             <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
               {isToday(selectedDay) ? 'Tonight' : format(selectedDay, 'EEEE')}
             </p>
@@ -217,17 +271,34 @@ export function MonthCalendar({
                           onClick={() => onSelect?.(it)}
                           className="w-full text-left rounded-md border border-accent/20 bg-card hover:border-primary hover:bg-primary/5 transition-colors p-3 flex items-start gap-3 group"
                         >
-                          <div className="font-display text-lg text-accent w-16 shrink-0 tabular-nums">
-                            {format(parseISO(it.startTime), 'h:mm a')}
-                          </div>
+                          {it.posterUrl ? (
+                            <img
+                              src={it.posterUrl}
+                              alt=""
+                              loading="lazy"
+                              className="w-14 h-20 object-cover rounded shrink-0 bg-muted"
+                            />
+                          ) : (
+                            <div className="w-14 h-20 rounded shrink-0 bg-muted flex items-center justify-center">
+                              <Icon className="w-5 h-5 text-muted-foreground" />
+                            </div>
+                          )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground mb-0.5">
                               <Icon className="w-3 h-3" />
                               {TYPE_LABEL[it.type]}
                             </div>
-                            <div className="font-serif text-base leading-snug group-hover:text-primary transition-colors">
+                            <div className="font-display text-lg text-accent tabular-nums leading-none">
+                              {format(parseISO(it.startTime), 'h:mm a')}
+                            </div>
+                            <div className="font-serif text-base leading-snug mt-1 group-hover:text-primary transition-colors">
                               {it.title}
                             </div>
+                            {typeof it.ticketPrice === 'number' && it.ticketPrice > 0 && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                ${it.ticketPrice.toFixed(2)}
+                              </div>
+                            )}
                           </div>
                         </button>
                       </li>
