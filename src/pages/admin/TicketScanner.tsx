@@ -8,22 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { ScanLine, CheckCircle2, XCircle, AlertTriangle, Camera, Search } from 'lucide-react';
+import { ScanLine, Camera, Search } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
-
-interface ScanResult {
-  status: 'valid' | 'already_scanned' | 'invalid';
-  ticket?: {
-    id: string;
-    movie_title: string;
-    start_time: string;
-    seat_row: string | null;
-    seat_number: number | null;
-    scanned_at: string | null;
-    patron_status: string;
-  };
-  message: string;
-}
+import { ScanResultOverlay, type ScanResult } from '@/components/admin/ScanResultOverlay';
 
 export default function TicketScanner() {
   const { isAdmin, isStaff, isHost, loading: authLoading } = useAuth();
@@ -39,6 +26,9 @@ export default function TicketScanner() {
   const scannerContainerId = 'qr-reader';
   const lastScannedRef = useRef<string>('');
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const processingRef = useRef(false);
+  // True while a non-valid verdict is on screen waiting to be acknowledged.
+  const awaitingAckRef = useRef(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -120,23 +110,40 @@ export default function TicketScanner() {
     };
   }, []);
 
+  /**
+   * Dismissing the verdict is what unblocks the next scan after a problem.
+   */
+  const dismissResult = useCallback(() => {
+    awaitingAckRef.current = false;
+    setLastResult(null);
+  }, []);
+
   const handleScan = useCallback(async (qrCode: string) => {
-    if (processing) return;
+    // Guards read from refs, not state. The camera callback below is handed to
+    // html5-qrcode once when the camera starts and keeps that closure for the
+    // whole session, so a guard on state would be permanently stale.
+    if (processingRef.current) return;
+    // A rejected or duplicate ticket holds the gate until staff acknowledge it.
+    if (awaitingAckRef.current) return;
     if (qrCode === lastScannedRef.current) return;
     lastScannedRef.current = qrCode;
 
+    processingRef.current = true;
     setProcessing(true);
     const result = await validateTicket(qrCode);
     setLastResult(result);
+    // Valid scans clear themselves, so only problems block the next scan.
+    awaitingAckRef.current = result.status !== 'valid';
     setScanCount(prev => prev + 1);
     playBeep(result.status === 'valid');
+    processingRef.current = false;
     setProcessing(false);
 
     // Allow re-scanning same code after 3 seconds
     setTimeout(() => {
       if (lastScannedRef.current === qrCode) lastScannedRef.current = '';
     }, 3000);
-  }, [processing, validateTicket, playBeep]);
+  }, [validateTicket, playBeep]);
 
   const startScanner = useCallback(async () => {
     try {
@@ -241,50 +248,16 @@ export default function TicketScanner() {
           </CardContent>
         </Card>
 
-        {/* Scan result */}
-        {lastResult && (
-          <Card
-            className={`border-2 transition-all animate-fade-in ${
-              lastResult.status === 'valid'
-                ? 'border-[hsl(var(--success))] bg-[hsl(var(--success))]/10'
-                : lastResult.status === 'already_scanned'
-                ? 'border-[hsl(var(--chart-1))] bg-[hsl(var(--chart-1))]/10'
-                : 'border-destructive bg-destructive/10'
-            }`}
-          >
-            <CardContent className="p-6 text-center space-y-3">
-              {lastResult.status === 'valid' && (
-                <CheckCircle2 className="h-16 w-16 text-[hsl(var(--success))] mx-auto" />
-              )}
-              {lastResult.status === 'already_scanned' && (
-                <AlertTriangle className="h-16 w-16 text-[hsl(var(--chart-1))] mx-auto" />
-              )}
-              {lastResult.status === 'invalid' && (
-                <XCircle className="h-16 w-16 text-destructive mx-auto" />
-              )}
-
-              <p className="text-xl font-bold font-display">{lastResult.message}</p>
-
-              {lastResult.ticket && (
-                <div className="text-sm space-y-1 text-muted-foreground">
-                  <p className="font-medium text-foreground text-lg">{lastResult.ticket.movie_title}</p>
-                  <p>{format(new Date(lastResult.ticket.start_time), 'MMM d, yyyy h:mm a')}</p>
-                  {lastResult.ticket.seat_row ? (
-                    <p>Row {lastResult.ticket.seat_row}, Seat {lastResult.ticket.seat_number}</p>
-                  ) : (
-                    <p>General Admission</p>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
         {/* Stats */}
         <div className="text-center text-sm text-muted-foreground">
           {scanCount} ticket(s) scanned this session
         </div>
       </div>
+
+      {/* Verdict, centre-screen. Previously this rendered below the manual-entry
+          form, which on a phone put it off the bottom of the screen — staff had
+          to scroll to find out whether the scan worked. */}
+      <ScanResultOverlay result={lastResult} onDismiss={dismissResult} />
     </div>
   );
 }

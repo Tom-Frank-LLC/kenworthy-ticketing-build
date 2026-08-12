@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 // Mock auth to grant staff access
@@ -50,6 +50,7 @@ beforeEach(() => {
 });
 
 import TicketScanner from './TicketScanner';
+import { VALID_AUTO_DISMISS_MS } from '@/components/admin/ScanResultOverlay';
 
 function renderScanner() {
   return render(
@@ -191,5 +192,99 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
       expect(screen.getByText(/invalid QR code/i)).toBeInTheDocument()
     );
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe('TicketScanner - centre-screen verdict', () => {
+  const validTicket = (qr: string, id: string) => ({
+    data: {
+      id,
+      status: 'confirmed',
+      scanned_at: null,
+      qr_code: qr,
+      seats: null,
+      showings: {
+        start_time: '2026-07-10T19:00:00Z',
+        movies: { title: 'Casablanca' },
+        events: null,
+        live_performances: null,
+      },
+    },
+    error: null,
+  });
+
+  it('shows an unmissable verdict, not something staff must scroll to find', async () => {
+    selectResponse = validTicket('QR-OK', 'ticket-ok');
+    renderScanner();
+    await scanCode('QR-OK');
+
+    // role=alert is what makes this announce to screen readers and what marks
+    // it as the overlay rather than page content.
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Admit/i);
+    expect(alert).toHaveTextContent(/Casablanca/i);
+  });
+
+  it('a valid ticket clears itself so the queue keeps moving', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      selectResponse = validTicket('QR-OK', 'ticket-ok');
+      renderScanner();
+      await scanCode('QR-OK');
+
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(VALID_AUTO_DISMISS_MS + 100);
+      });
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a duplicate ticket holds the gate until staff acknowledge it', async () => {
+    selectResponse = {
+      data: {
+        id: 'ticket-dupe',
+        status: 'confirmed',
+        scanned_at: '2026-07-09T18:00:00Z',
+        qr_code: 'QR-DUPE',
+        seats: null,
+        showings: {
+          start_time: '2026-07-09T19:00:00Z',
+          movies: null,
+          events: { title: 'Community Night' },
+          live_performances: null,
+        },
+      },
+      error: null,
+    };
+
+    renderScanner();
+    await scanCode('QR-DUPE');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Already used/i);
+
+    // A problem must never auto-clear — letting someone through on a duplicate
+    // is the failure that matters, so it waits for a human.
+    await new Promise(r => setTimeout(r, VALID_AUTO_DISMISS_MS + 150));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    // ...and the next ticket is not processed until it is acknowledged.
+    selectResponse = validTicket('QR-NEXT', 'ticket-next');
+    await scanCode('QR-NEXT');
+    expect(screen.getByRole('alert')).toHaveTextContent(/Already used/i);
+    expect(update).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Dismiss/i }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+
+    // Gate is open again.
+    await scanCode('QR-NEXT');
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Admit/i));
+    expect(updateEq).toHaveBeenCalledWith('id', 'ticket-next');
   });
 });
