@@ -70,7 +70,12 @@ export default function MyPasses() {
   }
 
   async function handleConfirmPurchase() {
-    if (!user || !buying || !cardRef.current) return;
+    if (!user || !buying) return;
+    if (!cardRef.current) {
+      // Not a silent return: a Pay button that does nothing is unreportable.
+      toast.error('The card form is not ready yet. Give it a moment, or reload the page.');
+      return;
+    }
 
     setPurchasing(true);
     try {
@@ -131,7 +136,7 @@ export default function MyPasses() {
                   </div>
                   {buying?.id === pt.id ? (
                     <div className="space-y-3">
-                      <SquareCardForm source="film-pass-checkout" onReadyChange={setCardReady} />
+                      <SquareCardForm ref={cardRef} source="film-pass-checkout" onReadyChange={setCardReady} />
                       <div className="flex gap-2">
                         <Button
                           className="flex-1"
