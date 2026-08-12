@@ -42,6 +42,9 @@ export default function MyTickets() {
           showings(start_time, movies(title), events(title), live_performances(title))
         `)
         .eq('user_id', user!.id)
+        // Unpaid attempts are not tickets: a pending order is mid-checkout and
+        // a failed one was declined.
+        .not('status', 'in', '("pending","failed")')
         .order('purchased_at', { ascending: false });
 
       const mapped = (data || []).map((t: any) => ({

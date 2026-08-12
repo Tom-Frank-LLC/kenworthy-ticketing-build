@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeFunction } from '@/lib/functions';
+import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,11 +13,11 @@ import { format } from 'date-fns';
 import { Film, Calendar, Clock, DollarSign, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard } from 'lucide-react';
 import { SeatMap } from '@/components/SeatMap';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
-import { type Seat, type PriceTier, TAX_RATE, buildTicketRows, newOrderToken, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
+import { type Seat, type PriceTier, computeSeatTotals, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
-import { syncMailchimpProfile, recordMailchimpOrder } from '@/lib/mailchimp';
+import { syncMailchimpProfile } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
 
 type ProductionType = 'movie' | 'event' | 'concert';
@@ -44,6 +46,11 @@ export default function Showing() {
   const [ticketsSold, setTicketsSold] = useState(0);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+
+  // Card payment for signed-in buyers. Guests get their own card form inside
+  // GuestCheckoutForm, alongside the contact fields they still have to fill in.
+  const cardRef = useRef<SquareCardFormHandle>(null);
+  const [cardReady, setCardReady] = useState(false);
 
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
   const [tierQuantities, setTierQuantities] = useState<Record<string, number>>({});
@@ -174,10 +181,13 @@ export default function Showing() {
   useEffect(() => {
     if (!user) return;
     async function loadPasses() {
+      // Only active passes are spendable: a pass row now exists from the moment
+      // checkout starts, and one whose charge failed must never be redeemable.
       const { data } = await supabase
         .from('user_film_passes')
         .select('*, film_pass_types!user_film_passes_pass_type_id_fkey(name)')
         .eq('user_id', user!.id)
+        .eq('status', 'active')
         .gt('remaining_balance', 0);
 
       const valid = (data || []).filter((p: any) =>
@@ -221,13 +231,13 @@ export default function Showing() {
       // never give away a free ticket.
       const fallback = priceTiers.reduce((m, t) => (t.price < m.price ? t : m), priceTiers[0]);
       ticketCount = selectedSeats.size;
-      let sub = 0;
-      for (const seatId of selectedSeats) {
-        sub += seatTierMap[seatId]?.price ?? fallback.price;
-      }
-      subtotal = Math.round(sub * 100) / 100;
-      tax = Math.round(subtotal * TAX_RATE * 100) / 100;
-      total = Math.round((subtotal + tax) * 100) / 100;
+      const seatPrices = Array.from(selectedSeats).map(
+        seatId => seatTierMap[seatId]?.price ?? fallback.price,
+      );
+      const result = computeSeatTotals(seatPrices);
+      subtotal = result.subtotal;
+      tax = result.tax;
+      total = result.total;
     } else {
       // GA + tiers: per-tier quantities
       const items: TicketLineItem[] = priceTiers
@@ -248,8 +258,11 @@ export default function Showing() {
     total = result.total;
   }
 
-  // Optional buyer-paid Square processing fee (per production toggle).
-  // Film-pass redemptions don't run through Square, so skip the surcharge.
+  // Standard ticket sales carry no processing fee — the buyer pays ticket price
+  // plus tax and the theatre absorbs Square's cut. This stays only for the
+  // rental exception, where a promoter has agreed their buyers carry the fee;
+  // `pass_processing_fee` is false on every production unless someone sets it.
+  // Film-pass redemptions never run through Square, so they never surcharge.
   const passProcessingFee = !!production?.pass_processing_fee && !useFilmPass && total > 0;
   const processingFee = passProcessingFee ? computeProcessingFee(total, 'online').fee : 0;
   const grandTotal = Math.round((total + processingFee) * 100) / 100;
@@ -258,209 +271,134 @@ export default function Showing() {
   const selectedPass = userPasses.find((p: any) => p.id === selectedPassId);
   const passCoversTotal = useFilmPass && selectedPass && Number(selectedPass.remaining_balance) >= subtotal;
 
-  const handleGuestPurchase = async (guestInfo: { name: string; email: string; phone: string }) => {
-    if (ticketCount === 0) { toast.error('Please select at least one ticket'); return; }
-    setPurchasing(true);
-    try {
-      // Build ticket descriptors for the edge function
-      const ticketDescriptors: any[] = [];
+  /**
+   * What the buyer asked for, as seats and tiers — never as prices.
+   *
+   * The server re-derives every amount from these descriptors, so tampering
+   * with this list can only change *which* tickets are bought, not what they
+   * cost. The client's totals below are for display.
+   */
+  const buildTicketDescriptors = () => {
+    const descriptors: { seat_id?: string; tier_id?: string }[] = [];
 
-      if (hasTiers) {
-        if (isAssignedSeating) {
-          const fallback = priceTiers.reduce((m, t) => (t.price < m.price ? t : m), priceTiers[0]);
-          for (const seatId of selectedSeats) {
-            const tierId = seatTierMap[seatId]?.tierId ?? fallback.id;
-            ticketDescriptors.push({ seat_id: seatId, tier_id: tierId });
-          }
-        } else {
-          for (const tier of priceTiers) {
-            const qty = tierQuantities[tier.id] || 0;
-            for (let i = 0; i < qty; i++) {
-              ticketDescriptors.push({ tier_id: tier.id });
-            }
-          }
+    if (hasTiers) {
+      if (isAssignedSeating) {
+        const fallback = priceTiers.reduce((m, t) => (t.price < m.price ? t : m), priceTiers[0]);
+        for (const seatId of selectedSeats) {
+          descriptors.push({ seat_id: seatId, tier_id: seatTierMap[seatId]?.tierId ?? fallback.id });
         }
       } else {
-        if (isAssignedSeating) {
-          for (const seatId of selectedSeats) {
-            ticketDescriptors.push({ seat_id: seatId });
-          }
-        } else {
-          for (let i = 0; i < gaQuantity; i++) {
-            ticketDescriptors.push({});
-          }
+        for (const tier of priceTiers) {
+          const qty = tierQuantities[tier.id] || 0;
+          for (let i = 0; i < qty; i++) descriptors.push({ tier_id: tier.id });
         }
       }
+    } else if (isAssignedSeating) {
+      for (const seatId of selectedSeats) descriptors.push({ seat_id: seatId });
+    } else {
+      for (let i = 0; i < gaQuantity; i++) descriptors.push({});
+    }
 
-      const { data, error } = await supabase.functions.invoke('guest-checkout', {
-        body: {
-          guest_name: guestInfo.name,
-          guest_email: guestInfo.email || undefined,
-          guest_phone: guestInfo.phone || undefined,
-          showing_id: id,
-          tickets: ticketDescriptors,
-        },
+    return descriptors;
+  };
+
+  // One key per purchase attempt. Kept across a repeated submit so the server
+  // returns the order it already made instead of charging twice; replaced after
+  // a failure, because Square replays the *original* response for a reused key
+  // — which would mean a corrected card getting the old decline back.
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
+
+  const submitPurchase = async (opts: {
+    sourceId?: string;
+    passId?: string;
+    guest?: { name: string; email: string; phone: string };
+  }) => {
+    setPurchasing(true);
+    try {
+      const data = await invokeFunction<{
+        success: boolean;
+        order_token: string;
+        ticket_count: number;
+      }>('ticket-checkout', {
+        action: 'create_purchase',
+        showing_id: id,
+        tickets: buildTicketDescriptors(),
+        payment_method: opts.passId ? 'film_pass' : 'card',
+        source_id: opts.sourceId,
+        pass_id: opts.passId,
+        idempotency_key: idempotencyKeyRef.current,
+        name: opts.guest?.name,
+        email: opts.guest?.email || undefined,
+        phone: opts.guest?.phone || undefined,
       });
 
-      if (error) throw new Error(error.message || 'Checkout failed');
-      if (data?.error) throw new Error(data.error);
+      if (!data?.success) throw new Error('Checkout failed');
 
       toast.success(
-        `${ticketCount} ticket(s) purchased! ${
-          guestInfo.email ? 'Your confirmation is on its way by email.' : 'Your ticket link is on its way by text.'
-        }`,
+        `${data.ticket_count} ticket(s) ${opts.passId ? 'redeemed with Film Pass' : 'purchased'}!`,
       );
 
-      // Land the buyer on their tickets rather than the home page. Delivery is
+      // Fire-and-forget Mailchimp profile sync for signed-in buyers (the order
+      // itself is recorded server-side by the checkout function).
+      if (user) {
+        try {
+          const kind = productionType === 'movie' ? 'Films' : productionType === 'event' ? 'Special Events' : 'Live Performances';
+          void syncMailchimpProfile({
+            extraTags: ['ticket-buyer'],
+            source: 'showing-checkout',
+            addInterests: [kind as any],
+          });
+        } catch { /* noop */ }
+      }
+
+      // Land the buyer on the tickets they just bought. Delivery is
       // fire-and-forget, so this is the one moment we can be certain they can
-      // see what they just bought — and it is the answer to "a guest account
-      // was created silently and they have no way to reach it".
-      if (data?.order_token) navigate(ticketPagePath(data.order_token));
-      else navigate('/');
+      // see them — and it is the answer to "a guest account was created
+      // silently and they have no way to reach it".
+      if (!user && data.order_token) navigate(ticketPagePath(data.order_token));
+      else navigate('/my-tickets');
     } catch (err: any) {
+      // A failed attempt must not reuse its key.
+      idempotencyKeyRef.current = crypto.randomUUID();
       toast.error(err.message || 'Failed to purchase tickets');
     } finally {
       setPurchasing(false);
     }
   };
 
+  const handleGuestPurchase = (
+    guestInfo: { name: string; email: string; phone: string },
+    sourceId: string,
+  ) => {
+    if (ticketCount === 0) { toast.error('Please select at least one ticket'); return; }
+    void submitPurchase({ sourceId, guest: guestInfo });
+  };
+
   const handlePurchase = async () => {
     if (!user) { navigate('/auth?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)); return; }
     if (ticketCount === 0) { toast.error('Please select at least one ticket'); return; }
 
-    if (useFilmPass && !selectedPass) {
-      toast.error('Please select a film pass');
+    if (useFilmPass) {
+      if (!selectedPass) { toast.error('Please select a film pass'); return; }
+      if (!passCoversTotal) {
+        toast.error(`Insufficient pass balance. Need $${subtotal.toFixed(2)}, have $${Number(selectedPass.remaining_balance).toFixed(2)}`);
+        return;
+      }
+      await submitPurchase({ passId: selectedPassId });
       return;
     }
 
-    if (useFilmPass && !passCoversTotal) {
-      toast.error(`Insufficient pass balance. Need $${subtotal.toFixed(2)}, have $${Number(selectedPass.remaining_balance).toFixed(2)}`);
-      return;
-    }
+    if (!cardRef.current) { toast.error('The card form is not ready yet.'); return; }
 
-    setPurchasing(true);
+    let sourceId: string;
     try {
-      const paymentMethod = useFilmPass ? 'film_pass' : 'online';
-      // Groups this purchase into one deliverable order, and is the handle the
-      // confirmation email uses to render the QR codes.
-      const orderToken = newOrderToken();
-      let ticketRows;
-
-      if (hasTiers) {
-        if (isAssignedSeating) {
-          const fallback = priceTiers.reduce((m, t) => (t.price < m.price ? t : m), priceTiers[0]);
-          // Group selected seats by tier so each line item has a single price.
-          const grouped = new Map<string, string[]>();
-          for (const seatId of selectedSeats) {
-            const tierId = seatTierMap[seatId]?.tierId ?? fallback.id;
-            const arr = grouped.get(tierId) ?? [];
-            arr.push(seatId);
-            grouped.set(tierId, arr);
-          }
-          const lineItems: TicketLineItem[] = [];
-          for (const [tierId, seatIds] of grouped) {
-            const tier = priceTiers.find(t => t.id === tierId)!;
-            lineItems.push({
-              tierId,
-              tierName: tier.tier_name,
-              price: tier.price,
-              quantity: seatIds.length,
-              seatIds,
-            });
-          }
-          ticketRows = buildTicketRows({
-            lineItems,
-            userId: user.id,
-            showingId: id!,
-            paymentMethod,
-            processingFee,
-            orderToken,
-          });
-        } else {
-          const items: TicketLineItem[] = priceTiers
-            .filter(t => (tierQuantities[t.id] || 0) > 0)
-            .map(t => ({ tierId: t.id, tierName: t.tier_name, price: t.price, quantity: tierQuantities[t.id] }));
-          ticketRows = buildTicketRows({
-            lineItems: items,
-            userId: user.id,
-            showingId: id!,
-            paymentMethod,
-            processingFee,
-            orderToken,
-          });
-        }
-      } else {
-        ticketRows = buildTicketRows({
-          selectedSeats: isAssignedSeating ? selectedSeats : new Set<string>(),
-          quantity: isAssignedSeating ? undefined : gaQuantity,
-          userId: user.id,
-          showingId: id!,
-          ticketPrice: showing.ticket_price,
-          paymentMethod,
-          processingFee,
-          orderToken,
-        });
-      }
-
-      const { data: ticketData, error } = await supabase.from('tickets').insert(ticketRows).select('id');
-      if (error) throw error;
-
-      // Redeem film pass for each ticket
-      if (useFilmPass && ticketData) {
-        for (const ticket of ticketData) {
-          const perTicketAmount = Math.round((subtotal / ticketCount) * 100) / 100;
-          const { error: redeemError } = await supabase.rpc('redeem_film_pass', {
-            p_pass_id: selectedPassId,
-            p_ticket_id: ticket.id,
-            p_amount: perTicketAmount,
-          });
-          if (redeemError) throw redeemError;
-        }
-      }
-
-      toast.success(`${ticketCount} ticket(s) ${useFilmPass ? 'redeemed with Film Pass' : 'purchased'}!`);
-
-      // Deliver the tickets. Signed-in buyers were missing this just as guests
-      // were — storing a ticket is not the same as handing it to the customer.
-      // Fire-and-forget: the tickets already exist and are visible in
-      // /my-tickets, so a provider outage must not surface as a failed
-      // purchase. The function records its own failures on the ticket rows.
-      void supabase.functions
-        .invoke('send-ticket-confirmation', { body: { order_token: orderToken } })
-        .catch((e) => console.error('[showing] confirmation dispatch failed', e));
-
-      // Fire-and-forget Mailchimp sync (only runs if user has consented)
-      try {
-        const kind = productionType === 'movie' ? 'Films' : productionType === 'event' ? 'Special Events' : 'Live Performances';
-        void syncMailchimpProfile({
-          extraTags: ['ticket-buyer'],
-          source: 'showing-checkout',
-          addInterests: [kind as any],
-        });
-        if (user?.email && ticketData?.[0]) {
-          void recordMailchimpOrder({
-            email: user.email,
-            order: {
-              id: `tickets:${ticketData[0].id}`,
-              total: subtotal,
-              lines: ticketData.map((t: any) => ({
-                id: t.id,
-                product_id: showing.id,
-                product_title: production?.title || 'Kenworthy showing',
-                quantity: 1,
-                price: subtotal / ticketCount,
-                category: productionType,
-              })),
-            },
-          });
-        }
-      } catch { /* noop */ }
-      navigate('/my-tickets');
+      sourceId = await cardRef.current.tokenize();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to purchase tickets');
-    } finally {
-      setPurchasing(false);
+      toast.error(err.message || 'Please check your card details.');
+      return;
     }
+
+    await submitPurchase({ sourceId });
   };
 
   if (loading) {
@@ -810,20 +748,33 @@ export default function Showing() {
 
                   {user ? (
                     <>
+                      {!useFilmPass && (
+                        <div className="border-t border-border pt-3">
+                          <p className="text-sm font-medium mb-3 flex items-center gap-1">
+                            <CreditCard className="h-4 w-4" /> Payment
+                          </p>
+                          <SquareCardForm source="ticket-checkout" onReadyChange={setCardReady} />
+                        </div>
+                      )}
                       <Button
                         className="w-full"
                         size="lg"
                         onClick={handlePurchase}
-                        disabled={purchasing || (useFilmPass && !passCoversTotal)}
+                        disabled={
+                          purchasing ||
+                          (useFilmPass ? !passCoversTotal : !cardReady)
+                        }
                       >
                         {useFilmPass ? (
                           <><CreditCard className="h-4 w-4 mr-1" /> {purchasing ? 'Redeeming...' : `Redeem Film Pass`}</>
                         ) : (
-                          <><Check className="h-4 w-4 mr-1" /> {purchasing ? 'Processing...' : `Purchase ${ticketCount} Ticket(s)`}</>
+                          <><Check className="h-4 w-4 mr-1" /> {purchasing ? 'Processing...' : `Pay $${grandTotal.toFixed(2)}`}</>
                         )}
                       </Button>
                       <p className="text-xs text-muted-foreground text-center">
-                        {useFilmPass ? 'Pass balance will be deducted' : 'Simulated checkout — no real charge'}
+                        {useFilmPass
+                          ? 'Pass balance will be deducted'
+                          : 'Payments are processed securely by Square. Your card details never reach our servers.'}
                       </p>
                     </>
                   ) : (
