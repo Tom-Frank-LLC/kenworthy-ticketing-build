@@ -266,6 +266,9 @@ export default function Showing() {
   const passProcessingFee = !!production?.pass_processing_fee && !useFilmPass && total > 0;
   const processingFee = passProcessingFee ? computeProcessingFee(total, 'online').fee : 0;
   const grandTotal = Math.round((total + processingFee) * 100) / 100;
+  // A free ($0) showing has no card step: Square rejects a $0 charge, and the
+  // server skips it, so the browser must not ask for a card or send a token.
+  const isFree = !useFilmPass && grandTotal <= 0;
 
   // Film pass: check if selected pass covers the total
   const selectedPass = userPasses.find((p: any) => p.id === selectedPassId);
@@ -387,6 +390,8 @@ export default function Showing() {
       await submitPurchase({ passId: selectedPassId });
       return;
     }
+
+    if (isFree) { await submitPurchase({}); return; }
 
     if (!cardRef.current) { toast.error('The card form is not ready yet.'); return; }
 
@@ -749,7 +754,7 @@ export default function Showing() {
 
                   {user ? (
                     <>
-                      {!useFilmPass && (
+                      {!useFilmPass && !isFree && (
                         <div className="border-t border-border pt-3">
                           <p className="text-sm font-medium mb-3 flex items-center gap-1">
                             <CreditCard className="h-4 w-4" /> Payment
@@ -763,13 +768,13 @@ export default function Showing() {
                         onClick={handlePurchase}
                         disabled={
                           purchasing ||
-                          (useFilmPass ? !passCoversTotal : !cardReady)
+                          (useFilmPass ? !passCoversTotal : (!isFree && !cardReady))
                         }
                       >
                         {useFilmPass ? (
                           <><CreditCard className="h-4 w-4 mr-1" /> {purchasing ? 'Redeeming...' : `Redeem Film Pass`}</>
                         ) : (
-                          <><Check className="h-4 w-4 mr-1" /> {purchasing ? 'Processing...' : `Pay $${grandTotal.toFixed(2)}`}</>
+                          <><Check className="h-4 w-4 mr-1" /> {purchasing ? 'Processing...' : isFree ? `Reserve ${ticketCount} Ticket(s)` : `Pay $${grandTotal.toFixed(2)}`}</>
                         )}
                       </Button>
                       <p className="text-xs text-muted-foreground text-center">
