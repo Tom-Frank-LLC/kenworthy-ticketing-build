@@ -126,29 +126,33 @@ response returns, dropping the send with no trace. `waitUntil` keeps it alive.
 and may be losing syncs for the same reason — worth revisiting, but it is a
 marketing sync, not a ticket, so it was left alone here.)
 
-**Edge runtime imports: use `https://esm.sh/...`, not `npm:...`.** This cost a
-deploy cycle and is worth knowing before writing another function.
+**Import Supabase via `https://esm.sh/@supabase/supabase-js@2`.** This cost a
+deploy cycle and is worth knowing before writing another edge function.
 
-`npm:qrcode` and `npm:@supabase/supabase-js@2/cors` both type-check and run
-fine under local Deno, and both make the function fail to boot in the Supabase
-edge runtime — `BOOT_ERROR`, with the failure only visible once deployed.
-`npm:qrcode` pulls in pngjs, which needs node streams and zlib.
+`npm:` specifiers are **not** broadly broken — `npm:pdf-lib@1.17.1` boots
+fine in `sign-contract` today. Two specific things do break, and neither fails
+under local Deno, so the failure only appears once deployed (`BOOT_ERROR`):
 
-Two consequences:
+1. **Mixed versions of `@supabase/supabase-js` under `npm:`.** `sign-contract`
+   imported `createClient` from `npm:...@2.45.0` and `corsHeaders` from
+   `npm:...@2/cors`. Deno dedupes npm packages by name, so the `@2/cors`
+   import resolved against the pinned 2.45.0 — and `./cors` was not added to
+   the package's exports until after 2.50.0 (verified: absent in 2.45.0 and
+   2.50.0, present in 2.96.0). esm.sh resolves each URL independently, so it
+   never hits this. `guest-checkout` has always used the esm.sh form and has
+   always booted, which makes it the reference to copy.
 
-1. QR PNGs are generated from `qrcode-generator` (pure JS, no dependencies)
-   plus a small PNG encoder in `_shared/tickets.ts` written against Web APIs
-   only — `CompressionStream('deflate')` produces exactly the zlib-wrapped
-   stream a PNG IDAT expects.
-2. **Local `deno check` and `deno test` passing proves nothing about whether a
-   function boots.** Always curl the deployed function. A function with
-   `verify_jwt = true` returns a gateway `401` before it ever boots, so an
-   auth-shaped error does not mean the code is healthy — pass a valid key and
-   look for `BOOT_ERROR`.
+2. **npm packages that need node streams or zlib.** `npm:qrcode` pulls in
+   pngjs and fails. QR PNGs are therefore generated from `qrcode-generator`
+   (pure JS, no dependencies) plus a small PNG encoder in `_shared/tickets.ts`
+   written against Web APIs only — `CompressionStream('deflate')` produces
+   exactly the zlib-wrapped stream a PNG IDAT expects.
 
-`sign-contract` uses the `npm:` style and is currently boot-erroring in
-production for this reason. That is a pre-existing bug outside this brief's
-scope, but the fix is the same one-line import change. See *Known gaps*.
+The habit that catches all of this: **local `deno check` and `deno test`
+passing proves nothing about whether a function boots.** Always curl the
+deployed function. A function with `verify_jwt = true` returns a gateway `401`
+*before* it ever boots, so an auth-shaped error does not mean the code is
+healthy — pass a valid anon key and look for `BOOT_ERROR`.
 
 **Phone numbers are normalized before sending.** Checkout collects them as
 typed — `(208) 892-9752`, `208.892.9752`. Twilio only accepts E.164 and
@@ -317,10 +321,14 @@ confirmation can be redirected to someone other than the account holder.
 Verified against production on Aug 11 2026 by calling each function with a
 valid anon key:
 
-- **`sign-contract` returns `BOOT_ERROR`.** Rental contract signing is broken
-  in production. Cause is the `npm:@supabase/supabase-js@2/cors` import
-  described above; the fix is to switch its three imports to `https://esm.sh/`.
-  Left alone here to keep this change to one concern.
+- ~~**`sign-contract` returns `BOOT_ERROR`**~~ — **fixed and deployed
+  2026-08-11.** Its two `@supabase/supabase-js` imports now come from esm.sh;
+  `pdf-lib` was left on `npm:` and boots fine, which is what isolated the
+  cause. It now returns its own `{"error":"Not authenticated"}` for an
+  unauthenticated call instead of a 503. **Not functionally re-tested** — a
+  real signature run needs an admin session and a live rental request, so the
+  signing, PDF-stamping and Ed25519 paths are unverified since the fix. Worth
+  one manual contract signature before launch.
 - **`mailchimp-subscribe`, `mailchimp-ecommerce`, `qbo-sync` and
   `lgl-sync-donation` are not deployed to production** (`404`). `guest-checkout`
   calls the first two fire-and-forget, so the Mailchimp tagging and e-commerce

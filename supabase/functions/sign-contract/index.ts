@@ -1,5 +1,9 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
+// Imported via esm.sh, not `npm:`. The npm: specifier form fails to start in
+// the Supabase edge runtime (BOOT_ERROR) — it type-checks and runs fine under
+// local Deno, so the failure only shows up once deployed. guest-checkout has
+// always used these exact specifiers and boots, which makes it the reference.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
 
 // Deno globals
