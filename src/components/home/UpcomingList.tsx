@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { format, parseISO, isToday, isTomorrow } from 'date-fns';
-import { List as ListIcon, Calendar as CalendarIcon, Film, Sparkles, Music, Ticket, PlayCircle } from 'lucide-react';
+import { List as ListIcon, Calendar as CalendarIcon, Film, Sparkles, Music, Ticket, PlayCircle, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { MonthCalendar } from './MonthCalendar';
+import { useIsSplitLayout } from '@/hooks/use-mobile';
 import type { FeedItem } from './TrailerFeed';
 
 const TYPE_ICON = { movie: Film, event: Sparkles, concert: Music } as const;
@@ -31,8 +32,21 @@ export function UpcomingList({
   );
   const [activeId, setActiveId] = useState<string | null>(dated[0]?.id ?? null);
   const [view, setView] = useState<'list' | 'calendar'>('list');
+  // Below `lg` the preview column stacks under the entire list, so its
+  // "View details" button — the only route to tickets — sits a full screen of
+  // scrolling below the row that was just tapped. There, open the detail
+  // drawer directly instead.
+  const splitLayout = useIsSplitLayout();
 
   const active = dated.find((i) => i.id === activeId) ?? dated[0] ?? null;
+
+  const handleRowActivate = (item: FeedItem) => {
+    if (splitLayout) {
+      setActiveId(item.id);
+      return;
+    }
+    onSelect?.(item);
+  };
 
   const handleCalendarPick = (item: FeedItem) => {
     // From the calendar view, picking a title opens its detail drawer.
@@ -53,7 +67,8 @@ export function UpcomingList({
               Upcoming
             </h2>
             <p className="font-serif text-sm text-muted-foreground mt-1">
-              Pick a showing on the left to preview it.
+              <span className="lg:hidden">Tap a showing for details and tickets.</span>
+              <span className="hidden lg:inline">Pick a showing on the left to preview it.</span>
             </p>
           </div>
           <div
@@ -105,8 +120,8 @@ export function UpcomingList({
                 <li key={it.id} id={`upcoming-${it.id}`}>
                   <button
                     type="button"
-                    onClick={() => setActiveId(it.id)}
-                    onMouseEnter={() => setActiveId(it.id)}
+                    onClick={() => handleRowActivate(it)}
+                    onMouseEnter={() => { if (splitLayout) setActiveId(it.id); }}
                     className={cn(
                       'w-full text-left rounded-md border p-3 md:p-4 transition-colors flex items-start gap-3 group',
                       selected
@@ -134,15 +149,22 @@ export function UpcomingList({
                         {it.title}
                       </div>
                     </div>
+                    {/* Below lg the row opens a drawer, so it needs to read as
+                        a way in rather than a selection. */}
+                    <ChevronRight
+                      className="h-5 w-5 shrink-0 self-center text-muted-foreground lg:hidden"
+                      aria-hidden
+                    />
                   </button>
                 </li>
               );
             })}
           </ul>
 
-          {/* Preview */}
+          {/* Preview. The drawer replaces this pane below lg, where it was
+              stranded underneath the full list. */}
           {active && (
-            <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+            <div className="hidden min-w-0 lg:block lg:sticky lg:top-4 lg:self-start">
               <div className="rounded-lg border border-accent/20 bg-card overflow-hidden">
                 <div className="relative aspect-[16/10] bg-muted">
                   {active.posterUrl ? (

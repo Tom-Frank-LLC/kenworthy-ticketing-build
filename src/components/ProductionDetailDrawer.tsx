@@ -59,12 +59,9 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
             <SheetTitle className="font-display text-2xl">{production.title}</SheetTitle>
           </SheetHeader>
 
-          {/* Description */}
-          {production.description && (
-            <p className="text-muted-foreground leading-relaxed">{production.description}</p>
-          )}
-
-          {/* Showings */}
+          {/* Showings come before the synopsis: buying a ticket is the point
+              of this drawer, and on a phone a long description pushed every
+              showtime below the fold. */}
           {production.ticket_type === 'rsvp' && production.rsvp_url ? (
             <div>
               <Button size="lg" className="w-full" asChild>
@@ -98,6 +95,10 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">No upcoming showings scheduled.</p>
+          )}
+
+          {production.description && (
+            <p className="text-muted-foreground leading-relaxed">{production.description}</p>
           )}
         </div>
       </SheetContent>
