@@ -96,17 +96,35 @@ entered into a sandbox form.
 
 ### Secrets
 
-Per Supabase project (staging **and** production):
+Each credential is read from its env-prefixed name if present, otherwise from
+the unprefixed name:
 
 ```
-SQUARE_ENV                       sandbox | production
-SQUARE_SANDBOX_APPLICATION_ID    (already set — donations used these)
-SQUARE_SANDBOX_ACCESS_TOKEN
-SQUARE_SANDBOX_LOCATION_ID
-SQUARE_PRODUCTION_APPLICATION_ID (new, for go-live)
-SQUARE_PRODUCTION_ACCESS_TOKEN
-SQUARE_PRODUCTION_LOCATION_ID
+SQUARE_ENV                       sandbox | production   (absent = sandbox)
+
+SQUARE_SANDBOX_APPLICATION_ID    ─┐ used when SQUARE_ENV is not production
+SQUARE_SANDBOX_ACCESS_TOKEN       │
+SQUARE_SANDBOX_LOCATION_ID       ─┘
+
+SQUARE_PRODUCTION_APPLICATION_ID ─┐ used when SQUARE_ENV=production
+SQUARE_PRODUCTION_ACCESS_TOKEN    │
+SQUARE_PRODUCTION_LOCATION_ID    ─┘
+
+SQUARE_APPLICATION_ID            ─┐ fallback for either, and what both
+SQUARE_ACCESS_TOKEN               │ projects are actually configured with
+SQUARE_LOCATION_ID               ─┘
 ```
+
+As deployed today: **production** (`vlmslygnimfbamrtwvyo`) holds only the
+unprefixed trio; **staging** (`rpqzrpboyhshdrfdwayk`) holds
+`SQUARE_APPLICATION_ID` with `SQUARE_SANDBOX_ACCESS_TOKEN` and
+`SQUARE_SANDBOX_LOCATION_ID`. Both work through the fallback. (`SQUARE_ENVIRONMENT`
+also exists on both — it predates this and nothing reads it.)
+
+Going live is then either: set the three `SQUARE_PRODUCTION_*` secrets and flip
+`SQUARE_ENV=production`, or replace the unprefixed values with live credentials
+and flip the same flag. Prefer the first — it keeps sandbox credentials
+available to switch back to.
 
 Confirm before go-live that the production application and location belong to
 **the theatre's own Square account** (`PLATFORM.md §2.4`).
