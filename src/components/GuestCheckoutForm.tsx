@@ -46,8 +46,16 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
     return Object.keys(newErrors).length === 0;
   };
 
+  const isFree = total <= 0;
+
   const handleSubmit = async () => {
     if (!validate()) return;
+    // Free ($0) showing — no card step. The server skips Square for $0 orders,
+    // so there is no token to collect; hand back an empty source.
+    if (isFree) {
+      onPurchase({ name: name.trim(), email: email.trim(), phone: phone.trim() }, '');
+      return;
+    }
     if (!cardRef.current) {
       // Never fail silently here. This guard was a bare `return`, and when the
       // card form's ref was left unwired the button did nothing at all — no
@@ -121,29 +129,35 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
         </div>
       </div>
 
-      <div className="border-t border-border pt-3">
-        <p className="text-sm font-medium mb-3 flex items-center gap-1">
-          <CreditCard className="h-4 w-4" /> Payment
-        </p>
-        <SquareCardForm ref={cardRef} source="ticket-checkout" onReadyChange={setCardReady} />
-        {errors.card && <p className="text-xs text-destructive mt-1">{errors.card}</p>}
-      </div>
+      {!isFree && (
+        <div className="border-t border-border pt-3">
+          <p className="text-sm font-medium mb-3 flex items-center gap-1">
+            <CreditCard className="h-4 w-4" /> Payment
+          </p>
+          <SquareCardForm ref={cardRef} source="ticket-checkout" onReadyChange={setCardReady} />
+          {errors.card && <p className="text-xs text-destructive mt-1">{errors.card}</p>}
+        </div>
+      )}
 
       <Button
         className="w-full"
         size="lg"
         onClick={handleSubmit}
-        disabled={busy || !cardReady}
+        disabled={busy || (!isFree && !cardReady)}
       >
         {busy ? (
           <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Processing…</>
+        ) : isFree ? (
+          <><Check className="h-4 w-4 mr-1" /> Reserve {ticketCount} Ticket(s)</>
         ) : (
           <><Check className="h-4 w-4 mr-1" /> Pay ${total.toFixed(2)} — {ticketCount} Ticket(s)</>
         )}
       </Button>
-      <p className="text-xs text-muted-foreground text-center">
-        Payments are processed securely by Square. Your card details never reach our servers.
-      </p>
+      {!isFree && (
+        <p className="text-xs text-muted-foreground text-center">
+          Payments are processed securely by Square. Your card details never reach our servers.
+        </p>
+      )}
     </div>
   );
 }
