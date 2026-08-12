@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Volume2, VolumeX, Film, Sparkles, Music, Ticket } from 'lucide-react';
 import { format } from 'date-fns';
 import { resolveTrailer } from '@/lib/trailer';
+import { formatShowtime } from '@/lib/datetime';
 
 export interface FeedItem {
   id: string;
@@ -187,7 +188,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                 {/* Solid scrim directly behind the text for guaranteed legibility */}
                 <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-t from-black via-black/90 to-transparent backdrop-blur-[2px]" />
                 <div className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
-                  {format(new Date(item.startTime), 'EEEE, MMMM d · h:mm a')}
+                  {formatShowtime(item.startTime, 'EEEE, MMMM d · h:mm a')}
                 </div>
                 <h2 className="font-display text-4xl md:text-5xl leading-[0.95] mb-3 drop-shadow-lg">
                   {item.title}

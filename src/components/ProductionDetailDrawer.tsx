@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
+import { formatShowtime } from '@/lib/datetime';
 
 interface ShowingInfo {
   id: string;
@@ -85,10 +86,10 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
                     <Link to={`/showing/${showing.id}`} onClick={() => onOpenChange(false)}>
                       <span className="flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-primary" />
-                        {format(new Date(showing.start_time), 'EEEE, MMMM d, yyyy')}
+                        {formatShowtime(showing.start_time, 'EEEE, MMMM d, yyyy')}
                       </span>
                       <span className="flex items-center gap-2">
-                        <span className="text-muted-foreground">{format(new Date(showing.start_time), 'h:mm a')}</span>
+                        <span className="text-muted-foreground">{formatShowtime(showing.start_time, 'h:mm a')}</span>
                         <Badge variant="secondary">${showing.ticket_price.toFixed(2)}</Badge>
                       </span>
                     </Link>

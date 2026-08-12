@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { FileText, Download, Loader2, Search, X } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
+import { formatShowtime, venueLocalToInstant } from '@/lib/datetime';
 
 interface Showing {
   id: string;
@@ -162,7 +163,7 @@ export default function BoxOfficeReceiptsTab() {
         await supabase.from('movies').update(patch).eq('id', active.movie_id);
       }
       const title = active.movies?.title ?? 'showing';
-      const date = format(new Date(active.start_time), 'yyyy_MM_dd');
+      const date = formatShowtime(active.start_time, 'yyyy_MM_dd');
       const safeTitle = title.replace(/[^\w]+/g, '');
       const filename = `${date}_${safeTitle}_BOR.pdf`;
       await html2pdf()
@@ -237,9 +238,12 @@ export default function BoxOfficeReceiptsTab() {
           </div>
           {(() => {
             const q = query.trim().toLowerCase();
-            const from = fromDate ? new Date(fromDate) : null;
-            const to = toDate ? new Date(toDate) : null;
-            if (to) to.setHours(23, 59, 59, 999);
+            // The date pickers name venue calendar days, so the bounds are
+            // venue midnight to venue end-of-day. `new Date('2026-08-14')`
+            // would parse as UTC midnight and drag the previous evening's
+            // shows — 7 PM Pacific is already the 14th in UTC — into range.
+            const from = fromDate ? venueLocalToInstant(`${fromDate}T00:00:00`) : null;
+            const to = toDate ? venueLocalToInstant(`${toDate}T23:59:59.999`) : null;
             const filtered = showings.filter((s) => {
               const d = new Date(s.start_time);
               if (from && d < from) return false;
@@ -280,7 +284,7 @@ export default function BoxOfficeReceiptsTab() {
                   <div>
                     <p className="font-medium">{s.movies?.title ?? 'Untitled'}</p>
                     <p className="text-xs text-muted-foreground">
-                      {format(new Date(s.start_time), 'EEE, MMM d, yyyy · h:mm a')}
+                      {formatShowtime(s.start_time, 'EEE, MMM d, yyyy · h:mm a')}
                     </p>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => openReceipt(s)}>
@@ -373,7 +377,7 @@ export default function BoxOfficeReceiptsTab() {
                     <td style={{ padding: '2px 6px' }}>Moscow, ID</td>
                     <td style={{ padding: '2px 6px' }}><b>Play Dates</b></td>
                     <td style={{ padding: '2px 6px' }}>
-                      {active ? format(new Date(active.start_time), 'MM/dd/yy') : ''}
+                      {active ? formatShowtime(active.start_time, 'MM/dd/yy') : ''}
                     </td>
                   </tr>
                 </tbody>
@@ -395,7 +399,7 @@ export default function BoxOfficeReceiptsTab() {
                   <tr>
                     <td colSpan={7} style={{ ...td, background: '#fafafa', fontWeight: 600 }}>
                       Date{' '}
-                      {active ? format(new Date(active.start_time), 'MMMM d, yyyy (EEEE)') : ''}
+                      {active ? formatShowtime(active.start_time, 'MMMM d, yyyy (EEEE)') : ''}
                     </td>
                   </tr>
                   {lineItems.length === 0 ? (

@@ -31,6 +31,7 @@ import LglTab from '@/components/admin/LglTab';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
+import { formatShowtime } from '@/lib/datetime';
 
 /**
  * PostgREST caps every response at 1000 rows, so a bare `.select('*')` silently
@@ -669,7 +670,7 @@ export default function AdminDashboard() {
                             <div className="flex gap-2 items-center flex-wrap">
                               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                               <span className="text-sm">
-                                {format(new Date(showing.start_time), 'MMM d, yyyy h:mm a')}
+                                {formatShowtime(showing.start_time, 'MMM d, yyyy h:mm a')}
                               </span>
                               <span className="text-sm text-muted-foreground">• ${Number(showing.ticket_price).toFixed(2)}</span>
                               {showing.venues?.name && (
@@ -682,7 +683,7 @@ export default function AdminDashboard() {
                                 capacity={showing.total_seats || 0}
                                 onClick={() =>
                                   openAttendees(
-                                    `${movie.title} — ${format(new Date(showing.start_time), 'MMM d, yyyy h:mm a')}`,
+                                    `${movie.title} — ${formatShowtime(showing.start_time, 'MMM d, yyyy h:mm a')}`,
                                     [showing.id],
                                     showing.total_seats || 0
                                   )

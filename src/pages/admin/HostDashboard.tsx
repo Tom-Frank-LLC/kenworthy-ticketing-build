@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { formatShowtime } from '@/lib/datetime';
 
 interface Assignment {
   id: string;
@@ -385,7 +386,7 @@ function ShowingsManager({
         {showings.map(s => (
           <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/50 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm">{format(new Date(s.start_time), 'EEE MMM d, yyyy • h:mm a')}</span>
+              <span className="text-sm">{formatShowtime(s.start_time, 'EEE MMM d, yyyy • h:mm a')}</span>
               <Badge variant="secondary">${Number(s.ticket_price).toFixed(2)}</Badge>
               <Badge variant="outline">{ticketCounts[s.id] || 0} tickets</Badge>
               {!s.is_active && <Badge variant="outline">Hidden</Badge>}
@@ -481,7 +482,7 @@ function CompTicketIssuer({ showings, onChanged }: { showings: any[]; onChanged:
             <option value="">Select…</option>
             {showings.map(s => (
               <option key={s.id} value={s.id}>
-                {format(new Date(s.start_time), 'MMM d, yyyy • h:mm a')}
+                {formatShowtime(s.start_time, 'MMM d, yyyy • h:mm a')}
               </option>
             ))}
           </select>
@@ -550,7 +551,7 @@ function AttendeesList({ showings }: { showings: any[] }) {
         >
           {showings.map(s => (
             <option key={s.id} value={s.id}>
-              {format(new Date(s.start_time), 'MMM d, yyyy • h:mm a')}
+              {formatShowtime(s.start_time, 'MMM d, yyyy • h:mm a')}
             </option>
           ))}
         </select>

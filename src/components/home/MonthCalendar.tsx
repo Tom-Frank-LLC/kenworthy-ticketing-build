@@ -7,7 +7,6 @@ import {
   isSameDay,
   isSameMonth,
   isToday,
-  parseISO,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -15,6 +14,7 @@ import {
 import { ChevronLeft, ChevronRight, Film, Sparkles, Music } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
 import type { FeedItem } from './TrailerFeed';
 
 const TYPE_ICON = {
@@ -39,7 +39,9 @@ export function MonthCalendar({
   // Anchor the visible month to the first upcoming dated item, falling back
   // to today so the calendar never opens on an empty month.
   const firstDated = items.find((i) => i.showingId);
-  const initial = firstDated ? parseISO(firstDated.startTime) : new Date();
+  // Shifted to the venue's wall clock so the grid below — which reads local
+  // date fields off this Date — anchors on the day the show actually plays.
+  const initial = firstDated ? toVenueWallClock(firstDated.startTime) : new Date();
 
   const [cursor, setCursor] = useState<Date>(startOfMonth(initial));
   const [selectedDay, setSelectedDay] = useState<Date>(initial);
@@ -54,7 +56,9 @@ export function MonthCalendar({
     const map = new Map<string, FeedItem[]>();
     for (const item of items) {
       if (!item.showingId) continue; // skip standalone RSVPs in the grid
-      const key = format(parseISO(item.startTime), 'yyyy-MM-dd');
+      // Keyed on the venue's calendar day: a 9 PM show is still tonight, even
+      // for a viewer whose own clock has already rolled past midnight.
+      const key = venueDayKey(item.startTime);
       const bucket = map.get(key) ?? [];
       bucket.push(item);
       map.set(key, bucket);
@@ -206,7 +210,7 @@ export function MonthCalendar({
                               'text-[10px] uppercase tracking-wide font-semibold leading-none',
                               it.type === 'concert' ? 'text-foreground' : 'text-accent',
                             )}>
-                              {format(parseISO(it.startTime), 'h:mm a')}
+                              {formatShowtime(it.startTime, 'h:mm a')}
                             </div>
                             <div className="font-serif text-xs leading-tight line-clamp-1 group-hover/ev:text-primary transition-colors">
                               {it.title}
@@ -289,7 +293,7 @@ export function MonthCalendar({
                               {TYPE_LABEL[it.type]}
                             </div>
                             <div className="font-display text-lg text-accent tabular-nums leading-none">
-                              {format(parseISO(it.startTime), 'h:mm a')}
+                              {formatShowtime(it.startTime, 'h:mm a')}
                             </div>
                             <div className="font-serif text-base leading-snug mt-1 group-hover:text-primary transition-colors">
                               {it.title}

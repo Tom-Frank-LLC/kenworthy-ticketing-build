@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
 import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
+import { instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
 
 type Category = 'movie' | 'event' | 'concert';
 
@@ -75,10 +76,12 @@ export default function ShowingForm() {
           else if (data.event_id) { setCategory('event'); setItemId(data.event_id); }
           else if (data.live_performance_id) { setCategory('concert'); setItemId(data.live_performance_id); }
           setVenueId(data.venue_id || '');
-          const dt = new Date(data.start_time);
-          const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000)
-            .toISOString().slice(0, 16);
-          setStartTime(local);
+          // Shown as the venue's wall clock, which is what the admin means by
+          // "7:30 PM" regardless of where they are sitting. The old
+          // getTimezoneOffset() shift rendered it in the browser's zone, so
+          // editing a showing from a Mountain-set machine displayed it an hour
+          // late — and saving then wrote that wrong hour back.
+          setStartTime(instantToVenueLocalInput(data.start_time));
           setTicketPrice(String(data.ticket_price));
         }
 
@@ -126,7 +129,11 @@ export default function ShowingForm() {
       concert_id: undefined,
       live_performance_id: category === 'concert' ? itemId : null,
       venue_id: venueId || null,
-      start_time: new Date(startTime).toISOString(),
+      // `startTime` is a naive wall clock from <input type="datetime-local">.
+      // `new Date(naive)` would interpret it in the browser's zone; it has to
+      // be interpreted in the venue's, or the stored instant depends on which
+      // machine the admin happened to use.
+      start_time: venueLocalToInstant(startTime).toISOString(),
       ticket_price: parseFloat(ticketPrice),
     };
 
@@ -238,6 +245,9 @@ export default function ShowingForm() {
             <div className="space-y-2">
               <Label>Date & Time *</Label>
               <Input type="datetime-local" required value={startTime} onChange={e => setStartTime(e.target.value)} />
+              <p className="text-xs text-muted-foreground">
+                Theatre local time (Pacific), whatever your computer is set to
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Base Ticket Price ($)</Label>

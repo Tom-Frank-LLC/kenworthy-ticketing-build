@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SEO } from '@/components/SEO';
+import { toVenueWallClock } from '@/lib/datetime';
 import { Building2, Mail, Sparkles, Tag, CalendarDays } from 'lucide-react';
 
 type BookedDay = { date: Date; label: string; kind: 'showing' | 'rental' };
@@ -94,7 +95,9 @@ export default function Rentals() {
       const days: BookedDay[] = [];
       (showings ?? []).forEach((s: any) => {
         const title = s.movie?.title || s.event?.title || s.live_performance?.title || 'Programmed event';
-        days.push({ date: new Date(s.start_time), label: title, kind: 'showing' });
+        // A booked day is a venue calendar day, and everything downstream
+        // (sameDay, toLocaleDateString) reads local date fields off this Date.
+        days.push({ date: toVenueWallClock(s.start_time), label: title, kind: 'showing' });
       });
       (rentals ?? []).forEach((r: any) => {
         if (!r.proposed_date) return;

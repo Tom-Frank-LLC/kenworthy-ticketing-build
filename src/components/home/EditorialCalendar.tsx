@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Film, Sparkles, Music, Calendar as CalendarIcon, ArrowRight } from 'lucide-react';
-import { format, isToday, isTomorrow, isThisWeek, parseISO } from 'date-fns';
+import { addDays, isThisWeek } from 'date-fns';
+import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
 import type { FeedItem } from './TrailerFeed';
 
 const TYPE_ICON = {
@@ -12,15 +13,18 @@ const TYPE_ICON = {
 } as const;
 
 function dayLabel(iso: string) {
-  const d = parseISO(iso);
-  if (isToday(d)) return 'Tonight';
-  if (isTomorrow(d)) return 'Tomorrow';
-  if (isThisWeek(d, { weekStartsOn: 0 })) return format(d, 'EEEE');
-  return format(d, 'EEEE, MMMM d');
+  // Relative labels are relative to the venue's day, not the reader's — see
+  // the note in formatWhen in UpcomingList.tsx.
+  const day = venueDayKey(iso);
+  const now = new Date();
+  if (day === venueDayKey(now)) return 'Tonight';
+  if (day === venueDayKey(addDays(now, 1))) return 'Tomorrow';
+  if (isThisWeek(toVenueWallClock(iso), { weekStartsOn: 0 })) return formatShowtime(iso, 'EEEE');
+  return formatShowtime(iso, 'EEEE, MMMM d');
 }
 
 function dayKey(iso: string) {
-  return format(parseISO(iso), 'yyyy-MM-dd');
+  return venueDayKey(iso);
 }
 
 export function EditorialCalendar({
@@ -91,7 +95,7 @@ export function EditorialCalendar({
                 {featured.title}
               </h2>
               <p className="font-serif text-sm text-muted-foreground mb-2">
-                {format(parseISO(featured.startTime), "EEEE, MMMM d 'at' h:mm a")}
+                {formatShowtime(featured.startTime, "EEEE, MMMM d 'at' h:mm a")}
               </p>
               {featured.curatorNote && (
                 <p className="font-serif italic text-foreground/80 leading-relaxed">
@@ -129,7 +133,7 @@ export function EditorialCalendar({
                 <h3 className="font-display text-xl tracking-wide text-foreground mb-3 pb-2 border-b border-border">
                   {dayLabel(dayItems[0].startTime)}
                   <span className="font-serif normal-case text-xs tracking-normal text-muted-foreground ml-2 lowercase">
-                    {format(parseISO(dayItems[0].startTime), 'MMMM d')}
+                    {formatShowtime(dayItems[0].startTime, 'MMMM d')}
                   </span>
                 </h3>
                 <ul className="divide-y divide-border/60">
@@ -143,9 +147,9 @@ export function EditorialCalendar({
                           className="w-full text-left py-4 flex items-start gap-4 group hover:bg-card/40 -mx-2 px-2 rounded-sm transition-colors min-h-[64px]"
                         >
                           <div className="font-display text-2xl tabular-nums text-accent shrink-0 w-20">
-                            {format(parseISO(item.startTime), 'h:mm')}
+                            {formatShowtime(item.startTime, 'h:mm')}
                             <span className="font-serif text-xs lowercase ml-0.5">
-                              {format(parseISO(item.startTime), 'a')}
+                              {formatShowtime(item.startTime, 'a')}
                             </span>
                           </div>
                           <div className="flex-1 min-w-0">

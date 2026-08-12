@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { UtensilsCrossed, Minus, Plus, ShoppingCart, Loader2, Banknote, CreditCard } from 'lucide-react';
 import { PaymentMethodSelector, type PaymentMethod } from '@/components/pos/PaymentMethodSelector';
 import { toast } from 'sonner';
+import { formatShowtime } from '@/lib/datetime';
 
 interface ConcessionItem {
   id: string;
@@ -52,7 +53,7 @@ export function ConcessionPOS({ onSaleComplete }: ConcessionPOSProps) {
       setShowings(
         (showingsRes.data || []).map((s: any) => ({
           id: s.id,
-          label: `${s.movies?.title || s.events?.title || s.concerts?.title || 'Unknown'} — ${new Date(s.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`,
+          label: `${s.movies?.title || s.events?.title || s.concerts?.title || 'Unknown'} — ${formatShowtime(s.start_time, 'MMM d, h:mm a')}`,
         }))
       );
     })();

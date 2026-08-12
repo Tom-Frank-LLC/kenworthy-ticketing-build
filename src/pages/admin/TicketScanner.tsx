@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { ScanLine, Camera, Search } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { ScanResultOverlay, type ScanResult } from '@/components/admin/ScanResultOverlay';
+import { formatShowtime } from '@/lib/datetime';
 
 export default function TicketScanner() {
   const { isAdmin, isStaff, isHost, loading: authLoading } = useAuth();
@@ -89,7 +90,7 @@ export default function TicketScanner() {
       return {
         status: 'already_scanned',
         ticket,
-        message: `Already scanned at ${format(new Date(data.scanned_at), 'h:mm:ss a')}`,
+        message: `Already scanned at ${formatShowtime(data.scanned_at, 'h:mm:ss a')}`,
       };
     }
 

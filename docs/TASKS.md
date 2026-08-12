@@ -134,7 +134,7 @@ Separate from Letterboxd. TMDB (The Movie Database) has an open, free, well-docu
 | Grant anon SELECT on all public tables (root cause + migration) | ✅ |
 | Grant service_role full CRUD (root cause + migration) | ✅ |
 | Grant authenticated content-table writes its RLS gates (migration) | ✅ |
-| Import full event history w/ correct Mountain-time handling | ✅ |
+| Import full event history w/ correct Pacific-time handling (Moscow is Pacific, not Mountain — the original import used America/Boise and stored every showtime an hour early; fixed 2026-08-12) | ✅ |
 | Add showings for live events (238) | ✅ |
 | Recover missing multi-day showings from MEC `days` field (383+) | ✅ |
 | Fix HTML entities in imported titles | ✅ |

@@ -1,20 +1,26 @@
 import { useMemo, useState } from 'react';
-import { format, parseISO, isToday, isTomorrow } from 'date-fns';
+import { addDays } from 'date-fns';
 import { List as ListIcon, Calendar as CalendarIcon, Film, Sparkles, Music, Ticket, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { MonthCalendar } from './MonthCalendar';
+import { formatShowtime, venueDayKey } from '@/lib/datetime';
 import type { FeedItem } from './TrailerFeed';
 
 const TYPE_ICON = { movie: Film, event: Sparkles, concert: Music } as const;
 const TYPE_LABEL = { movie: 'Film', event: 'Event', concert: 'Live' } as const;
 
 function formatWhen(iso: string) {
-  const d = parseISO(iso);
-  if (isToday(d)) return `Tonight · ${format(d, 'h:mm a')}`;
-  if (isTomorrow(d)) return `Tomorrow · ${format(d, 'h:mm a')}`;
-  return format(d, 'EEE, MMM d · h:mm a');
+  // "Tonight" has to mean tonight at the theatre. Comparing against the
+  // viewer's own day would label a 7 PM Pacific show "Tomorrow" for anyone
+  // whose clock has already crossed midnight.
+  const day = venueDayKey(iso);
+  const now = new Date();
+  const time = formatShowtime(iso, 'h:mm a');
+  if (day === venueDayKey(now)) return `Tonight · ${time}`;
+  if (day === venueDayKey(addDays(now, 1))) return `Tomorrow · ${time}`;
+  return formatShowtime(iso, 'EEE, MMM d · h:mm a');
 }
 
 export function UpcomingList({
@@ -115,9 +121,9 @@ export function UpcomingList({
                     )}
                   >
                     <div className="font-display text-base md:text-lg text-accent w-20 shrink-0 tabular-nums leading-tight">
-                      <div>{format(parseISO(it.startTime), 'MMM d')}</div>
+                      <div>{formatShowtime(it.startTime, 'MMM d')}</div>
                       <div className="text-xs text-muted-foreground">
-                        {format(parseISO(it.startTime), 'h:mm a')}
+                        {formatShowtime(it.startTime, 'h:mm a')}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">

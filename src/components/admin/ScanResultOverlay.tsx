@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { formatShowtime } from '@/lib/datetime';
 
 export type ScanStatus = 'valid' | 'already_scanned' | 'invalid';
 
@@ -145,7 +146,7 @@ export function ScanResultOverlay({
               <p className="text-xl font-semibold pt-3">{ticket.movie_title}</p>
               {ticket.start_time && (
                 <p className="text-sm text-muted-foreground">
-                  {format(new Date(ticket.start_time), 'MMM d, yyyy h:mm a')}
+                  {formatShowtime(ticket.start_time, 'MMM d, yyyy h:mm a')}
                 </p>
               )}
               <p className="text-base font-medium">

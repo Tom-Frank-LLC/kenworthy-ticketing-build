@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { formatShowtime } from '@/lib/datetime';
 
 interface AttendeeSheetProps {
   open: boolean;
@@ -109,7 +110,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
         attendeeEmail(r),
         r.profiles?.phone ?? '',
         seatLabel(r.seats),
-        r.showings?.start_time ? format(new Date(r.showings.start_time), 'yyyy-MM-dd HH:mm') : '',
+        r.showings?.start_time ? formatShowtime(r.showings.start_time, 'yyyy-MM-dd HH:mm') : '',
         r.purchased_at ? format(new Date(r.purchased_at), 'yyyy-MM-dd HH:mm') : '',
         r.status,
         r.total_price ?? '',
@@ -175,7 +176,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
                     {multiShowing && (
                       <TableCell className="text-xs whitespace-nowrap">
                         {r.showings?.start_time
-                          ? format(new Date(r.showings.start_time), 'MMM d, yyyy h:mm a')
+                          ? formatShowtime(r.showings.start_time, 'MMM d, yyyy h:mm a')
                           : '—'}
                       </TableCell>
                     )}

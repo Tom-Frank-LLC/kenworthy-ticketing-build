@@ -27,6 +27,7 @@ import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, computeProcessingFee, TAX_RATE } from '@/lib/booking';
 import { invokeFunction } from '@/lib/functions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { formatShowtime } from '@/lib/datetime';
 
 interface ShowingOption {
   id: string;
@@ -546,7 +547,7 @@ export default function StaffPOS() {
                 <SelectContent>
                   {showings.map(s => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.movie_title} — {format(new Date(s.start_time), 'MMM d, h:mm a')} — ${Number(s.ticket_price).toFixed(2)}
+                      {s.movie_title} — {formatShowtime(s.start_time, 'MMM d, h:mm a')} — ${Number(s.ticket_price).toFixed(2)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -701,7 +702,7 @@ export default function StaffPOS() {
                 <>
                   <p className="text-sm font-medium">{selectedShowing?.movie_title}</p>
                   <p className="text-xs text-muted-foreground">
-                    {selectedShowing && format(new Date(selectedShowing.start_time), 'MMM d, yyyy h:mm a')}
+                    {selectedShowing && formatShowtime(selectedShowing.start_time, 'MMM d, yyyy h:mm a')}
                   </p>
                   <div className="space-y-1 text-sm">
                     {hasTiers ? (

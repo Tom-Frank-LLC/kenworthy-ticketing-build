@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { format } from 'date-fns';
 import { Ticket, QrCode, Calendar, MapPin } from 'lucide-react';
 import { RedeemedQr, RedemptionBadge } from '@/components/RedeemedQr';
+import { formatShowtime } from '@/lib/datetime';
 
 interface TicketWithDetails {
   id: string;
@@ -100,7 +101,7 @@ export default function MyTickets() {
                     <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
-                        {ticket.showing ? format(new Date(ticket.showing.start_time), 'MMM d, yyyy h:mm a') : ''}
+                        {ticket.showing ? formatShowtime(ticket.showing.start_time, 'MMM d, yyyy h:mm a') : ''}
                       </span>
                       {ticket.seat && (
                         <span className="flex items-center gap-1">
@@ -144,7 +145,7 @@ export default function MyTickets() {
                         <div className="text-sm space-y-1">
                           <p className="font-bold">{ticket.showing?.title}</p>
                           <p className="text-muted-foreground">
-                            {ticket.showing && format(new Date(ticket.showing.start_time), 'MMM d, yyyy h:mm a')}
+                            {ticket.showing && formatShowtime(ticket.showing.start_time, 'MMM d, yyyy h:mm a')}
                           </p>
                           {ticket.seat ? (
                             <p className="text-muted-foreground">
