@@ -8,7 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Archive, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart } from 'lucide-react';
+import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Archive, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye } from 'lucide-react';
+import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
+import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
 import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
@@ -29,6 +31,71 @@ import LglTab from '@/components/admin/LglTab';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
+
+/**
+ * PostgREST caps every response at 1000 rows, so a bare `.select('*')` silently
+ * truncated the dashboard — the movies table alone is over that cap, meaning the
+ * tail of the alphabet was invisible in admin and absent from any client-side
+ * sort. Page through explicitly instead.
+ *
+ * Each query must carry a total ordering (a unique tiebreak) or rows can shift
+ * between pages and be dropped or duplicated.
+ */
+const PAGE_ROWS = 1000;
+
+type SortOrder = 'showtime_desc' | 'showtime_asc' | 'title_asc' | 'title_desc' | 'newest' | 'oldest';
+
+/**
+ * Staff work forward from what is playing next, so the default view is
+ * chronological by showtime with the farthest-future dates first — not the old
+ * Title A–Z.
+ */
+const DEFAULT_SORT: SortOrder = 'showtime_desc';
+
+/** `sold / capacity`, clickable to open the attendee list for that showing. */
+function TicketCountBadge({
+  sold,
+  capacity,
+  onClick,
+}: {
+  sold: number;
+  capacity: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${sold} of ${capacity} tickets sold — click to see attendees`}
+      aria-label={`View ${sold} attendees`}
+      className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Badge
+        variant="secondary"
+        className="text-xs whitespace-nowrap cursor-pointer hover:bg-secondary/70 transition-colors"
+      >
+        {sold} / {capacity}
+      </Badge>
+    </button>
+  );
+}
+
+async function fetchAllPages<T>(
+  makeQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_ROWS) {
+    const { data, error } = await makeQuery(from, from + PAGE_ROWS - 1);
+    if (error) {
+      console.error('AdminDashboard fetchAllPages:', error);
+      break;
+    }
+    if (!data?.length) break;
+    rows.push(...data);
+    if (data.length < PAGE_ROWS) break;
+  }
+  return rows;
+}
 
 export default function AdminDashboard() {
   const { isAdmin, isStaff, isSuperadmin, loading: authLoading } = useAuth();
@@ -55,9 +122,19 @@ export default function AdminDashboard() {
   const [liveEventKindFilter, setLiveEventKindFilter] = useState<'all' | 'event' | 'concert'>(
     () => (searchParams.get('kind') as any) || 'all'
   );
-  const [sortOrder, setSortOrder] = useState<'title_asc' | 'title_desc' | 'newest' | 'oldest'>(
-    () => (searchParams.get('sort') as any) || 'title_asc'
+  const [sortOrder, setSortOrder] = useState<SortOrder>(
+    () => (searchParams.get('sort') as any) || DEFAULT_SORT
   );
+  // Public-drawer preview (#3) and attendee list (#2) — both stay in-page so
+  // staff never lose their filters.
+  const [previewProduction, setPreviewProduction] = useState<any>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [attendeeTarget, setAttendeeTarget] = useState<{
+    title: string;
+    showingIds: string[];
+    capacity: number;
+  } | null>(null);
+  const [attendeeOpen, setAttendeeOpen] = useState(false);
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
@@ -74,7 +151,7 @@ export default function AdminDashboard() {
     setOrDel('etype', eventTypeFilter, 'all');
     setOrDel('csub', concertSubcategoryFilter, 'all');
     setOrDel('kind', liveEventKindFilter, 'all');
-    setOrDel('sort', sortOrder, 'title_asc');
+    setOrDel('sort', sortOrder, DEFAULT_SORT);
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
@@ -88,18 +165,27 @@ export default function AdminDashboard() {
 
   async function loadData() {
     const [moviesRes, eventsRes, concertsRes, showingsRes, ticketsRes] = await Promise.all([
-      supabase.from('movies').select('*').order('title'),
-      supabase.from('events').select('*').order('title'),
-      supabase.from('live_performances').select('*').order('title'),
-      supabase.from('showings').select('*, movies(title), events(title), live_performances(title), venues(name)').order('start_time', { ascending: false }),
-      supabase.from('tickets').select('id, showing_id'),
+      fetchAllPages((from, to) => supabase.from('movies').select('*').order('title').order('id').range(from, to)),
+      fetchAllPages((from, to) => supabase.from('events').select('*').order('title').order('id').range(from, to)),
+      fetchAllPages((from, to) =>
+        supabase.from('live_performances').select('*').order('title').order('id').range(from, to)
+      ),
+      fetchAllPages((from, to) =>
+        supabase
+          .from('showings')
+          .select('*, movies(title), events(title), live_performances(title), venues(name)')
+          .order('start_time', { ascending: false })
+          .order('id')
+          .range(from, to)
+      ),
+      fetchAllPages((from, to) => supabase.from('tickets').select('id, showing_id').order('id').range(from, to)),
     ]);
-    setMovies(moviesRes.data || []);
-    setEvents(eventsRes.data || []);
-    setConcerts(concertsRes.data || []);
-    setShowings(showingsRes.data || []);
-    setTickets(ticketsRes.data || []);
-    setTicketCount(ticketsRes.data?.length || 0);
+    setMovies(moviesRes);
+    setEvents(eventsRes);
+    setConcerts(concertsRes);
+    setShowings(showingsRes);
+    setTickets(ticketsRes);
+    setTicketCount(ticketsRes.length);
   }
 
 
@@ -122,6 +208,32 @@ export default function AdminDashboard() {
     return { sold, capacity };
   };
 
+  const showingsForProduction = (type: 'movie' | 'event' | 'concert', productionId: string) => {
+    const column = type === 'movie' ? 'movie_id' : type === 'event' ? 'event_id' : 'live_performance_id';
+    return showings.filter(s => s[column] === productionId);
+  };
+
+  /**
+   * Open the public ProductionDetailDrawer against an admin row, so staff see
+   * exactly what a visitor sees. Mirrors the shape the calendar/home
+   * `handleSelect` builds: the production record plus a `showings` array.
+   * ticket_price is coerced because the drawer calls .toFixed() on it and
+   * Postgres numeric arrives as a string.
+   */
+  const openPreview = (item: any, type: 'movie' | 'event' | 'concert') => {
+    const productionShowings = showingsForProduction(type, item.id)
+      .slice()
+      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+      .map(s => ({ id: s.id, start_time: s.start_time, ticket_price: Number(s.ticket_price) || 0 }));
+    setPreviewProduction({ ...item, type, showings: productionShowings });
+    setPreviewOpen(true);
+  };
+
+  const openAttendees = (title: string, showingIds: string[], capacity: number) => {
+    setAttendeeTarget({ title, showingIds, capacity });
+    setAttendeeOpen(true);
+  };
+
   const uniqueRatings = Array.from(new Set(movies.map(m => m.rating).filter(Boolean))).sort();
   const uniqueMovieGenres = Array.from(new Set(movies.map(m => m.genre).filter(Boolean))).sort();
   const uniqueEventTypes = Array.from(new Set(events.map(e => e.ticket_type).filter(Boolean))).sort();
@@ -136,17 +248,59 @@ export default function AdminDashboard() {
     setEventTypeFilter('all');
     setConcertSubcategoryFilter('all');
     setLiveEventKindFilter('all');
-    setSortOrder('title_asc');
+    setSortOrder(DEFAULT_SORT);
+  };
+
+  /**
+   * Latest showtime per production, keyed by production id.
+   *
+   * A production has many showings, so ordering it by "showtime" needs one
+   * representative timestamp. We use the max (latest) start_time, so a title
+   * with an upcoming date sorts above one whose last screening was years ago.
+   * Showing ids are UUIDs, so a single map across movies/events/performances
+   * cannot collide.
+   */
+  const latestShowtimeByProduction = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of showings) {
+      const productionId = s.movie_id || s.event_id || s.live_performance_id;
+      if (!productionId) continue;
+      const at = new Date(s.start_time).getTime();
+      if (!Number.isFinite(at)) continue;
+      const prev = map.get(productionId);
+      if (prev === undefined || at > prev) map.set(productionId, at);
+    }
+    return map;
+  }, [showings]);
+
+  const byTitle = (a: any, b: any) => (a.title || '').localeCompare(b.title || '');
+
+  // Productions with no showings have no showtime to compare, so they sink to
+  // the bottom in both directions rather than masquerading as the oldest.
+  const byShowtime = (a: any, b: any, direction: 'asc' | 'desc') => {
+    const at = latestShowtimeByProduction.get(a.id);
+    const bt = latestShowtimeByProduction.get(b.id);
+    if (at === undefined && bt === undefined) return byTitle(a, b);
+    if (at === undefined) return 1;
+    if (bt === undefined) return -1;
+    if (at === bt) return byTitle(a, b);
+    return direction === 'desc' ? bt - at : at - bt;
   };
 
   const sortItems = (items: any[]) => {
     const sorted = [...items];
     switch (sortOrder) {
+      case 'showtime_desc':
+        sorted.sort((a, b) => byShowtime(a, b, 'desc'));
+        break;
+      case 'showtime_asc':
+        sorted.sort((a, b) => byShowtime(a, b, 'asc'));
+        break;
       case 'title_asc':
-        sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+        sorted.sort(byTitle);
         break;
       case 'title_desc':
-        sorted.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+        sorted.sort((a, b) => byTitle(b, a));
         break;
       case 'newest':
         sorted.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
@@ -191,12 +345,6 @@ export default function AdminDashboard() {
       (genreFilter === 'all' || !isConcert || item.genre === genreFilter)
     );
   }));
-
-  const TicketCountBadge = ({ sold, capacity }: { sold: number; capacity: number }) => (
-    <Badge variant="secondary" className="text-xs whitespace-nowrap" title={`${sold} of ${capacity} tickets sold`}>
-      {sold} / {capacity}
-    </Badge>
-  );
 
   const deleteItem = async (table: 'movies' | 'events' | 'live_performances' | 'showings', id: string, label: string) => {
 
@@ -444,15 +592,20 @@ export default function AdminDashboard() {
                     </>
                   )}
 
-                  <Select value={sortOrder} onValueChange={v => setSortOrder(v as any)}>
-                    <SelectTrigger className="w-[150px]">
+                  <Select value={sortOrder} onValueChange={v => setSortOrder(v as SortOrder)}>
+                    <SelectTrigger className="w-[190px]">
                       <SelectValue placeholder="Sort by" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="showtime_desc">Showtime (upcoming first)</SelectItem>
+                      <SelectItem value="showtime_asc">Showtime (past first)</SelectItem>
                       <SelectItem value="title_asc">Title A–Z</SelectItem>
                       <SelectItem value="title_desc">Title Z–A</SelectItem>
-                      <SelectItem value="newest">Newest first</SelectItem>
-                      <SelectItem value="oldest">Oldest first</SelectItem>
+                      {/* Everything was bulk-imported at once, so created_at barely
+                          varies — labelled plainly so the near-no-op isn't mistaken
+                          for a broken showtime sort. */}
+                      <SelectItem value="newest">Date added (newest)</SelectItem>
+                      <SelectItem value="oldest">Date added (oldest)</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -495,6 +648,9 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                       <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(movie, 'movie')}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
                         <Button variant="ghost" size="sm" asChild>
                           <Link to={`/admin/movies/${movie.id}`}><Edit className="h-4 w-4" /></Link>
                         </Button>
@@ -519,7 +675,17 @@ export default function AdminDashboard() {
                               )}
                             </div>
                             <div className="flex items-center gap-1">
-                              <TicketCountBadge sold={getTicketsSoldForShowing(showing.id)} capacity={showing.total_seats || 0} />
+                              <TicketCountBadge
+                                sold={getTicketsSoldForShowing(showing.id)}
+                                capacity={showing.total_seats || 0}
+                                onClick={() =>
+                                  openAttendees(
+                                    `${movie.title} — ${format(new Date(showing.start_time), 'MMM d, yyyy h:mm a')}`,
+                                    [showing.id],
+                                    showing.total_seats || 0
+                                  )
+                                }
+                              />
                               <Button variant="ghost" size="sm" asChild>
                                 <Link to={`/admin/showings/${showing.id}`}><Edit className="h-3.5 w-3.5" /></Link>
                               </Button>
@@ -581,7 +747,20 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <TicketCountBadge sold={sold} capacity={capacity} />
+                      <TicketCountBadge
+                        sold={sold}
+                        capacity={capacity}
+                        onClick={() =>
+                          openAttendees(
+                            item.title,
+                            showingsForProduction(item.kind, item.id).map(s => s.id),
+                            capacity
+                          )
+                        }
+                      />
+                      <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(item, item.kind)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="sm" title="Export contacts" onClick={async () => {
                         const count = await exportContactsCsv(item.kind, item.id, item.title);
                         if (count === null) toast.info('No attendees found');
@@ -705,6 +884,21 @@ export default function AdminDashboard() {
           </TabsContent>
         )}
       </Tabs>
+
+      {/* The public drawer, reused verbatim so preview can't drift from the real thing. */}
+      <ProductionDetailDrawer
+        production={previewProduction}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
+
+      <AttendeeSheet
+        open={attendeeOpen}
+        onOpenChange={setAttendeeOpen}
+        title={attendeeTarget?.title ?? ''}
+        showingIds={attendeeTarget?.showingIds ?? []}
+        capacity={attendeeTarget?.capacity ?? 0}
+      />
     </div>
   );
 }

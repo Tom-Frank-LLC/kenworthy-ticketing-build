@@ -93,7 +93,11 @@ export function useFeed() {
             rsvpUrl: prod.rsvp_url,
             curatorNote: prod.description,
             isFeatured: prod.is_featured ?? false,
-            ticketPrice: s.ticket_price,
+            // No showing exists in this branch — these are standalone RSVP /
+            // info-only events — so there is no price to carry. `s` belongs to
+            // the showings loop above and is out of scope here; referencing it
+            // threw a ReferenceError that took down the whole feed.
+            ticketPrice: undefined,
           });
         }
       }
