@@ -19,6 +19,7 @@ import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMe
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
+import { fetchShowingAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
 
 type ProductionType = 'movie' | 'event' | 'concert';
@@ -29,49 +30,6 @@ function getProductionMeta(type: ProductionType) {
     case 'event': return { icon: Sparkles, label: 'Event' };
     case 'concert': return { icon: Music, label: 'Concert' };
   }
-}
-
-type Availability = {
-  totalSeats: number;
-  held: number;
-  available: number;
-  takenSeatIds: Set<string>;
-};
-
-/**
- * How many tickets are left, and which seats are gone.
- *
- * This goes through the `showing_availability` RPC instead of querying
- * `tickets` directly, and that is not a stylistic choice. `tickets` has RLS
- * with one SELECT policy — `user_id = auth.uid() OR is_admin()` — so for an
- * anonymous visitor a direct query returns zero rows, always. The page used to
- * read availability that way, which meant `ticketsSold` was permanently 0 and
- * `takenSeatIds` permanently empty: the quantity ceiling never engaged, and the
- * seat map offered seats that were already sold. Verified as the anon role —
- * `GET /rest/v1/tickets` answers `content-range: */0` on both projects while
- * showings returns 34 rows. The RPC is SECURITY DEFINER and returns only
- * aggregates and seat ids, no buyer or price data.
- *
- * `held` counts unpaid `pending` rows still inside their hold window, matching
- * what the server counts when it decides whether an order fits. Counting only
- * confirmed rows here would advertise seats checkout is about to refuse.
- */
-async function fetchAvailability(showingId: string): Promise<Availability | null> {
-  const { data, error } = await supabase
-    .rpc('showing_availability', { p_showing_id: showingId })
-    .maybeSingle();
-
-  if (error || !data) {
-    console.error('[Showing] availability lookup failed', error);
-    return null;
-  }
-
-  return {
-    totalSeats: data.total_seats ?? 0,
-    held: data.held ?? 0,
-    available: data.available ?? 0,
-    takenSeatIds: new Set<string>(data.taken_seat_ids ?? []),
-  };
 }
 
 /**
@@ -199,7 +157,7 @@ export default function Showing() {
           productionPromise,
           venuePromise,
           supabase.from('seats').select('*').order('seat_row').order('seat_number'),
-          fetchAvailability(id),
+          fetchShowingAvailability(id),
         ]);
         setProduction(prodRes.data);
         setVenue(venueRes.data);
@@ -246,7 +204,7 @@ export default function Showing() {
         const [prodRes, venueRes, availability] = await Promise.all([
           productionPromise,
           venuePromise,
-          fetchAvailability(id),
+          fetchShowingAvailability(id),
         ]);
         setProduction(prodRes.data);
         setVenue(venueRes.data);
@@ -450,7 +408,7 @@ export default function Showing() {
       // stale availability. Re-read it so the seat map greys out the seat that
       // was just lost and the quantity ceiling drops, instead of leaving the
       // buyer to retry the identical order and be refused identically.
-      const availability = await fetchAvailability(id!);
+      const availability = await fetchShowingAvailability(id!);
       if (availability) {
         setTakenSeatIds(availability.takenSeatIds);
         setTicketsSold(availability.held);

@@ -292,6 +292,28 @@ Deno.serve(async (req: Request) => {
 
   if (insertErr || !created || created.length === 0) {
     console.error('[ticket-checkout] pending insert failed', insertErr);
+
+    // The availability checks above are advisory: they read, then this inserts,
+    // and another order can land in between. The database is what actually
+    // refuses to oversell, so the two codes below are that race being caught
+    // rather than an unexpected failure — they deserve the same answer the
+    // advisory check would have given, not a generic 500. Nothing has been
+    // charged at this point: the card is not touched until after this insert.
+    const code = (insertErr as any)?.code;
+
+    // PT409 — the capacity trigger in
+    // migrations/20260812170000_showing_capacity_enforcement.sql.
+    if (code === 'PT409') {
+      return json({ error: 'This showing just sold out. Your card was not charged.' }, 409);
+    }
+
+    // 23505 — UNIQUE(showing_id, seat_id): someone confirmed one of these seats
+    // in the last few milliseconds. This is the case that previously reached the
+    // buyer as an opaque 500.
+    if (code === '23505') {
+      return json({ error: 'Someone just took one of those seats. Please pick again.' }, 409);
+    }
+
     return json({ error: 'Could not start this purchase. Please try again.' }, 500);
   }
 
