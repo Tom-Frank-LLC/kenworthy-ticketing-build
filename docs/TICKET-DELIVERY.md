@@ -234,7 +234,8 @@ supabase secrets set \
   TICKET_FROM_EMAIL='The Kenworthy <tickets@kenworthy.org>' \
   TICKET_REPLY_TO='events@kenworthy.org' \
   TWILIO_ACCOUNT_SID=ACxxx \
-  TWILIO_AUTH_TOKEN=xxx \
+  TWILIO_API_KEY_SID=SKxxx \
+  TWILIO_API_KEY_SECRET=xxx \
   TWILIO_FROM_NUMBER='+1208XXXXXXX' \
   SITE_URL='https://<this-environment-url>'
 ```
@@ -244,7 +245,9 @@ supabase secrets set \
 | `RESEND_API_KEY` | Email | Email path records `RESEND_API_KEY is not configured`, purchase still succeeds |
 | `TICKET_FROM_EMAIL` | Email | Defaults to `The Kenworthy <tickets@kenworthy.org>` |
 | `TICKET_REPLY_TO` | Email | Defaults to `events@kenworthy.org` |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | SMS | SMS path records a not-configured error |
+| `TWILIO_ACCOUNT_SID` | SMS | Always required — it identifies the account in the request URL, in both auth modes |
+| `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` | SMS | **Preferred.** Scoped and revocable, so a leak does not expose the master account. The key SID is the Basic Auth *username* and the secret the password; the account SID stays in the URL |
+| `TWILIO_AUTH_TOKEN` | SMS | Fallback when no API key is set. Twilio recommends against it in production |
 | `TWILIO_FROM_NUMBER` *or* `TWILIO_MESSAGING_SERVICE_SID` | SMS | As above. Messaging Service is preferred when present |
 | `SITE_URL` | Both | **Set this per environment.** Defaults to the production URL, so an unset staging value puts production links in staging emails |
 | `VENUE_TIME_ZONE` | Both | Defaults to `America/Los_Angeles` |
