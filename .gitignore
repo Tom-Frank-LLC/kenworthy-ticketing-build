@@ -31,3 +31,6 @@ dist-ssr
 .env.staging
 .env.production
 
+
+# Supabase CLI local state (linked project ref, version caches)
+supabase/.temp/
