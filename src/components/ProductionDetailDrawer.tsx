@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar } from 'lucide-react';
+import { Calendar, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { formatShowtime } from '@/lib/datetime';
@@ -39,7 +39,19 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto p-0">
+      <SheetContent side="right" hideClose className="w-full sm:max-w-lg overflow-y-auto p-0">
+        {/* Close sits in its own solid bar above the artwork rather than on
+            top of it: a one-sheet is unpredictable behind a small glyph, and
+            the default corner button scrolled out of reach on a phone. Sticky
+            against this sheet's own scroll box, so it stays put all the way
+            down. */}
+        <div className="sticky top-0 z-20 flex items-center justify-end border-b border-border bg-background px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+          <SheetClose className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+            <X className="h-5 w-5" />
+            <span className="sr-only">Close</span>
+          </SheetClose>
+        </div>
+
         {/* Poster / Trailer */}
         <div className="relative">
           <ProductionMedia
