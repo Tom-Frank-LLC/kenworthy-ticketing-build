@@ -48,7 +48,7 @@ type Availability = {
  * read availability that way, which meant `ticketsSold` was permanently 0 and
  * `takenSeatIds` permanently empty: the quantity ceiling never engaged, and the
  * seat map offered seats that were already sold. Verified as the anon role —
- * `GET /rest/v1/tickets` answers `content-range: */0` on both projects while
+ * `GET /rest/v1/tickets` answers `content-range: *\/0` on both projects while
  * showings returns 34 rows. The RPC is SECURITY DEFINER and returns only
  * aggregates and seat ids, no buyer or price data.
  *
