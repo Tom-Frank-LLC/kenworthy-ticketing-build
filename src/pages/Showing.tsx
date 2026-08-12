@@ -418,7 +418,8 @@ export default function Showing() {
     : `$${Number(showing.ticket_price).toFixed(2)} per ticket`;
 
   return (
-    <div className="container py-8 px-4 max-w-5xl">
+    // Extra bottom padding on mobile clears the sticky order bar below.
+    <div className="container py-8 px-4 max-w-5xl pb-28 lg:pb-8">
       <SEO
         title={`${production?.title ?? 'Showing'} — ${format(new Date(showing.start_time), 'MMM d, yyyy')} at The Kenworthy`}
         description={
@@ -616,8 +617,8 @@ export default function Showing() {
         </div>
 
         {/* Checkout */}
-        <div>
-          <Card className="glass sticky top-20">
+        <div id="order-summary" className="scroll-mt-24">
+          <Card className="glass lg:sticky lg:top-20">
             <CardHeader>
               <CardTitle className="font-display text-lg">Order Summary</CardTitle>
             </CardHeader>
@@ -791,6 +792,45 @@ export default function Showing() {
           </Card>
         </div>
       </div>
+
+      {/* Mobile order bar. On phones the summary column stacks below the seat
+          map, so the running total and the way to checkout would otherwise be
+          a full screen of scrolling away from the seat the buyer just tapped. */}
+      {ticketCount > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-accent/20 glass px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">
+                {ticketCount} {ticketCount === 1 ? 'ticket' : 'tickets'}
+                {isAssignedSeating && (
+                  <span className="text-muted-foreground">
+                    {' · '}
+                    {Array.from(selectedSeats)
+                      .map(seatId => {
+                        const seat = seats.find(s => s.id === seatId);
+                        return seat ? `${seat.seat_row}${seat.seat_number}` : null;
+                      })
+                      .filter(Boolean)
+                      .join(', ')}
+                  </span>
+                )}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                Total <span className="text-primary font-semibold">${grandTotal.toFixed(2)}</span>
+              </p>
+            </div>
+            <Button
+              size="lg"
+              className="h-12 shrink-0"
+              onClick={() =>
+                document.getElementById('order-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

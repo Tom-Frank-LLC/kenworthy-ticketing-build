@@ -93,7 +93,11 @@ export function UpcomingList({
         ) : (
         <div className="grid lg:grid-cols-[1fr_1.2fr] gap-6 lg:gap-10">
           {/* List */}
-          <ul className="space-y-2 lg:max-h-[560px] lg:overflow-y-auto lg:pr-2">
+          {/* min-w-0: grid items default to min-width:auto, which let a long
+              title push this column past the viewport (112px of horizontal
+              scroll at 375px) and stopped the `truncate` below from ever
+              engaging. */}
+          <ul className="min-w-0 space-y-2 lg:max-h-[560px] lg:overflow-y-auto lg:pr-2">
             {dated.map((it) => {
               const Icon = TYPE_ICON[it.type];
               const selected = active?.id === it.id;
@@ -138,7 +142,7 @@ export function UpcomingList({
 
           {/* Preview */}
           {active && (
-            <div className="lg:sticky lg:top-4 lg:self-start">
+            <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
               <div className="rounded-lg border border-accent/20 bg-card overflow-hidden">
                 <div className="relative aspect-[16/10] bg-muted">
                   {active.posterUrl ? (

@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
+import { MobileNav } from '@/components/MobileNav';
 import { NewsletterSignup } from '@/components/NewsletterSignup';
 
 const navLinkClass =
@@ -53,9 +54,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="sticky top-0 z-50 glass border-b border-accent/20">
-        <div className="container flex h-[68px] items-center justify-between gap-4">
-          <div className="flex items-center gap-6 md:gap-8 min-w-0">
+      <header className="sticky top-0 z-50 glass border-b border-accent/20 pt-[env(safe-area-inset-top)]">
+        <div className="container flex h-[68px] items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-3 sm:gap-6 md:gap-8 min-w-0">
+            {/* Full menu below `lg`, where the desktop links below are still hidden. */}
+            <MobileNav />
             <Link to="/" className="flex items-center group" aria-label="The Kenworthy — home">
               <KenworthyLogo
                 size="header"
@@ -111,8 +114,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Button>
             {user ? (
               <>
+                {/* Role shortcuts live in the mobile drawer below `lg`. */}
                 {isAdmin && (
-                  <Button variant="ghost" size="sm" asChild className="h-10">
+                  <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
                     <Link to="/admin">
                       <Shield className="h-4 w-4 mr-1" /> Admin
                     </Link>
@@ -120,17 +124,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
                 {isStaff && !isAdmin && (
                   <>
-                    <Button variant="ghost" size="sm" asChild className="h-10">
+                    <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
                       <Link to="/admin">
                         <Shield className="h-4 w-4 mr-1" /> Admin
                       </Link>
                     </Button>
-                    <Button variant="ghost" size="sm" asChild className="h-10">
+                    <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
                       <Link to="/admin/pos">
                         <ShoppingCart className="h-4 w-4 mr-1" /> POS
                       </Link>
                     </Button>
-                    <Button variant="ghost" size="sm" asChild className="h-10">
+                    <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
                       <Link to="/admin/scanner">
                         <ScanLine className="h-4 w-4 mr-1" /> Scan
                       </Link>
@@ -138,14 +142,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </>
                 )}
                 {isSuperadmin && (
-                  <Button variant="ghost" size="sm" asChild className="h-10 text-primary">
+                  <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10 text-primary">
                     <Link to="/superadmin">
                       <ShieldCheck className="h-4 w-4 mr-1" /> Superadmin
                     </Link>
                   </Button>
                 )}
                 {isHost && !isAdmin && (
-                  <Button variant="ghost" size="sm" asChild className="h-10">
+                  <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
                     <Link to="/host">
                       <Home className="h-4 w-4 mr-1" /> Host
                     </Link>
@@ -153,7 +157,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-10">
+                    <Button variant="outline" size="sm" className="hidden sm:inline-flex h-10">
                       <User className="h-4 w-4 mr-1" /> Me <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-70" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -179,11 +183,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </>
             ) : (
               <>
-                <Button variant="ghost" size="sm" asChild className="h-10">
+                <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex h-10">
                   <Link to={authHref}>Sign In</Link>
                 </Button>
-                <Button size="sm" asChild className="h-10 px-5">
-                  <Link to="/#calendar">Get Tickets</Link>
+                <Button size="sm" asChild className="h-10 px-4 sm:px-5">
+                  <Link to="/calendar">Get Tickets</Link>
                 </Button>
               </>
             )}

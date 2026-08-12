@@ -70,12 +70,20 @@
     @apply border-border;
   }
 
+  /* Under viewport-fit=cover the page paints edge to edge, so the overscroll
+     / notch areas need the marquee black too — otherwise they flash white. */
+  html {
+    @apply bg-background;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Fraunces', Georgia, serif;
     font-size: 17px;
     line-height: 1.6;
     font-optical-sizing: auto;
+    /* Kill the grey flash iOS paints over every tapped control. */
+    -webkit-tap-highlight-color: transparent;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -86,6 +94,19 @@
 }
 
 @layer utilities {
+  /* Notch / home-indicator clearance. env() resolves to 0px on browsers and
+     viewports without insets, so these are safe to apply unconditionally. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .px-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-primary to-accent;
   }
