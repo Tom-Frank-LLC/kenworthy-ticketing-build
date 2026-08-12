@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, MapPin, Ticket as TicketIcon, AlertCircle } from 'lucide-react';
 import { SEO } from '@/components/SEO';
+import { RedeemedQr } from '@/components/RedeemedQr';
 import { fetchPublicOrder, type PublicOrder } from '@/lib/tickets';
 
 /**
@@ -111,8 +111,8 @@ export default function PublicTicket() {
                 <span className="text-xs uppercase tracking-wider text-muted-foreground">
                   Ticket {i + 1} of {count}
                 </span>
-                <Badge variant={ticket.status === 'confirmed' ? 'default' : 'secondary'}>
-                  {ticket.status}
+                <Badge variant={ticket.scanned_at ? 'secondary' : ticket.status === 'confirmed' ? 'default' : 'secondary'}>
+                  {ticket.scanned_at ? 'Used' : ticket.status}
                 </Badge>
               </div>
 
@@ -121,15 +121,11 @@ export default function PublicTicket() {
                   connection once the page has loaded. The server-rendered PNG
                   (ticket-access?qr=) exists for email, where no JS can run.
                   Always on white: a theme-tinted QR does not scan. */}
-              <div className="mx-auto w-full max-w-[260px] bg-white rounded-xl p-4">
-                <QRCodeSVG
-                  value={ticket.qr_code}
-                  level="M"
-                  marginSize={0}
-                  title={`QR code for ticket ${i + 1}`}
-                  className="w-full h-auto block"
-                />
-              </div>
+              <RedeemedQr
+                value={ticket.qr_code}
+                scannedAt={ticket.scanned_at}
+                className="w-full max-w-[260px] rounded-xl p-4"
+              />
 
               <div className="mt-4 space-y-1">
                 <p className="font-medium">

@@ -28,6 +28,8 @@ export interface OrderTicket {
   id: string;
   qr_code: string;
   status: string;
+  /** Set once the ticket has been scanned at the door. */
+  scanned_at: string | null;
   total_price: number;
   seat: { row: string; number: number } | null;
   tier_name: string | null;
@@ -84,7 +86,7 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
   const { data: rows, error } = await admin
     .from('tickets')
     .select(`
-      id, qr_code, status, total_price, purchased_at, order_token, user_id,
+      id, qr_code, status, scanned_at, total_price, purchased_at, order_token, user_id,
       confirmation_sent_at,
       seats(seat_row, seat_number),
       showing_price_tiers(tier_name),
@@ -120,6 +122,7 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
     // qr_code, so this only ever applies to rows that predate QR assignment.
     qr_code: t.qr_code || t.id,
     status: t.status,
+    scanned_at: t.scanned_at ?? null,
     total_price: Number(t.total_price || 0),
     seat: t.seats ? { row: t.seats.seat_row, number: t.seats.seat_number } : null,
     tier_name: t.showing_price_tiers?.tier_name ?? null,

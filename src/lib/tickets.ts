@@ -13,6 +13,8 @@ export interface PublicOrderTicket {
   id: string;
   qr_code: string;
   status: string;
+  /** Set once the ticket has been scanned at the door. */
+  scanned_at: string | null;
   total_price: number;
   seat: { row: string; number: number } | null;
   tier_name: string | null;

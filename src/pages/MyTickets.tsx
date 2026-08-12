@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -9,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { format } from 'date-fns';
 import { Ticket, QrCode, Calendar, MapPin } from 'lucide-react';
+import { RedeemedQr, RedemptionBadge } from '@/components/RedeemedQr';
 
 interface TicketWithDetails {
   id: string;
@@ -16,6 +16,7 @@ interface TicketWithDetails {
   tax_amount: number;
   total_price: number;
   qr_code: string | null;
+  scanned_at: string | null;
   status: string;
   purchased_at: string;
   seat: { seat_row: string; seat_number: number } | null;
@@ -36,7 +37,7 @@ export default function MyTickets() {
       const { data } = await supabase
         .from('tickets')
         .select(`
-          id, price, tax_amount, total_price, qr_code, status, purchased_at,
+          id, price, tax_amount, total_price, qr_code, scanned_at, status, purchased_at,
           seats(seat_row, seat_number),
           showings(start_time, movies(title), events(title), live_performances(title))
         `)
@@ -110,6 +111,7 @@ export default function MyTickets() {
                         {ticket.status}
                       </Badge>
                       <span className="text-sm font-medium text-primary">${Number(ticket.total_price).toFixed(2)}</span>
+                      <RedemptionBadge scannedAt={ticket.scanned_at} />
                     </div>
                   </div>
 
@@ -128,20 +130,14 @@ export default function MyTickets() {
                             door scanner matches on. This previously rendered a
                             decorative grid coloured from charCodeAt of the
                             ticket UUID — it looked like a QR and encoded
-                            nothing. Rendered client-side: the code is already
-                            loaded, so the ticket draws instantly and still
-                            works if the network drops in the lobby.
-                            Fixed white background — a theme-tinted QR will not
-                            scan. */}
-                        <div className="mx-auto w-48 h-48 bg-white rounded-lg p-3">
-                          <QRCodeSVG
-                            value={ticket.qr_code || ticket.id}
-                            level="M"
-                            marginSize={0}
-                            title="Ticket QR code"
-                            className="w-full h-full block"
-                          />
-                        </div>
+                            nothing. Rendered client-side so it draws instantly
+                            and survives a flaky lobby connection. Fixed white
+                            background — a theme-tinted QR will not scan. */}
+                        <RedeemedQr
+                          value={ticket.qr_code || ticket.id}
+                          scannedAt={ticket.scanned_at}
+                          className="w-48 h-48"
+                        />
                         <div className="text-sm space-y-1">
                           <p className="font-bold">{ticket.showing?.title}</p>
                           <p className="text-muted-foreground">
