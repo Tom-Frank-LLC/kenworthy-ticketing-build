@@ -1,73 +1,66 @@
-# Welcome to your Lovable project
+# Kenworthy Ticketing
 
-## Project info
+Ticketing, film passes, concessions, and box-office tooling for the
+[Kenworthy Performing Arts Centre](https://kenworthy.org) in Moscow, Idaho.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+React + Vite frontend on Cloudflare Workers, Supabase (Postgres + Edge
+Functions) for data and backend logic, Square for payments.
 
-## How can I edit this code?
+| Environment | URL |
+|---|---|
+| Production | https://kenworthy-ticketing-build.mrtomfrank.workers.dev |
+| Staging | https://kenworthy-ticketing-staging.mrtomfrank.workers.dev |
 
-There are several ways of editing your application.
+## Local development
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Requires npm and Node.js `^20.19` or `>=22.12` (Vite 8's floor) —
+[install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+git clone https://github.com/Tom-Frank-LLC/kenworthy-ticketing-build.git
+cd kenworthy-ticketing-build
+npm install
+npm run dev -- --mode staging
 ```
 
-**Edit a file directly in GitHub**
+The `--mode staging` matters: it loads `.env.staging` so you develop against the
+staging Supabase project. These env files are gitignored and are not in a fresh
+clone — see [`docs/PLATFORM.md` §3](docs/PLATFORM.md) for what they contain and
+where the values come from.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```sh
+npm run lint     # eslint
+npm test         # vitest
+```
 
-**Use GitHub Codespaces**
+## Deploying
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+**Read [`docs/PLATFORM.md` §4](docs/PLATFORM.md) before deploying.** The short
+version:
 
-## What technologies are used for this project?
+```sh
+# staging
+npm run build:staging && npx wrangler deploy --env staging
 
-This project is built with:
+# production
+npm run build:production && npx wrangler deploy
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+> Never deploy a bare `npm run build` — with no `--mode` it reads the default
+> `.env` and bakes in the wrong Supabase project. The `VITE_*` variables are
+> compiled into the bundle at build time; the Worker holds none of them.
 
-## How can I deploy this project?
+## Documentation
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+| Document | Covers |
+|---|---|
+| [`docs/PLATFORM.md`](docs/PLATFORM.md) | Operations & handoff guide — accounts, env vars, deploys, database |
+| [`docs/TASKS.md`](docs/TASKS.md) | Live issue list, launch blockers, refactor log |
+| [`docs/SQUARE-PAYMENTS.md`](docs/SQUARE-PAYMENTS.md) | Payment flows, Square secrets, sandbox → production |
+| [`docs/TICKET-DELIVERY.md`](docs/TICKET-DELIVERY.md) | Confirmation email/SMS, QR ticket page, edge-function runbook |
+| [`docs/briefs/`](docs/briefs) | Per-feature work briefs |
 
-## Can I connect a custom domain to my Lovable project?
+## Tech stack
 
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Vite · TypeScript · React · shadcn/ui · Tailwind CSS · Supabase · Cloudflare
+Workers · Square
