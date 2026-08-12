@@ -44,8 +44,26 @@ Staging poster migration is progressing (~200/click due to Edge Function timeout
 `SELECT (SELECT COUNT(*) FROM movies WHERE poster_url LIKE '%kenworthy.org%') AS m, (SELECT COUNT(*) FROM events WHERE poster_url LIKE '%kenworthy.org%') AS e, (SELECT COUNT(*) FROM live_performances WHERE poster_url LIKE '%kenworthy.org%') AS p;`
 **Improvement (optional):** add self-batching to `refetch-posters` so each invocation reports progress and needs fewer clicks (or a loop script). Currently manual and tedious.
 
-### 🔴 Sync production with staging data fixes
-Staging is ahead of production on several data migrations. Before launch, deliberately apply to production: the missing-showings fix (`kenworthy_showings_fix.sql`), the `service_role` CRUD migration, the `authenticated` content-writes migration, and the poster migration. Verify counts match staging.
+### 🔴 Reconcile migrations between staging and production — they drift both ways
+Before launch, deliberately apply to production: the missing-showings fix (`kenworthy_showings_fix.sql`) and the poster migration. Verify counts match staging.
+
+**Measured 2026-08-11/12 (`supabase migration list` against each project) — the drift runs in both directions, so "staging is ahead" is not the whole picture:**
+
+| Migration | prod | staging |
+|---|---|---|
+| `20260810165116_grant_public_read_access` | ✅ applied | ❌ **missing** |
+| `20260811120000_ticket_delivery` | ✅ applied | ✅ applied |
+| `20260811190137_grant_service_role_crud` | ❌ pending | ❌ pending |
+| `20260811214728_grant_authenticated_content_writes` | ❌ pending | ❌ missing |
+| `20260812063211_has_role_hierarchy` | ❌ pending | ✅ applied |
+
+So **staging is missing the `anon` public-read grant that production has**, which is a likely cause of "works on prod, broken on staging" reports. And `20260811190137_grant_service_role_crud` is applied nowhere and **is not committed to git** — it exists only in one working tree, so it will be lost if that tree is cleaned. Commit it before relying on it.
+
+Note both projects already have full `service_role` CRUD on `tickets` independently of that migration (verified directly), so it is less urgent than it looks.
+
+**Also: staging had no edge functions deployed at all** until 2026-08-11. `ticket-access`, `send-ticket-confirmation`, `guest-checkout` and `sign-contract` are now deployed there; the other 13 are still absent, so anything calling them from the staging site 404s. Production is missing 7 (all `mailchimp-*`, `qbo-sync`, `lgl-sync-donation`).
+
+Deploy to a specific project without disturbing the shared CLI link with `supabase functions deploy <fn> --project-ref <ref>`. `db push` has no such flag — it needs `--linked` (re-link, then restore) or `--db-url`.
 
 ---
 

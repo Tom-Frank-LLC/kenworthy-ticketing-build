@@ -227,6 +227,19 @@ supabase db push
 supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
 ```
 
+> **Status 2026-08-11/12:** both projects are done. The migration is applied to
+> production and staging, and `ticket-access`, `send-ticket-confirmation` and
+> `guest-checkout` are deployed to both. Provider secrets are still unset on
+> both, so delivery records `confirmation_error` and purchases still succeed.
+>
+> Two things learned doing it. `supabase functions deploy` takes
+> `--project-ref`, so it never touches the shared `supabase/.temp/project-ref`
+> — prefer it. `db push` has no such flag: re-link, push, then re-link back and
+> verify. And `db push` applies **every** pending migration, so check
+> `supabase migration list` first and temporarily move other people's pending
+> files aside if you mean to apply only your own. Staging needed
+> `--include-all` because a newer migration had already landed there.
+
 `ticket-access` must deploy with `verify_jwt = false`. That is set in
 `supabase/config.toml`; confirm it took, because the QR images and the ticket
 page are fetched by browsers and mail-client image proxies that cannot present
