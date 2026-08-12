@@ -80,12 +80,17 @@ export default function MovieForm() {
         release_label: releaseLabel || null,
       };
 
-      const { error } = isEdit
-        ? await supabase.from('movies').update(movieData).eq('id', id)
-        : await supabase.from('movies').insert(movieData);
+      // .select() matters: an UPDATE that RLS filters out entirely comes back
+      // 204 with no error, so without asking for the rows we cannot tell a
+      // saved edit from a silently discarded one.
+      const { data, error } = isEdit
+        ? await supabase.from('movies').update(movieData).eq('id', id).select('id')
+        : await supabase.from('movies').insert(movieData).select('id');
 
       if (error) {
         toast.error(error.message);
+      } else if (!data || data.length === 0) {
+        toast.error('Nothing was saved — your account may not have permission to edit this.');
       } else {
         toast.success(isEdit ? 'Movie updated!' : 'Movie created!');
         navigate('/admin');

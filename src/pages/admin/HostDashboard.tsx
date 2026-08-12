@@ -271,7 +271,8 @@ function DetailsEditor({ production, onChanged }: { production: ProductionRecord
 
   async function save() {
     setSaving(true);
-    const { error } = await supabase
+    // .select() so an RLS-filtered write (204, no error) can't pass as saved.
+    const { data, error } = await supabase
       .from(tableForType(production.type))
       .update({
         description: description || null,
@@ -279,9 +280,11 @@ function DetailsEditor({ production, onChanged }: { production: ProductionRecord
         trailer_url: trailerUrl || null,
         pass_processing_fee: passFee,
       })
-      .eq('id', production.id);
+      .eq('id', production.id)
+      .select('id');
     setSaving(false);
     if (error) toast.error(error.message);
+    else if (!data || data.length === 0) toast.error('Nothing was saved — your account may not have permission to edit this.');
     else { toast.success('Saved'); onChanged(); }
   }
 

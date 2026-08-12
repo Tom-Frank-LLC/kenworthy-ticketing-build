@@ -72,11 +72,13 @@ export default function ConcertForm() {
       is_featured: isFeatured,
     };
 
-    const { error } = isEdit
-      ? await supabase.from('live_performances').update(performanceData).eq('id', id)
-      : await supabase.from('live_performances').insert(performanceData);
+    // .select() so an RLS-filtered write (204, no error) can't pass as saved.
+    const { data, error } = isEdit
+      ? await supabase.from('live_performances').update(performanceData).eq('id', id).select('id')
+      : await supabase.from('live_performances').insert(performanceData).select('id');
 
     if (error) toast.error(error.message);
+    else if (!data || data.length === 0) toast.error('Nothing was saved — your account may not have permission to edit this.');
     else { toast.success(isEdit ? 'Performance updated!' : 'Performance created!'); navigate('/admin'); }
     setSaving(false);
   };

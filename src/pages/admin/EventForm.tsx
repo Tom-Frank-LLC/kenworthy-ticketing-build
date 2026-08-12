@@ -68,11 +68,13 @@ export default function EventForm() {
       is_featured: isFeatured,
     };
 
-    const { error } = isEdit
-      ? await supabase.from('events').update(eventData).eq('id', id)
-      : await supabase.from('events').insert(eventData);
+    // .select() so an RLS-filtered write (204, no error) can't pass as saved.
+    const { data, error } = isEdit
+      ? await supabase.from('events').update(eventData).eq('id', id).select('id')
+      : await supabase.from('events').insert(eventData).select('id');
 
     if (error) toast.error(error.message);
+    else if (!data || data.length === 0) toast.error('Nothing was saved — your account may not have permission to edit this.');
     else { toast.success(isEdit ? 'Event updated!' : 'Event created!'); navigate('/admin'); }
     setSaving(false);
   };
