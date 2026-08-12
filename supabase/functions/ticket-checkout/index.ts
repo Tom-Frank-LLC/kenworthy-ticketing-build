@@ -32,6 +32,7 @@ import {
   squareErrorMessage,
 } from '../_shared/square.ts';
 import { PricingError, priceTicketOrder, type TicketDescriptor } from '../_shared/pricing.ts';
+import { deliverConfirmation } from '../_shared/deliver.ts';
 import {
   EMAIL_RE,
   authenticatedUser,
@@ -395,20 +396,19 @@ Deno.serve(async (req: Request) => {
   // -------------------------------------------------------------------------
   // Deliver — fire-and-forget, never able to fail a paid purchase
   // -------------------------------------------------------------------------
-  const delivery = fetch(`${SUPABASE_URL}/functions/v1/send-ticket-confirmation`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: ANON_KEY,
-      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-    },
-    body: JSON.stringify({
-      order_token: orderToken,
-      email: contact.email || undefined,
-      phone: contact.phone || undefined,
-      name: contact.name || undefined,
-      account_created: accountCreated,
-    }),
+  // Called in-process, not by POSTing to send-ticket-confirmation. That HTTP
+  // hop forwarded the service-role key as a bearer alongside the anon key in
+  // `apikey`, and once Supabase rotated the injected keys to the
+  // sb_publishable_/sb_secret_ format the gateway began refusing the pair
+  // outright: 401 "Conflicting API keys". The request never reached the
+  // sibling function, and since the dispatch is fire-and-forget nothing
+  // surfaced -- the purchase succeeded, the card was charged, and no ticket
+  // was ever sent. In-process has no gateway and no credential to forward.
+  const delivery = deliverConfirmation(admin, orderToken, {
+    email: contact.email || undefined,
+    phone: contact.phone || undefined,
+    name: contact.name || undefined,
+    accountCreated,
   }).catch((e) => console.error('[ticket-checkout] confirmation dispatch failed', e));
 
   // waitUntil keeps the send alive past this response; a bare `void fetch` can
