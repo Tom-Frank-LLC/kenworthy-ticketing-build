@@ -19,6 +19,7 @@ import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMe
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
+import { formatShowtime } from '@/lib/datetime';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -266,6 +267,9 @@ export default function Showing() {
   const passProcessingFee = !!production?.pass_processing_fee && !useFilmPass && total > 0;
   const processingFee = passProcessingFee ? computeProcessingFee(total, 'online').fee : 0;
   const grandTotal = Math.round((total + processingFee) * 100) / 100;
+  // A free ($0) showing has no card step: Square rejects a $0 charge, and the
+  // server skips it, so the browser must not ask for a card or send a token.
+  const isFree = !useFilmPass && grandTotal <= 0;
 
   // Film pass: check if selected pass covers the total
   const selectedPass = userPasses.find((p: any) => p.id === selectedPassId);
@@ -388,6 +392,8 @@ export default function Showing() {
       return;
     }
 
+    if (isFree) { await submitPurchase({}); return; }
+
     if (!cardRef.current) { toast.error('The card form is not ready yet.'); return; }
 
     let sourceId: string;
@@ -421,10 +427,10 @@ export default function Showing() {
     // Extra bottom padding on mobile clears the sticky order bar below.
     <div className="container py-8 px-4 max-w-5xl pb-28 lg:pb-8">
       <SEO
-        title={`${production?.title ?? 'Showing'} — ${format(new Date(showing.start_time), 'MMM d, yyyy')} at The Kenworthy`}
+        title={`${production?.title ?? 'Showing'} — ${formatShowtime(showing.start_time, 'MMM d, yyyy')} at The Kenworthy`}
         description={
           production?.description?.slice(0, 160) ??
-          `Tickets for ${production?.title ?? 'this showing'} at The Kenworthy Performing Arts Centre in Moscow, Idaho on ${format(new Date(showing.start_time), 'MMMM d, yyyy')}.`
+          `Tickets for ${production?.title ?? 'this showing'} at The Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`
         }
         ogType="event"
         image={production?.poster_url || undefined}
@@ -493,10 +499,10 @@ export default function Showing() {
             )}
             <div className="flex flex-wrap gap-3 mt-3 text-muted-foreground text-sm">
               <span className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" /> {format(new Date(showing.start_time), 'EEEE, MMMM d, yyyy')}
+                <Calendar className="h-4 w-4" /> {formatShowtime(showing.start_time, 'EEEE, MMMM d, yyyy')}
               </span>
               <span className="flex items-center gap-1">
-                <Clock className="h-4 w-4" /> {format(new Date(showing.start_time), 'h:mm a')}
+                <Clock className="h-4 w-4" /> {formatShowtime(showing.start_time, 'h:mm a')}
               </span>
               <span className="flex items-center gap-1">
                 <DollarSign className="h-4 w-4" /> {priceDisplay}
@@ -749,12 +755,12 @@ export default function Showing() {
 
                   {user ? (
                     <>
-                      {!useFilmPass && (
+                      {!useFilmPass && !isFree && (
                         <div className="border-t border-border pt-3">
                           <p className="text-sm font-medium mb-3 flex items-center gap-1">
                             <CreditCard className="h-4 w-4" /> Payment
                           </p>
-                          <SquareCardForm source="ticket-checkout" onReadyChange={setCardReady} />
+                          <SquareCardForm ref={cardRef} source="ticket-checkout" onReadyChange={setCardReady} />
                         </div>
                       )}
                       <Button
@@ -763,13 +769,13 @@ export default function Showing() {
                         onClick={handlePurchase}
                         disabled={
                           purchasing ||
-                          (useFilmPass ? !passCoversTotal : !cardReady)
+                          (useFilmPass ? !passCoversTotal : (!isFree && !cardReady))
                         }
                       >
                         {useFilmPass ? (
                           <><CreditCard className="h-4 w-4 mr-1" /> {purchasing ? 'Redeeming...' : `Redeem Film Pass`}</>
                         ) : (
-                          <><Check className="h-4 w-4 mr-1" /> {purchasing ? 'Processing...' : `Pay $${grandTotal.toFixed(2)}`}</>
+                          <><Check className="h-4 w-4 mr-1" /> {purchasing ? 'Processing...' : isFree ? `Reserve ${ticketCount} Ticket(s)` : `Pay $${grandTotal.toFixed(2)}`}</>
                         )}
                       </Button>
                       <p className="text-xs text-muted-foreground text-center">
