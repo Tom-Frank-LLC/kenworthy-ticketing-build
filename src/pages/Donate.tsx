@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useRef, useState } from 'react';
+import { invokeFunction } from '@/lib/functions';
 import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,33 +7,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Heart, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 
 const TIERS = [25, 50, 100, 250];
-const SQUARE_SDK_SRC = 'https://sandbox.web.squarecdn.com/v1/square.js';
-
-type Card = {
-  attach: (sel: string) => Promise<void>;
-  tokenize: () => Promise<{ status: string; token?: string; errors?: { message: string }[] }>;
-  destroy: () => Promise<void>;
-};
-
-declare global {
-  interface Window {
-    Square?: {
-      payments: (
-        appId: string,
-        locationId: string,
-      ) => { card: () => Promise<Card> };
-    };
-  }
-}
 
 export default function Donate() {
-  const cardContainerRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<Card | null>(null);
-
-  const [sdkLoading, setSdkLoading] = useState(true);
-  const [sdkError, setSdkError] = useState<string | null>(null);
+  // The SDK lifecycle used to be inlined here; it now lives in SquareCardForm,
+  // shared with ticket and film-pass checkout. Behaviour is unchanged except
+  // that sandbox vs production comes from the server rather than a hardcoded
+  // sandbox URL.
+  const cardRef = useRef<SquareCardFormHandle>(null);
+  const [cardReady, setCardReady] = useState(false);
 
   const [selectedTier, setSelectedTier] = useState<number | null>(50);
   const [customAmount, setCustomAmount] = useState('');
@@ -51,66 +35,6 @@ export default function Donate() {
 
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<{ receiptUrl: string | null; amount: number } | null>(null);
-
-  // Load Square SDK + initialize card form
-  useEffect(() => {
-    let cancelled = false;
-
-    const init = async () => {
-      try {
-        // 1. Load the script if not already present
-        if (!window.Square) {
-          await new Promise<void>((resolve, reject) => {
-            const existing = document.querySelector<HTMLScriptElement>(
-              `script[src="${SQUARE_SDK_SRC}"]`,
-            );
-            if (existing) {
-              existing.addEventListener('load', () => resolve());
-              existing.addEventListener('error', () => reject(new Error('SDK load failed')));
-              if (window.Square) resolve();
-              return;
-            }
-            const s = document.createElement('script');
-            s.src = SQUARE_SDK_SRC;
-            s.async = true;
-            s.onload = () => resolve();
-            s.onerror = () => reject(new Error('SDK load failed'));
-            document.head.appendChild(s);
-          });
-        }
-
-        // 2. Fetch publishable config from the edge function
-        const { data: cfg, error: cfgErr } = await supabase.functions.invoke('square-donation', {
-          body: { action: 'get_config' },
-        });
-        if (cfgErr || !cfg?.applicationId || !cfg?.locationId) {
-          throw new Error(cfgErr?.message || 'Could not load payment configuration');
-        }
-
-        if (cancelled || !window.Square) return;
-
-        // 3. Mount the card form
-        const payments = window.Square.payments(cfg.applicationId, cfg.locationId);
-        const card = await payments.card();
-        await card.attach('#square-card-container');
-        cardRef.current = card;
-        if (!cancelled) setSdkLoading(false);
-      } catch (err) {
-        console.error('Square SDK init error:', err);
-        if (!cancelled) {
-          setSdkError(err instanceof Error ? err.message : 'Could not load card form');
-          setSdkLoading(false);
-        }
-      }
-    };
-
-    init();
-    return () => {
-      cancelled = true;
-      cardRef.current?.destroy().catch(() => {});
-      cardRef.current = null;
-    };
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,17 +59,21 @@ export default function Donate() {
 
     setSubmitting(true);
     try {
-      const result = await cardRef.current.tokenize();
-      if (result.status !== 'OK' || !result.token) {
-        const msg = result.errors?.[0]?.message ?? 'Please check your card details.';
-        toast.error(msg);
+      let token: string;
+      try {
+        token = await cardRef.current.tokenize();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Please check your card details.');
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke('square-donation', {
-        body: {
+      // invokeFunction unwraps the decline reason Square gave; supabase-js
+      // otherwise reports every 4xx as "non-2xx status code".
+      const data = await invokeFunction<{ success: boolean; receiptUrl: string | null }>(
+        'square-donation',
+        {
           action: 'create_payment',
-          sourceId: result.token,
+          sourceId: token,
           amountCents: Math.round(amount * 100),
           donorName: name.trim(),
           donorEmail: email.trim(),
@@ -156,10 +84,10 @@ export default function Donate() {
           notifyEmail: dedicationType ? notifyEmail.trim() : null,
           message: message.trim() || null,
         },
-      });
+      );
 
-      if (error || !data?.success) {
-        toast.error(data?.error || error?.message || 'Donation could not be processed.');
+      if (!data?.success) {
+        toast.error('Donation could not be processed.');
         return;
       }
 
@@ -365,32 +293,12 @@ export default function Donate() {
             <Label className="font-display uppercase text-xs tracking-[0.2em] text-accent mb-3 block">
               Payment Card
             </Label>
-            {sdkError ? (
-              <p className="text-sm text-destructive font-serif">
-                {sdkError}. Please refresh and try again.
-              </p>
-            ) : (
-              <>
-                {sdkLoading && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground font-serif italic mb-3">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Loading secure card form…
-                  </div>
-                )}
-                <div
-                  id="square-card-container"
-                  ref={cardContainerRef}
-                  className="min-h-[90px] bg-background border border-input rounded-md p-2"
-                />
-                <p className="text-xs text-muted-foreground mt-2 font-serif italic">
-                  Sandbox mode — use card 4111 1111 1111 1111, any future expiration, any CVV, any ZIP.
-                </p>
-              </>
-            )}
+            <SquareCardForm source="square-donation" onReadyChange={setCardReady} />
           </div>
 
           <Button
             type="submit"
-            disabled={submitting || sdkLoading || !!sdkError}
+            disabled={submitting || !cardReady}
             className="w-full h-12 text-base font-display uppercase tracking-wider"
           >
             {submitting ? (

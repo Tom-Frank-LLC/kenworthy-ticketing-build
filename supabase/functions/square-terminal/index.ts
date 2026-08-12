@@ -1,30 +1,19 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-const SQUARE_SANDBOX_BASE = "https://connect.squareupsandbox.com/v2";
+import { corsHeaders } from "../_shared/http.ts";
+import { loadSquareConfig, squareFetch, type SquareConfig } from "../_shared/square.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const SQUARE_ACCESS_TOKEN = Deno.env.get("SQUARE_SANDBOX_ACCESS_TOKEN");
-  if (!SQUARE_ACCESS_TOKEN) {
+  // Same environment resolution as every other Square call: SQUARE_ENV picks
+  // the credential set and the API host, so the terminal follows the site from
+  // sandbox to live without a code change.
+  const square = loadSquareConfig();
+  if (!square.ok) {
     return new Response(
-      JSON.stringify({ error: "SQUARE_SANDBOX_ACCESS_TOKEN not configured" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
-  const SQUARE_LOCATION_ID = Deno.env.get("SQUARE_SANDBOX_LOCATION_ID");
-  if (!SQUARE_LOCATION_ID) {
-    return new Response(
-      JSON.stringify({ error: "SQUARE_SANDBOX_LOCATION_ID not configured" }),
+      JSON.stringify({ error: square.error }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -68,11 +57,11 @@ Deno.serve(async (req) => {
     const { action, ...params } = await req.json();
 
     if (action === "create_checkout") {
-      return await createCheckout(SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID, params, corsHeaders);
+      return await createCheckout(square.config, params, corsHeaders);
     }
 
     if (action === "get_checkout") {
-      return await getCheckout(SQUARE_ACCESS_TOKEN, params, corsHeaders);
+      return await getCheckout(square.config, params, corsHeaders);
     }
 
     return new Response(
@@ -90,8 +79,7 @@ Deno.serve(async (req) => {
 });
 
 async function createCheckout(
-  accessToken: string,
-  locationId: string,
+  config: SquareConfig,
   params: { amount_cents: number; note: string; idempotency_key: string; device_id?: string },
   headers: Record<string, string>
 ) {
@@ -116,23 +104,33 @@ async function createCheckout(
     },
   };
 
-  const response = await fetch(`${SQUARE_SANDBOX_BASE}/terminals/checkouts`, {
+  const { ok, data } = await squareFetch(config, "/terminals/checkouts", {
     method: "POST",
-    headers: {
-      "Square-Version": "2024-01-18",
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
+    body,
   });
 
-  const data = await response.json();
-
-  if (!response.ok) {
+  if (!ok) {
     // In sandbox without a real device, Terminal API may return errors.
     // Fall back to a simulated/mock checkout for development.
-    console.warn("Square Terminal API returned error (sandbox):", JSON.stringify(data));
-    
+    //
+    // Production must never take this branch: a simulated checkout reports
+    // COMPLETED without any money moving, which is exactly the failure mode
+    // this whole change exists to remove. So it is refused outright when the
+    // live credentials are in use — a card reader that cannot be reached is a
+    // failed sale, not an approved one.
+    console.warn("Square Terminal API returned error:", JSON.stringify(data));
+
+    if (config.environment === "production") {
+      return new Response(
+        JSON.stringify({
+          error:
+            data?.errors?.[0]?.detail ||
+            "The Square Terminal could not be reached. Check the reader and try again.",
+        }),
+        { status: 502, headers: { ...headers, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({
         simulated: true,
@@ -157,7 +155,7 @@ async function createCheckout(
 }
 
 async function getCheckout(
-  accessToken: string,
+  config: SquareConfig,
   params: { checkout_id: string },
   headers: Record<string, string>
 ) {
@@ -174,24 +172,23 @@ async function getCheckout(
     );
   }
 
-  const response = await fetch(
-    `${SQUARE_SANDBOX_BASE}/terminals/checkouts/${params.checkout_id}`,
-    {
-      headers: {
-        "Square-Version": "2024-01-18",
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    }
+  const { ok, status, data } = await squareFetch(
+    config,
+    `/terminals/checkouts/${params.checkout_id}`,
   );
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(`Square API error [${response.status}]: ${JSON.stringify(data)}`);
+  if (!ok) {
+    throw new Error(`Square API error [${status}]: ${JSON.stringify(data)}`);
   }
 
+  // payment_ids is what makes a box-office card sale refundable: the POS stores
+  // it on the ticket rows, and square-refund credits that payment.
   return new Response(
-    JSON.stringify({ simulated: false, checkout: data.checkout }),
+    JSON.stringify({
+      simulated: false,
+      checkout: data.checkout,
+      payment_id: data.checkout?.payment_ids?.[0] ?? null,
+    }),
     { status: 200, headers: { ...headers, "Content-Type": "application/json" } }
   );
 }

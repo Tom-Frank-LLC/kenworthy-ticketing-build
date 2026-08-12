@@ -99,7 +99,9 @@ export default function BoxOfficeReceiptsTab() {
     const { data, error } = await supabase
       .from('tickets')
       .select('id, price, tax_amount, total_price, status, tier_id, showing_price_tiers(tier_name)')
-      .eq('showing_id', s.id);
+      .eq('showing_id', s.id)
+      // Receipts report money taken; an unpaid checkout attempt is not that.
+      .not('status', 'in', '("pending","failed")');
     if (error) toast.error(error.message);
     setTickets((data as any) || []);
   }

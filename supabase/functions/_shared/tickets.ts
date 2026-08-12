@@ -99,6 +99,10 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
       )
     `)
     .eq('order_token', token)
+    // A ticket exists from the moment checkout starts, before the card is
+    // charged. Only a paid one is admissible at the door, so pending and failed
+    // orders are invisible here — including to whoever holds the token.
+    .not('status', 'in', '("pending","failed")')
     .order('purchased_at', { ascending: true });
 
   if (error) {

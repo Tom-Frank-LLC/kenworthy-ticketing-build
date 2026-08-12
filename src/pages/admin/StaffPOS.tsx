@@ -25,6 +25,7 @@ import { ConcessionPOS } from '@/components/pos/ConcessionPOS';
 import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, computeProcessingFee, TAX_RATE } from '@/lib/booking';
+import { invokeFunction } from '@/lib/functions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ShowingOption {
@@ -225,8 +226,10 @@ export default function StaffPOS() {
     ? computeLineItemTotals(lineItems)
     : computeOrderTotals(ticketCount, selectedShowing?.ticket_price || 0);
 
-  // Buyer-paid Square processing fee, only when host opted in AND the buyer
-  // is paying by card on the Terminal. Cash sales never carry the surcharge.
+  // Standard sales carry no processing fee; the theatre absorbs Square's cut.
+  // Only a rental production whose agreement says otherwise sets
+  // pass_processing_fee, and even then only a card sale can carry it — cash
+  // never does, because no card was processed.
   const passProcessingFee =
     !!selectedShowing?.pass_processing_fee && paymentMethod === 'card' && total > 0;
   const processingFee = passProcessingFee ? computeProcessingFee(total, 'in_person').fee : 0;
@@ -242,7 +245,10 @@ export default function StaffPOS() {
     });
   };
 
-  const createTickets = useCallback(async (method: PaymentMethod): Promise<string[]> => {
+  const createTickets = useCallback(async (
+    method: PaymentMethod,
+    squarePaymentId: string | null = null,
+  ): Promise<string[]> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
@@ -255,6 +261,9 @@ export default function StaffPOS() {
       ticketPrice: !hasTiers ? selectedShowing!.ticket_price : undefined,
       paymentMethod: method,
       processingFee: method === 'card' ? processingFee : 0,
+      // Recorded so a refund credits the card that paid, rather than only
+      // flipping the ticket's status.
+      squarePaymentId,
     });
 
     const { data, error } = await supabase.from('tickets').insert(ticketRows).select('id');
@@ -359,7 +368,7 @@ export default function StaffPOS() {
 
       if (data.simulated || data.checkout?.status === 'COMPLETED') {
         setPaymentStatus('completed');
-        const ticketIds = await createTickets('card');
+        const ticketIds = await createTickets('card', data.checkout?.payment_ids?.[0] ?? null);
         addTransaction(ticketIds, 'card');
         toast.success(
           `${ticketCount} ticket(s) sold (card)! ${data.simulated ? '(Sandbox simulation)' : ''}`,
@@ -395,7 +404,7 @@ export default function StaffPOS() {
         const status = data.checkout?.status;
         if (status === 'COMPLETED') {
           setPaymentStatus('completed');
-          const ticketIds = await createTickets('card');
+          const ticketIds = await createTickets('card', data.payment_id ?? null);
           addTransaction(ticketIds, 'card');
           toast.success(`Payment complete! ${ticketCount} ticket(s) sold.`);
           resetForm();
@@ -448,30 +457,26 @@ export default function StaffPOS() {
     if (!refundingTx) return;
     setRefunding(true);
     try {
-      // Re-read authoritative amounts from the DB so the refund matches what
-      // the buyer was actually charged (ticket total + tax + grossed-up Square
-      // processing fee). The session value is a fallback for display only.
-      const { data: ticketRows, error: readErr } = await supabase
-        .from('tickets')
-        .select('total_price, processing_fee, payment_method')
-        .in('id', refundingTx.ticketIds);
-      if (readErr) throw readErr;
+      // The refund is issued by the server: it re-reads the authoritative
+      // amounts, calls Square's Refunds API against the payment that took the
+      // money, and only then marks the tickets refunded. Marking them refunded
+      // here — which is all this used to do — would tell the patron they had
+      // been refunded while their card was never credited.
+      const result = await invokeFunction<{
+        refunded_total: number;
+        warnings?: string[];
+      }>('square-refund', {
+        ticket_ids: refundingTx.ticketIds,
+        reason: `Box office refund — ${refundingTx.movieTitle}`,
+      });
 
-      const refundAmount = (ticketRows || []).reduce(
-        (sum, t) => sum + Number(t.total_price || 0) + Number(t.processing_fee || 0),
-        0,
-      );
-
-      const { error } = await supabase
-        .from('tickets')
-        .update({ status: 'refunded' })
-        .in('id', refundingTx.ticketIds);
-
-      if (error) throw error;
+      const refundAmount = Number(result.refunded_total || 0);
 
       setTransactions(prev =>
         prev.map(tx => tx.id === refundingTx.id ? { ...tx, refunded: true, total: refundAmount } : tx)
       );
+
+      for (const warning of result.warnings || []) toast.warning(warning, { duration: 8000 });
 
       toast.success(`Refunded ${refundingTx.seatLabels.length} ticket(s) — $${refundAmount.toFixed(2)}`);
       setRefundDialogOpen(false);

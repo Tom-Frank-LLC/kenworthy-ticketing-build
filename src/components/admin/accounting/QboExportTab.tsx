@@ -94,7 +94,8 @@ export default function QboExportTab() {
       supabase.from('tickets').select('total_price,price,tax_amount,purchased_at,showing_id,status').gte('purchased_at', fromIso).lt('purchased_at', toIso).eq('status', 'confirmed'),
       supabase.from('concession_sales').select('total,tax_amount,created_at').gte('created_at', fromIso).lt('created_at', toIso),
       supabase.from('donations').select('amount_cents,created_at,status').gte('created_at', fromIso).lt('created_at', toIso).eq('status', 'completed'),
-      supabase.from('user_film_passes').select('pass_type_id,purchased_at').gte('purchased_at', fromIso).lt('purchased_at', toIso),
+      // Only passes that were actually paid for count as income.
+      supabase.from('user_film_passes').select('pass_type_id,purchased_at').eq('status', 'active').gte('purchased_at', fromIso).lt('purchased_at', toIso),
       supabase.from('film_pass_types').select('id,name,price'),
       supabase.from('showings').select('id,movie_id,event_id,live_performance_id'),
       supabase.from('rental_invoice_lines' as any).select('line_kind,quantity,unit_price,account_id,is_taxable,created_at').gte('created_at', fromIso).lt('created_at', toIso),

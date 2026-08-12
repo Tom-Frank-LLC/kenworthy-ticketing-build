@@ -120,7 +120,8 @@ export default function HostDashboard() {
       const { count } = await supabase
         .from('tickets')
         .select('id', { count: 'exact', head: true })
-        .eq('showing_id', s.id);
+        .eq('showing_id', s.id)
+        .eq('status', 'confirmed');
       counts[s.id] = count || 0;
     }
     setTicketCounts(counts);
@@ -309,7 +310,9 @@ function DetailsEditor({ production, onChanged }: { production: ProductionRecord
         <div className="space-y-1">
           <Label className="text-base">Pass processing fee to buyer</Label>
           <p className="text-sm text-muted-foreground">
-            When on, the credit-card processing fee Square charges is added to the buyer's total instead of coming out of your share.
+            Off by default. Standard Kenworthy ticket sales charge the ticket price and tax only — the
+            theatre absorbs Square's card fee. Turn this on only where a rental agreement says the fee
+            should be added to the buyer's total instead of coming out of your share.
           </p>
         </div>
         <Switch checked={passFee} onCheckedChange={setPassFee} />

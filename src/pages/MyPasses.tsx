@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { CreditCard, DollarSign, Clock, ShoppingCart } from 'lucide-react';
+import { CreditCard, DollarSign, Clock, ShoppingCart, Loader2 } from 'lucide-react';
+import { invokeFunction } from '@/lib/functions';
+import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 
 interface PassType {
   id: string;
@@ -21,6 +23,7 @@ interface UserPass {
   remaining_balance: number;
   purchased_at: string;
   expires_at: string | null;
+  status: string;
   pass_type: PassType | null;
 }
 
@@ -31,6 +34,13 @@ export default function MyPasses() {
   const [passTypes, setPassTypes] = useState<PassType[]>([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+
+  // Buying a pass is now a two-step flow: choose the pass, then pay for it.
+  // It used to be one click that inserted a funded pass row and charged nobody.
+  const [buying, setBuying] = useState<PassType | null>(null);
+  const [cardReady, setCardReady] = useState(false);
+  const cardRef = useRef<SquareCardFormHandle>(null);
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     if (authLoading) return;
@@ -48,34 +58,41 @@ export default function MyPasses() {
       supabase.from('film_pass_types').select('*').eq('is_active', true).order('price'),
     ]);
 
-    setPasses((passesRes.data || []).map((p: any) => ({
-      ...p,
-      pass_type: p.film_pass_types,
-    })));
+    setPasses(
+      (passesRes.data || [])
+        // A pass row exists from the moment checkout starts; only the ones that
+        // were actually paid for are the patron's.
+        .filter((p: any) => p.status === 'active' || p.status === 'refunded')
+        .map((p: any) => ({ ...p, pass_type: p.film_pass_types })),
+    );
     setPassTypes(typesRes.data || []);
     setLoading(false);
   }
 
-  async function handlePurchase(passType: PassType) {
-    if (!user) return;
+  async function handleConfirmPurchase() {
+    if (!user || !buying || !cardRef.current) return;
+
     setPurchasing(true);
     try {
-      const expiresAt = passType.expiration_days
-        ? new Date(Date.now() + passType.expiration_days * 86400000).toISOString()
-        : null;
+      const sourceId = await cardRef.current.tokenize();
 
-      const { error } = await supabase.from('user_film_passes').insert({
-        user_id: user.id,
-        pass_type_id: passType.id,
-        remaining_balance: passType.initial_balance,
-        payment_method: 'online',
-        expires_at: expiresAt,
+      // The server prices the pass from film_pass_types and creates the balance
+      // only once Square has taken the money.
+      const data = await invokeFunction<{ pass_name: string; balance: number }>('film-pass-checkout', {
+        action: 'purchase',
+        pass_type_id: buying.id,
+        source_id: sourceId,
+        idempotency_key: idempotencyKeyRef.current,
       });
 
-      if (error) throw error;
-      toast.success(`${passType.name} purchased! Balance: $${passType.initial_balance.toFixed(2)}`);
+      toast.success(`${data.pass_name} purchased! Balance: $${Number(data.balance).toFixed(2)}`);
+      setBuying(null);
+      idempotencyKeyRef.current = crypto.randomUUID();
       loadData();
     } catch (err: any) {
+      // A declined attempt must not reuse its key, or Square replays the
+      // decline instead of trying the corrected card.
+      idempotencyKeyRef.current = crypto.randomUUID();
       toast.error(err.message || 'Failed to purchase pass');
     } finally {
       setPurchasing(false);
@@ -112,13 +129,43 @@ export default function MyPasses() {
                     </div>
                     <span className="text-xl font-bold text-primary">${pt.price.toFixed(2)}</span>
                   </div>
-                  <Button className="w-full" onClick={() => handlePurchase(pt)} disabled={purchasing}>
-                    <ShoppingCart className="h-4 w-4 mr-1" />
-                    {purchasing ? 'Processing...' : 'Purchase'}
-                  </Button>
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    Simulated checkout — no real charge
-                  </p>
+                  {buying?.id === pt.id ? (
+                    <div className="space-y-3">
+                      <SquareCardForm source="film-pass-checkout" onReadyChange={setCardReady} />
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1"
+                          onClick={handleConfirmPurchase}
+                          disabled={purchasing || !cardReady}
+                        >
+                          {purchasing ? (
+                            <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Processing…</>
+                          ) : (
+                            <><CreditCard className="h-4 w-4 mr-1" /> Pay ${pt.price.toFixed(2)}</>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setBuying(null)}
+                          disabled={purchasing}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground text-center">
+                        Payments are processed securely by Square.
+                      </p>
+                    </div>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      onClick={() => { setCardReady(false); setBuying(pt); }}
+                      disabled={purchasing}
+                    >
+                      <ShoppingCart className="h-4 w-4 mr-1" />
+                      Purchase
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
