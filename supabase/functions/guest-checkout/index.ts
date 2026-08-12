@@ -79,7 +79,9 @@ Deno.serve(async (req) => {
     }
 
     // 2. If no existing user found, create one
+    let accountCreated = false;
     if (!userId) {
+      accountCreated = true;
       const randomPassword = crypto.randomUUID() + "Aa1!";
       const createPayload: any = {
         password: randomPassword,
@@ -197,6 +199,9 @@ Deno.serve(async (req) => {
         email: guest_email || undefined,
         phone: guest_phone || undefined,
         name: guest_name,
+        // Lets the confirmation say "we created an account for you" only when
+        // that is actually true, rather than to every returning customer.
+        account_created: accountCreated,
       }),
     }).catch((e) => console.error("[guest-checkout] confirmation dispatch failed", e));
 

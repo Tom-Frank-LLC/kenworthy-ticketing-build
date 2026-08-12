@@ -8,3 +8,9 @@ verify_jwt = false
 # JWT. Authorization is the unguessable order_token in the query string.
 [functions.ticket-access]
 verify_jwt = false
+
+# Called by Supabase's own auth service, which authenticates with a Standard
+# Webhooks signature rather than a JWT. The signature check inside the function
+# is what guards it -- see supabase/functions/_shared/webhook.ts.
+[functions.send-auth-email]
+verify_jwt = false

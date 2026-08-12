@@ -16,6 +16,7 @@ const ticket = (over: Partial<OrderTicket> = {}): OrderTicket => ({
   id: 'ticket-1',
   qr_code: 'abc-123',
   status: 'confirmed',
+  scanned_at: null,
   total_price: 12.72,
   seat: null,
   tier_name: null,

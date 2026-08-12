@@ -78,7 +78,14 @@ export function buildSubject(order: Order): string {
  */
 export function buildEmailHtml(
   order: Order,
-  opts: { ticketUrl: string; qrUrlFor: (ticketId: string) => string; passwordUrl?: string | null; name?: string | null },
+  opts: {
+    ticketUrl: string;
+    qrUrlFor: (ticketId: string) => string;
+    passwordUrl?: string | null;
+    /** True only when this checkout is what created the account. */
+    accountJustCreated?: boolean;
+    name?: string | null;
+  },
 ): string {
   const greeting = opts.name ? `Hi ${esc(opts.name.split(/\s+/)[0])},` : 'Hi there,';
 
@@ -122,16 +129,23 @@ export function buildEmailHtml(
     )
     .join('');
 
+  // Only shown to someone who cannot yet sign in. Two different truths: we
+  // just made the account, versus one already existed that they have never
+  // used. Telling a returning customer "we created an account for you" is
+  // wrong and reads like phishing.
   const passwordBlock = opts.passwordUrl
     ? `
       <tr>
         <td style="padding:22px 28px;background:#f6f3ef;border-radius:10px;">
           <div style="font:600 15px/1.5 Helvetica,Arial,sans-serif;color:#26211d;padding-bottom:6px;">
-            We created an account for you
+            ${opts.accountJustCreated ? 'We created an account for you' : 'Finish setting up your account'}
           </div>
           <div style="font:400 14px/1.6 Helvetica,Arial,sans-serif;color:#55504b;padding-bottom:14px;">
-            Your tickets are saved to it. Set a password to sign in any time and
-            see every ticket you have with us.
+            ${
+              opts.accountJustCreated
+                ? 'Your tickets are saved to it. Set a password to sign in any time and see every ticket you have with us.'
+                : 'Your tickets are saved to your account, but you have not set a password yet. Set one to sign in any time and see every ticket you have with us.'
+            }
           </div>
           <a href="${esc(opts.passwordUrl)}"
              style="display:inline-block;padding:11px 20px;background:#b82a6b;color:#ffffff;font:600 14px/1 Helvetica,Arial,sans-serif;text-decoration:none;border-radius:6px;">
@@ -245,7 +259,12 @@ export function buildEmailHtml(
 /** Plain-text alternative. Some clients show only this, so it must stand alone. */
 export function buildEmailText(
   order: Order,
-  opts: { ticketUrl: string; passwordUrl?: string | null; name?: string | null },
+  opts: {
+    ticketUrl: string;
+    passwordUrl?: string | null;
+    accountJustCreated?: boolean;
+    name?: string | null;
+  },
 ): string {
   const lines: string[] = [];
   lines.push(opts.name ? `Hi ${opts.name.split(/\s+/)[0]},` : 'Hi there,');
@@ -269,7 +288,11 @@ export function buildEmailText(
   lines.push(opts.ticketUrl);
   if (opts.passwordUrl) {
     lines.push('');
-    lines.push('We created an account for you and saved your tickets to it.');
+    lines.push(
+      opts.accountJustCreated
+        ? 'We created an account for you and saved your tickets to it.'
+        : 'Your tickets are saved to your account, but you have not set a password yet.',
+    );
     lines.push('Set a password to sign in any time:');
     lines.push(opts.passwordUrl);
   }

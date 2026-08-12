@@ -36,6 +36,7 @@ declare const Deno: any;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
 const TICKET_FROM_EMAIL =
@@ -140,6 +141,34 @@ Deno.serve(async (req: Request) => {
   };
 
   try {
+    // Authorization. Two legitimate callers, with different privileges:
+    //
+    //   service role  -- guest-checkout dispatching a confirmation, or an
+    //                    operator resending one. Fully trusted, and the only
+    //                    caller allowed to redirect delivery to a different
+    //                    address via the email/phone overrides.
+    //   signed-in user -- the authenticated checkout path in Showing.tsx.
+    //                    Allowed only for their own order, overrides ignored.
+    //
+    // The anon key is explicitly not enough. Before this, anyone holding it
+    // plus an order_token could trigger a resend and redirect the ticket to an
+    // address of their choosing.
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const isServiceRole = bearer.length > 0 && bearer === SERVICE_ROLE_KEY;
+
+    let callerId: string | null = null;
+    if (!isServiceRole) {
+      const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: caller } = await userClient.auth.getUser();
+      callerId = caller?.user?.id ?? null;
+      if (!callerId) {
+        return json({ error: 'Not authorised' }, 401);
+      }
+    }
+
     const body = await req.json().catch(() => ({}));
     orderToken = String(body.order_token || '').trim();
     const force = body.force === true;
@@ -149,50 +178,75 @@ Deno.serve(async (req: Request) => {
     const order = await loadOrder(admin, orderToken);
     if (!order) return json({ error: 'Order not found' }, 404);
 
+    // Same 404 as an unknown token: a signed-in user probing for other
+    // people's orders learns nothing about whether the token exists.
+    if (!isServiceRole && order.user_id !== callerId) {
+      return json({ error: 'Order not found' }, 404);
+    }
+
     // Guards against a retry or a double-invoke texting someone twice.
     if (order.confirmation_sent_at && !force) {
       return json({ delivered: false, reason: 'already_sent', sent_at: order.confirmation_sent_at });
     }
 
-    // Resolve the recipient. Explicit overrides in the request win — that is
-    // how a comp ticket reaches a recipient who is not the account holder —
-    // otherwise fall back to the account the tickets belong to.
-    let email = String(body.email || '').trim();
-    let phone = String(body.phone || '').trim();
-    let name = String(body.name || '').trim();
+    // Resolve the recipient. Overrides are honoured only for the service role
+    // (checked above) — that is how a comp ticket reaches someone who is not
+    // the account holder.
+    let email = isServiceRole ? String(body.email || '').trim() : '';
+    let phone = isServiceRole ? String(body.phone || '').trim() : '';
+    let name = isServiceRole ? String(body.name || '').trim() : '';
 
-    if (!email || !phone || !name) {
-      const { data: userData } = await admin.auth.admin.getUserById(order.user_id);
-      const authUser = userData?.user;
-      if (authUser) {
-        email = email || authUser.email || '';
-        phone = phone || authUser.phone || '';
-        name = name || (authUser.user_metadata as any)?.display_name || '';
-      }
-      // Guest checkout writes the phone to profiles when auth does not take
-      // it, so profiles is the authoritative fallback for every field.
-      if (!email || !phone || !name) {
-        const { data: profile } = await admin
-          .from('profiles')
-          .select('email, phone, display_name')
-          .eq('id', order.user_id)
-          .maybeSingle();
-        email = email || profile?.email || '';
-        phone = phone || profile?.phone || '';
-        name = name || profile?.display_name || '';
-      }
+    // Always loaded, because last_sign_in_at decides whether this person needs
+    // an account-access link at all.
+    const { data: userData } = await admin.auth.admin.getUserById(order.user_id);
+    const authUser = userData?.user;
+    if (authUser) {
+      email = email || authUser.email || '';
+      phone = phone || authUser.phone || '';
+      name = name || (authUser.user_metadata as any)?.display_name || '';
     }
+    // Guest checkout writes the phone to profiles when auth does not take it,
+    // so profiles is the authoritative fallback for every field.
+    if (!email || !phone || !name) {
+      const { data: profile } = await admin
+        .from('profiles')
+        .select('email, phone, display_name')
+        .eq('id', order.user_id)
+        .maybeSingle();
+      email = email || profile?.email || '';
+      phone = phone || profile?.phone || '';
+      name = name || profile?.display_name || '';
+    }
+
+    // Has this person ever actually signed in? A guest-checkout account has a
+    // random password nobody knows, so until they set one they cannot reach
+    // their tickets any other way and the link is genuinely useful. Someone
+    // who has signed in before already has a password -- telling them "we
+    // created an account for you" is simply wrong, which is what this email
+    // was doing to every returning customer.
+    const hasSignedIn = !!authUser?.last_sign_in_at;
+    const accountJustCreated = body.account_created === true;
 
     const ticketUrl = ticketPageUrl(SITE_URL, orderToken);
 
     // ---- Email path -------------------------------------------------------
     if (email) {
-      // A recovery link doubles as "set your password" for the account guest
-      // checkout created silently. Generating it here (rather than calling
-      // resetPasswordForEmail) means we deliver it ourselves through Resend,
-      // so it does not depend on Supabase SMTP being configured yet.
+      // A recovery link doubles as "set your password" for an account the
+      // holder has never signed into. Generating it here (rather than calling
+      // resetPasswordForEmail) means we deliver it ourselves through Resend.
+      //
+      // Skipped entirely for anyone who has signed in before: they have a
+      // password already, and an unsolicited password link in a receipt looks
+      // like a phishing attempt.
+      //
+      // Also skipped when delivery has been redirected to a different address
+      // (a comp ticket, say). Minting an account-recovery link for whoever
+      // that address belongs to is not something a ticket receipt should do.
+      const isAccountHolder =
+        !!authUser?.email && authUser.email.toLowerCase() === email.toLowerCase();
+
       let passwordUrl: string | null = null;
-      try {
+      if (!hasSignedIn && isAccountHolder) try {
         const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
           type: 'recovery',
           email,
@@ -210,9 +264,10 @@ Deno.serve(async (req: Request) => {
         ticketUrl,
         qrUrlFor: (ticketId) => ticketQrUrl(SUPABASE_URL, orderToken, ticketId),
         passwordUrl,
+        accountJustCreated,
         name,
       });
-      const text = buildEmailText(order, { ticketUrl, passwordUrl, name });
+      const text = buildEmailText(order, { ticketUrl, passwordUrl, accountJustCreated, name });
 
       const result = await sendViaResend(email, subject, html, text);
       if (!result.ok) {
