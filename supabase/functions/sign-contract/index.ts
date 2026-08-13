@@ -195,7 +195,7 @@ Deno.serve(async (req: Request) => {
     // Stamp verify page onto the incoming PDF
     const incoming = b64decode(pdf_base64);
     const signedAtIso = new Date().toISOString();
-    const origin = req.headers.get('origin') || 'https://kenworthy-ticketing.lovable.app';
+    const origin = req.headers.get('origin') || Deno.env.get('SITE_URL') || 'https://kenworthy-ticketing-build.mrtomfrank.workers.dev';
     const verifyUrl = `${origin}/verify/${rental.id}`;
 
     const stamped = await stampVerifyPage(incoming, {

@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
 
     const origin = req.headers.get('referer')
       ? new URL(req.headers.get('referer')!).origin
-      : 'https://kenworthy-ticketing.lovable.app';
+      : (Deno.env.get('SITE_URL') || 'https://kenworthy-ticketing-build.mrtomfrank.workers.dev').replace(/\/+$/, '');
 
     if (oauthError) {
       return Response.redirect(`${origin}/admin?qbo=error&message=${encodeURIComponent(oauthError)}`, 302);
