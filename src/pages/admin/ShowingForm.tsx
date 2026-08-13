@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
 import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
@@ -59,7 +60,7 @@ export default function ShowingForm() {
     if (!isAdmin) { navigate('/'); return; }
 
     Promise.all([
-      supabase.from('movies').select('id, title, is_active').order('title'),
+      supabase.from('movies').select('id, title, is_active, release_year').order('title'),
       supabase.from('events').select('id, title, ticket_type, is_active').order('title'),
       supabase.from('live_performances').select('id, title, is_active').order('title'),
       supabase.from('venues').select('id, name, has_assigned_seating').order('name'),
@@ -111,6 +112,17 @@ export default function ShowingForm() {
   const currentItems = category === 'movie' ? movies
     : category === 'event' ? events
     : concerts;
+
+  // Inactive titles stay in the list — a film is often scheduled before it is
+  // switched on — but they are labelled so it is not a silent surprise. The
+  // year disambiguates remakes sharing a title (Dune, The Thing, …).
+  const itemOptions = useMemo(() => currentItems.map((item: any) => {
+    const hint = [
+      category === 'movie' && item.release_year ? String(item.release_year) : null,
+      item.is_active ? null : 'inactive',
+    ].filter(Boolean).join(' · ');
+    return { value: item.id, label: item.title, hint: hint || undefined };
+  }), [currentItems, category]);
 
   const addTier = () => {
     setTiers(prev => [...prev, { tier_name: '', price: '8.00', display_order: prev.length }]);
@@ -224,17 +236,17 @@ export default function ShowingForm() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{category === 'movie' ? 'Movie' : category === 'event' ? 'Event' : 'Live Performance'} *</Label>
-              <Select value={itemId} onValueChange={setItemId}>
-                <SelectTrigger><SelectValue placeholder={`Select a ${category}`} /></SelectTrigger>
-                <SelectContent>
-                  {currentItems.map((item: any) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.title}{!item.is_active ? ' (inactive)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="showing-item">
+                {category === 'movie' ? 'Movie' : category === 'event' ? 'Event' : 'Live Performance'} *
+              </Label>
+              <SearchableSelect
+                id="showing-item"
+                options={itemOptions}
+                value={itemId}
+                onChange={setItemId}
+                placeholder={`Select a ${category === 'concert' ? 'live performance' : category}`}
+                searchPlaceholder={`Search ${category === 'concert' ? 'live performances' : `${category}s`}…`}
+              />
             </div>
             <div className="space-y-2">
               <Label>Venue</Label>
