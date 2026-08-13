@@ -1,0 +1,162 @@
+// Tests for the pure parts of film-pass ordering.
+//
+// Run: deno test --node-modules-dir=none supabase/functions/_shared/pass_orders_test.ts
+//
+// These cover the two things that fail silently: an address a staff member
+// cannot write on an envelope, and a confirmation email that leaves the buyer
+// believing they hold something scannable. Both surface as a person standing at
+// the door with nothing — weeks later, in the posting case.
+
+import { assertEquals, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import {
+  admissionsFor,
+  buildPassOrderEmailHtml,
+  buildPassOrderEmailText,
+  buildPassOrderSubject,
+  formatAddress,
+  fulfillmentLine,
+  readMailingAddress,
+  type PassOrderSummary,
+} from './pass_orders.ts';
+
+const address = {
+  line1: '508 S Main St',
+  line2: null,
+  city: 'Moscow',
+  state: 'ID',
+  postal_code: '83843',
+};
+
+const order = (over: Partial<PassOrderSummary> = {}): PassOrderSummary => ({
+  passTypeName: '$60 Film Pass',
+  quantity: 1,
+  amountPaid: 60,
+  initialBalance: 60,
+  redemptionPrice: 6,
+  fulfillment: 'pickup',
+  mailingAddress: null,
+  buyerName: 'Ada Lovelace',
+  ...over,
+});
+
+// --- addresses -------------------------------------------------------------
+// A posted pass with an unusable address is not rejected by anything
+// downstream; it becomes a label nobody can write.
+
+Deno.test('readMailingAddress accepts a complete address and normalises the state', () => {
+  const result = readMailingAddress({ ...address, state: 'id' });
+  assertEquals(result.ok, true);
+  if (result.ok) assertEquals(result.address.state, 'ID');
+});
+
+Deno.test('readMailingAddress names the missing field rather than failing generically', () => {
+  for (const [field, message] of [
+    ['line1', 'street address'],
+    ['city', 'city'],
+    ['state', 'state'],
+    ['postal_code', 'ZIP'],
+  ] as const) {
+    const result = readMailingAddress({ ...address, [field]: '' });
+    assertEquals(result.ok, false, `${field} should be required`);
+    if (!result.ok) assertStringIncludes(result.error, message);
+  }
+});
+
+Deno.test('readMailingAddress rejects a ZIP that is not one', () => {
+  for (const zip of ['8384', '838433', 'ID 83843', 'abcde']) {
+    const result = readMailingAddress({ ...address, postal_code: zip });
+    assertEquals(result.ok, false, `${zip} should be refused`);
+  }
+  // ZIP+4 is a real postal code and must survive.
+  assertEquals(readMailingAddress({ ...address, postal_code: '83843-1234' }).ok, true);
+});
+
+Deno.test('readMailingAddress refuses a non-object', () => {
+  for (const bad of [null, undefined, 'somewhere', 42]) {
+    assertEquals(readMailingAddress(bad).ok, false);
+  }
+});
+
+Deno.test('formatAddress omits an absent second line rather than leaving a gap', () => {
+  assertEquals(formatAddress(address), '508 S Main St, Moscow, ID 83843');
+  assertEquals(
+    formatAddress({ ...address, line2: 'Apt 2' }),
+    '508 S Main St, Apt 2, Moscow, ID 83843',
+  );
+});
+
+// --- what a pass is worth --------------------------------------------------
+// The email says "about N films". N is derived, so changing either configured
+// number changes the claim instead of making it a lie.
+
+Deno.test('admissionsFor derives the count from the configured numbers', () => {
+  assertEquals(admissionsFor(60, 6), 10);
+  assertEquals(admissionsFor(100, 6), 16); // partial admissions do not count
+  assertEquals(admissionsFor(60, 0), 0); // a misconfigured type must not divide by zero
+});
+
+// --- the confirmation ------------------------------------------------------
+
+Deno.test('the subject says which way the pass is coming', () => {
+  assertStringIncludes(buildPassOrderSubject(order()), 'ready to collect');
+  assertStringIncludes(
+    buildPassOrderSubject(order({ fulfillment: 'mail', mailingAddress: address })),
+    'on its way',
+  );
+});
+
+Deno.test('a posted order names the address it is going to', () => {
+  const line = fulfillmentLine(order({ fulfillment: 'mail', mailingAddress: address }));
+  assertStringIncludes(line, '508 S Main St, Moscow, ID 83843');
+});
+
+Deno.test('a collection order sends the buyer to the box office, not to the door', () => {
+  const line = fulfillmentLine(order());
+  assertStringIncludes(line, 'box office');
+});
+
+Deno.test('the confirmation never implies the email itself is the pass', () => {
+  for (const o of [order(), order({ fulfillment: 'mail', mailingAddress: address })]) {
+    const html = buildPassOrderEmailHtml(o);
+    const text = buildPassOrderEmailText(o);
+
+    // The failure this guards: a buyer who thinks the email is scannable.
+    assertStringIncludes(text, 'nothing to print');
+    assertStringIncludes(html, 'nothing to print');
+    assertEquals(html.includes('<img'), false, 'no QR image belongs in a pass confirmation');
+
+    // And the two rules they will otherwise discover at the door.
+    assertStringIncludes(text, 'in person');
+    assertStringIncludes(text, 'cannot be used to book online');
+  }
+});
+
+Deno.test('the confirmation states the value in films, derived not hardcoded', () => {
+  assertStringIncludes(buildPassOrderEmailText(order()), 'about 10 films');
+  assertStringIncludes(
+    buildPassOrderEmailText(order({ initialBalance: 90, redemptionPrice: 9 })),
+    'about 10 films',
+  );
+  assertStringIncludes(
+    buildPassOrderEmailText(order({ initialBalance: 30, redemptionPrice: 6 })),
+    'about 5 films',
+  );
+});
+
+Deno.test('a buyer name with markup in it cannot reach the email as markup', () => {
+  const html = buildPassOrderEmailHtml(order({ buyerName: '<script>alert(1)</script> Bobby' }));
+  assertEquals(html.includes('<script>'), false);
+  assertStringIncludes(html, '&lt;script&gt;');
+});
+
+Deno.test('an anonymous order still greets the buyer', () => {
+  assertStringIncludes(buildPassOrderEmailText(order({ buyerName: null })), 'Hi there,');
+  assertStringIncludes(buildPassOrderEmailHtml(order({ buyerName: null })), 'Hi there,');
+});
+
+Deno.test('quantity is reflected everywhere it is stated', () => {
+  const o = order({ quantity: 3, amountPaid: 180 });
+  assertStringIncludes(buildPassOrderSubject(o), '3 film passes');
+  assertStringIncludes(buildPassOrderEmailText(o), '3 × $60 Film Pass');
+  assertStringIncludes(buildPassOrderEmailHtml(o), '$180.00 paid');
+});

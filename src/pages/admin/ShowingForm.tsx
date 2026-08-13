@@ -43,6 +43,11 @@ export default function ShowingForm() {
   const [venueId, setVenueId] = useState('');
   const [startTime, setStartTime] = useState('');
   const [ticketPrice, setTicketPrice] = useState('8.00');
+  // Whether a film pass may be redeemed at the door for this screening.
+  // Passes are for standard movies; premium screenings and events are not
+  // covered. Events cannot be eligible at all — a database trigger forces the
+  // flag off for them — so this control only ever governs movies.
+  const [filmPassEligible, setFilmPassEligible] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [tiers, setTiers] = useState<TierRow[]>([...DEFAULT_TIERS]);
@@ -83,6 +88,7 @@ export default function ShowingForm() {
           // late — and saving then wrote that wrong hour back.
           setStartTime(instantToVenueLocalInput(data.start_time));
           setTicketPrice(String(data.ticket_price));
+          setFilmPassEligible(data.film_pass_eligible ?? true);
         }
 
         const tierData = tiersRes.data || [];
@@ -135,6 +141,7 @@ export default function ShowingForm() {
       // machine the admin happened to use.
       start_time: venueLocalToInstant(startTime).toISOString(),
       ticket_price: parseFloat(ticketPrice),
+      film_pass_eligible: category === 'movie' && filmPassEligible,
     };
 
     let showingId = id;
@@ -254,6 +261,33 @@ export default function ShowingForm() {
               <Input type="number" step="0.01" value={ticketPrice} onChange={e => setTicketPrice(e.target.value)} />
               <p className="text-xs text-muted-foreground">Fallback price when no tiers are used</p>
             </div>
+
+            {/* Film pass eligibility. Only meaningful for movies — the database
+                forces it off for events and concerts regardless of what is
+                submitted here, so showing the control for them would be a lie. */}
+            {category === 'movie' && (
+              <div className="space-y-2 border-t border-border pt-4">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filmPassEligible}
+                    onChange={e => setFilmPassEligible(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="font-semibold">Accept film passes at the door</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Standard screenings take passes. Turn this off for premium screenings — a pass
+                  covers a fixed amount, so a higher-priced film gives away more than intended.
+                </p>
+                {filmPassEligible && parseFloat(ticketPrice) > 8 && (
+                  <p className="text-xs text-amber-500">
+                    This screening is priced above the standard ${'8'}.00. Passes still deduct
+                    their usual amount — turn this off unless that is deliberate.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Price Tiers */}
             <div className="space-y-3 border-t border-border pt-4">

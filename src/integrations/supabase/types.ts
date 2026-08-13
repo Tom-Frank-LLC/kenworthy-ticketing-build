@@ -637,12 +637,121 @@ export type Database = {
         }
         Relationships: []
       }
+      film_pass_orders: {
+        Row: {
+          amount_paid: number | null
+          buyer_email: string | null
+          buyer_name: string | null
+          buyer_phone: string | null
+          checkout_idempotency_key: string | null
+          confirmation_error: string | null
+          confirmation_sent_at: string | null
+          created_at: string
+          fulfilled_at: string | null
+          fulfilled_by: string | null
+          fulfillment: string
+          id: string
+          mailing_address: Json | null
+          notes: string | null
+          pass_id: string | null
+          pass_type_id: string
+          payment_method: string
+          quantity: number
+          square_payment_id: string | null
+          square_receipt_url: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_paid?: number | null
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
+          checkout_idempotency_key?: string | null
+          confirmation_error?: string | null
+          confirmation_sent_at?: string | null
+          created_at?: string
+          fulfilled_at?: string | null
+          fulfilled_by?: string | null
+          fulfillment: string
+          id?: string
+          mailing_address?: Json | null
+          notes?: string | null
+          pass_id?: string | null
+          pass_type_id: string
+          payment_method?: string
+          quantity?: number
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_paid?: number | null
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
+          checkout_idempotency_key?: string | null
+          confirmation_error?: string | null
+          confirmation_sent_at?: string | null
+          created_at?: string
+          fulfilled_at?: string | null
+          fulfilled_by?: string | null
+          fulfillment?: string
+          id?: string
+          mailing_address?: Json | null
+          notes?: string | null
+          pass_id?: string | null
+          pass_type_id?: string
+          payment_method?: string
+          quantity?: number
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "film_pass_orders_fulfilled_by_fkey"
+            columns: ["fulfilled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "film_pass_orders_pass_id_fkey"
+            columns: ["pass_id"]
+            isOneToOne: false
+            referencedRelation: "user_film_passes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "film_pass_orders_pass_type_id_fkey"
+            columns: ["pass_type_id"]
+            isOneToOne: false
+            referencedRelation: "film_pass_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "film_pass_orders_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       film_pass_redemptions: {
         Row: {
           amount_deducted: number
           id: string
           pass_id: string
           redeemed_at: string
+          redeemed_by: string | null
+          showing_id: string | null
           ticket_id: string
         }
         Insert: {
@@ -650,6 +759,8 @@ export type Database = {
           id?: string
           pass_id: string
           redeemed_at?: string
+          redeemed_by?: string | null
+          showing_id?: string | null
           ticket_id: string
         }
         Update: {
@@ -657,6 +768,8 @@ export type Database = {
           id?: string
           pass_id?: string
           redeemed_at?: string
+          redeemed_by?: string | null
+          showing_id?: string | null
           ticket_id?: string
         }
         Relationships: [
@@ -665,6 +778,20 @@ export type Database = {
             columns: ["pass_id"]
             isOneToOne: false
             referencedRelation: "user_film_passes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "film_pass_redemptions_redeemed_by_fkey"
+            columns: ["redeemed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "film_pass_redemptions_showing_id_fkey"
+            columns: ["showing_id"]
+            isOneToOne: false
+            referencedRelation: "showings"
             referencedColumns: ["id"]
           },
           {
@@ -685,6 +812,7 @@ export type Database = {
           is_active: boolean
           name: string
           price: number
+          redemption_price: number
           updated_at: string
         }
         Insert: {
@@ -695,6 +823,7 @@ export type Database = {
           is_active?: boolean
           name: string
           price?: number
+          redemption_price?: number
           updated_at?: string
         }
         Update: {
@@ -705,6 +834,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           price?: number
+          redemption_price?: number
           updated_at?: string
         }
         Relationships: []
@@ -1819,6 +1949,7 @@ export type Database = {
         Row: {
           created_at: string
           event_id: string | null
+          film_pass_eligible: boolean
           id: string
           is_active: boolean
           live_performance_id: string | null
@@ -1833,6 +1964,7 @@ export type Database = {
         Insert: {
           created_at?: string
           event_id?: string | null
+          film_pass_eligible?: boolean
           id?: string
           is_active?: boolean
           live_performance_id?: string | null
@@ -1847,6 +1979,7 @@ export type Database = {
         Update: {
           created_at?: string
           event_id?: string | null
+          film_pass_eligible?: boolean
           id?: string
           is_active?: boolean
           live_performance_id?: string | null
@@ -2047,7 +2180,7 @@ export type Database = {
           tax_rate: number
           tier_id: string | null
           total_price: number
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           checkout_idempotency_key?: string | null
@@ -2077,7 +2210,7 @@ export type Database = {
           tax_rate?: number
           tier_id?: string | null
           total_price: number
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           checkout_idempotency_key?: string | null
@@ -2107,7 +2240,7 @@ export type Database = {
           tax_rate?: number
           tier_id?: string | null
           total_price?: number
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -2142,6 +2275,9 @@ export type Database = {
       }
       user_film_passes: {
         Row: {
+          activated_at: string | null
+          activated_by: string | null
+          batch_id: string | null
           checkout_idempotency_key: string | null
           created_at: string
           expires_at: string | null
@@ -2150,14 +2286,18 @@ export type Database = {
           payment_method: string
           price_paid: number | null
           purchased_at: string
-          remaining_balance: number
+          qr_code: string | null
+          remaining_balance: number | null
           sold_by_user_id: string | null
           square_payment_id: string | null
           square_receipt_url: string | null
           status: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
+          activated_at?: string | null
+          activated_by?: string | null
+          batch_id?: string | null
           checkout_idempotency_key?: string | null
           created_at?: string
           expires_at?: string | null
@@ -2166,14 +2306,18 @@ export type Database = {
           payment_method?: string
           price_paid?: number | null
           purchased_at?: string
-          remaining_balance: number
+          qr_code?: string | null
+          remaining_balance?: number | null
           sold_by_user_id?: string | null
           square_payment_id?: string | null
           square_receipt_url?: string | null
           status?: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
+          activated_at?: string | null
+          activated_by?: string | null
+          batch_id?: string | null
           checkout_idempotency_key?: string | null
           created_at?: string
           expires_at?: string | null
@@ -2182,19 +2326,34 @@ export type Database = {
           payment_method?: string
           price_paid?: number | null
           purchased_at?: string
-          remaining_balance?: number
+          qr_code?: string | null
+          remaining_balance?: number | null
           sold_by_user_id?: string | null
           square_payment_id?: string | null
           square_receipt_url?: string | null
           status?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "user_film_passes_activated_by_fkey"
+            columns: ["activated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "user_film_passes_pass_type_id_fkey"
             columns: ["pass_type_id"]
             isOneToOne: false
             referencedRelation: "film_pass_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_film_passes_sold_by_user_id_fkey"
+            columns: ["sold_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -2297,6 +2456,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      activate_film_pass: {
+        Args: {
+          p_activated_by?: string
+          p_order_id?: string
+          p_pass_type_id?: string
+          p_payment_method?: string
+          p_price_paid?: number
+          p_qr_code: string
+          p_square_payment_id?: string
+          p_user_id?: string
+        }
+        Returns: Json
+      }
+      admit_with_film_pass: {
+        Args: {
+          p_pass_code: string
+          p_scanned_by?: string
+          p_showing_id: string
+        }
+        Returns: Json
+      }
       apply_production_template_to_showing: {
         Args: { p_showing_id: string }
         Returns: undefined
@@ -2442,6 +2622,7 @@ export type Database = {
           total_seats: number
         }[]
       }
+      ticket_hold_window: { Args: never; Returns: string }
     }
     Enums: {
       app_role: "admin" | "regular_user" | "staff" | "host" | "superadmin"
@@ -2630,3 +2811,4 @@ export const Constants = {
     },
   },
 } as const
+

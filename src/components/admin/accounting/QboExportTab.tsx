@@ -88,14 +88,24 @@ export default function QboExportTab() {
     const fromIso = new Date(from).toISOString();
     const toIso = new Date(new Date(to).getTime() + 86400000).toISOString();
 
-    const [accountsRes, mappingsRes, ticketsRes, concRes, donRes, passRes, ptypesRes, showingsRes, rilRes] = await Promise.all([
+    const [accountsRes, mappingsRes, ticketsRes, concRes, donRes, passRes, passOrdersRes, ptypesRes, showingsRes, rilRes] = await Promise.all([
       supabase.from('chart_of_accounts' as any).select('id,code,qbo_account_name,account_type'),
       supabase.from('account_mappings' as any).select('source_type,source_key,account_id,is_default'),
-      supabase.from('tickets').select('total_price,price,tax_amount,purchased_at,showing_id,status').gte('purchased_at', fromIso).lt('purchased_at', toIso).eq('status', 'confirmed'),
+      // payment_method is read so film-pass admissions can be excluded below.
+      supabase.from('tickets').select('total_price,price,tax_amount,purchased_at,showing_id,status,payment_method').gte('purchased_at', fromIso).lt('purchased_at', toIso).eq('status', 'confirmed'),
       supabase.from('concession_sales').select('total,tax_amount,created_at').gte('created_at', fromIso).lt('created_at', toIso),
       supabase.from('donations').select('amount_cents,created_at,status').gte('created_at', fromIso).lt('created_at', toIso).eq('status', 'completed'),
-      // Only passes that were actually paid for count as income.
-      supabase.from('user_film_passes').select('pass_type_id,purchased_at').eq('status', 'active').gte('purchased_at', fromIso).lt('purchased_at', toIso),
+      // Pass income is booked when the money moved, which is now two different
+      // moments. A pass bought at the counter is paid for as it is activated,
+      // so the pass row carries the date. A pass bought online is paid for at
+      // the order and collected (or posted) later — sometimes in a different
+      // month — so the *order* carries the date, and the pass row it eventually
+      // produces has to be skipped or the sale is counted twice.
+      //
+      // Every status but the unsold ones counts: filtering on 'active' alone
+      // would drop a pass sold and spent to nothing inside the same period.
+      supabase.from('user_film_passes').select('id,pass_type_id,price_paid,purchased_at,status').in('status', ['active', 'depleted', 'expired', 'void', 'refunded']).gte('purchased_at', fromIso).lt('purchased_at', toIso),
+      supabase.from('film_pass_orders').select('pass_id,pass_type_id,amount_paid,quantity,created_at,status').in('status', ['paid', 'fulfilled']).gte('created_at', fromIso).lt('created_at', toIso),
       supabase.from('film_pass_types').select('id,name,price'),
       supabase.from('showings').select('id,movie_id,event_id,live_performance_id'),
       supabase.from('rental_invoice_lines' as any).select('line_kind,quantity,unit_price,account_id,is_taxable,created_at').gte('created_at', fromIso).lt('created_at', toIso),
@@ -131,6 +141,12 @@ export default function QboExportTab() {
     // Tickets — classify by showing type
     const showings = new Map((showingsRes.data || []).map((s: any) => [s.id, s]));
     for (const t of ticketsRes.data || []) {
+      // A film-pass admission mints a ticket at the screening's face value so
+      // the seat is counted, but no money changed hands at the door — the sale
+      // was booked when the pass was bought (Passes, below). Counting the
+      // ticket too would book the same $60 twice, once as a pass and again as
+      // ten $8 films.
+      if ((t as any).payment_method === 'film_pass') continue;
       const s: any = showings.get(t.showing_id);
       let key = 'film';
       if (s?.event_id) key = 'live_event';
@@ -150,15 +166,36 @@ export default function QboExportTab() {
     for (const d of donRes.data || []) add(resolve('donation_designation', 'individual'), Number(d.amount_cents) / 100);
     // Passes
     const ptypes = new Map((ptypesRes.data || []).map((p: any) => [p.id, p]));
-    for (const p of passRes.data || []) {
-      const pt: any = ptypes.get(p.pass_type_id);
-      const price = Number(pt?.price || 0);
-      let key = 'film_pass';
+    const passOrders = (passOrdersRes.data as any[]) || [];
+
+    /** Which account a pass sale belongs to, from the pass type's name. */
+    function passAccount(passTypeId: string): string | null {
+      const pt: any = ptypes.get(passTypeId);
       const nm = (pt?.name || '').toLowerCase();
+      let key = 'film_pass';
       if (nm.includes('met')) key = 'met_live_pass';
       else if (nm.includes('gift')) key = 'movie_night_gift';
       else if (nm.includes('silent')) key = 'silent_film_fest';
-      add(resolve('pass_type', key), price);
+      return resolve('pass_type', key);
+    }
+
+    // Online orders: booked at the order, for what was actually charged.
+    for (const o of passOrders) {
+      add(passAccount(o.pass_type_id), Number(o.amount_paid || 0));
+    }
+
+    // Counter sales: booked at activation, which is when the cash arrived.
+    // A pass that discharged an online order is already counted above.
+    const orderedPassIds = new Set(passOrders.map(o => o.pass_id).filter(Boolean));
+    for (const p of (passRes.data as any[]) || []) {
+      if (orderedPassIds.has(p.id)) continue;
+      const pt: any = ptypes.get(p.pass_type_id);
+      // price_paid is what this pass actually sold for; the type's current
+      // price is only a fallback for rows predating that column.
+      const amount = p.price_paid !== null && p.price_paid !== undefined
+        ? Number(p.price_paid)
+        : Number(pt?.price || 0);
+      add(passAccount(p.pass_type_id), amount);
     }
 
     // Rental invoice lines — honor per-line account override, else map by line_kind

@@ -20,6 +20,7 @@ const Showing = lazy(() => import("./pages/Showing"));
 const MyTickets = lazy(() => import("./pages/MyTickets"));
 const PublicTicket = lazy(() => import("./pages/PublicTicket"));
 const MyPasses = lazy(() => import("./pages/MyPasses"));
+const FilmPassesPage = lazy(() => import("./pages/FilmPasses"));
 const Profile = lazy(() => import("./pages/Profile"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Sponsors = lazy(() => import("./pages/Sponsors"));
@@ -80,6 +81,10 @@ const App = () => (
                 <Route path="/my-tickets" element={<MyTickets />} />
                 {/* Public ticket link from confirmation email/SMS — no auth. */}
                 <Route path="/t/:token" element={<PublicTicket />} />
+                {/* Buying a film pass — public, no sign-in. Distinct from
+                    /my-passes, which only shows a signed-in patron what they
+                    already hold. */}
+                <Route path="/film-passes" element={<FilmPassesPage />} />
                 <Route path="/my-passes" element={<MyPasses />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/admin" element={<AdminDashboard />} />

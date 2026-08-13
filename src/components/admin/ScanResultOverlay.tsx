@@ -17,6 +17,25 @@ export interface ScanResult {
     scanned_at: string | null;
     patron_status: string;
   };
+  /**
+   * A film-pass admission, when that is what was scanned.
+   *
+   * Deliberately reuses the three-verdict vocabulary above rather than adding
+   * a parallel one: at a door, under time pressure, there are only ever three
+   * decisions — let them in, stop, or refuse — and a staff member should not
+   * have to learn a second colour scheme for the other kind of QR. What is
+   * *different* about a pass is the balance, and that is what this carries.
+   */
+  pass?: {
+    /** Whose screening this was, for the same reassurance the ticket block gives. */
+    title?: string | null;
+    /** Money left after this scan, or before it when nothing was deducted. */
+    remaining_balance?: number | null;
+    /** Admissions that balance still buys. */
+    admissions_left?: number | null;
+    /** What this admission cost, present only when one actually happened. */
+    amount_deducted?: number | null;
+  };
   message: string;
 }
 
@@ -84,7 +103,9 @@ export function ScanResultOverlay({
   // Auto-dismiss the success case. Keyed on the ticket id as well as the
   // status so two valid scans in a row each get their own full timer rather
   // than the second inheriting what is left of the first.
-  const resultKey = result ? `${result.status}:${result.ticket?.id ?? result.message}` : '';
+  const resultKey = result
+    ? `${result.status}:${result.ticket?.id ?? result.message}`
+    : '';
 
   useEffect(() => {
     if (!result || !autoDismiss) return;
@@ -116,6 +137,8 @@ export function ScanResultOverlay({
   const style = STYLES[result.status];
   const Icon = style.icon;
   const ticket = result.ticket;
+  const pass = result.pass;
+  const money = (n: number) => `$${n.toFixed(2)}`;
 
   return (
     <div
@@ -154,6 +177,29 @@ export function ScanResultOverlay({
                   ? `Row ${ticket.seat_row}, Seat ${ticket.seat_number}`
                   : 'General Admission'}
               </p>
+            </div>
+          )}
+
+          {pass && (
+            <div className="pt-2 space-y-1 border-t">
+              {pass.title && <p className="text-xl font-semibold pt-3">{pass.title}</p>}
+              <p className="text-sm text-muted-foreground">Film pass</p>
+              {typeof pass.remaining_balance === 'number' && (
+                <p className="text-base font-medium pt-1">
+                  {money(pass.remaining_balance)} left
+                  {typeof pass.admissions_left === 'number' && (
+                    <span className="text-muted-foreground">
+                      {' · '}
+                      {pass.admissions_left} more {pass.admissions_left === 1 ? 'film' : 'films'}
+                    </span>
+                  )}
+                </p>
+              )}
+              {typeof pass.amount_deducted === 'number' && (
+                <p className="text-sm text-muted-foreground">
+                  {money(pass.amount_deducted)} deducted
+                </p>
+              )}
             </div>
           )}
 

@@ -1,27 +1,35 @@
-// Film pass sales — self-serve and box office.
+// Film pass money and lifecycle — sale, activation, lookup, void.
 //
-// What this replaces: MyPasses.tsx inserted a `user_film_passes` row straight
-// from the browser with `remaining_balance = initial_balance`. A patron could
-// mint themselves a $100 pass for nothing, and RLS allowed it because the row
-// was theirs. The POS was worse in a different way: when the patron had no
-// profile it created the pass **under the staff member's account**, so the
-// walk-in's balance became an employee's, and it looked patrons up by
-// `profiles.display_name = <email>`, which is not where email lives.
+// A film pass is a physical object now. That changes what this function is for.
 //
-// Same shape as ticket-checkout: price on the server, write the row pending,
-// take the money, then activate. A pass that was never paid for never becomes
-// spendable — it stays `failed`, and every redemption path filters on `active`.
+// It used to mint a spendable balance the instant a card cleared, and the pass
+// existed only in the database. There is no digital pass any more: buying one
+// online creates an *order*, which the box office discharges by scanning a
+// blank sticker and handing over paper. The moment of creation moved from the
+// payment to the handoff, and this function's job moved with it.
 //
-// Two entry points:
-//   purchase    — a signed-in patron paying by card (Square Web Payments token)
-//   staff_sale  — box office selling to a walk-in; cash, or a card already
-//                 taken on the Square Terminal
+// What lives here, and why together: these are the four operations that either
+// move money or bring a balance into existence, and all four have to answer
+// "who is asking" before they do anything. Splitting them across functions
+// would mean four copies of that answer.
 //
-// Box-office sales are attested by an authenticated staff member, exactly as
-// box-office ticket sales already are: the money is collected in the room, and
-// the terminal checkout id is recorded alongside so the sale reconciles against
-// Square. Self-serve sales are never attested — they must produce a real Square
-// payment id or they do not happen.
+//   order       public   take the card, record what the theatre now owes
+//   activate    staff    scan a blank sticker; it becomes a funded pass
+//   lookup      staff    find a pass by its code, or a patron's passes
+//   queue       staff    orders paid for and not yet handed over
+//   void        admin    kill a lost, stolen or misprinted pass
+//
+// Two things this function will not do any more, both deliberately answered
+// with an error rather than silently ignored:
+//
+//   purchase    minted a digital pass for a signed-in patron. There is no such
+//               thing now. A stale browser tab must be told, not humoured.
+//   staff_sale  created a pass row from the counter without a sticker. The
+//               walk-in path is `activate` with payment details attached — the
+//               pass and the paper come into existence together or not at all.
+//
+// Card data never touches this function. The browser hands the card to Square's
+// iframe and sends a single-use token, which is all `source_id` ever is.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/http.ts';
@@ -40,6 +48,15 @@ import {
   readContact,
   type BuyerContact,
 } from '../_shared/buyers.ts';
+import { sendTransactionalEmail } from '../_shared/deliver.ts';
+import {
+  buildPassOrderEmailHtml,
+  buildPassOrderEmailText,
+  buildPassOrderSubject,
+  readMailingAddress,
+  type Fulfillment,
+  type MailingAddress,
+} from '../_shared/pass_orders.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -47,6 +64,9 @@ declare const Deno: any;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+/** A single order is a gift, a stack of them is a mistake or an attack. */
+const MAX_PASSES_PER_ORDER = 10;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return preflight();
@@ -59,296 +79,643 @@ Deno.serve(async (req: Request) => {
   }
 
   const square = loadSquareConfig();
-  const action = String(body.action ?? 'purchase');
+  const action = String(body.action ?? 'order');
 
   if (action === 'get_config') {
     if (!square.ok) return json({ error: square.error }, 500);
     return json(publishableConfig(square.config));
   }
 
-  if (action !== 'purchase' && action !== 'staff_sale' && action !== 'lookup') {
-    return json({ error: `Unknown action: ${action}` }, 400);
+  // The two removed actions. Answered explicitly because a cached bundle in
+  // somebody's browser will still be asking for them, and "unknown action" is
+  // a worse answer than the truth.
+  if (action === 'purchase' || action === 'staff_sale') {
+    return json(
+      {
+        error:
+          'Film passes are physical now — there is no digital pass to issue. Buy one online for collection or post, or ask at the box office.',
+      },
+      410,
+    );
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const signedIn = await authenticatedUser(createClient, req);
 
-  // ---------------------------------------------------------------------
-  // Box-office pass lookup
-  // ---------------------------------------------------------------------
-  //
-  // The POS searched `profiles.display_name` for an email address. Email is not
-  // stored on profiles at all — it lives in auth.users, which the browser
-  // cannot query — so the lookup only ever matched patrons who happened to have
-  // typed their email in as a display name. Resolving it here, under the
-  // service role, is what makes searching by email actually work.
-  if (action === 'lookup') {
+  /** Staff gate, used by every action but `order`. */
+  const requireStaff = async (): Promise<Response | { id: string }> => {
     if (!signedIn) return json({ error: 'Staff sign-in required' }, 401);
-    const { data: canLookup } = await admin.rpc('has_role', {
+    const { data: isStaff } = await admin.rpc('has_role', {
       _user_id: signedIn.id,
       _role: 'staff',
     });
-    if (!canLookup) return json({ error: 'Staff access required' }, 403);
+    if (!isStaff) return json({ error: 'Staff access required' }, 403);
+    return { id: signedIn.id };
+  };
 
-    const contact = readContact(body);
-    if (!contact.email && !contact.phone) {
-      return json({ error: 'Search by email or phone' }, 400);
+  // ---------------------------------------------------------------------
+  // The box office queue: money taken, pass still owed
+  // ---------------------------------------------------------------------
+  //
+  // Every row here is a person waiting. Without somewhere to see them, a paid
+  // online order is an obligation with no reminder attached, and the way that
+  // fails is quietly — weeks later, as "I paid for this and never got it".
+  if (action === 'queue') {
+    const staff = await requireStaff();
+    if (staff instanceof Response) return staff;
+
+    const { data, error } = await admin
+      .from('film_pass_orders')
+      .select(
+        'id, quantity, fulfillment, mailing_address, buyer_name, buyer_email, buyer_phone, amount_paid, status, created_at, user_id, pass_type_id, film_pass_types!film_pass_orders_pass_type_id_fkey(name, price, initial_balance, redemption_price)',
+      )
+      .eq('status', 'paid')
+      .order('created_at');
+
+    if (error) {
+      console.error('[film-pass-checkout] queue failed', error);
+      return json({ error: 'Could not read the pickup queue' }, 500);
     }
 
-    const userId = await findUserByContact(admin, contact.email, contact.phone);
-    if (!userId) return json({ passes: [], patron: null });
-
-    const [{ data: passes }, { data: profile }] = await Promise.all([
-      admin
-        .from('user_film_passes')
-        .select('id, remaining_balance, expires_at, purchased_at, film_pass_types!user_film_passes_pass_type_id_fkey(name)')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .gt('remaining_balance', 0)
-        .order('purchased_at', { ascending: false }),
-      admin.from('profiles').select('display_name').eq('id', userId).maybeSingle(),
-    ]);
-
     return json({
-      patron: {
-        user_id: userId,
-        display_name: profile?.display_name ?? contact.email ?? contact.phone,
-      },
-      passes: (passes || []).map((p: any) => ({
-        id: p.id,
-        remaining_balance: Number(p.remaining_balance),
-        expires_at: p.expires_at,
-        purchased_at: p.purchased_at,
-        pass_type_name: p.film_pass_types?.name ?? 'Film Pass',
+      orders: (data || []).map((o: any) => ({
+        id: o.id,
+        quantity: o.quantity,
+        fulfillment: o.fulfillment,
+        mailing_address: o.mailing_address,
+        buyer_name: o.buyer_name,
+        buyer_email: o.buyer_email,
+        buyer_phone: o.buyer_phone,
+        amount_paid: Number(o.amount_paid ?? 0),
+        created_at: o.created_at,
+        user_id: o.user_id,
+        pass_type_id: o.pass_type_id,
+        pass_type_name: o.film_pass_types?.name ?? 'Film Pass',
       })),
     });
   }
 
   // ---------------------------------------------------------------------
-  // The pass type, priced from the database
+  // Lookup: by sticker code, or by the patron it belongs to
   // ---------------------------------------------------------------------
+  if (action === 'lookup') {
+    const staff = await requireStaff();
+    if (staff instanceof Response) return staff;
+
+    const code = String(body.qr_code ?? '').trim();
+
+    if (code) {
+      const { data: pass } = await admin
+        .from('user_film_passes')
+        .select(
+          'id, qr_code, status, remaining_balance, expires_at, activated_at, user_id, batch_id, price_paid, film_pass_types!user_film_passes_pass_type_id_fkey(name, initial_balance, redemption_price)',
+        )
+        .eq('qr_code', code)
+        .maybeSingle();
+
+      if (!pass) return json({ pass: null, passes: [], patron: null });
+
+      let holder: { display_name: string | null; email: string | null } | null = null;
+      if (pass.user_id) {
+        const { data: profile } = await admin
+          .from('profiles')
+          .select('display_name, email')
+          .eq('id', pass.user_id)
+          .maybeSingle();
+        holder = {
+          display_name: profile?.display_name ?? null,
+          email: profile?.email ?? null,
+        };
+      }
+
+      return json({ pass: describePass(pass, holder), passes: [], patron: null });
+    }
+
+    const contact = readContact(body);
+    if (!contact.email && !contact.phone) {
+      return json({ error: 'Search by pass code, email or phone' }, 400);
+    }
+
+    const userId = await findUserByContact(admin, contact.email, contact.phone);
+    if (!userId) return json({ pass: null, passes: [], patron: null });
+
+    const [{ data: passes }, { data: profile }] = await Promise.all([
+      admin
+        .from('user_film_passes')
+        .select(
+          'id, qr_code, status, remaining_balance, expires_at, activated_at, user_id, batch_id, price_paid, film_pass_types!user_film_passes_pass_type_id_fkey(name, initial_balance, redemption_price)',
+        )
+        .eq('user_id', userId)
+        // Everything they hold, not just the spendable ones: "why won't my pass
+        // work" is answered by seeing that it is depleted or expired, and a
+        // filtered list answers it with silence.
+        .in('status', ['active', 'depleted', 'expired', 'void'])
+        .order('activated_at', { ascending: false, nullsFirst: false }),
+      admin.from('profiles').select('display_name, email').eq('id', userId).maybeSingle(),
+    ]);
+
+    return json({
+      pass: null,
+      patron: {
+        user_id: userId,
+        display_name: profile?.display_name ?? contact.email ?? contact.phone,
+        email: profile?.email ?? contact.email,
+      },
+      passes: (passes || []).map((p: any) =>
+        describePass(p, {
+          display_name: profile?.display_name ?? null,
+          email: profile?.email ?? null,
+        }),
+      ),
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Activation — the moment a sticker becomes a pass
+  // ---------------------------------------------------------------------
+  //
+  // Two shapes, one function. Collecting an online order supplies an order id
+  // and the pass inherits its owner. A walk-in supplies payment details and
+  // either a contact (creating an account) or nothing at all — a bearer pass,
+  // where the paper *is* the credential, exactly as cash is.
+  if (action === 'activate') {
+    const staff = await requireStaff();
+    if (staff instanceof Response) return staff;
+
+    const qrCode = String(body.qr_code ?? '').trim();
+    if (!qrCode) return json({ error: 'Scan a blank sticker' }, 400);
+    if (!qrCode.startsWith('PASS:')) {
+      // Almost always a ticket QR held up at the wrong screen.
+      return json({ error: 'That is not a film pass sticker.' }, 400);
+    }
+
+    const orderId = String(body.order_id ?? '').trim() || null;
+    let userId: string | null = null;
+    let passTypeId: string | null = String(body.pass_type_id ?? '').trim() || null;
+    let paymentMethod: string | null = null;
+    let pricePaid: number | null = null;
+    let squarePaymentId: string | null = null;
+
+    if (!orderId) {
+      // Walk-in. The price comes from the pass type, never from the browser.
+      if (!passTypeId) return json({ error: 'Choose a pass type' }, 400);
+
+      const { data: passType } = await admin
+        .from('film_pass_types')
+        .select('id, price, is_active')
+        .eq('id', passTypeId)
+        .maybeSingle();
+      if (!passType) return json({ error: 'Pass type not found' }, 404);
+      if (passType.is_active === false) {
+        return json({ error: 'That pass is no longer sold' }, 400);
+      }
+
+      paymentMethod = ['cash', 'card', 'comp'].includes(body.payment_method)
+        ? body.payment_method
+        : 'cash';
+      pricePaid = paymentMethod === 'comp' ? 0 : Number(passType.price);
+      squarePaymentId =
+        typeof body.square_payment_id === 'string' ? body.square_payment_id : null;
+
+      // Contact is optional. A walk-in who gives one gets a pass attached to an
+      // account, and a lost pass can then be voided and reissued. One who gives
+      // nothing gets a bearer pass, which is the honest model for paper.
+      const contact = readContact(body);
+      if (contact.email || contact.phone) {
+        if (contact.email && !EMAIL_RE.test(contact.email)) {
+          return json({ error: 'Invalid email format' }, 400);
+        }
+        if (!contact.name) contact.name = contact.email || contact.phone || 'Kenworthy patron';
+        try {
+          userId = (await findOrCreateBuyer(admin, contact)).userId;
+        } catch (err) {
+          console.error('[film-pass-checkout] patron resolution failed', err);
+          return json(
+            { error: err instanceof Error ? err.message : 'Could not create account' },
+            500,
+          );
+        }
+      }
+    }
+
+    const { data: result, error } = await admin.rpc('activate_film_pass', {
+      p_qr_code: qrCode,
+      p_order_id: orderId,
+      p_user_id: userId,
+      p_pass_type_id: passTypeId,
+      p_activated_by: signedIn!.id,
+      p_payment_method: paymentMethod,
+      p_price_paid: pricePaid,
+      p_square_payment_id: squarePaymentId,
+    });
+
+    if (error) {
+      console.error('[film-pass-checkout] activation failed', error);
+      return json({ error: 'Could not activate that sticker. Please try again.' }, 500);
+    }
+
+    // The RPC returns a verdict rather than raising, so the counter can be told
+    // what actually happened. Anything but success is a 400 carrying the reason.
+    const verdict = result as Record<string, any>;
+    if (verdict.result !== 'activated') {
+      return json({ ...verdict, error: activationMessage(verdict) }, 400);
+    }
+
+    return json({ success: true, ...verdict });
+  }
+
+  // ---------------------------------------------------------------------
+  // The door scan
+  // ---------------------------------------------------------------------
+  //
+  // Thin on purpose. Every rule — eligible screening, not already through,
+  // not expired, enough balance — is decided by admit_with_film_pass in one
+  // transaction, because the door is where those rules are actually tested and
+  // the scanner is a browser. This function's only contribution is answering
+  // "is a staff member holding this scanner", which the database cannot see.
+  if (action === 'admit') {
+    const staff = await requireStaff();
+    if (staff instanceof Response) return staff;
+
+    const passCode = String(body.qr_code ?? '').trim();
+    const showingId = String(body.showing_id ?? '').trim() || null;
+    if (!passCode) return json({ error: 'Scan a pass' }, 400);
+    if (!showingId) return json({ result: 'no_showing_selected' });
+
+    const { data: result, error } = await admin.rpc('admit_with_film_pass', {
+      p_pass_code: passCode,
+      p_showing_id: showingId,
+      p_scanned_by: signedIn!.id,
+    });
+
+    if (error) {
+      // PT409 is the capacity trigger: the house filled up between the queue
+      // forming and this scan. The whole transaction rolled back, so the pass
+      // still holds its balance — worth saying, because the alternative
+      // reading ("did that just cost them $6?") is the one staff will assume.
+      if ((error as any).code === 'PT409') {
+        return json({ result: 'sold_out', message: error.message });
+      }
+      console.error('[film-pass-checkout] admission failed', error);
+      return json({ error: 'The scan could not be completed. Try again.' }, 500);
+    }
+
+    return json(result);
+  }
+
+  // ---------------------------------------------------------------------
+  // Void — a lost, stolen or misprinted pass
+  // ---------------------------------------------------------------------
+  //
+  // Admin only, and it destroys value: the balance is left visible on the row
+  // so what was killed is answerable, but the status stops it being spendable.
+  // No money is returned here — refunding a pass is a decision at the counter,
+  // and pretending otherwise would credit a card this function never charged.
+  if (action === 'void') {
+    if (!signedIn) return json({ error: 'Sign-in required' }, 401);
+    const { data: isAdmin } = await admin.rpc('has_role', {
+      _user_id: signedIn.id,
+      _role: 'admin',
+    });
+    if (!isAdmin) return json({ error: 'Admin access required' }, 403);
+
+    const passId = String(body.pass_id ?? '').trim();
+    if (!passId) return json({ error: 'Which pass?' }, 400);
+
+    const { data: updated, error } = await admin
+      .from('user_film_passes')
+      .update({ status: 'void' })
+      .eq('id', passId)
+      .in('status', ['unassigned', 'active', 'depleted', 'expired'])
+      .select('id, qr_code, status, remaining_balance');
+
+    if (error) {
+      console.error('[film-pass-checkout] void failed', error);
+      return json({ error: 'Could not void that pass' }, 500);
+    }
+    // A blocked write returns no error and no rows, so the row count is the
+    // only thing that says whether anything happened.
+    if (!updated || updated.length === 0) {
+      return json({ error: 'That pass could not be voided — it may already be void.' }, 409);
+    }
+
+    return json({ success: true, pass: updated[0] });
+  }
+
+  if (action !== 'order') return json({ error: `Unknown action: ${action}` }, 400);
+
+  // =====================================================================
+  // Buying online: money now, paper later
+  // =====================================================================
+
   const passTypeId = String(body.pass_type_id ?? '').trim();
   if (!passTypeId) return json({ error: 'Choose a pass' }, 400);
 
   const { data: passType } = await admin
     .from('film_pass_types')
-    .select('id, name, price, initial_balance, expiration_days, is_active')
+    .select('id, name, price, initial_balance, redemption_price, expiration_days, is_active')
     .eq('id', passTypeId)
     .maybeSingle();
 
   if (!passType) return json({ error: 'Pass not found' }, 404);
   if (passType.is_active === false) return json({ error: 'That pass is no longer sold' }, 400);
 
-  const price = Number(passType.price);
-  const amountCents = Math.round(price * 100);
-  if (!Number.isFinite(price) || price < 0) {
+  const unitPrice = Number(passType.price);
+  if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
     return json({ error: 'That pass has no valid price configured' }, 400);
   }
 
+  const quantity = Math.trunc(Number(body.quantity ?? 1));
+  if (!Number.isFinite(quantity) || quantity < 1) {
+    return json({ error: 'How many passes?' }, 400);
+  }
+  if (quantity > MAX_PASSES_PER_ORDER) {
+    return json(
+      { error: `Up to ${MAX_PASSES_PER_ORDER} passes per order — call the box office for more.` },
+      400,
+    );
+  }
+
+  const fulfillment: Fulfillment = body.fulfillment === 'mail' ? 'mail' : 'pickup';
+  let mailingAddress: MailingAddress | null = null;
+  if (fulfillment === 'mail') {
+    const parsed = readMailingAddress(body.mailing_address);
+    if (!parsed.ok) return json({ error: parsed.error }, 400);
+    mailingAddress = parsed.address;
+  }
+
+  const total = Math.round(unitPrice * quantity * 100) / 100;
+  const amountCents = Math.round(total * 100);
   const idempotencyKey = normaliseKey(body.idempotency_key);
 
-  // ---------------------------------------------------------------------
-  // Who the pass is for, and who is allowed to sell it
-  // ---------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Who is buying
+  // -------------------------------------------------------------------------
+  //
+  // Same rule as ticket checkout: a signed-in buyer wins, and everyone else is
+  // matched on contact or given a silent account. Patrons do not sign in any
+  // more, so in practice this is always the guest path — the account exists so
+  // the order has an owner and the pass has somewhere to attach at activation,
+  // not because anyone will ever log into it.
+  let contact: BuyerContact = readContact(body);
   let userId: string;
-  let contact: BuyerContact;
-  let soldBy: string | null = null;
-  let paymentMethod: string;
 
-  if (action === 'staff_sale') {
-    if (!signedIn) return json({ error: 'Staff sign-in required' }, 401);
-
-    const { data: isStaff } = await admin.rpc('has_role', {
-      _user_id: signedIn.id,
-      _role: 'staff',
-    });
-    if (!isStaff) return json({ error: 'Staff access required' }, 403);
-
-    contact = readContact(body);
-    if (!contact.email && !contact.phone) {
-      return json({ error: "Enter the patron's email or phone" }, 400);
+  if (signedIn) {
+    userId = signedIn.id;
+    contact = await contactForUser(admin, userId, contact);
+  } else {
+    if (!contact.name) return json({ error: 'Name is required' }, 400);
+    if (!contact.email) {
+      return json({ error: 'Email is required so we can confirm your order' }, 400);
     }
-    if (contact.email && !EMAIL_RE.test(contact.email)) {
-      return json({ error: 'Invalid email format' }, 400);
-    }
-    if (!contact.name) contact.name = contact.email || contact.phone || 'Kenworthy patron';
-
-    paymentMethod = ['cash', 'card', 'comp'].includes(body.payment_method)
-      ? body.payment_method
-      : 'cash';
-
+    if (!EMAIL_RE.test(contact.email)) return json({ error: 'Invalid email format' }, 400);
     try {
-      // The pass belongs to the patron. Always. This is the mis-assignment fix:
-      // if no account matches, one is created for them rather than falling back
-      // to the staff member's own id.
       userId = (await findOrCreateBuyer(admin, contact)).userId;
     } catch (err) {
-      console.error('[film-pass-checkout] patron resolution failed', err);
+      console.error('[film-pass-checkout] buyer resolution failed', err);
       return json({ error: err instanceof Error ? err.message : 'Could not create account' }, 500);
-    }
-    soldBy = signedIn.id;
-  } else {
-    if (!signedIn) return json({ error: 'Sign in to buy a film pass' }, 401);
-    userId = signedIn.id;
-    contact = await contactForUser(admin, userId, readContact(body));
-    paymentMethod = 'online';
-
-    if (!body.source_id || typeof body.source_id !== 'string') {
-      return json({ error: 'Missing payment source' }, 400);
     }
   }
 
-  const replay = await findExistingPass(admin, idempotencyKey, userId);
+  const replay = await findExistingOrder(admin, idempotencyKey, userId);
   if (replay) return json(replay);
 
-  // ---------------------------------------------------------------------
-  // Write it pending
-  // ---------------------------------------------------------------------
-  const expiresAt = passType.expiration_days
-    ? new Date(Date.now() + passType.expiration_days * 86400000).toISOString()
-    : null;
+  if (!body.source_id || typeof body.source_id !== 'string') {
+    return json({ error: 'Missing payment source' }, 400);
+  }
 
+  // -------------------------------------------------------------------------
+  // Write the order pending, then charge
+  // -------------------------------------------------------------------------
+  //
+  // The same ordering as every other paid path here: the record exists before
+  // the money moves, so a Square error can never leave a charge with nothing
+  // recorded against it. The difference is what a completed charge produces —
+  // an obligation, not a pass.
   const { data: pending, error: insertErr } = await admin
-    .from('user_film_passes')
+    .from('film_pass_orders')
     .insert({
       user_id: userId,
       pass_type_id: passType.id,
-      remaining_balance: Number(passType.initial_balance),
-      payment_method: paymentMethod,
-      expires_at: expiresAt,
-      price_paid: price,
+      quantity,
+      fulfillment,
+      mailing_address: mailingAddress,
+      buyer_name: contact.name || null,
+      buyer_email: contact.email,
+      buyer_phone: contact.phone,
+      amount_paid: total,
+      payment_method: 'online',
       status: 'pending',
-      sold_by_user_id: soldBy,
       checkout_idempotency_key: idempotencyKey,
     })
     .select('id')
     .single();
 
   if (insertErr || !pending) {
-    console.error('[film-pass-checkout] pending insert failed', insertErr);
+    console.error('[film-pass-checkout] pending order insert failed', insertErr);
     return json({ error: 'Could not start this purchase. Please try again.' }, 500);
   }
 
   const fail = async (reason: string) => {
-    await admin.from('user_film_passes').update({ status: 'failed' }).eq('id', pending.id);
-    return reason;
+    await admin
+      .from('film_pass_orders')
+      .update({ status: 'failed', notes: reason.slice(0, 500) })
+      .eq('id', pending.id);
   };
 
-  // ---------------------------------------------------------------------
-  // Take the money
-  // ---------------------------------------------------------------------
+  if (!square.ok) {
+    await fail(square.error);
+    return json({ error: 'Payments are not configured. Please contact the box office.' }, 500);
+  }
+
   let paymentId: string | null = null;
   let receiptUrl: string | null = null;
 
-  if (action === 'purchase') {
-    if (!square.ok) {
-      await fail(square.error);
-      return json({ error: 'Payments are not configured. Please contact the box office.' }, 500);
+  try {
+    const result = await createPayment(square.config, {
+      sourceId: body.source_id,
+      amountCents,
+      idempotencyKey,
+      referenceId: pending.id,
+      note: `${quantity} × ${passType.name}`,
+      buyerEmail: contact.email,
+    });
+
+    if (!result.ok || !result.data?.payment) {
+      const message = squareErrorMessage(result.data);
+      console.error('[film-pass-checkout] Square declined', JSON.stringify(result.data));
+      await fail(message);
+      return json({ error: message }, 400);
     }
 
-    try {
-      const result = await createPayment(square.config, {
-        sourceId: body.source_id,
-        amountCents,
-        idempotencyKey,
-        referenceId: pending.id,
-        note: `${passType.name} film pass`,
-        buyerEmail: contact.email,
-      });
-
-      if (!result.ok || !result.data?.payment) {
-        const message = squareErrorMessage(result.data);
-        console.error('[film-pass-checkout] Square declined', JSON.stringify(result.data));
-        await fail(message);
-        return json({ error: message }, 400);
-      }
-
-      const payment = result.data.payment;
-      if (payment.status && payment.status !== 'COMPLETED') {
-        const message = `Payment did not complete (${payment.status}).`;
-        await fail(message);
-        return json({ error: message }, 400);
-      }
-
-      paymentId = payment.id ?? null;
-      receiptUrl = payment.receipt_url ?? null;
-    } catch (err) {
-      console.error('[film-pass-checkout] payment threw', err);
-      await fail(err instanceof Error ? err.message : 'Payment failed');
-      return json({ error: 'Payment could not be processed. Your card was not charged.' }, 500);
+    const payment = result.data.payment;
+    if (payment.status && payment.status !== 'COMPLETED') {
+      const message = `Payment did not complete (${payment.status}).`;
+      await fail(message);
+      return json({ error: message }, 400);
     }
-  } else {
-    // Box office: money changed hands in the room. Record whatever Square
-    // reference the terminal produced so the sale reconciles.
-    paymentId = typeof body.square_payment_id === 'string' ? body.square_payment_id : null;
+
+    paymentId = payment.id ?? null;
+    receiptUrl = payment.receipt_url ?? null;
+  } catch (err) {
+    console.error('[film-pass-checkout] payment threw', err);
+    await fail(err instanceof Error ? err.message : 'Payment failed');
+    return json({ error: 'Payment could not be processed. Your card was not charged.' }, 500);
   }
 
-  const { error: activateErr } = await admin
-    .from('user_film_passes')
+  const { error: paidErr } = await admin
+    .from('film_pass_orders')
     .update({
-      status: 'active',
+      status: 'paid',
       square_payment_id: paymentId,
       square_receipt_url: receiptUrl,
     })
     .eq('id', pending.id);
 
-  if (activateErr) {
-    console.error('[film-pass-checkout] activation failed after charge', activateErr, { paymentId });
+  if (paidErr) {
+    console.error('[film-pass-checkout] could not mark order paid', paidErr, { paymentId });
     return json(
       {
         error:
-          'Your payment went through but we could not finish issuing the pass. Please contact the box office — do not pay again.',
+          'Your payment went through but we could not finish recording the order. Please contact the box office — do not pay again.',
         square_payment_id: paymentId,
       },
       500,
     );
   }
 
-  if (contact.email) {
-    try {
-      const [first, ...rest] = contact.name.split(/\s+/);
-      void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
-        body: JSON.stringify({
-          email: contact.email,
-          first_name: first ?? '',
-          last_name: rest.join(' '),
-          tags: ['film-pass'],
-          source: action === 'staff_sale' ? 'pos-film-pass' : 'film-pass-checkout',
-        }),
-      }).catch(() => {});
-    } catch (e) {
-      console.warn('[film-pass-checkout] mailchimp sync threw', e);
-    }
+  // -------------------------------------------------------------------------
+  // Tell them where their pass will be
+  // -------------------------------------------------------------------------
+  //
+  // Fire-and-forget: a Resend outage must not fail a paid order. The outcome is
+  // written back to the row, because the failure mode of a fire-and-forget send
+  // is silence, and silence here means a buyer with no idea what they bought.
+  const summary = {
+    passTypeName: passType.name,
+    quantity,
+    amountPaid: total,
+    initialBalance: Number(passType.initial_balance),
+    redemptionPrice: Number(passType.redemption_price),
+    fulfillment,
+    mailingAddress,
+    buyerName: contact.name || null,
+  };
+
+  const confirm = (async () => {
+    if (!contact.email) return;
+    const result = await sendTransactionalEmail(
+      contact.email,
+      buildPassOrderSubject(summary),
+      buildPassOrderEmailHtml(summary),
+      buildPassOrderEmailText(summary),
+    );
+    await admin
+      .from('film_pass_orders')
+      .update(
+        result.ok
+          ? { confirmation_sent_at: new Date().toISOString(), confirmation_error: null }
+          : { confirmation_error: result.error.slice(0, 500) },
+      )
+      .eq('id', pending.id);
+    if (!result.ok) console.error('[film-pass-checkout] confirmation failed', result.error);
+  })().catch((e) => console.error('[film-pass-checkout] confirmation threw', e));
+
+  // @ts-ignore — EdgeRuntime exists only in the Supabase edge runtime.
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) {
+    // @ts-ignore
+    EdgeRuntime.waitUntil(confirm);
   }
+
+  syncMailchimp(contact);
 
   return json({
     success: true,
-    pass_id: pending.id,
+    order_id: pending.id,
     user_id: userId,
     pass_name: passType.name,
-    balance: Number(passType.initial_balance),
-    amount_cents: action === 'purchase' ? amountCents : 0,
-    price_paid: price,
-    expires_at: expiresAt,
+    quantity,
+    fulfillment,
+    amount_cents: amountCents,
+    total,
+    initial_balance: Number(passType.initial_balance),
+    redemption_price: Number(passType.redemption_price),
     receipt_url: receiptUrl,
     square_payment_id: paymentId,
   });
 });
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function normaliseKey(raw: unknown): string {
   const key = typeof raw === 'string' ? raw.trim() : '';
+  // Square caps idempotency keys at 45 characters.
   return key.length >= 8 && key.length <= 45 ? key : crypto.randomUUID();
 }
 
-async function findExistingPass(admin: any, idempotencyKey: string, userId: string) {
+/** One shape for a pass, wherever the box office sees it. */
+function describePass(
+  p: any,
+  holder: { display_name: string | null; email: string | null } | null,
+) {
+  const type = p.film_pass_types ?? {};
+  const redemption = Number(type.redemption_price ?? 0);
+  const balance = p.remaining_balance === null ? null : Number(p.remaining_balance);
+  return {
+    id: p.id,
+    qr_code: p.qr_code,
+    status: p.status,
+    remaining_balance: balance,
+    admissions_left: balance !== null && redemption > 0 ? Math.floor(balance / redemption) : null,
+    redemption_price: redemption || null,
+    expires_at: p.expires_at,
+    activated_at: p.activated_at,
+    price_paid: p.price_paid === null ? null : Number(p.price_paid),
+    pass_type_name: type.name ?? 'Film Pass',
+    holder_name: holder?.display_name ?? null,
+    holder_email: holder?.email ?? null,
+    bearer: !p.user_id,
+  };
+}
+
+/** Turn an activation verdict into something a staff member can act on. */
+function activationMessage(verdict: Record<string, any>): string {
+  switch (verdict.result) {
+    case 'not_found':
+      return 'That sticker is not one of ours — check the code and try again.';
+    case 'already_activated':
+      return verdict.status === 'active'
+        ? `That sticker is already an active pass with $${Number(
+            verdict.remaining_balance ?? 0,
+          ).toFixed(2)} on it.`
+        : `That sticker has already been used — it is ${verdict.status}.`;
+    case 'order_not_found':
+      return 'That order no longer exists.';
+    case 'order_not_payable':
+      return verdict.order_status === 'fulfilled'
+        ? 'That order has already been handed over.'
+        : `That order is ${verdict.order_status}, so there is nothing to hand over.`;
+    case 'pass_type_not_found':
+      return 'That pass type no longer exists.';
+    case 'no_code':
+      return 'Scan a sticker first.';
+    default:
+      return 'That sticker could not be activated.';
+  }
+}
+
+/** The order this key already created, if the buyer is retrying. */
+async function findExistingOrder(admin: any, idempotencyKey: string, userId: string) {
   const { data } = await admin
-    .from('user_film_passes')
-    .select('id, remaining_balance, expires_at, status, square_payment_id, square_receipt_url, price_paid, film_pass_types!user_film_passes_pass_type_id_fkey(name)')
+    .from('film_pass_orders')
+    .select(
+      'id, quantity, fulfillment, amount_paid, status, square_payment_id, square_receipt_url, film_pass_types!film_pass_orders_pass_type_id_fkey(name, initial_balance, redemption_price)',
+    )
     .eq('checkout_idempotency_key', idempotencyKey)
     .eq('user_id', userId)
-    .eq('status', 'active')
+    .in('status', ['paid', 'fulfilled'])
     .maybeSingle();
 
   if (!data) return null;
@@ -356,13 +723,36 @@ async function findExistingPass(admin: any, idempotencyKey: string, userId: stri
   return {
     success: true,
     replayed: true,
-    pass_id: data.id,
+    order_id: data.id,
     user_id: userId,
     pass_name: (data as any).film_pass_types?.name ?? 'Film Pass',
-    balance: Number(data.remaining_balance),
-    price_paid: Number(data.price_paid ?? 0),
-    expires_at: data.expires_at,
+    quantity: data.quantity,
+    fulfillment: data.fulfillment,
+    total: Number(data.amount_paid ?? 0),
+    initial_balance: Number((data as any).film_pass_types?.initial_balance ?? 0),
+    redemption_price: Number((data as any).film_pass_types?.redemption_price ?? 0),
     receipt_url: data.square_receipt_url ?? null,
     square_payment_id: data.square_payment_id ?? null,
   };
+}
+
+/** Marketing sync. Fire-and-forget: an outage must not affect a paid order. */
+function syncMailchimp(contact: BuyerContact) {
+  if (!contact.email) return;
+  try {
+    const [first, ...rest] = (contact.name || '').split(/\s+/);
+    void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+      body: JSON.stringify({
+        email: contact.email,
+        first_name: first ?? '',
+        last_name: rest.join(' '),
+        tags: ['film-pass'],
+        source: 'film-pass-checkout',
+      }),
+    }).catch(() => {});
+  } catch (e) {
+    console.warn('[film-pass-checkout] mailchimp sync threw', e);
+  }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,49 +6,122 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Trash2, CreditCard, DollarSign } from 'lucide-react';
+import {
+  Plus, Trash2, CreditCard, DollarSign, Printer, Loader2, Ban, QrCode,
+} from 'lucide-react';
+import { invokeFunction } from '@/lib/functions';
+import { StickerSheet, type StickerPassType } from './StickerSheet';
+import { formatShowtime } from '@/lib/datetime';
 
 interface FilmPassType {
   id: string;
   name: string;
   price: number;
   initial_balance: number;
+  redemption_price: number;
   expiration_days: number | null;
   is_active: boolean;
 }
 
 interface UserPass {
   id: string;
-  remaining_balance: number;
+  qr_code: string | null;
+  status: string;
+  remaining_balance: number | null;
   payment_method: string;
   purchased_at: string;
+  activated_at: string | null;
   expires_at: string | null;
-  user_id: string;
+  user_id: string | null;
   profile: { display_name: string | null } | null;
   pass_type: { name: string } | null;
 }
+
+interface BatchSummary {
+  batch_id: string;
+  pass_type_name: string;
+  created_at: string;
+  total: number;
+  unassigned: number;
+}
+
+const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  active: 'default',
+  unassigned: 'outline',
+  depleted: 'secondary',
+  expired: 'destructive',
+  void: 'destructive',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  unassigned: 'Blank',
+  active: 'Active',
+  depleted: 'Used up',
+  expired: 'Expired',
+  void: 'Cancelled',
+  pending: 'Awaiting payment',
+  failed: 'Payment failed',
+  refunded: 'Refunded',
+};
 
 export default function FilmPassesTab() {
   const [passTypes, setPassTypes] = useState<FilmPassType[]>([]);
   const [userPasses, setUserPasses] = useState<UserPass[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', price: '60', initial_balance: '60', expiration_days: '' });
+  const [form, setForm] = useState({
+    name: '', price: '60', initial_balance: '60', redemption_price: '6', expiration_days: '',
+  });
 
-  useEffect(() => { loadData(); }, []);
+  // Printing
+  const [batches, setBatches] = useState<BatchSummary[]>([]);
+  const [batchTypeId, setBatchTypeId] = useState('');
+  const [batchQuantity, setBatchQuantity] = useState('30');
+  const [minting, setMinting] = useState(false);
+  const [sheet, setSheet] = useState<
+    { codes: string[]; passType: StickerPassType; batchId: string } | null
+  >(null);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const [typesRes, passesRes] = await Promise.all([
       supabase.from('film_pass_types').select('*').order('created_at', { ascending: false }),
-      supabase.from('user_film_passes').select('*, profiles!user_film_passes_user_id_fkey(display_name), film_pass_types!user_film_passes_pass_type_id_fkey(name)').order('purchased_at', { ascending: false }).limit(50),
+      supabase
+        .from('user_film_passes')
+        .select(
+          '*, profiles!user_film_passes_user_id_fkey(display_name), film_pass_types!user_film_passes_pass_type_id_fkey(name)',
+        )
+        // Blanks are inventory, not passes: a batch of 300 would bury every real
+        // pass in this list. They are counted under Print Runs instead.
+        .neq('status', 'unassigned')
+        .order('purchased_at', { ascending: false })
+        .limit(50),
     ]);
-    setPassTypes(typesRes.data || []);
-    setUserPasses((passesRes.data || []).map((p: any) => ({
-      ...p,
-      profile: p.profiles,
-      pass_type: p.film_pass_types,
-    })));
-  }
+    const types = (typesRes.data || []) as FilmPassType[];
+    setPassTypes(types);
+    if (types.length > 0 && !batchTypeId) setBatchTypeId(types[0].id);
+    setUserPasses(
+      (passesRes.data || []).map((p: any) => ({
+        ...p,
+        profile: p.profiles,
+        pass_type: p.film_pass_types,
+      })),
+    );
+  }, [batchTypeId]);
+
+  const loadBatches = useCallback(async () => {
+    try {
+      const data = await invokeFunction<{ batches: BatchSummary[] }>('film-pass-batch', {
+        action: 'batches',
+      });
+      setBatches(data.batches || []);
+    } catch {
+      // Not fatal: print runs are a convenience list, and failing to load them
+      // must not take the pass-type editor down with it.
+    }
+  }, []);
+
+  useEffect(() => { loadData(); loadBatches(); }, [loadData, loadBatches]);
 
   async function handleCreateType() {
     if (!form.name.trim()) { toast.error('Name is required'); return; }
@@ -56,11 +129,12 @@ export default function FilmPassesTab() {
       name: form.name.trim(),
       price: parseFloat(form.price) || 60,
       initial_balance: parseFloat(form.initial_balance) || 60,
+      redemption_price: parseFloat(form.redemption_price) || 6,
       expiration_days: form.expiration_days ? parseInt(form.expiration_days) : null,
     });
     if (error) { toast.error(error.message); return; }
     toast.success('Pass type created');
-    setForm({ name: '', price: '60', initial_balance: '60', expiration_days: '' });
+    setForm({ name: '', price: '60', initial_balance: '60', redemption_price: '6', expiration_days: '' });
     setShowForm(false);
     loadData();
   }
@@ -76,6 +150,92 @@ export default function FilmPassesTab() {
     const { error } = await supabase.from('film_pass_types').delete().eq('id', id);
     if (error) toast.error(error.message);
     else { toast.success('Deleted'); loadData(); }
+  }
+
+  async function handleMint() {
+    const quantity = parseInt(batchQuantity, 10);
+    if (!batchTypeId) { toast.error('Choose a pass type'); return; }
+    if (!Number.isFinite(quantity) || quantity < 1) { toast.error('How many stickers?'); return; }
+
+    setMinting(true);
+    try {
+      const data = await invokeFunction<{
+        batch_id: string;
+        quantity: number;
+        pass_type: StickerPassType;
+        passes: { qr_code: string }[];
+      }>('film-pass-batch', {
+        action: 'create',
+        pass_type_id: batchTypeId,
+        quantity,
+      });
+
+      setSheet({
+        codes: data.passes.map(p => p.qr_code),
+        passType: data.pass_type,
+        batchId: data.batch_id,
+      });
+      toast.success(`${data.quantity} blank stickers ready to print`);
+      loadBatches();
+    } catch (err: any) {
+      toast.error(err.message || 'Could not create the batch');
+    } finally {
+      setMinting(false);
+    }
+  }
+
+  async function reprintBatch(batchId: string) {
+    try {
+      const data = await invokeFunction<{
+        batch_id: string;
+        pass_type: StickerPassType | null;
+        passes: { qr_code: string; status: string }[];
+      }>('film-pass-batch', { action: 'list', batch_id: batchId });
+
+      if (!data.pass_type) { toast.error('That batch has no pass type'); return; }
+      // Reprinting only the blanks, never the activated ones. A second sticker
+      // carrying a code already stuck to somebody's pass is a duplicate pass.
+      const blanks = data.passes.filter(p => p.status === 'unassigned').map(p => p.qr_code);
+      if (blanks.length === 0) {
+        toast.info('Every sticker in that batch has already been activated.');
+        return;
+      }
+      setSheet({ codes: blanks, passType: data.pass_type, batchId: data.batch_id });
+    } catch (err: any) {
+      toast.error(err.message || 'Could not load that batch');
+    }
+  }
+
+  async function voidPass(pass: UserPass) {
+    const label = pass.profile?.display_name || pass.qr_code || 'this pass';
+    if (!confirm(
+      `Cancel ${label}?\n\nThe pass stops working immediately. Any balance on it is lost — refund from the till separately if that is the agreement.`,
+    )) return;
+
+    try {
+      await invokeFunction('film-pass-checkout', { action: 'void', pass_id: pass.id });
+      toast.success('Pass cancelled');
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Could not cancel that pass');
+    }
+  }
+
+  // The sticker sheet takes over the page while printing — print CSS hides
+  // everything outside .print-root, so leaving app chrome mounted underneath
+  // would still be correct, but a full-screen view is what staff expect.
+  if (sheet) {
+    return (
+      <div className="print-root space-y-4">
+        <div className="sticker-sheet__meta flex flex-wrap gap-2 print:hidden">
+          <Button onClick={() => window.print()}>
+            <Printer className="h-4 w-4 mr-1" /> Print sheet
+          </Button>
+          <Button variant="outline" onClick={() => setSheet(null)}>Done</Button>
+        </div>
+        <StickerSheet codes={sheet.codes} passType={sheet.passType} batchId={sheet.batchId} />
+      </div>
+    );
   }
 
   return (
@@ -105,8 +265,16 @@ export default function FilmPassesTab() {
                 <Input type="number" step="0.01" value={form.initial_balance} onChange={e => setForm(f => ({ ...f, initial_balance: e.target.value }))} />
               </div>
               <div className="space-y-2">
+                <Label>Cost Per Admission ($)</Label>
+                <Input type="number" step="0.01" value={form.redemption_price} onChange={e => setForm(f => ({ ...f, redemption_price: e.target.value }))} />
+                <p className="text-xs text-muted-foreground">
+                  Deducted at the door. Balance ÷ this is how many films the pass is worth.
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label>Expiration (days, blank = none)</Label>
                 <Input type="number" value={form.expiration_days} onChange={e => setForm(f => ({ ...f, expiration_days: e.target.value }))} placeholder="365" />
+                <p className="text-xs text-muted-foreground">Counted from activation, not from purchase.</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -126,8 +294,12 @@ export default function FilmPassesTab() {
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">{pt.name}</p>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    <Badge variant="outline" className="text-xs">${pt.price.toFixed(2)} sale price</Badge>
-                    <Badge variant="outline" className="text-xs">${pt.initial_balance.toFixed(2)} balance</Badge>
+                    <Badge variant="outline" className="text-xs">${Number(pt.price).toFixed(2)} sale price</Badge>
+                    <Badge variant="outline" className="text-xs">${Number(pt.initial_balance).toFixed(2)} balance</Badge>
+                    <Badge variant="outline" className="text-xs">
+                      ${Number(pt.redemption_price).toFixed(2)} per film ·{' '}
+                      {Math.floor(Number(pt.initial_balance) / Number(pt.redemption_price || 1))} films
+                    </Badge>
                     {pt.expiration_days && <Badge variant="secondary" className="text-xs">{pt.expiration_days} day expiry</Badge>}
                     <Badge variant={pt.is_active ? 'default' : 'secondary'} className="text-xs">
                       {pt.is_active ? 'Active' : 'Inactive'}
@@ -147,32 +319,125 @@ export default function FilmPassesTab() {
         {passTypes.length === 0 && <p className="text-muted-foreground text-center py-8">No film pass types configured.</p>}
       </div>
 
-      {/* Active Passes */}
-      <h2 className="font-display text-xl font-bold pt-4">Active Passes</h2>
+      {/* Print runs */}
+      <h2 className="font-display text-xl font-bold pt-4">Sticker Print Runs</h2>
+      <Card className="glass">
+        <CardContent className="p-4 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Stickers are printed blank and worth nothing until a staff member scans one at the
+            counter. Print a sheet, stick them on the paper passes, and keep them behind the desk.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+            <div className="space-y-2">
+              <Label>Pass type</Label>
+              <Select value={batchTypeId} onValueChange={setBatchTypeId}>
+                <SelectTrigger><SelectValue placeholder="Choose a pass type..." /></SelectTrigger>
+                <SelectContent>
+                  {passTypes.filter(p => p.is_active).map(pt => (
+                    <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="batch-qty">How many</Label>
+              <Input
+                id="batch-qty"
+                type="number"
+                min={1}
+                max={500}
+                className="sm:w-28"
+                value={batchQuantity}
+                onChange={e => setBatchQuantity(e.target.value)}
+              />
+            </div>
+            <Button onClick={handleMint} disabled={minting || !batchTypeId}>
+              {minting ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Minting…</>
+              ) : (
+                <><QrCode className="h-4 w-4 mr-1" /> Generate</>
+              )}
+            </Button>
+          </div>
+
+          {batches.length > 0 && (
+            <div className="space-y-2 pt-2 border-t">
+              {batches.map(b => (
+                <div key={b.batch_id} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{b.pass_type_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatShowtime(b.created_at, 'MMM d, yyyy')} · {b.unassigned} of {b.total}{' '}
+                      still blank
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={b.unassigned === 0}
+                    onClick={() => reprintBatch(b.batch_id)}
+                  >
+                    <Printer className="h-4 w-4 mr-1" /> Reprint blanks
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Issued passes */}
+      <h2 className="font-display text-xl font-bold pt-4">Issued Passes</h2>
       <div className="space-y-3">
         {userPasses.map(up => (
           <Card key={up.id} className="glass">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3 min-w-0">
+            <CardContent className="p-4 flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
                 <DollarSign className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{up.profile?.display_name || 'Unknown User'}</p>
+                  <p className="font-medium">
+                    {up.profile?.display_name || (up.user_id ? 'Unknown user' : 'Bearer pass')}
+                  </p>
                   <div className="flex flex-wrap gap-2 mt-1">
                     <Badge variant="outline" className="text-xs">{up.pass_type?.name}</Badge>
-                    <Badge variant="secondary" className="text-xs">${Number(up.remaining_balance).toFixed(2)} remaining</Badge>
+                    {up.remaining_balance !== null && (
+                      <Badge variant="secondary" className="text-xs">
+                        ${Number(up.remaining_balance).toFixed(2)} remaining
+                      </Badge>
+                    )}
+                    <Badge variant={STATUS_VARIANT[up.status] ?? 'secondary'} className="text-xs">
+                      {STATUS_LABEL[up.status] ?? up.status}
+                    </Badge>
                     <Badge variant="outline" className="text-xs">{up.payment_method}</Badge>
                     {up.expires_at && (
-                      <Badge variant={new Date(up.expires_at) < new Date() ? 'destructive' : 'secondary'} className="text-xs">
-                        {new Date(up.expires_at) < new Date() ? 'Expired' : `Expires ${new Date(up.expires_at).toLocaleDateString()}`}
+                      <Badge
+                        variant={new Date(up.expires_at) < new Date() ? 'destructive' : 'secondary'}
+                        className="text-xs"
+                      >
+                        {new Date(up.expires_at) < new Date()
+                          ? 'Expired'
+                          : `Expires ${formatShowtime(up.expires_at, 'MMM d, yyyy')}`}
                       </Badge>
                     )}
                   </div>
+                  {up.qr_code && (
+                    <p className="text-[11px] font-mono text-muted-foreground break-all mt-1">
+                      {up.qr_code}
+                    </p>
+                  )}
                 </div>
               </div>
+              {up.status !== 'void' && (
+                <Button variant="ghost" size="sm" onClick={() => voidPass(up)} title="Cancel this pass">
+                  <Ban className="h-4 w-4 text-destructive" />
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}
-        {userPasses.length === 0 && <p className="text-muted-foreground text-center py-8">No passes purchased yet.</p>}
+        {userPasses.length === 0 && (
+          <p className="text-muted-foreground text-center py-8">No passes issued yet.</p>
+        )}
       </div>
     </div>
   );
