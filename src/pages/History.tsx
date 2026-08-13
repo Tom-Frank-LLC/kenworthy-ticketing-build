@@ -673,33 +673,40 @@ export default function HistoryPage() {
         </div>
       </header>
 
-      <div ref={timelineRef} className="relative container max-w-6xl px-4 py-16 md:py-24">
-        {/* Spine */}
-        <div className="hidden md:block absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-px bg-border/60" />
-        <div
-          className="hidden md:block absolute left-1/2 -translate-x-1/2 top-0 w-px bg-gradient-to-b from-accent via-primary to-accent transition-[height] duration-150"
-          style={{ height: `${scrollProgress * 100}%` }}
-        />
-        {/* Mobile spine */}
-        <div className="md:hidden absolute left-[26px] top-0 bottom-0 w-px bg-border/60" />
-        <div
-          className="md:hidden absolute left-[26px] top-0 w-px bg-gradient-to-b from-accent via-primary to-accent"
-          style={{ height: `${scrollProgress * 100}%` }}
-        />
+      <div className="container max-w-6xl px-4 py-16 md:py-24">
+        {/* The spine is bounded by this wrapper, so it runs the length of the milestones
+            and stops at the terminus dot — it never continues into the film archive. */}
+        <div ref={timelineRef} className="relative">
+          <div className="hidden md:block absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-px bg-border/60" />
+          <div
+            className="hidden md:block absolute left-1/2 -translate-x-1/2 top-0 w-px bg-gradient-to-b from-accent via-primary to-accent transition-[height] duration-150"
+            style={{ height: `${scrollProgress * 100}%` }}
+          />
+          {/* Mobile spine */}
+          <div className="md:hidden absolute left-[26px] top-0 bottom-0 w-px bg-border/60" />
+          <div
+            className="md:hidden absolute left-[26px] top-0 w-px bg-gradient-to-b from-accent via-primary to-accent"
+            style={{ height: `${scrollProgress * 100}%` }}
+          />
 
-        <div className="relative space-y-16 md:space-y-24">
-          {milestones.map((m, i) => (
-            <TimelineItem
-              key={m.id}
-              milestone={m}
-              side={i % 2 === 0 ? 'left' : 'right'}
-              screenings={screeningsByYear.get(m.year) ?? []}
-              onSeeMore={showYearInTable}
-            />
-          ))}
+          <div className="relative space-y-16 md:space-y-24">
+            {milestones.map((m, i) => (
+              <TimelineItem
+                key={m.id}
+                milestone={m}
+                side={i % 2 === 0 ? 'left' : 'right'}
+                screenings={screeningsByYear.get(m.year) ?? []}
+                onSeeMore={showYearInTable}
+              />
+            ))}
+          </div>
+
+          {/* Terminus — caps the spine where the timeline ends. */}
+          <div className="hidden md:block absolute left-1/2 -translate-x-1/2 -bottom-2 w-4 h-4 rounded-full bg-accent shadow-[0_0_24px_hsl(var(--accent)/0.6)]" />
+          <div className="md:hidden absolute left-[26px] -translate-x-1/2 -bottom-1.5 w-3 h-3 rounded-full bg-accent" />
         </div>
 
-        <div className="relative mt-24 pt-12 border-t border-border/40">
+        <div className="mt-24 pt-12 border-t border-border/40">
           <FilmArchiveTable
             rows={archive}
             yearFilter={yearFilter}
@@ -707,13 +714,6 @@ export default function HistoryPage() {
             query={tableQuery}
             onQueryChange={setTableQuery}
           />
-        </div>
-
-        <div className="relative text-center mt-24 pt-12">
-          <div className="hidden md:block absolute left-1/2 -translate-x-1/2 -top-2 w-4 h-4 rounded-full bg-accent shadow-[0_0_24px_hsl(var(--accent)/0.6)]" />
-          <p className="font-display text-2xl uppercase tracking-[0.3em] text-muted-foreground">
-            And the next reel begins.
-          </p>
         </div>
       </div>
     </div>

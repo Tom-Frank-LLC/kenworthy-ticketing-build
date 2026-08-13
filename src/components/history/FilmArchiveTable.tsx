@@ -47,7 +47,9 @@ function rollUp(rows: ArchiveScreening[]): FilmEntry[] {
   }
   const out = [...map.values()];
   for (const e of out) e.years.sort((a, b) => a - b);
-  return out.sort((a, b) => a.title.localeCompare(b.title));
+  // Chronological by the year the film first played here, oldest first. Titles break ties,
+  // which is what orders the list when a single year is being shown.
+  return out.sort((a, b) => a.years[0] - b.years[0] || a.title.localeCompare(b.title));
 }
 
 /** Render a year list compactly: consecutive runs collapse to "1954–1957". */
