@@ -31,6 +31,9 @@ const RentalContract = lazy(() => import("./pages/RentalContract"));
 const VerifyContract = lazy(() => import("./pages/VerifyContract"));
 const Donate = lazy(() => import("./pages/Donate"));
 const Dvds = lazy(() => import("./pages/Dvds"));
+const AboutPage = lazy(() => import("./pages/About"));
+const HiringPage = lazy(() => import("./pages/Hiring"));
+const VolunteerPage = lazy(() => import("./pages/Volunteer"));
 
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const MovieForm = lazy(() => import("./pages/admin/MovieForm"));
@@ -48,13 +51,9 @@ const Superadmin = lazy(() => import("./pages/admin/Superadmin"));
 // The ComingSoon pages are named exports sharing one module, so they also
 // share one chunk.
 const comingSoon = () => import("./pages/ComingSoon");
-const AboutPage = lazy(() => comingSoon().then(m => ({ default: m.AboutPage })));
 const SilentFilmFestivalPage = lazy(() => comingSoon().then(m => ({ default: m.SilentFilmFestivalPage })));
 const PressPage = lazy(() => comingSoon().then(m => ({ default: m.PressPage })));
-const HiringPage = lazy(() => comingSoon().then(m => ({ default: m.HiringPage })));
 const AccessibilityPage = lazy(() => comingSoon().then(m => ({ default: m.AccessibilityPage })));
-const PlanAVisitPage = lazy(() => comingSoon().then(m => ({ default: m.PlanAVisitPage })));
-const VolunteerPage = lazy(() => comingSoon().then(m => ({ default: m.VolunteerPage })));
 
 const queryClient = new QueryClient();
 
@@ -115,7 +114,6 @@ const App = () => (
                 <Route path="/press" element={<PressPage />} />
                 <Route path="/hiring" element={<HiringPage />} />
                 <Route path="/accessibility" element={<AccessibilityPage />} />
-                <Route path="/plan-a-visit" element={<PlanAVisitPage />} />
                 <Route path="/volunteer" element={<VolunteerPage />} />
                 <Route path="/superadmin" element={<Superadmin />} />
                 <Route path="/contract/:token" element={<RentalContract />} />

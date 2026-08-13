@@ -78,14 +78,12 @@ export function MonthCalendar({
     <section className="border-t border-b border-accent/20 bg-background">
       <div className="container py-10 md:py-14">
         <div className="flex items-end justify-between mb-6 gap-4 flex-wrap">
+          {/* No heading here: both callers (the /calendar page and the home
+              page's Upcoming section) already render their own title above
+              this grid, so one of our own stacked a second "Calendar" under
+              it. Only the helper line stays. */}
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
-              What's Playing
-            </p>
-            <h2 className="font-display text-3xl md:text-4xl uppercase tracking-wide">
-              Calendar
-            </h2>
-            <p className="font-serif text-sm text-muted-foreground mt-1">
+            <p className="font-serif text-sm text-muted-foreground">
               Tap a day to see what's on. Tap a title for tickets and details.
             </p>
           </div>

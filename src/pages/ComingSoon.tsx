@@ -40,14 +40,6 @@ export function ComingSoon({
   );
 }
 
-export const AboutPage = () => (
-  <ComingSoon
-    title="About Us"
-    path="/about"
-    blurb="A century of stories, told one screening at a time. Our full story is coming soon — for now, visit the History page for the timeline."
-  />
-);
-
 export const SilentFilmFestivalPage = () => (
   <ComingSoon
     title="Silent Film Festival"
@@ -64,34 +56,10 @@ export const PressPage = () => (
   />
 );
 
-export const HiringPage = () => (
-  <ComingSoon
-    title="Hiring"
-    path="/hiring"
-    blurb="Open roles at The Kenworthy will be posted here. In the meantime, send a note to events@kenworthy.org."
-  />
-);
-
 export const AccessibilityPage = () => (
   <ComingSoon
     title="Accessibility"
     path="/accessibility"
     blurb="A full accessibility guide — seating, entry, hearing assist, and quiet screenings — is being drafted. Reach out with any questions."
-  />
-);
-
-export const PlanAVisitPage = () => (
-  <ComingSoon
-    title="Plan a Visit"
-    path="/plan-a-visit"
-    blurb="Parking, dinner nearby, when doors open — a friendly guide is on the way."
-  />
-);
-
-export const VolunteerPage = () => (
-  <ComingSoon
-    title="Volunteer"
-    path="/volunteer"
-    blurb="Ushers, projectionists, festival crew — we'd love your help. Volunteer sign-up is coming soon."
   />
 );

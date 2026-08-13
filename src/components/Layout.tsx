@@ -23,7 +23,6 @@ const infoLinks: Array<[string, string]> = [
   ['Press', '/press'],
   ['Hiring', '/hiring'],
   ['Accessibility', '/accessibility'],
-  ['Plan a Visit', '/plan-a-visit'],
 ];
 
 const supportLinks: Array<[string, string]> = [

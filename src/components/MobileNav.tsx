@@ -50,7 +50,6 @@ const infoLinks: NavItem[] = [
   { label: 'Press', to: '/press' },
   { label: 'Hiring', to: '/hiring' },
   { label: 'Accessibility', to: '/accessibility' },
-  { label: 'Plan a Visit', to: '/plan-a-visit' },
 ];
 
 const supportLinks: NavItem[] = [
