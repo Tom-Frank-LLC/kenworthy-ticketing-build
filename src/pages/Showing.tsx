@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import { Film, Calendar, Clock, DollarSign, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard } from 'lucide-react';
 import { SeatMap } from '@/components/SeatMap';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
+import { DonationPrompt } from '@/components/DonationPrompt';
 import { type Seat, type PriceTier, computeSeatTotals, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
@@ -74,6 +75,9 @@ export default function Showing() {
   const [ticketsSold, setTicketsSold] = useState(0);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+  // Optional gift added to this purchase. Zero unless the buyer says otherwise;
+  // it rides on the same card charge and is never taxed.
+  const [donationCents, setDonationCents] = useState(0);
 
   // Card payment for signed-in buyers. Guests get their own card form inside
   // GuestCheckoutForm, alongside the contact fields they still have to fill in.
@@ -276,9 +280,14 @@ export default function Showing() {
   const passProcessingFee = !!production?.pass_processing_fee && total > 0;
   const processingFee = passProcessingFee ? computeProcessingFee(total, 'online').fee : 0;
   const grandTotal = Math.round((total + processingFee) * 100) / 100;
+  // The gift is added to the charge after tax and is never taxed — the tax line
+  // above is computed from ticket rows alone and this does not touch it. The
+  // server does the same arithmetic and its answer is the one that is charged.
+  const chargeTotal = Math.round(grandTotal * 100 + donationCents) / 100;
   // A free ($0) showing has no card step: Square rejects a $0 charge, and the
   // server skips it, so the browser must not ask for a card or send a token.
-  const isFree = grandTotal <= 0;
+  // A free showing with a gift attached does have money to move, so it does.
+  const isFree = chargeTotal <= 0;
 
   /**
    * What the buyer asked for, as seats and tiers — never as prices.
@@ -332,6 +341,7 @@ export default function Showing() {
         showing_id: id,
         tickets: buildTicketDescriptors(),
         payment_method: 'card',
+        donation_cents: donationCents,
         source_id: opts.sourceId,
         idempotency_key: idempotencyKeyRef.current,
         name: opts.guest?.name,
@@ -341,7 +351,11 @@ export default function Showing() {
 
       if (!data?.success) throw new Error('Checkout failed');
 
-      toast.success(`${data.ticket_count} ticket(s) purchased!`);
+      toast.success(
+        donationCents > 0
+          ? `${data.ticket_count} ticket(s) purchased — and thank you for your $${(donationCents / 100).toFixed(2)} gift!`
+          : `${data.ticket_count} ticket(s) purchased!`,
+      );
 
       // Fire-and-forget Mailchimp profile sync for signed-in buyers (the order
       // itself is recorded server-side by the checkout function).
@@ -745,11 +759,23 @@ export default function Showing() {
                         <span>${processingFee.toFixed(2)}</span>
                       </div>
                     )}
+                    {donationCents > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Donation (not taxed)</span>
+                        <span>${(donationCents / 100).toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between font-bold text-base pt-1">
                       <span>Total</span>
-                      <span className="text-primary">${grandTotal.toFixed(2)}</span>
+                      <span className="text-primary">${chargeTotal.toFixed(2)}</span>
                     </div>
                   </div>
+
+                  <DonationPrompt
+                    valueCents={donationCents}
+                    onChange={setDonationCents}
+                    disabled={purchasing}
+                  />
 
                   {/* No film-pass option here, by design. A pass is a physical
                       card redeemed at the door by a staff scan — it cannot buy
@@ -776,7 +802,7 @@ export default function Showing() {
                           ? 'Processing...'
                           : isFree
                             ? `Reserve ${ticketCount} Ticket(s)`
-                            : `Pay $${grandTotal.toFixed(2)}`}
+                            : `Pay $${chargeTotal.toFixed(2)}`}
                       </Button>
                       <p className="text-xs text-muted-foreground text-center">
                         Payments are processed securely by Square. Your card details never reach our servers.
@@ -785,7 +811,7 @@ export default function Showing() {
                   ) : (
                     <GuestCheckoutForm
                       ticketCount={ticketCount}
-                      total={grandTotal}
+                      total={chargeTotal}
                       purchasing={purchasing}
                       onPurchase={handleGuestPurchase}
                     />
@@ -820,7 +846,7 @@ export default function Showing() {
                 )}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                Total <span className="text-primary font-semibold">${grandTotal.toFixed(2)}</span>
+                Total <span className="text-primary font-semibold">${chargeTotal.toFixed(2)}</span>
               </p>
             </div>
             <Button

@@ -371,7 +371,7 @@ export type Database = {
           created_at: string
           dedicate_to: string | null
           dedication_type: string | null
-          donor_email: string
+          donor_email: string | null
           donor_name: string
           donor_phone: string | null
           id: string
@@ -386,13 +386,21 @@ export type Database = {
           square_receipt_url: string | null
           status: string
           user_id: string | null
+          confirmation_error: string | null
+          confirmation_sent_at: string | null
+          notify_error: string | null
+          notify_sent_at: string | null
+          order_token: string | null
+          payment_channel: string | null
+          showing_id: string | null
+          source: string
         }
         Insert: {
           amount_cents: number
           created_at?: string
           dedicate_to?: string | null
           dedication_type?: string | null
-          donor_email: string
+          donor_email: string | null
           donor_name: string
           donor_phone?: string | null
           id?: string
@@ -407,13 +415,21 @@ export type Database = {
           square_receipt_url?: string | null
           status?: string
           user_id?: string | null
+          confirmation_error?: string | null
+          confirmation_sent_at?: string | null
+          notify_error?: string | null
+          notify_sent_at?: string | null
+          order_token?: string | null
+          payment_channel?: string | null
+          showing_id?: string | null
+          source?: string
         }
         Update: {
           amount_cents?: number
           created_at?: string
           dedicate_to?: string | null
           dedication_type?: string | null
-          donor_email?: string
+          donor_email?: string | null
           donor_name?: string
           donor_phone?: string | null
           id?: string
@@ -428,6 +444,14 @@ export type Database = {
           square_receipt_url?: string | null
           status?: string
           user_id?: string | null
+          confirmation_error?: string | null
+          confirmation_sent_at?: string | null
+          notify_error?: string | null
+          notify_sent_at?: string | null
+          order_token?: string | null
+          payment_channel?: string | null
+          showing_id?: string | null
+          source?: string
         }
         Relationships: []
       }

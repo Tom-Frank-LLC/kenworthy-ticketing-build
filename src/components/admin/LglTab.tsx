@@ -33,7 +33,7 @@ export default function LglTab() {
     setLoading(true);
     const [donRes, cfgRes] = await Promise.all([
       supabase.from('donations')
-        .select('id, donor_name, donor_email, amount_cents, status, created_at, lgl_gift_id, lgl_constituent_id, lgl_synced_at, lgl_sync_error')
+        .select('id, donor_name, donor_email, amount_cents, status, created_at, source, lgl_gift_id, lgl_constituent_id, lgl_synced_at, lgl_sync_error, confirmation_sent_at, confirmation_error, notify_email, notify_sent_at, notify_error')
         .eq('status', 'completed')
         .order('created_at', { ascending: false })
         .limit(200),
@@ -65,6 +65,33 @@ export default function LglTab() {
       await load();
     } catch (e: any) {
       toast.error(e?.message || 'Sync failed');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Re-send the donor receipt and, when the gift has one, the tribute notice.
+   *
+   * Both are dispatched fire-and-forget at the time of the gift, so this is how
+   * an operator recovers the case the row already tells them about: a receipt
+   * with a confirmation_error on it, and a donor who is still waiting for the
+   * tax record the thank-you screen promised them.
+   */
+  async function resendEmails(id: string) {
+    setBusy(id);
+    try {
+      const { data, error } = await supabase.functions.invoke('lgl-sync-donation', {
+        body: { action: 'resend_emails', donationId: id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const errors: string[] = (data as any)?.emails?.errors || [];
+      if (errors.length) toast.error(errors.join('; '));
+      else toast.success('Receipt sent');
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not send the receipt');
     } finally {
       setBusy(null);
     }
@@ -165,17 +192,49 @@ export default function LglTab() {
                     Synced {format(new Date(r.lgl_synced_at), 'MMM d')} • gift #{r.lgl_gift_id}
                   </p>
                 )}
+                {/* Whether the donor was actually thanked. The receipt is sent
+                    fire-and-forget, so this line is the only place a failed
+                    send is visible to a human. */}
+                <p className="text-xs font-serif mt-0.5">
+                  {r.confirmation_sent_at ? (
+                    <span className="text-muted-foreground">
+                      <CheckCircle2 className="h-3 w-3 inline mr-1 text-primary" />
+                      Receipt sent {format(new Date(r.confirmation_sent_at), 'MMM d')}
+                      {r.notify_email && (r.notify_sent_at ? ' • tribute notice sent' : ' • tribute notice NOT sent')}
+                    </span>
+                  ) : r.confirmation_error ? (
+                    <span className="text-destructive">
+                      <AlertCircle className="h-3 w-3 inline mr-1" />Receipt failed: {r.confirmation_error}
+                    </span>
+                  ) : r.donor_email ? (
+                    <span className="text-muted-foreground">No receipt sent yet</span>
+                  ) : (
+                    <span className="text-muted-foreground">No email on file — no receipt to send</span>
+                  )}
+                </p>
               </div>
-              <Button
-                size="sm"
-                variant={r.lgl_gift_id ? 'outline' : 'default'}
-                disabled={busy === r.id}
-                onClick={() => syncOne(r.id, !!r.lgl_gift_id)}
-              >
-                {busy === r.id
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : r.lgl_gift_id ? 'Re-sync' : 'Sync now'}
-              </Button>
+              <div className="flex flex-col gap-1">
+                <Button
+                  size="sm"
+                  variant={r.lgl_gift_id ? 'outline' : 'default'}
+                  disabled={busy === r.id}
+                  onClick={() => syncOne(r.id, !!r.lgl_gift_id)}
+                >
+                  {busy === r.id
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : r.lgl_gift_id ? 'Re-sync' : 'Sync now'}
+                </Button>
+                {r.donor_email && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy === r.id}
+                    onClick={() => resendEmails(r.id)}
+                  >
+                    {r.confirmation_sent_at ? 'Resend receipt' : 'Send receipt'}
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         ))}

@@ -31,8 +31,14 @@ import {
   publishableConfig,
   squareErrorMessage,
 } from '../_shared/square.ts';
-import { PricingError, priceTicketOrder, type TicketDescriptor } from '../_shared/pricing.ts';
+import {
+  PricingError,
+  priceTicketOrder,
+  readDonationCents,
+  type TicketDescriptor,
+} from '../_shared/pricing.ts';
 import { deliverConfirmation } from '../_shared/deliver.ts';
+import { settleDonation } from '../_shared/donations.ts';
 import {
   EMAIL_RE,
   authenticatedUser,
@@ -114,6 +120,15 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  // An optional gift added at checkout. It is money the buyer chose to give, so
+  // unlike the tickets there is nothing to re-derive from the database — but it
+  // is still validated here rather than trusted, and it is deliberately kept out
+  // of `priceTicketOrder` so it cannot reach the tax base. See Part C of
+  // docs/DONATIONS.md.
+  const donation = readDonationCents(body.donation_cents);
+  if (!donation.ok) return json({ error: donation.error }, 400);
+  const donationCents = donation.cents;
+
   if (!showingId) return json({ error: 'Showing is required' }, 400);
   if (descriptors.length === 0) return json({ error: 'Select at least one ticket' }, 400);
   if (descriptors.length > MAX_TICKETS_PER_SHOWING) {
@@ -175,10 +190,17 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Could not price this order' }, 500);
   }
 
-  // A paid card order must carry a Square token; a free ($0) showing must not
-  // need one. (Square rejects a $0 charge outright — "below the minimum" — which
-  // is why free tickets skip Square entirely, below.)
-  if (order.amountCents > 0 && !sourceId) {
+  // What the card is actually charged: the order as priced, plus the gift,
+  // added after tax and never taxed. Tax was computed per ticket row inside
+  // priceTicketOrder and is untouched by this line — that is the whole of
+  // "donations are tax-free" on this path.
+  const chargeCents = order.amountCents + donationCents;
+
+  // A charge must carry a Square token; a free ($0) showing must not need one.
+  // (Square rejects a $0 charge outright — "below the minimum" — which is why
+  // free tickets skip Square entirely, below.) A free showing with a donation
+  // attached has a real amount to charge, so it needs a card like any other.
+  if (chargeCents > 0 && !sourceId) {
     return json({ error: 'Missing payment source' }, 400);
   }
 
@@ -300,11 +322,11 @@ Deno.serve(async (req: Request) => {
   let receiptUrl: string | null = null;
   let paymentId: string | null = null;
 
-  if (order.amountCents === 0) {
-    // Free showing — no money moves, so Square is skipped entirely (it rejects
-    // a $0 charge). The tickets are still confirmed below, so the seat is held,
-    // counts toward capacity, and scans at the door. paymentId/receiptUrl stay
-    // null, exactly as they would for a comp.
+  if (chargeCents === 0) {
+    // Free showing and no gift — no money moves, so Square is skipped entirely
+    // (it rejects a $0 charge). The tickets are still confirmed below, so the
+    // seat is held, counts toward capacity, and scans at the door.
+    // paymentId/receiptUrl stay null, exactly as they would for a comp.
   } else {
     if (!square.ok) {
       await failOrder(square.error);
@@ -314,10 +336,12 @@ Deno.serve(async (req: Request) => {
     try {
       const result = await createPayment(square.config, {
         sourceId,
-        amountCents: order.amountCents,
+        amountCents: chargeCents,
         idempotencyKey,
         referenceId: orderToken,
-        note: `${order.productionTitle} — ${created.length} ticket(s)`,
+        note: donationCents > 0
+          ? `${order.productionTitle} — ${created.length} ticket(s) + $${(donationCents / 100).toFixed(2)} donation`
+          : `${order.productionTitle} — ${created.length} ticket(s)`,
         buyerEmail: contact.email,
       });
 
@@ -374,6 +398,52 @@ Deno.serve(async (req: Request) => {
   }
 
   // -------------------------------------------------------------------------
+  // The gift, if there was one
+  // -------------------------------------------------------------------------
+  // Recorded as a donations row rather than as ticket revenue: that is what
+  // makes it contribution income in the QuickBooks export (donation_designation,
+  // no sales tax) and what carries it to Little Green Light as a gift. It is
+  // written after the charge, because a gift that was never paid for is not a
+  // gift, and its failure can never fail a purchase — the card has already been
+  // charged for it, so the money is ours either way and the row is recoverable
+  // from the Square payment id in the log line below.
+  let donationId: string | null = null;
+  if (donationCents > 0) {
+    const { data: donationRow, error: donationErr } = await admin
+      .from('donations')
+      .insert({
+        amount_cents: donationCents,
+        donor_name: contact.name || 'Kenworthy patron',
+        donor_email: contact.email || null,
+        donor_phone: contact.phone || null,
+        status: 'completed',
+        source: 'ticket_checkout',
+        payment_channel: 'online',
+        user_id: userId,
+        order_token: orderToken,
+        showing_id: showingId,
+        square_payment_id: paymentId,
+        square_receipt_url: receiptUrl,
+      })
+      .select('id')
+      .single();
+
+    if (donationErr || !donationRow) {
+      console.error('[ticket-checkout] donation row failed after charge', donationErr, {
+        paymentId,
+        orderToken,
+        donationCents,
+      });
+    } else {
+      donationId = donationRow.id;
+      // Receipt + tribute + LGL, on the same waitUntil footing as ticket
+      // delivery. One acknowledgment for the gift, separate from the ticket
+      // email: a contribution receipt is a tax document and has to stand alone.
+      settleDonation(admin, donationRow.id);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Deliver — fire-and-forget, never able to fail a paid purchase
   // -------------------------------------------------------------------------
   // Called in-process, not by POSTing to send-ticket-confirmation. That HTTP
@@ -408,11 +478,15 @@ Deno.serve(async (req: Request) => {
     tickets: created,
     ticket_count: created.length,
     payment_method: 'card',
-    amount_cents: order.amountCents,
+    // What the card was charged: tickets + their tax + the untaxed gift.
+    amount_cents: chargeCents,
     subtotal: order.subtotal,
     tax: order.tax,
     processing_fee: order.processingFee,
+    // The ticket side of the order, unchanged by the gift.
     total: order.grandTotal,
+    donation_cents: donationCents,
+    donation_id: donationId,
     receipt_url: receiptUrl,
     square_payment_id: paymentId,
   });

@@ -6,6 +6,7 @@ import {
   publishableConfig,
   squareErrorMessage,
 } from "../_shared/square.ts";
+import { settleDonation } from "../_shared/donations.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -29,6 +30,15 @@ Deno.serve(async (req) => {
   if (action === "get_config") {
     if (!square.ok) return json({ error: square.error }, 500);
     return json(publishableConfig(square.config));
+  }
+
+  // Box office: a donation taken at the counter, alongside (or instead of) a
+  // ticket sale. No card is charged here — either the till took cash, or the
+  // amount was already included in the combined charge sent to the Square
+  // terminal — so this action records the gift and nothing else. Square config
+  // is irrelevant to it, which is why it sits above the square.ok guard.
+  if (action === "record_in_person") {
+    return await recordInPersonDonation(req, body);
   }
 
   if (!square.ok) return json({ error: square.error }, 500);
@@ -98,6 +108,8 @@ Deno.serve(async (req) => {
       message,
       status: "pending",
       user_id: userId,
+      source: "donate_page",
+      payment_channel: "online",
     })
     .select("id")
     .single();
@@ -187,20 +199,12 @@ Deno.serve(async (req) => {
       console.warn("[square-donation] mailchimp sync threw", e);
     }
 
-    // Fire-and-forget Little Green Light sync (constituent + gift).
-    try {
-      void fetch(`${supabaseUrl}/functions/v1/lgl-sync-donation`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": anonKey,
-          "Authorization": `Bearer ${serviceKey}`,
-        },
-        body: JSON.stringify({ donationId: pending.id }),
-      }).catch(() => {});
-    } catch (e) {
-      console.warn("[square-donation] lgl sync threw", e);
-    }
+    // Receipt, tribute notice, and the Little Green Light gift. In-process:
+    // this used to POST to lgl-sync-donation with the anon key in `apikey` and
+    // the service-role key as a bearer — a function that was never deployed,
+    // called with the credential pair the gateway refuses. Nothing about that
+    // failure was visible, because nothing awaited it.
+    settleDonation(admin, pending.id);
 
     return json({
       success: true,
@@ -220,4 +224,81 @@ function json(payload: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+/**
+ * Record a donation taken at the box office.
+ *
+ * The money has already moved by the time this is called — cash into the till,
+ * or a card charge on the Square terminal that included the gift in its total.
+ * So this writes the contribution to the books, and then does exactly what the
+ * online path does with it: receipt if we have an address, and a gift posted to
+ * Little Green Light.
+ *
+ * Staff-only, checked server-side. The donations table grants INSERT to nobody
+ * but service_role, which is the reason this action exists at all: the POS
+ * cannot write the row itself.
+ */
+async function recordInPersonDonation(req: Request, body: Record<string, unknown>) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+  const admin = createClient(supabaseUrl, serviceKey);
+
+  const authHeader = req.headers.get("Authorization") || "";
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user } } = await userClient.auth.getUser();
+  if (!user) return json({ error: "Sign in required" }, 401);
+  const { data: isStaff } = await admin.rpc("has_role", { _user_id: user.id, _role: "staff" });
+  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
+  if (!isStaff && !isAdmin) return json({ error: "Staff only" }, 403);
+
+  const amountCents = Number(body.amountCents);
+  if (!Number.isInteger(amountCents) || amountCents < 100 || amountCents > 10_000_000) {
+    return json({ error: "Donation must be between $1 and $100,000" }, 400);
+  }
+
+  const paymentChannel = String(body.paymentChannel || "");
+  if (!["cash", "terminal"].includes(paymentChannel)) {
+    return json({ error: "paymentChannel must be cash or terminal" }, 400);
+  }
+
+  const donorEmail = (body.donorEmail as string)?.trim() || null;
+  if (donorEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(donorEmail)) {
+    return json({ error: "That donor email is not a valid address" }, 400);
+  }
+  // A walk-in who hands over a dollar has no name to give and no receipt to
+  // send. The gift is still income, so it is still recorded — labelled for
+  // whoever reconciles the day rather than left out of the books.
+  const donorName = (body.donorName as string)?.trim() ||
+    (donorEmail ? donorEmail.split("@")[0] : "Box office donor");
+
+  const { data: row, error } = await admin
+    .from("donations")
+    .insert({
+      amount_cents: amountCents,
+      donor_name: donorName,
+      donor_email: donorEmail,
+      donor_phone: (body.donorPhone as string)?.trim() || null,
+      status: "completed",
+      source: "staff_pos",
+      payment_channel: paymentChannel,
+      square_payment_id: (body.squarePaymentId as string) || null,
+      order_token: (body.orderToken as string) || null,
+      showing_id: (body.showingId as string) || null,
+    })
+    .select("id")
+    .single();
+
+  if (error || !row) {
+    console.error("[square-donation] in-person insert failed", error);
+    return json({ error: "Could not record the donation" }, 500);
+  }
+
+  settleDonation(admin, row.id);
+
+  return json({ success: true, donationId: row.id, amountCents });
 }
