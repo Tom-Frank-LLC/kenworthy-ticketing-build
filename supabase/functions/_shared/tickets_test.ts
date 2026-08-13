@@ -145,6 +145,7 @@ Deno.test('buildSmsBody carries title, time and link', () => {
       start_time: '',
       start_time_display: 'Fri, Aug 14, 2026 at 7:30 PM',
       venue: 'Main Theatre',
+      duration_minutes: null,
       tickets: [ticket(), ticket({ id: 'ticket-2' })],
       total: 25.44,
     },
@@ -166,6 +167,7 @@ Deno.test('buildSmsBody lists seats when the order has them', () => {
       start_time: '',
       start_time_display: 'Sat, Sep 5, 2026 at 8:00 PM',
       venue: null,
+      duration_minutes: null,
       tickets: [ticket({ seat: { row: 'B', number: 4 } })],
       total: 12.72,
     },
@@ -194,6 +196,7 @@ const order = (over: Partial<import('./tickets.ts').Order> = {}) => ({
   start_time: '',
   start_time_display: 'Fri, Aug 14, 2026 at 7:30 PM',
   venue: 'Main Theatre',
+  duration_minutes: null,
   tickets: [ticket(), ticket({ id: 'ticket-2', qr_code: 'def-456' })],
   total: 25.44,
   ...over,
@@ -267,6 +270,7 @@ Deno.test('buildSubject pluralizes on ticket count', () => {
     start_time: '',
     start_time_display: '',
     venue: null,
+    duration_minutes: null,
     total: 0,
   };
   assertEquals(buildSubject({ ...base, tickets: [ticket()] }), 'Your 1 ticket for Casablanca');
