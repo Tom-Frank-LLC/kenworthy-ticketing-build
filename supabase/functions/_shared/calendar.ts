@@ -38,18 +38,40 @@ function escIcs(s: string): string {
     .replace(/\r?\n/g, '\\n');
 }
 
-/** Fold lines to <=75 octets with CRLF + single leading space (RFC 5545 §3.1). */
+/** RFC 5545 §3.1 caps a content line at 75 octets, excluding the CRLF. */
+const MAX_OCTETS = 75;
+
+/** UTF-8 width of a single code point. */
+function octets(codePoint: number): number {
+  if (codePoint < 0x80) return 1;
+  if (codePoint < 0x800) return 2;
+  if (codePoint < 0x10000) return 3;
+  return 4;
+}
+
+/**
+ * Fold to <=75 octets with CRLF + single leading space (RFC 5545 §3.1).
+ *
+ * Octets, not characters: a title with accents or em dashes ("Amélie — …") runs
+ * 2-3 bytes per character, so a 74-*character* line can be 140+ octets. And the
+ * loop walks code points (for…of), never a UTF-16 index, so a surrogate pair —
+ * an emoji in a title — can't be split into invalid UTF-8 at a fold boundary.
+ */
 function fold(line: string): string {
-  if (line.length <= 74) return line;
   const parts: string[] = [];
-  let rest = line;
-  parts.push(rest.slice(0, 74));
-  rest = rest.slice(74);
-  while (rest.length > 73) {
-    parts.push(' ' + rest.slice(0, 73));
-    rest = rest.slice(73);
+  let cur = '';
+  let bytes = 0;
+  for (const ch of line) {
+    const size = octets(ch.codePointAt(0)!);
+    if (bytes + size > MAX_OCTETS) {
+      parts.push(cur);
+      cur = ' '; // continuation lines start with one space, which counts
+      bytes = 1;
+    }
+    cur += ch;
+    bytes += size;
   }
-  if (rest.length) parts.push(' ' + rest);
+  parts.push(cur);
   return parts.join('\r\n');
 }
 
@@ -116,5 +138,3 @@ export function ticketCalendarUrl(supabaseUrl: string, token: string): string {
   const base = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/ticket-access`;
   return `${base}?token=${encodeURIComponent(token)}&ics=1`;
 }
-
-export { VENUE_TIME_ZONE };
