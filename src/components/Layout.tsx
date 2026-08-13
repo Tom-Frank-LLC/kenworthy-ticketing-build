@@ -186,7 +186,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Link to={authHref}>Sign In</Link>
                 </Button>
                 <Button size="sm" asChild className="h-10 px-4 sm:px-5">
-                  <Link to="/calendar">Get Tickets</Link>
+                  <Link to="/calendar">Tickets</Link>
+                </Button>
+                <Button size="sm" variant="outline" asChild className="h-10 px-4 sm:px-5">
+                  <Link to="/film-passes">Film Pass</Link>
                 </Button>
               </>
             )}

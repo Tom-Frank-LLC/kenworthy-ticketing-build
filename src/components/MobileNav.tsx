@@ -187,7 +187,12 @@ export function MobileNav() {
             <>
               <Button asChild className="h-12 w-full justify-center text-base">
                 <Link to="/calendar" onClick={close}>
-                  <Ticket className="mr-2 h-4 w-4" /> Get Tickets
+                  <Ticket className="mr-2 h-4 w-4" /> Tickets
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-12 w-full justify-center text-base">
+                <Link to="/film-passes" onClick={close}>
+                  <CreditCard className="mr-2 h-4 w-4" /> Film Pass
                 </Link>
               </Button>
               <Button asChild variant="outline" className="h-12 w-full justify-center">
