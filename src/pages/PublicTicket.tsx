@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, CalendarPlus, MapPin, Ticket as TicketIcon, AlertCircle } from 'lucide-react';
 import { SEO } from '@/components/SEO';
 import { RedeemedQr } from '@/components/RedeemedQr';
+import { GoogleLogo } from '@/components/GoogleLogo';
 import { fetchPublicOrder, ticketCalendarUrl, type PublicOrder } from '@/lib/tickets';
 import { googleCalendarUrl } from '@/lib/calendar';
 
@@ -98,15 +99,22 @@ export default function PublicTicket() {
             {order.venue || 'The Kenworthy Performing Arts Centre'}
           </span>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-          <Button asChild variant="outline" size="sm">
+        {/*
+          Stacked and full-width on phones, which is how this page is almost
+          always opened (the link comes by SMS). Side by side only once there is
+          room, so neither label wraps.
+        */}
+        <div className="flex flex-col sm:flex-row gap-2 mt-5">
+          <Button asChild size="lg" className="w-full sm:flex-1 px-4">
             <a href={ticketCalendarUrl(order.order_token)}>
-              <CalendarPlus className="h-4 w-4 mr-1.5" /> Add to calendar
+              <CalendarPlus className="h-4 w-4 mr-2 shrink-0" /> Add to calendar
             </a>
           </Button>
-          <Button asChild variant="ghost" size="sm">
+          {/* The .ics above already covers Apple/Outlook; this is the one-tap
+              path for the Google users it does not serve as cleanly. */}
+          <Button asChild variant="outline" size="lg" className="w-full sm:flex-1 px-4">
             <a href={googleCalendarUrl(order)} target="_blank" rel="noreferrer">
-              Google Calendar
+              <GoogleLogo className="mr-2" /> Google Calendar
             </a>
           </Button>
         </div>
