@@ -114,3 +114,35 @@ Deployed:
 Note the Worker has no custom domain route in `wrangler.jsonc`, so it is on
 `workers.dev`; `kenworthy.org` is the separate marketing site and does not
 serve this page.
+
+---
+
+## Revision: full-layout preview (Aug 13, 2026)
+
+The swatch grid alone made people judge colours as rectangles. The page now
+renders the real site layout — sticky glass header with the nav links, Donate
+/ Sign In / Get Tickets, hero, showing cards, film-pass strip, footer — and the
+pickers theme it live.
+
+It is a preview rather than a drawing because the pickers write to the same
+CSS variables the app is themed by (`--primary`, `--ring`, `--success`), with
+the token values copied from `src/index.css`. Gold and cream stay fixed, so
+the accent under test has to earn its contrast against the real surfaces.
+Button text colour flips by luminance, so legibility previews too.
+
+Three things worth knowing:
+
+- **The swatch panel is opt-in.** It opens over the mock and is capped in
+  height, so the layout stays visible while you click through swatches.
+- **`--lab-h` is measured, not declared.** The control bar's height drives the
+  mock header's sticky offset; a hard-coded constant silently broke that at
+  the phone breakpoint, so a ResizeObserver publishes the real height instead.
+- **The mock paints the exact hex you picked.** Driving the CSS variables
+  through rounded integer HSL shifted `#E42D8C` to `rgb(228,47,141)` — the
+  contrast number and the pixels disagreed. The variables now carry
+  full-precision HSL; the rounded triplet you would paste into `index.css` is
+  on the readout's tooltip instead.
+
+Verified at 390px and 1100px: no horizontal overflow, sticky offset matches the
+measured bar, and across all 14 swatches plus a custom pick, the printed ratio,
+the badge and the colour the mock actually paints agree — 14/14 on each.
