@@ -14,6 +14,11 @@ import { PaymentMethodSelector, type PaymentMethod } from './PaymentMethodSelect
 import { QrScanner } from '@/components/admin/QrScanner';
 import { invokeFunction } from '@/lib/functions';
 import { formatShowtime } from '@/lib/datetime';
+import {
+  formatMailingAddress,
+  passOrderBuyerLabel,
+  type QueuedPassOrder as QueuedOrder,
+} from '@/lib/passOrders';
 
 /**
  * Film passes at the counter.
@@ -41,20 +46,6 @@ interface PassType {
   initial_balance: number;
   redemption_price: number;
   expiration_days: number | null;
-}
-
-interface QueuedOrder {
-  id: string;
-  quantity: number;
-  fulfillment: 'pickup' | 'mail';
-  mailing_address: Record<string, string> | null;
-  buyer_name: string | null;
-  buyer_email: string | null;
-  buyer_phone: string | null;
-  amount_paid: number;
-  created_at: string;
-  pass_type_id: string;
-  pass_type_name: string;
 }
 
 interface PassSummary {
@@ -306,7 +297,7 @@ export function FilmPassPOS() {
                       ) : (
                         <Store className="h-3.5 w-3.5 text-muted-foreground" />
                       )}
-                      {o.buyer_name || o.buyer_email || 'Unnamed buyer'}
+                      {passOrderBuyerLabel(o)}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {o.quantity} × {o.pass_type_name} · {money(o.amount_paid)} paid ·{' '}
@@ -315,15 +306,11 @@ export function FilmPassPOS() {
                     {o.buyer_email && (
                       <p className="text-xs text-muted-foreground">{o.buyer_email}</p>
                     )}
-                    {o.fulfillment === 'mail' && o.mailing_address && (
+                    {o.fulfillment === 'mail' && formatMailingAddress(o.mailing_address) && (
                       // Shown in full: posting is a manual job and this is the
                       // label the staff member has to write.
                       <p className="text-xs text-muted-foreground mt-1">
-                        Post to: {[
-                          o.mailing_address.line1,
-                          o.mailing_address.line2,
-                          `${o.mailing_address.city}, ${o.mailing_address.state} ${o.mailing_address.postal_code}`,
-                        ].filter(Boolean).join(', ')}
+                        Post to: {formatMailingAddress(o.mailing_address)}
                       </p>
                     )}
                   </div>

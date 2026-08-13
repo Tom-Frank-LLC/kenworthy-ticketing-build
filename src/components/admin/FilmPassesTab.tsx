@@ -10,10 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import {
   Plus, Trash2, CreditCard, DollarSign, Printer, Loader2, Ban, QrCode,
+  Package, Mail, Store, ScanLine,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { invokeFunction } from '@/lib/functions';
 import { StickerSheet, type StickerPassType } from './StickerSheet';
 import { formatShowtime } from '@/lib/datetime';
+import { formatMailingAddress, passOrderBuyerLabel, type QueuedPassOrder } from '@/lib/passOrders';
 
 interface FilmPassType {
   id: string;
@@ -74,6 +77,11 @@ export default function FilmPassesTab() {
     name: '', price: '60', initial_balance: '60', redemption_price: '6', expiration_days: '',
   });
 
+  // Outstanding orders — paid online, physical pass not yet handed over
+  const [queue, setQueue] = useState<QueuedPassOrder[]>([]);
+  const [loadingQueue, setLoadingQueue] = useState(true);
+  const [queueError, setQueueError] = useState<string | null>(null);
+
   // Printing
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [batchTypeId, setBatchTypeId] = useState('');
@@ -121,7 +129,30 @@ export default function FilmPassesTab() {
     }
   }, []);
 
-  useEffect(() => { loadData(); loadBatches(); }, [loadData, loadBatches]);
+  /**
+   * The same `queue` action the box office reads, shown here as oversight.
+   *
+   * Unlike the print-run list above, a failure here is surfaced rather than
+   * swallowed: this section exists to answer "is anything outstanding?", and
+   * an empty list that is really a failed fetch answers it wrongly, which is
+   * the exact failure this section is meant to catch.
+   */
+  const loadQueue = useCallback(async () => {
+    setLoadingQueue(true);
+    try {
+      const data = await invokeFunction<{ orders: QueuedPassOrder[] }>('film-pass-checkout', {
+        action: 'queue',
+      });
+      setQueue(data.orders || []);
+      setQueueError(null);
+    } catch (err) {
+      setQueueError(err instanceof Error ? err.message : 'Could not load outstanding orders');
+    } finally {
+      setLoadingQueue(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); loadBatches(); loadQueue(); }, [loadData, loadBatches, loadQueue]);
 
   async function handleCreateType() {
     if (!form.name.trim()) { toast.error('Name is required'); return; }
@@ -235,6 +266,98 @@ export default function FilmPassesTab() {
           onDone={() => setSheet(null)}
         />
       )}
+
+      {/* ---- Waiting to be handed over ----
+          A mirror of the box office queue (FilmPassPOS), read-only. Activation
+          needs a blank sticker under a scanner, which is a counter job — but a
+          paid order that nobody has posted or handed over is an open
+          obligation, and the admin dashboard is where someone thinks to look
+          for it. Both views read the same `queue` action, so they cannot
+          disagree about what is outstanding. */}
+      <Card className="glass">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="font-display text-xl font-bold flex items-center gap-2">
+              <Package className="h-5 w-5 text-primary" /> Waiting to be handed over
+              {queue.length > 0 && <Badge variant="default">{queue.length}</Badge>}
+            </h2>
+            {queue.length > 0 && (
+              <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
+                <Link to="/admin/pos">
+                  <ScanLine className="h-4 w-4 mr-1" /> Activate at the counter
+                </Link>
+              </Button>
+            )}
+          </div>
+
+          {loadingQueue ? (
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </p>
+          ) : queueError ? (
+            <div className="space-y-2">
+              <p className="text-sm text-destructive">
+                Could not load outstanding orders — {queueError}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                This is not the same as "nothing outstanding". Retry, and check the box
+                office queue before assuming there is nothing to post.
+              </p>
+              <Button size="sm" variant="outline" onClick={loadQueue}>Retry</Button>
+            </div>
+          ) : queue.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nothing outstanding — every paid pass has been handed over or posted.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {queue.map(o => {
+                const address = formatMailingAddress(o.mailing_address);
+                return (
+                  <div key={o.id} className="p-4 rounded-lg bg-secondary/50 space-y-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <p className="font-medium text-sm flex items-center gap-1.5">
+                          {o.fulfillment === 'mail' ? (
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          ) : (
+                            <Store className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          )}
+                          <span className="truncate">{passOrderBuyerLabel(o)}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {o.quantity} × {o.pass_type_name} · ${o.amount_paid.toFixed(2)} paid ·{' '}
+                          {formatShowtime(o.created_at, 'MMM d')}
+                        </p>
+                        {o.buyer_email && (
+                          <p className="text-xs text-muted-foreground break-all">{o.buyer_email}</p>
+                        )}
+                        {o.buyer_phone && (
+                          <p className="text-xs text-muted-foreground">{o.buyer_phone}</p>
+                        )}
+                        {/* Shown in full: posting is a manual job and this is the
+                            label the staff member has to write. */}
+                        {o.fulfillment === 'mail' && (
+                          address ? (
+                            <p className="text-xs text-muted-foreground mt-1">Post to: {address}</p>
+                          ) : (
+                            <p className="text-xs text-destructive mt-1">
+                              Mail order with no address on file — contact the buyer before posting.
+                            </p>
+                          )
+                        )}
+                      </div>
+                      <Badge variant={o.fulfillment === 'mail' ? 'default' : 'secondary'} className="shrink-0 self-start">
+                        {o.fulfillment === 'mail' ? 'To post' : 'Pickup'}
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Pass Types */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
