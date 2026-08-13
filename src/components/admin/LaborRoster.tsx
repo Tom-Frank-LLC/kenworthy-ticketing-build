@@ -106,7 +106,7 @@ export function LaborRoster() {
                 <TableHead>Email</TableHead>
                 <TableHead>Wage</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Linked Lovable user</TableHead>
+                <TableHead>Linked account</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

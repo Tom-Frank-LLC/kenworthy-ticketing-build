@@ -21,6 +21,7 @@ import { syncMailchimpProfile } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
+import { SITE_URL } from '@/lib/site';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -527,7 +528,7 @@ export default function Showing() {
           organizer: {
             "@type": "Organization",
             name: "The Kenworthy Performing Arts Centre",
-            url: "https://kenworthy-ticketing.lovable.app/",
+            url: `${SITE_URL}/`,
           },
         }}
       />

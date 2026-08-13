@@ -2,16 +2,23 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
+import fs from "fs";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const supabaseUrl = env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
   const supabaseKey = env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+  // Canonical public origin for SEO/OG tags, JSON-LD, and absolute links. Set
+  // per-env in .env.staging/.env.production; falls back to the prod Worker so a
+  // build is never left pointing at the retired Lovable preview domain. Flip to
+  // https://kenworthy.org at domain cutover — no code change, just the env var.
+  const siteUrl = (env.VITE_SITE_URL || process.env.VITE_SITE_URL || 'https://kenworthy-ticketing-build.mrtomfrank.workers.dev').replace(/\/+$/, '');
 
   return {
     define: {
     'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl),
     'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(supabaseKey),
+    'import.meta.env.VITE_SITE_URL': JSON.stringify(siteUrl),
     },
     server: {
       host: "::",
@@ -20,6 +27,30 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
+      // Resolve the %SITE_URL% token to the origin above so the static shell
+      // crawlers read (index.html OG/JSON-LD, robots.txt, sitemap.xml) is
+      // correct per-env. App code reads the same value via
+      // import.meta.env.VITE_SITE_URL (src/lib/site.ts). One source of truth;
+      // the domain cutover is a single env change.
+      {
+        name: 'site-url',
+        transformIndexHtml(html: string) {
+          return html.replaceAll('%SITE_URL%', siteUrl);
+        },
+        closeBundle() {
+          // public/ files are copied verbatim, so token-replace them on disk
+          // after the build writes them out.
+          for (const file of ['robots.txt', 'sitemap.xml']) {
+            const p = path.resolve(__dirname, 'dist', file);
+            try {
+              const txt = fs.readFileSync(p, 'utf8');
+              if (txt.includes('%SITE_URL%')) {
+                fs.writeFileSync(p, txt.replaceAll('%SITE_URL%', siteUrl));
+              }
+            } catch { /* file not present in this build — ignore */ }
+          }
+        },
+      },
       VitePWA({
         // The manifest and icons are hand-maintained in public/ so they stay
         // readable and reusable by the eventual Capacitor wrapper.

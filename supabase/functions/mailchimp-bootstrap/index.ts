@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
         list_id: audienceId,
         name: "Kenworthy",
         currency_code: "USD",
-        domain: "kenworthy-ticketing.lovable.app",
+        domain: (Deno.env.get("SITE_URL") || "https://kenworthy-ticketing-build.mrtomfrank.workers.dev").replace(/^https?:\/\//, "").replace(/\/+$/, ""),
         email_address: "info@kenworthy.org",
       }),
     });

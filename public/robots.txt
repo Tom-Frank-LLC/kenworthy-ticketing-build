@@ -21,4 +21,4 @@ Disallow: /reset-password
 Disallow: /contract/
 Disallow: /verify/
 
-Sitemap: https://kenworthy-ticketing.lovable.app/sitemap.xml
+Sitemap: %SITE_URL%/sitemap.xml

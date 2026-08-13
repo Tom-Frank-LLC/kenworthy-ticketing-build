@@ -15,7 +15,10 @@ const corsHeaders = {
  * Body: { showing_id: string }
  */
 
-const SITE_ORIGIN = "https://kenworthy-ticketing.lovable.app";
+// Canonical public origin for the "buy tickets" links in the campaign body.
+// Set the SITE_URL secret per project (staging/prod); flip to https://kenworthy.org
+// at domain cutover. Falls back to the prod Worker, never the retired Lovable URL.
+const SITE_ORIGIN = (Deno.env.get("SITE_URL") || "https://kenworthy-ticketing-build.mrtomfrank.workers.dev").replace(/\/+$/, "");
 
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
