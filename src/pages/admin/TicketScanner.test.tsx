@@ -19,25 +19,32 @@ vi.mock('html5-qrcode', () => ({
 // Mock sonner toast
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
-// Supabase mock: `.from('tickets').select(...).eq(...).maybeSingle()`
-// and `.from('tickets').update(...).eq(...)`
-const updateEq = vi.fn().mockResolvedValue({ error: null });
-const update = vi.fn(() => ({ eq: updateEq }));
-
-let selectResponse: any = { data: null, error: null };
-const maybeSingle = vi.fn(() => Promise.resolve(selectResponse));
-const selectEq = vi.fn(() => ({ maybeSingle }));
-const select = vi.fn(() => ({ eq: selectEq }));
-const from = vi.fn((_table: string) => ({ select, update }));
+/**
+ * Check-in goes through the `check_in_ticket` RPC, so that is the whole surface
+ * to mock. `from` deliberately throws: reading and writing `tickets` from the
+ * browser is exactly the bug this replaced — a staff-only account has no SELECT
+ * or UPDATE policy on that table, so the old path reported every valid ticket
+ * as an invalid QR code, and its write was filtered by RLS into a silent no-op.
+ * If someone reaches for the table again, these tests fail loudly.
+ */
+let rpcResponse: any = { data: null, error: null };
+const rpc = vi.fn((_fn?: string, _args?: unknown) => Promise.resolve(rpcResponse));
+const from = vi.fn((table: string) => {
+  throw new Error(
+    `TicketScanner must not touch ${table} directly — check-in goes through check_in_ticket`
+  );
+});
 
 vi.mock('@/integrations/supabase/client', () => ({
-  supabase: { from: (table: string) => from(table) },
+  supabase: {
+    rpc: (fn: string, args: unknown) => rpc(fn, args),
+    from: (table: string) => from(table),
+  },
 }));
 
 // AudioContext stub
 beforeEach(() => {
-  updateEq.mockClear();
-  update.mockClear();
+  rpc.mockClear();
   from.mockClear();
   (globalThis as any).AudioContext = class {
     currentTime = 0;
@@ -66,24 +73,30 @@ async function scanCode(code: string) {
   fireEvent.click(screen.getByRole('button', { name: /Validate/i }));
 }
 
+/** A verdict as check_in_ticket returns it. */
+function verdict(
+  v: 'valid' | 'already_scanned' | 'not_confirmed' | 'not_found' | 'forbidden',
+  ticket: Record<string, unknown> | null
+) {
+  return { data: { verdict: v, ticket }, error: null };
+}
+
+function ticketRow(over: Record<string, unknown> = {}) {
+  return {
+    id: 'ticket-1',
+    production_title: 'Casablanca',
+    start_time: '2026-07-10T19:00:00Z',
+    seat_row: null,
+    seat_number: null,
+    scanned_at: '2026-07-10T18:45:00Z',
+    status: 'confirmed',
+    ...over,
+  };
+}
+
 describe('TicketScanner - GA, event, and concert tickets', () => {
-  it('accepts a general-admission movie ticket and marks it scanned', async () => {
-    selectResponse = {
-      data: {
-        id: 'ticket-ga-1',
-        status: 'confirmed',
-        scanned_at: null,
-        qr_code: 'QR-GA-MOVIE',
-        seats: null,
-        showings: {
-          start_time: '2026-07-10T19:00:00Z',
-          movies: { title: 'Casablanca' },
-          events: null,
-          live_performances: null,
-        },
-      },
-      error: null,
-    };
+  it('accepts a general-admission movie ticket and claims its check-in', async () => {
+    rpcResponse = verdict('valid', ticketRow({ id: 'ticket-ga-1' }));
 
     renderScanner();
     await scanCode('QR-GA-MOVIE');
@@ -93,29 +106,16 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
     );
     expect(screen.getByText('Casablanca')).toBeInTheDocument();
     expect(screen.getByText(/General Admission/i)).toBeInTheDocument();
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ scanned_at: expect.any(String) })
-    );
-    expect(updateEq).toHaveBeenCalledWith('id', 'ticket-ga-1');
+    expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-GA-MOVIE' });
+    // The claim is the server's job; the client must not write the table.
+    expect(from).not.toHaveBeenCalled();
   });
 
-  it('accepts an event ticket (no movie) and marks it scanned', async () => {
-    selectResponse = {
-      data: {
-        id: 'ticket-event-1',
-        status: 'confirmed',
-        scanned_at: null,
-        qr_code: 'QR-EVENT',
-        seats: null,
-        showings: {
-          start_time: '2026-08-01T18:30:00Z',
-          movies: null,
-          events: { title: 'Silent Film Gala' },
-          live_performances: null,
-        },
-      },
-      error: null,
-    };
+  it('accepts an event ticket (no movie)', async () => {
+    rpcResponse = verdict(
+      'valid',
+      ticketRow({ id: 'ticket-event-1', production_title: 'Silent Film Gala' })
+    );
 
     renderScanner();
     await scanCode('QR-EVENT');
@@ -124,26 +124,14 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
       expect(screen.getByText(/Ticket validated/i)).toBeInTheDocument()
     );
     expect(screen.getByText('Silent Film Gala')).toBeInTheDocument();
-    expect(updateEq).toHaveBeenCalledWith('id', 'ticket-event-1');
+    expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-EVENT' });
   });
 
-  it('accepts a live performance (concert) ticket and marks it scanned', async () => {
-    selectResponse = {
-      data: {
-        id: 'ticket-concert-1',
-        status: 'confirmed',
-        scanned_at: null,
-        qr_code: 'QR-CONCERT',
-        seats: null,
-        showings: {
-          start_time: '2026-09-12T20:00:00Z',
-          movies: null,
-          events: null,
-          live_performances: { title: 'Palouse Jazz Quartet' },
-        },
-      },
-      error: null,
-    };
+  it('accepts a live performance (concert) ticket', async () => {
+    rpcResponse = verdict(
+      'valid',
+      ticketRow({ id: 'ticket-concert-1', production_title: 'Palouse Jazz Quartet' })
+    );
 
     renderScanner();
     await scanCode('QR-CONCERT');
@@ -152,26 +140,22 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
       expect(screen.getByText(/Ticket validated/i)).toBeInTheDocument()
     );
     expect(screen.getByText('Palouse Jazz Quartet')).toBeInTheDocument();
-    expect(updateEq).toHaveBeenCalledWith('id', 'ticket-concert-1');
   });
 
-  it('reports already-scanned tickets without re-updating', async () => {
-    selectResponse = {
-      data: {
-        id: 'ticket-used',
-        status: 'confirmed',
-        scanned_at: '2026-07-09T18:00:00Z',
-        qr_code: 'QR-USED',
-        seats: null,
-        showings: {
-          start_time: '2026-07-09T19:00:00Z',
-          movies: null,
-          events: { title: 'Community Night' },
-          live_performances: null,
-        },
-      },
-      error: null,
-    };
+  it('shows a seat when the ticket has one', async () => {
+    rpcResponse = verdict('valid', ticketRow({ seat_row: 'F', seat_number: 12 }));
+
+    renderScanner();
+    await scanCode('QR-SEATED');
+
+    await waitFor(() => expect(screen.getByText(/Row F, Seat 12/i)).toBeInTheDocument());
+  });
+
+  it('reports already-scanned tickets, with the time they were used', async () => {
+    rpcResponse = verdict(
+      'already_scanned',
+      ticketRow({ id: 'ticket-used', scanned_at: '2026-07-09T18:00:00Z' })
+    );
 
     renderScanner();
     await scanCode('QR-USED');
@@ -179,11 +163,13 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
     await waitFor(() =>
       expect(screen.getByText(/Already scanned/i)).toBeInTheDocument()
     );
-    expect(update).not.toHaveBeenCalled();
+    // One call, and no direct table write to "re-scan" it.
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(from).not.toHaveBeenCalled();
   });
 
   it('rejects unknown QR codes as invalid', async () => {
-    selectResponse = { data: null, error: null };
+    rpcResponse = verdict('not_found', null);
 
     renderScanner();
     await scanCode('QR-NOPE');
@@ -191,30 +177,50 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
     await waitFor(() =>
       expect(screen.getByText(/invalid QR code/i)).toBeInTheDocument()
     );
-    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a ticket that is not confirmed rather than admitting it', async () => {
+    // The old client path never checked status, so a refunded ticket scanned as
+    // valid and was stamped as used. The server refuses it now.
+    rpcResponse = verdict(
+      'not_confirmed',
+      ticketRow({ id: 'ticket-refunded', status: 'refunded', scanned_at: null })
+    );
+
+    renderScanner();
+    await scanCode('QR-REFUNDED');
+
+    await waitFor(() =>
+      expect(screen.getByText(/refunded — not valid for entry/i)).toBeInTheDocument()
+    );
+  });
+
+  it('reports a permission refusal as a refusal, not a missing ticket', async () => {
+    rpcResponse = verdict('forbidden', null);
+
+    renderScanner();
+    await scanCode('QR-ANY');
+
+    await waitFor(() =>
+      expect(screen.getByText(/cannot check in tickets/i)).toBeInTheDocument()
+    );
+  });
+
+  it('surfaces a transport failure instead of silently admitting', async () => {
+    rpcResponse = { data: null, error: { message: 'network down' } };
+
+    renderScanner();
+    await scanCode('QR-BOOM');
+
+    await waitFor(() =>
+      expect(screen.getByText(/Could not reach the server/i)).toBeInTheDocument()
+    );
   });
 });
 
 describe('TicketScanner - centre-screen verdict', () => {
-  const validTicket = (qr: string, id: string) => ({
-    data: {
-      id,
-      status: 'confirmed',
-      scanned_at: null,
-      qr_code: qr,
-      seats: null,
-      showings: {
-        start_time: '2026-07-10T19:00:00Z',
-        movies: { title: 'Casablanca' },
-        events: null,
-        live_performances: null,
-      },
-    },
-    error: null,
-  });
-
   it('shows an unmissable verdict, not something staff must scroll to find', async () => {
-    selectResponse = validTicket('QR-OK', 'ticket-ok');
+    rpcResponse = verdict('valid', ticketRow({ id: 'ticket-ok' }));
     renderScanner();
     await scanCode('QR-OK');
 
@@ -228,7 +234,7 @@ describe('TicketScanner - centre-screen verdict', () => {
   it('a valid ticket clears itself so the queue keeps moving', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      selectResponse = validTicket('QR-OK', 'ticket-ok');
+      rpcResponse = verdict('valid', ticketRow({ id: 'ticket-ok' }));
       renderScanner();
       await scanCode('QR-OK');
 
@@ -245,22 +251,10 @@ describe('TicketScanner - centre-screen verdict', () => {
   });
 
   it('a duplicate ticket holds the gate until staff acknowledge it', async () => {
-    selectResponse = {
-      data: {
-        id: 'ticket-dupe',
-        status: 'confirmed',
-        scanned_at: '2026-07-09T18:00:00Z',
-        qr_code: 'QR-DUPE',
-        seats: null,
-        showings: {
-          start_time: '2026-07-09T19:00:00Z',
-          movies: null,
-          events: { title: 'Community Night' },
-          live_performances: null,
-        },
-      },
-      error: null,
-    };
+    rpcResponse = verdict(
+      'already_scanned',
+      ticketRow({ id: 'ticket-dupe', scanned_at: '2026-07-09T18:00:00Z' })
+    );
 
     renderScanner();
     await scanCode('QR-DUPE');
@@ -274,10 +268,11 @@ describe('TicketScanner - centre-screen verdict', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
 
     // ...and the next ticket is not processed until it is acknowledged.
-    selectResponse = validTicket('QR-NEXT', 'ticket-next');
+    rpcResponse = verdict('valid', ticketRow({ id: 'ticket-next' }));
+    const callsBefore = rpc.mock.calls.length;
     await scanCode('QR-NEXT');
     expect(screen.getByRole('alert')).toHaveTextContent(/Already used/i);
-    expect(update).not.toHaveBeenCalled();
+    expect(rpc.mock.calls.length).toBe(callsBefore);
 
     fireEvent.click(screen.getByRole('button', { name: /Dismiss/i }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
@@ -285,6 +280,6 @@ describe('TicketScanner - centre-screen verdict', () => {
     // Gate is open again.
     await scanCode('QR-NEXT');
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Admit/i));
-    expect(updateEq).toHaveBeenCalledWith('id', 'ticket-next');
+    expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-NEXT' });
   });
 });

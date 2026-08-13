@@ -2301,6 +2301,10 @@ export type Database = {
         Args: { p_showing_id: string }
         Returns: undefined
       }
+      check_in_ticket: {
+        Args: { p_qr_code: string }
+        Returns: Json
+      }
       get_contract_signature: {
         Args: { p_request_id: string }
         Returns: {
