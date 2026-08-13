@@ -26,6 +26,7 @@ import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, computeProcessingFee, TAX_RATE } from '@/lib/booking';
 import { invokeFunction } from '@/lib/functions';
+import { fetchShowingAvailability } from '@/lib/availability';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatShowtime } from '@/lib/datetime';
 
@@ -161,20 +162,23 @@ export default function StaffPOS() {
         setSelectedTierId(tiers[0].id);
       }
 
+      // Availability comes from the showing_availability RPC, not from querying
+      // tickets. The only SELECT policy on tickets is
+      // `user_id = auth.uid() OR is_admin()`, and is_admin() reads
+      // profiles.role — a different table from the user_roles that has_role()
+      // and the staff RLS policies use. So a staff-only account sees none of
+      // the sales it just rang up: the seat map showed sold seats as free and
+      // gaTicketsSold sat at 0. The RPC also counts unpaid pending holds, which
+      // a raw status='confirmed' query missed, so the box office no longer
+      // offers a seat an online buyer is mid-checkout on.
+      const availability = await fetchShowingAvailability(selectedShowingId);
+
       if (currentShowing?.requires_seat_selection) {
-        const [seatsRes, ticketsRes] = await Promise.all([
-          supabase.from('seats').select('*').order('seat_row').order('seat_number'),
-          supabase.from('tickets').select('seat_id').eq('showing_id', selectedShowingId).eq('status', 'confirmed'),
-        ]);
+        const seatsRes = await supabase.from('seats').select('*').order('seat_row').order('seat_number');
         setSeats(seatsRes.data || []);
-        setTakenSeatIds(new Set((ticketsRes.data || []).map(t => t.seat_id)));
+        setTakenSeatIds(availability?.takenSeatIds ?? new Set());
       } else {
-        const { count } = await supabase
-          .from('tickets')
-          .select('id', { count: 'exact' })
-          .eq('showing_id', selectedShowingId)
-          .eq('status', 'confirmed');
-        setGaTicketsSold(count || 0);
+        setGaTicketsSold(availability?.held ?? 0);
       }
       setLoadingSeats(false);
     }

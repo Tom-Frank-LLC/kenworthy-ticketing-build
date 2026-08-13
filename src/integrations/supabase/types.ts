@@ -2432,6 +2432,16 @@ export type Database = {
         Args: { p_source_key: string; p_source_type: string }
         Returns: string
       }
+      showing_availability: {
+        Args: { p_showing_id: string }
+        Returns: {
+          available: number
+          held: number
+          requires_seat_selection: boolean
+          taken_seat_ids: string[]
+          total_seats: number
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "regular_user" | "staff" | "host" | "superadmin"

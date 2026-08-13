@@ -53,29 +53,43 @@ type SortOrder = 'showtime_desc' | 'showtime_asc' | 'title_asc' | 'title_desc' |
  */
 const DEFAULT_SORT: SortOrder = 'showtime_desc';
 
-/** `sold / capacity`, clickable to open the attendee list for that showing. */
+/**
+ * `sold / capacity`, plus how many of those have been checked in, clickable to
+ * open the attendee list for that showing.
+ *
+ * The check-in figure is only meaningful once someone has actually scanned, so
+ * it stays hidden at zero rather than showing "· 0 in" against every future
+ * showing on the schedule.
+ */
 function TicketCountBadge({
   sold,
+  scanned,
   capacity,
   onClick,
 }: {
   sold: number;
+  scanned: number;
   capacity: number;
   onClick: () => void;
 }) {
+  const soldOut = capacity > 0 && sold >= capacity;
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`${sold} of ${capacity} tickets sold — click to see attendees`}
+      title={
+        `${sold} of ${capacity} tickets sold${soldOut ? ' (sold out)' : ''}` +
+        `${scanned > 0 ? `, ${scanned} checked in` : ''} — click to see attendees`
+      }
       aria-label={`View ${sold} attendees`}
       className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <Badge
-        variant="secondary"
+        variant={soldOut ? 'default' : 'secondary'}
         className="text-xs whitespace-nowrap cursor-pointer hover:bg-secondary/70 transition-colors"
       >
         {sold} / {capacity}
+        {scanned > 0 && ` · ${scanned} in`}
       </Badge>
     </button>
   );
@@ -181,7 +195,10 @@ export default function AdminDashboard() {
       ),
       // Sold counts, so unpaid checkout attempts (pending) and declines
       // (failed) are excluded.
-      fetchAllPages((from, to) => supabase.from('tickets').select('id, showing_id').eq('status', 'confirmed').order('id').range(from, to)),
+      // scanned_at comes along so the dashboard can report attendance, not only
+      // sales. TicketScanner already writes it on check-in; until now nothing
+      // outside the scanner ever read it back.
+      fetchAllPages((from, to) => supabase.from('tickets').select('id, showing_id, scanned_at').eq('status', 'confirmed').order('id').range(from, to)),
     ]);
     setMovies(moviesRes);
     setEvents(eventsRes);
@@ -197,18 +214,22 @@ export default function AdminDashboard() {
   const getTicketsSoldForShowing = (showingId: string) =>
     tickets.filter(t => t.showing_id === showingId).length;
 
+  /** Checked-in count for one showing — sold tickets that have been scanned. */
+  const getScannedForShowing = (showingId: string) =>
+    tickets.filter(t => t.showing_id === showingId && t.scanned_at).length;
+
   const getTicketsSoldForEvent = (eventId: string) => {
     const eventShowings = showings.filter(s => s.event_id === eventId);
-    const sold = tickets.filter(t => eventShowings.some((sh: any) => sh.id === t.showing_id)).length;
+    const own = tickets.filter(t => eventShowings.some((sh: any) => sh.id === t.showing_id));
     const capacity = eventShowings.reduce((sum, sh) => sum + (sh.total_seats || 0), 0);
-    return { sold, capacity };
+    return { sold: own.length, scanned: own.filter(t => t.scanned_at).length, capacity };
   };
 
   const getTicketsSoldForConcert = (concertId: string) => {
     const concertShowings = showings.filter(s => s.live_performance_id === concertId);
-    const sold = tickets.filter(t => concertShowings.some((sh: any) => sh.id === t.showing_id)).length;
+    const own = tickets.filter(t => concertShowings.some((sh: any) => sh.id === t.showing_id));
     const capacity = concertShowings.reduce((sum, sh) => sum + (sh.total_seats || 0), 0);
-    return { sold, capacity };
+    return { sold: own.length, scanned: own.filter(t => t.scanned_at).length, capacity };
   };
 
   const showingsForProduction = (type: 'movie' | 'event' | 'concert', productionId: string) => {
@@ -680,6 +701,7 @@ export default function AdminDashboard() {
                             <div className="flex items-center gap-1">
                               <TicketCountBadge
                                 sold={getTicketsSoldForShowing(showing.id)}
+                                scanned={getScannedForShowing(showing.id)}
                                 capacity={showing.total_seats || 0}
                                 onClick={() =>
                                   openAttendees(
@@ -723,7 +745,7 @@ export default function AdminDashboard() {
             {filteredLiveEvents.map(item => {
               const isEvent = item.kind === 'event';
               const isConcert = item.kind === 'concert';
-              const { sold, capacity } = isEvent
+              const { sold, scanned, capacity } = isEvent
                 ? getTicketsSoldForEvent(item.id)
                 : getTicketsSoldForConcert(item.id);
               return (
@@ -752,6 +774,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-1">
                       <TicketCountBadge
                         sold={sold}
+                        scanned={scanned}
                         capacity={capacity}
                         onClick={() =>
                           openAttendees(
