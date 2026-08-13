@@ -8,6 +8,16 @@
 
 ## Active / Launch Blockers
 
+### 🔴 Film passes → physical, activated on handoff (see `BRIEF-film-passes.md`, `FINDINGS-film-passes.md`)
+A film pass is now a paper card with a stickered QR. Kenworthy prints blank batches; a sticker becomes a funded pass only when staff scan it at handoff; it is redeemed **in person only**, deducting a configured amount (default $6) from the balance at an eligible standard movie. Buying online creates a `film_pass_orders` obligation — collect at the box office or have it posted — and issues **no** digital pass. Online redemption is gone: `Showing.tsx` and `MyPasses.tsx` no longer offer it and `ticket-checkout` returns 400 for `payment_method='film_pass'`.
+**Shipped to staging 2026-08-12** — migration `20260813000000_film_passes_physical.sql`, functions `film-pass-batch` / `film-pass-checkout` / `ticket-checkout`, Worker deployed. 21 database-level lifecycle checks, 14 Deno tests, 43 vitest tests, all passing; every deployed function curl-verified to boot and enforce its own rules.
+**Remaining before production:**
+- Merge `fix/staff-attendee-names` (carries `20260812190000`, applied to staging but not on `main`) — `supabase db push` refuses while a remote migration has no local file. **Do not** `migration repair --status reverted` it; it is a live RLS fix.
+- One sandbox purchase of each fulfilment kind (pickup, post) end-to-end through Square.
+- Print a sticker sheet and scan it with a real phone camera — the one check that cannot be faked.
+- Configure the real pass type(s) on production (`redemption_price` defaults to 6.00) and decide which upcoming screenings are `film_pass_eligible`.
+Also fixed, not in the brief: film-pass tickets were about to be counted as ticket income on top of the pass sale (double count), and pass income was booked from `status='active'` rows only — silently dropping any pass sold and fully spent in the same period. Both corrected in `QboExportTab`.
+
 ### 🔴 History page images broken (Lovable asset stubs)
 The 10 archival photos in `src/assets/history/*.jpg.asset.json` are **Lovable CDN pointers**, not real files — their `url` fields are Lovable-internal (`/__l5e/...`) paths that don't resolve on Cloudflare. Unlike movie posters, there is no WordPress source to rehost from; the actual JPEGs live only on Lovable's R2 storage.
 **Fix (do while Lovable is still accessible):** retrieve the 10 originals from the Lovable project (preview page or asset export), drop real `.jpg` files into `src/assets/history/`, and change `History.tsx` imports from `*.jpg.asset.json` + `imgX.url` to direct `*.jpg` + `imgX` (same pattern as the logo and hero fixes). Fallback sources: kenworthy.org/history, or originals from KPAC.

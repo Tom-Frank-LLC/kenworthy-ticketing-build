@@ -97,17 +97,27 @@ Deno.serve(async (req: Request) => {
   // -------------------------------------------------------------------------
   const showingId = String(body.showing_id ?? '').trim();
   const descriptors: TicketDescriptor[] = Array.isArray(body.tickets) ? body.tickets : [];
-  const paymentMethod = body.payment_method === 'film_pass' ? 'film_pass' : 'card';
   const sourceId = typeof body.source_id === 'string' ? body.source_id : '';
-  const passId = typeof body.pass_id === 'string' ? body.pass_id : '';
+
+  // A film pass is a physical object redeemed at the door by a staff scan. It
+  // is not stored value and it cannot buy a ticket on the web — that is the
+  // rule, and this is where it is enforced rather than merely not offered.
+  // Refused up front, before pricing or any write, so a stale browser tab still
+  // holding the old checkout UI gets an answer instead of a free ticket.
+  if (body.payment_method === 'film_pass' || body.pass_id) {
+    return json(
+      {
+        error:
+          'Film passes are redeemed in person at the door, not online. Bring your pass and our staff will scan it.',
+      },
+      400,
+    );
+  }
 
   if (!showingId) return json({ error: 'Showing is required' }, 400);
   if (descriptors.length === 0) return json({ error: 'Select at least one ticket' }, 400);
   if (descriptors.length > MAX_TICKETS_PER_SHOWING) {
     return json({ error: `Maximum ${MAX_TICKETS_PER_SHOWING} tickets per purchase` }, 400);
-  }
-  if (paymentMethod === 'film_pass' && !passId) {
-    return json({ error: 'Select a film pass to redeem' }, 400);
   }
   // A card source is required only once we know there is money to charge. A
   // free ($0) showing has no card step at all, so it is validated after pricing
@@ -138,10 +148,6 @@ Deno.serve(async (req: Request) => {
     if (contact.email && !EMAIL_RE.test(contact.email)) {
       return json({ error: 'Invalid email format' }, 400);
     }
-    if (paymentMethod === 'film_pass') {
-      // A pass belongs to an account; redeeming one requires being in it.
-      return json({ error: 'Sign in to redeem a film pass' }, 401);
-    }
     try {
       const buyer = await findOrCreateBuyer(admin, contact);
       userId = buyer.userId;
@@ -162,12 +168,7 @@ Deno.serve(async (req: Request) => {
   // -------------------------------------------------------------------------
   let order;
   try {
-    order = await priceTicketOrder(
-      admin,
-      showingId,
-      descriptors,
-      paymentMethod === 'film_pass' ? 'none' : 'online',
-    );
+    order = await priceTicketOrder(admin, showingId, descriptors, 'online');
   } catch (err) {
     if (err instanceof PricingError) return json({ error: err.message }, 400);
     console.error('[ticket-checkout] pricing failed', err);
@@ -177,7 +178,7 @@ Deno.serve(async (req: Request) => {
   // A paid card order must carry a Square token; a free ($0) showing must not
   // need one. (Square rejects a $0 charge outright — "below the minimum" — which
   // is why free tickets skip Square entirely, below.)
-  if (paymentMethod === 'card' && order.amountCents > 0 && !sourceId) {
+  if (order.amountCents > 0 && !sourceId) {
     return json({ error: 'Missing payment source' }, 400);
   }
 
@@ -231,38 +232,6 @@ Deno.serve(async (req: Request) => {
   }
 
   // -------------------------------------------------------------------------
-  // Film pass: verify the pass covers it *before* anything is written
-  // -------------------------------------------------------------------------
-  let pass: any = null;
-  if (paymentMethod === 'film_pass') {
-    const { data } = await admin
-      .from('user_film_passes')
-      .select('id, user_id, remaining_balance, expires_at, status')
-      .eq('id', passId)
-      .maybeSingle();
-
-    // Ownership is checked here, on the server. The redemption RPC does not
-    // check it, which is why the client may no longer call that RPC at all.
-    if (!data || data.user_id !== userId) return json({ error: 'Film pass not found' }, 404);
-    if (data.status !== 'active') return json({ error: 'That film pass is not active' }, 400);
-    if (data.expires_at && new Date(data.expires_at) < new Date()) {
-      return json({ error: 'That film pass has expired' }, 400);
-    }
-    // Passes are tax-inclusive: the deduction is the pre-tax subtotal.
-    if (Number(data.remaining_balance) < order.subtotal) {
-      return json(
-        {
-          error: `Insufficient pass balance. Need $${order.subtotal.toFixed(2)}, have $${Number(
-            data.remaining_balance,
-          ).toFixed(2)}.`,
-        },
-        400,
-      );
-    }
-    pass = data;
-  }
-
-  // -------------------------------------------------------------------------
   // Write the order as pending
   // -------------------------------------------------------------------------
   const orderToken = crypto.randomUUID();
@@ -281,7 +250,7 @@ Deno.serve(async (req: Request) => {
     qr_code: crypto.randomUUID(),
     order_token: orderToken,
     status: 'pending',
-    payment_method: paymentMethod === 'film_pass' ? 'film_pass' : 'online',
+    payment_method: 'online',
     checkout_idempotency_key: idempotencyKey,
   }));
 
@@ -331,30 +300,7 @@ Deno.serve(async (req: Request) => {
   let receiptUrl: string | null = null;
   let paymentId: string | null = null;
 
-  if (paymentMethod === 'film_pass') {
-    // Prepaid — no card, no Square. The amount deducted is the server's
-    // per-ticket price; previously the browser supplied it.
-    try {
-      for (const ticket of created) {
-        const { error: redeemErr } = await admin.rpc('redeem_film_pass', {
-          p_pass_id: pass.id,
-          p_ticket_id: ticket.id,
-          p_amount: Number(ticket.price),
-        });
-        if (redeemErr) throw new Error(redeemErr.message);
-      }
-    } catch (err) {
-      // Balance and expiry were checked above, so reaching here means a
-      // concurrent redemption drained the pass mid-order. Deductions already
-      // recorded stay — they have redemption rows against real tickets, and
-      // those tickets are about to be marked failed, which is the state an
-      // admin can see and correct.
-      const reason = err instanceof Error ? err.message : 'Film pass redemption failed';
-      console.error('[ticket-checkout] redemption failed', err);
-      await failOrder(reason);
-      return json({ error: reason }, 400);
-    }
-  } else if (order.amountCents === 0) {
+  if (order.amountCents === 0) {
     // Free showing — no money moves, so Square is skipped entirely (it rejects
     // a $0 charge). The tickets are still confirmed below, so the seat is held,
     // counts toward capacity, and scans at the door. paymentId/receiptUrl stay
@@ -461,12 +407,12 @@ Deno.serve(async (req: Request) => {
     user_id: userId,
     tickets: created,
     ticket_count: created.length,
-    payment_method: paymentMethod,
-    amount_cents: paymentMethod === 'film_pass' ? 0 : order.amountCents,
+    payment_method: 'card',
+    amount_cents: order.amountCents,
     subtotal: order.subtotal,
     tax: order.tax,
     processing_fee: order.processingFee,
-    total: paymentMethod === 'film_pass' ? 0 : order.grandTotal,
+    total: order.grandTotal,
     receipt_url: receiptUrl,
     square_payment_id: paymentId,
   });

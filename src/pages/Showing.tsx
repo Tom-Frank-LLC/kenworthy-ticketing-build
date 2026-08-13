@@ -87,11 +87,6 @@ export default function Showing() {
   // Per-seat tier mapping for assigned seating: seats.id -> tier (with color)
   const [seatTierMap, setSeatTierMap] = useState<Record<string, { tierId: string; tierName: string; price: number; color: string }>>({});
 
-  // Film Pass state
-  const [userPasses, setUserPasses] = useState<any[]>([]);
-  const [selectedPassId, setSelectedPassId] = useState<string>('');
-  const [useFilmPass, setUseFilmPass] = useState(false);
-
   const hasTiers = priceTiers.length > 0;
   const isAssignedSeating = showing?.requires_seat_selection;
   const totalSeats = showing?.total_seats || 200;
@@ -216,29 +211,6 @@ export default function Showing() {
     load();
   }, [id, navigate]);
 
-  // Load user's film passes
-  useEffect(() => {
-    if (!user) return;
-    async function loadPasses() {
-      // Only active passes are spendable: a pass row now exists from the moment
-      // checkout starts, and one whose charge failed must never be redeemable.
-      const { data } = await supabase
-        .from('user_film_passes')
-        .select('*, film_pass_types!user_film_passes_pass_type_id_fkey(name)')
-        .eq('user_id', user!.id)
-        .eq('status', 'active')
-        .gt('remaining_balance', 0);
-
-      const valid = (data || []).filter((p: any) =>
-        !p.expires_at || new Date(p.expires_at) > new Date()
-      ).map((p: any) => ({ ...p, pass_type_name: p.film_pass_types?.name || 'Film Pass' }));
-
-      setUserPasses(valid);
-      if (valid.length > 0) setSelectedPassId(valid[0].id);
-    }
-    loadPasses();
-  }, [user]);
-
   const toggleSeat = (seatId: string) => {
     if (takenSeatIds.has(seatId)) return;
     setSelectedSeats(prev => {
@@ -301,17 +273,12 @@ export default function Showing() {
   // plus tax and the theatre absorbs Square's cut. This stays only for the
   // rental exception, where a promoter has agreed their buyers carry the fee;
   // `pass_processing_fee` is false on every production unless someone sets it.
-  // Film-pass redemptions never run through Square, so they never surcharge.
-  const passProcessingFee = !!production?.pass_processing_fee && !useFilmPass && total > 0;
+  const passProcessingFee = !!production?.pass_processing_fee && total > 0;
   const processingFee = passProcessingFee ? computeProcessingFee(total, 'online').fee : 0;
   const grandTotal = Math.round((total + processingFee) * 100) / 100;
   // A free ($0) showing has no card step: Square rejects a $0 charge, and the
   // server skips it, so the browser must not ask for a card or send a token.
-  const isFree = !useFilmPass && grandTotal <= 0;
-
-  // Film pass: check if selected pass covers the total
-  const selectedPass = userPasses.find((p: any) => p.id === selectedPassId);
-  const passCoversTotal = useFilmPass && selectedPass && Number(selectedPass.remaining_balance) >= subtotal;
+  const isFree = grandTotal <= 0;
 
   /**
    * What the buyer asked for, as seats and tiers — never as prices.
@@ -352,7 +319,6 @@ export default function Showing() {
 
   const submitPurchase = async (opts: {
     sourceId?: string;
-    passId?: string;
     guest?: { name: string; email: string; phone: string };
   }) => {
     setPurchasing(true);
@@ -365,9 +331,8 @@ export default function Showing() {
         action: 'create_purchase',
         showing_id: id,
         tickets: buildTicketDescriptors(),
-        payment_method: opts.passId ? 'film_pass' : 'card',
+        payment_method: 'card',
         source_id: opts.sourceId,
-        pass_id: opts.passId,
         idempotency_key: idempotencyKeyRef.current,
         name: opts.guest?.name,
         email: opts.guest?.email || undefined,
@@ -376,9 +341,7 @@ export default function Showing() {
 
       if (!data?.success) throw new Error('Checkout failed');
 
-      toast.success(
-        `${data.ticket_count} ticket(s) ${opts.passId ? 'redeemed with Film Pass' : 'purchased'}!`,
-      );
+      toast.success(`${data.ticket_count} ticket(s) purchased!`);
 
       // Fire-and-forget Mailchimp profile sync for signed-in buyers (the order
       // itself is recorded server-side by the checkout function).
@@ -451,16 +414,6 @@ export default function Showing() {
   const handlePurchase = async () => {
     if (!user) { navigate('/auth?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)); return; }
     if (ticketCount === 0) { toast.error('Please select at least one ticket'); return; }
-
-    if (useFilmPass) {
-      if (!selectedPass) { toast.error('Please select a film pass'); return; }
-      if (!passCoversTotal) {
-        toast.error(`Insufficient pass balance. Need $${subtotal.toFixed(2)}, have $${Number(selectedPass.remaining_balance).toFixed(2)}`);
-        return;
-      }
-      await submitPurchase({ passId: selectedPassId });
-      return;
-    }
 
     if (isFree) { await submitPurchase({}); return; }
 
@@ -798,46 +751,13 @@ export default function Showing() {
                     </div>
                   </div>
 
-                  {/* Film Pass option */}
-                  {user && userPasses.length > 0 && (
-                    <div className="border-t border-border pt-3 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={useFilmPass}
-                            onChange={e => setUseFilmPass(e.target.checked)}
-                            className="rounded"
-                          />
-                          <CreditCard className="h-4 w-4 text-primary" />
-                          Use Film Pass
-                        </Label>
-                      </div>
-                      {useFilmPass && (
-                        <Select value={selectedPassId} onValueChange={setSelectedPassId}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a pass..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {userPasses.map((p: any) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.pass_type_name} — ${Number(p.remaining_balance).toFixed(2)} left
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      {useFilmPass && selectedPass && !passCoversTotal && (
-                        <p className="text-xs text-destructive">
-                          Insufficient balance: ${Number(selectedPass.remaining_balance).toFixed(2)} available, ${subtotal.toFixed(2)} needed
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  {/* No film-pass option here, by design. A pass is a physical
+                      card redeemed at the door by a staff scan — it cannot buy
+                      a ticket online, and the server refuses the attempt. */}
 
                   {user ? (
                     <>
-                      {!useFilmPass && !isFree && (
+                      {!isFree && (
                         <div className="border-t border-border pt-3">
                           <p className="text-sm font-medium mb-3 flex items-center gap-1">
                             <CreditCard className="h-4 w-4" /> Payment
@@ -849,21 +769,17 @@ export default function Showing() {
                         className="w-full"
                         size="lg"
                         onClick={handlePurchase}
-                        disabled={
-                          purchasing ||
-                          (useFilmPass ? !passCoversTotal : (!isFree && !cardReady))
-                        }
+                        disabled={purchasing || (!isFree && !cardReady)}
                       >
-                        {useFilmPass ? (
-                          <><CreditCard className="h-4 w-4 mr-1" /> {purchasing ? 'Redeeming...' : `Redeem Film Pass`}</>
-                        ) : (
-                          <><Check className="h-4 w-4 mr-1" /> {purchasing ? 'Processing...' : isFree ? `Reserve ${ticketCount} Ticket(s)` : `Pay $${grandTotal.toFixed(2)}`}</>
-                        )}
+                        <Check className="h-4 w-4 mr-1" />
+                        {purchasing
+                          ? 'Processing...'
+                          : isFree
+                            ? `Reserve ${ticketCount} Ticket(s)`
+                            : `Pay $${grandTotal.toFixed(2)}`}
                       </Button>
                       <p className="text-xs text-muted-foreground text-center">
-                        {useFilmPass
-                          ? 'Pass balance will be deducted'
-                          : 'Payments are processed securely by Square. Your card details never reach our servers.'}
+                        Payments are processed securely by Square. Your card details never reach our servers.
                       </p>
                     </>
                   ) : (

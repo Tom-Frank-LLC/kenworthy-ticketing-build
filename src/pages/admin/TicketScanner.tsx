@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -6,15 +6,38 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { ScanLine, Camera, Search } from 'lucide-react';
+import { ScanLine, Camera, Search, Film, AlertTriangle } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { ScanResultOverlay, type ScanResult } from '@/components/admin/ScanResultOverlay';
 import { formatShowtime } from '@/lib/datetime';
+import { invokeFunction } from '@/lib/functions';
+
+/**
+ * The prefix minted onto every film-pass sticker.
+ *
+ * It exists so this file can branch without a speculative query against both
+ * tickets and passes — and so a ticket QR held up at the wrong moment is
+ * refused for the right reason instead of silently doing nothing.
+ */
+const PASS_PREFIX = 'PASS:';
+
+/** How far either side of now counts as "tonight" for the showing list. */
+const SHOWING_WINDOW_BEFORE_MS = 4 * 60 * 60 * 1000;
+const SHOWING_WINDOW_AFTER_MS = 24 * 60 * 60 * 1000;
+
+interface ScannerShowing {
+  id: string;
+  start_time: string;
+  title: string;
+  film_pass_eligible: boolean;
+}
 
 export default function TicketScanner() {
-  const { isAdmin, isStaff, isHost, loading: authLoading } = useAuth();
+  const { isStaff, isHost, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [scanning, setScanning] = useState(false);
@@ -23,6 +46,12 @@ export default function TicketScanner() {
   const [processing, setProcessing] = useState(false);
   const [scanCount, setScanCount] = useState(0);
 
+  // Which screening the door is currently working. A ticket carries its own
+  // showing, so this only governs film passes — a pass is a balance, not a
+  // seat, and nothing on the sticker says which film it is being spent on.
+  const [showings, setShowings] = useState<ScannerShowing[]>([]);
+  const [showingId, setShowingId] = useState('');
+
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerContainerId = 'qr-reader';
   const lastScannedRef = useRef<string>('');
@@ -30,11 +59,67 @@ export default function TicketScanner() {
   const processingRef = useRef(false);
   // True while a non-valid verdict is on screen waiting to be acknowledged.
   const awaitingAckRef = useRef(false);
+  // The camera callback is handed to html5-qrcode once and keeps that closure
+  // for the whole session, so the selected showing has to be read from a ref.
+  // Reading it from state would admit passes against whatever was selected
+  // when the camera started, for the rest of the night.
+  const showingIdRef = useRef('');
+  useEffect(() => { showingIdRef.current = showingId; }, [showingId]);
 
   useEffect(() => {
     if (authLoading) return;
     if (!isStaff && !isHost) { navigate('/'); return; }
   }, [isStaff, isHost, authLoading, navigate]);
+
+  useEffect(() => {
+    if (authLoading || (!isStaff && !isHost)) return;
+    let cancelled = false;
+
+    async function loadShowings() {
+      const from = new Date(Date.now() - SHOWING_WINDOW_BEFORE_MS).toISOString();
+      const to = new Date(Date.now() + SHOWING_WINDOW_AFTER_MS).toISOString();
+
+      const { data } = await supabase
+        .from('showings')
+        .select(
+          'id, start_time, film_pass_eligible, movies(title), events(title), live_performances(title)',
+        )
+        .eq('is_active', true)
+        .gte('start_time', from)
+        .lte('start_time', to)
+        .order('start_time');
+
+      if (cancelled) return;
+
+      const rows: ScannerShowing[] = (data || []).map((s: any) => ({
+        id: s.id,
+        start_time: s.start_time,
+        title:
+          s.movies?.title || s.events?.title || s.live_performances?.title || 'Untitled',
+        film_pass_eligible: !!s.film_pass_eligible,
+      }));
+      setShowings(rows);
+
+      // Default to whatever is happening next, but never silently: the
+      // selector below states the choice, because admitting a pass against the
+      // wrong screening is a mistake nothing downstream can catch.
+      const now = Date.now();
+      const nearest = rows.reduce<ScannerShowing | null>((best, s) => {
+        const d = Math.abs(new Date(s.start_time).getTime() - now);
+        if (!best) return s;
+        return d < Math.abs(new Date(best.start_time).getTime() - now) ? s : best;
+      }, null);
+      if (nearest) setShowingId(nearest.id);
+    }
+
+    loadShowings();
+    return () => { cancelled = true; };
+  }, [authLoading, isStaff, isHost]);
+
+  const selectedShowing = useMemo(
+    () => showings.find(s => s.id === showingId) ?? null,
+    [showings, showingId],
+  );
 
   const playBeep = useCallback((success: boolean) => {
     try {
@@ -144,6 +229,121 @@ export default function TicketScanner() {
   }, []);
 
   /**
+   * A film pass at the door.
+   *
+   * Everything that decides the outcome happens server-side in one
+   * transaction — eligibility, double-admit, expiry, balance, and minting the
+   * seat. This function only chooses the words, and the words matter: "no
+   * balance left" and "not valid for this screening" send a patron to two very
+   * different conversations at the counter.
+   */
+  const redeemPass = useCallback(async (qrCode: string): Promise<ScanResult> => {
+    const currentShowing = showingIdRef.current;
+    if (!currentShowing) {
+      return {
+        status: 'invalid',
+        message: 'Choose which screening you are admitting for before scanning passes.',
+      };
+    }
+
+    let verdict: Record<string, any>;
+    try {
+      verdict = await invokeFunction<Record<string, any>>('film-pass-checkout', {
+        action: 'admit',
+        qr_code: qrCode,
+        showing_id: currentShowing,
+      });
+    } catch (err: any) {
+      return { status: 'invalid', message: err?.message || 'The scan could not be completed.' };
+    }
+
+    const balance = (key: string) =>
+      typeof verdict[key] === 'number' ? verdict[key] : Number(verdict[key] ?? NaN);
+    const remaining = Number.isFinite(balance('remaining_balance'))
+      ? balance('remaining_balance')
+      : null;
+    const left = Number.isFinite(balance('admissions_left')) ? balance('admissions_left') : null;
+    const title = verdict.showing_title ?? selectedShowing?.title ?? null;
+
+    switch (verdict.result) {
+      case 'admitted':
+        return {
+          status: 'valid',
+          message: 'Film pass accepted — enjoy the show!',
+          pass: {
+            title,
+            remaining_balance: remaining,
+            admissions_left: left,
+            amount_deducted: Number(verdict.amount_deducted ?? 0),
+          },
+        };
+
+      case 'already_admitted':
+        return {
+          status: 'already_scanned',
+          message: 'This pass has already been used for this screening.',
+          pass: { title, remaining_balance: remaining, admissions_left: left },
+        };
+
+      case 'ineligible':
+        return {
+          status: 'invalid',
+          message: 'Film passes are not valid for this screening.',
+          pass: { title, remaining_balance: remaining, admissions_left: left },
+        };
+
+      case 'insufficient':
+        return {
+          status: 'invalid',
+          message: `Not enough left on this pass — $${Number(
+            verdict.remaining_balance ?? 0,
+          ).toFixed(2)} against $${Number(verdict.redemption_price ?? 0).toFixed(2)} needed.`,
+          pass: { title, remaining_balance: remaining },
+        };
+
+      case 'expired':
+        return { status: 'invalid', message: 'This pass has expired.' };
+
+      case 'not_activated':
+        return {
+          status: 'invalid',
+          message: 'This sticker was never activated — send them to the box office.',
+        };
+
+      // The pass ran out on its previous scan, so the balance is zero and the
+      // row is no longer active. Told as "used up" rather than "not active",
+      // which would send staff looking for a fault that is not there.
+      case 'not_active':
+        return {
+          status: 'invalid',
+          message:
+            verdict.status === 'depleted'
+              ? 'This pass is used up — no admissions left.'
+              : verdict.status === 'void'
+                ? 'This pass has been cancelled.'
+                : verdict.status === 'expired'
+                  ? 'This pass has expired.'
+                  : 'This pass is not valid.',
+        };
+
+      case 'sold_out':
+        return {
+          status: 'invalid',
+          message: 'This screening is full — nothing was deducted from the pass.',
+        };
+
+      case 'no_showing_selected':
+        return {
+          status: 'invalid',
+          message: 'Choose which screening you are admitting for before scanning passes.',
+        };
+
+      default:
+        return { status: 'invalid', message: 'Not one of our film passes.' };
+    }
+  }, [selectedShowing]);
+
+  /**
    * Dismissing the verdict is what unblocks the next scan after a problem.
    */
   const dismissResult = useCallback(() => {
@@ -163,7 +363,9 @@ export default function TicketScanner() {
 
     processingRef.current = true;
     setProcessing(true);
-    const result = await validateTicket(qrCode);
+    const result = qrCode.startsWith(PASS_PREFIX)
+      ? await redeemPass(qrCode)
+      : await validateTicket(qrCode);
     setLastResult(result);
     // Valid scans clear themselves, so only problems block the next scan.
     awaitingAckRef.current = result.status !== 'valid';
@@ -176,7 +378,7 @@ export default function TicketScanner() {
     setTimeout(() => {
       if (lastScannedRef.current === qrCode) lastScannedRef.current = '';
     }, 3000);
-  }, [validateTicket, playBeep]);
+  }, [validateTicket, redeemPass, playBeep]);
 
   const startScanner = useCallback(async () => {
     try {
@@ -236,6 +438,55 @@ export default function TicketScanner() {
 
       {/* Scanner controls */}
       <div className="space-y-6">
+        {/* Which screening film passes are being spent on. Tickets carry their
+            own showing and ignore this entirely. */}
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <Film className="h-5 w-5 text-primary" /> Tonight's Screening
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Select value={showingId} onValueChange={setShowingId}>
+              <SelectTrigger aria-label="Screening being admitted">
+                <SelectValue placeholder="Choose the screening you are admitting for..." />
+              </SelectTrigger>
+              <SelectContent>
+                {showings.map(s => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {formatShowtime(s.start_time, 'h:mm a')} — {s.title}
+                    {!s.film_pass_eligible && ' (no passes)'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {showings.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nothing scheduled in the next day. Tickets still scan; film passes need a
+                screening to be spent against.
+              </p>
+            ) : !showingId ? (
+              <p className="text-sm text-amber-500 flex items-start gap-1.5">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                Pick a screening before scanning film passes.
+              </p>
+            ) : selectedShowing && !selectedShowing.film_pass_eligible ? (
+              <p className="text-sm text-amber-500 flex items-start gap-1.5">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                This screening does not take film passes. Tickets scan normally.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Film passes scanned now are spent on this screening
+                {selectedShowing &&
+                  ` (${formatShowtime(selectedShowing.start_time, 'EEE MMM d, h:mm a')})`}
+                . Tickets are unaffected.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Camera scanner */}
         <Card className="glass overflow-hidden">
           <CardHeader>
@@ -283,7 +534,7 @@ export default function TicketScanner() {
 
         {/* Stats */}
         <div className="text-center text-sm text-muted-foreground">
-          {scanCount} ticket(s) scanned this session
+          {scanCount} scan(s) this session
         </div>
       </div>
 

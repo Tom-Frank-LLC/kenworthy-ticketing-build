@@ -54,7 +54,15 @@ const SITE_URL =
 
 type SendResult = { ok: true } | { ok: false; error: string };
 
-async function sendViaResend(
+/**
+ * Send one transactional email through Resend.
+ *
+ * Exported because film-pass orders need exactly this and nothing else about
+ * ticket delivery: the same sender identity, the same reply-to, the same
+ * "missing key is a reported error, not a silent no-op". A second copy would be
+ * a second place for the from-address to go stale.
+ */
+export async function sendTransactionalEmail(
   to: string,
   subject: string,
   html: string,
@@ -269,7 +277,7 @@ export async function deliverConfirmation(
       name,
     });
 
-    const result = await sendViaResend(email, buildSubject(order), html, text);
+    const result = await sendTransactionalEmail(email, buildSubject(order), html, text);
     if (!result.ok) {
       console.error('[deliver] email send failed', result.error);
       await record({ confirmation_error: result.error });

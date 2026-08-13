@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,49 +7,138 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { CreditCard, DollarSign, Search, ShoppingCart } from 'lucide-react';
+import {
+  CreditCard, DollarSign, Search, ScanLine, Package, Mail, Store, Loader2, Check,
+} from 'lucide-react';
 import { PaymentMethodSelector, type PaymentMethod } from './PaymentMethodSelector';
 import { invokeFunction } from '@/lib/functions';
+import { formatShowtime } from '@/lib/datetime';
+
+/**
+ * Film passes at the counter.
+ *
+ * The model this screen serves: a pass does not exist until a sticker is
+ * scanned in front of the patron. Before that there is only a printed blank
+ * worth nothing, and possibly an order saying the theatre owes somebody one.
+ * So there is no "sell a pass" button that quietly creates a balance — there is
+ * a sale, and then a scan, and the scan is what hands over value.
+ *
+ * Three things happen here:
+ *
+ *   Waiting        orders paid for online and not yet handed over. Every row is
+ *                  a person owed a pass; without this list that debt has no
+ *                  reminder attached and gets forgotten.
+ *   Activate       scan a blank sticker — against an order, or as a walk-in
+ *                  sale taken in the room.
+ *   Look up        what is on a pass, for "why won't this work" at the counter.
+ */
 
 interface PassType {
   id: string;
   name: string;
   price: number;
   initial_balance: number;
+  redemption_price: number;
   expiration_days: number | null;
 }
 
+interface QueuedOrder {
+  id: string;
+  quantity: number;
+  fulfillment: 'pickup' | 'mail';
+  mailing_address: Record<string, string> | null;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  buyer_phone: string | null;
+  amount_paid: number;
+  created_at: string;
+  pass_type_id: string;
+  pass_type_name: string;
+}
+
+interface PassSummary {
+  id: string;
+  qr_code: string | null;
+  status: string;
+  remaining_balance: number | null;
+  admissions_left: number | null;
+  redemption_price: number | null;
+  expires_at: string | null;
+  activated_at: string | null;
+  pass_type_name: string;
+  holder_name: string | null;
+  holder_email: string | null;
+  bearer: boolean;
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  unassigned: 'Blank — not activated',
+  active: 'Active',
+  depleted: 'Used up',
+  expired: 'Expired',
+  void: 'Cancelled',
+  pending: 'Awaiting payment',
+  failed: 'Payment failed',
+  refunded: 'Refunded',
+};
+
 export function FilmPassPOS() {
   const [passTypes, setPassTypes] = useState<PassType[]>([]);
+  const [queue, setQueue] = useState<QueuedOrder[]>([]);
+  const [loadingQueue, setLoadingQueue] = useState(true);
+
+  // Activation
+  const [order, setOrder] = useState<QueuedOrder | null>(null);
   const [selectedTypeId, setSelectedTypeId] = useState('');
   const [patronEmail, setPatronEmail] = useState('');
+  const [patronName, setPatronName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
-  const [selling, setSelling] = useState(false);
+  const [stickerCode, setStickerCode] = useState('');
+  const [activating, setActivating] = useState(false);
+  const [justActivated, setJustActivated] = useState<Record<string, any> | null>(null);
+  const stickerRef = useRef<HTMLInputElement>(null);
 
-  // Lookup section
-  const [lookupEmail, setLookupEmail] = useState('');
-  const [foundPasses, setFoundPasses] = useState<any[]>([]);
+  // Lookup
+  const [lookupTerm, setLookupTerm] = useState('');
+  const [foundPasses, setFoundPasses] = useState<PassSummary[]>([]);
   const [searching, setSearching] = useState(false);
-
-  // Reused if the same sale is submitted twice, replaced after a failure.
-  const idempotencyKeyRef = useRef(crypto.randomUUID());
-
-  useEffect(() => {
-    supabase.from('film_pass_types').select('*').eq('is_active', true).order('price')
-      .then(({ data }) => {
-        setPassTypes(data || []);
-        if (data && data.length > 0) setSelectedTypeId(data[0].id);
-      });
-  }, []);
+  const [searched, setSearched] = useState(false);
 
   const selectedType = passTypes.find(t => t.id === selectedTypeId);
+
+  const loadQueue = useCallback(async () => {
+    setLoadingQueue(true);
+    try {
+      const data = await invokeFunction<{ orders: QueuedOrder[] }>('film-pass-checkout', {
+        action: 'queue',
+      });
+      setQueue(data.orders || []);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not load the pickup queue');
+    } finally {
+      setLoadingQueue(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    supabase
+      .from('film_pass_types')
+      .select('id, name, price, initial_balance, redemption_price, expiration_days')
+      .eq('is_active', true)
+      .order('price')
+      .then(({ data }) => {
+        const types = (data || []) as PassType[];
+        setPassTypes(types);
+        if (types.length > 0) setSelectedTypeId(types[0].id);
+      });
+    loadQueue();
+  }, [loadQueue]);
 
   /**
    * Take a card on the Square Terminal and wait for it to complete.
    *
-   * Same sequencing as the ticket POS: the pass is not created until Square
-   * says COMPLETED. Returns the Square payment id when there is one, which is
-   * what makes the sale refundable later.
+   * The sequencing is the point: the sticker is not activated until Square says
+   * COMPLETED, so a pass that was never paid for never carries a balance.
    */
   async function collectTerminalPayment(amountCents: number, note: string): Promise<string | null> {
     const created = await invokeFunction<{
@@ -71,10 +160,7 @@ export function FilmPassPOS() {
       const status = await invokeFunction<{
         checkout?: { status?: string };
         payment_id?: string | null;
-      }>('square-terminal', {
-        action: 'get_checkout',
-        checkout_id: checkoutId,
-      });
+      }>('square-terminal', { action: 'get_checkout', checkout_id: checkoutId });
       const state = status.checkout?.status;
       if (state === 'COMPLETED') return status.payment_id ?? null;
       if (state === 'CANCELED' || state === 'CANCEL_REQUESTED') {
@@ -86,74 +172,90 @@ export function FilmPassPOS() {
     throw new Error('Payment timed out. Check the terminal.');
   }
 
-  async function handleSell() {
-    if (!selectedType) { toast.error('Select a pass type'); return; }
-    if (!patronEmail.trim()) { toast.error('Enter patron email'); return; }
+  function startOrder(o: QueuedOrder) {
+    setOrder(o);
+    setJustActivated(null);
+    setStickerCode('');
+    // Focus the scan field: a handheld scanner types into whatever has focus,
+    // and hunting for the box with a patron waiting is where mis-scans happen.
+    setTimeout(() => stickerRef.current?.focus(), 0);
+  }
 
-    setSelling(true);
+  function clearActivation() {
+    setOrder(null);
+    setStickerCode('');
+    setPatronEmail('');
+    setPatronName('');
+    setJustActivated(null);
+  }
+
+  async function handleActivate() {
+    const code = stickerCode.trim();
+    if (!code) { toast.error('Scan the sticker on the pass'); return; }
+    if (!code.startsWith('PASS:')) {
+      toast.error('That is a ticket code, not a film pass sticker.');
+      return;
+    }
+    if (!order && !selectedType) { toast.error('Choose a pass type'); return; }
+
+    setActivating(true);
     try {
-      // Card first, then the pass — a pass that was never paid for must not
-      // exist. Cash sales are attested by the staff member ringing them up.
+      // Walk-in card sales take the money first. An order has already been paid
+      // for online, so there is nothing to collect here.
       let squarePaymentId: string | null = null;
-      if (paymentMethod === 'card') {
+      if (!order && paymentMethod === 'card' && selectedType) {
         squarePaymentId = await collectTerminalPayment(
           Math.round(selectedType.price * 100),
           `${selectedType.name} film pass`,
         );
       }
 
-      // The pass is created for the *patron*, server-side. It used to be
-      // created under the staff member's own account whenever the patron had no
-      // profile, which handed the balance to the employee.
-      const data = await invokeFunction<{ pass_name: string; balance: number }>('film-pass-checkout', {
-        action: 'staff_sale',
-        pass_type_id: selectedType.id,
-        email: patronEmail.trim(),
-        payment_method: paymentMethod,
+      const result = await invokeFunction<Record<string, any>>('film-pass-checkout', {
+        action: 'activate',
+        qr_code: code,
+        order_id: order?.id,
+        pass_type_id: order ? undefined : selectedType!.id,
+        payment_method: order ? undefined : paymentMethod,
         square_payment_id: squarePaymentId,
-        idempotency_key: idempotencyKeyRef.current,
+        name: order ? undefined : patronName.trim() || undefined,
+        email: order ? undefined : patronEmail.trim() || undefined,
       });
 
-      toast.success(`${data.pass_name} sold! Balance: $${Number(data.balance).toFixed(2)}`);
-      idempotencyKeyRef.current = crypto.randomUUID();
+      setJustActivated(result);
+      toast.success(
+        `${result.pass_type_name} activated — $${Number(result.remaining_balance).toFixed(2)} (${
+          result.admissions
+        } films)`,
+      );
+      setStickerCode('');
       setPatronEmail('');
+      setPatronName('');
+      if (order) { setOrder(null); loadQueue(); }
     } catch (err: any) {
-      idempotencyKeyRef.current = crypto.randomUUID();
-      toast.error(err.message || 'Failed to sell pass');
+      toast.error(err.message || 'Could not activate that sticker');
     } finally {
-      setSelling(false);
+      setActivating(false);
     }
   }
 
   async function handleLookup() {
-    if (!lookupEmail.trim()) return;
+    const term = lookupTerm.trim();
+    if (!term) return;
     setSearching(true);
+    setSearched(true);
     try {
-      // Resolved server-side against auth.users. The old client-side version
-      // searched profiles.display_name for an email address, which is not where
-      // email is stored — so it found almost nobody.
-      const term = lookupEmail.trim();
+      const isCode = term.startsWith('PASS:');
       const data = await invokeFunction<{
-        patron: { user_id: string; display_name: string } | null;
-        passes: {
-          id: string;
-          remaining_balance: number;
-          expires_at: string | null;
-          pass_type_name: string;
-        }[];
+        pass: PassSummary | null;
+        passes: PassSummary[];
       }>('film-pass-checkout', {
         action: 'lookup',
-        email: term.includes('@') ? term : undefined,
-        phone: term.includes('@') ? undefined : term,
+        qr_code: isCode ? term : undefined,
+        email: isCode ? undefined : term.includes('@') ? term : undefined,
+        phone: isCode || term.includes('@') ? undefined : term,
       });
 
-      const passes = (data.passes || []).map((p: any) => ({
-        ...p,
-        display_name: data.patron?.display_name || term,
-      }));
-      setFoundPasses(passes);
-
-      if (passes.length === 0) toast.info('No active passes found');
+      setFoundPasses(data.pass ? [data.pass] : data.passes || []);
     } catch (err: any) {
       setFoundPasses([]);
       toast.error(err.message || 'Lookup failed');
@@ -162,116 +264,287 @@ export function FilmPassPOS() {
     }
   }
 
+  const money = (n: number) => `$${n.toFixed(2)}`;
+
   return (
-    <div className="grid lg:grid-cols-2 gap-6">
-      {/* Sell New Pass */}
+    <div className="space-y-6">
+      {/* ---- Waiting to be handed over ---- */}
       <Card className="glass">
         <CardHeader>
           <CardTitle className="font-display text-lg flex items-center gap-2">
-            <ShoppingCart className="h-5 w-5 text-primary" /> Sell Film Pass
+            <Package className="h-5 w-5 text-primary" /> Waiting to be handed over
+            {queue.length > 0 && <Badge variant="default">{queue.length}</Badge>}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Pass Type</Label>
-            <Select value={selectedTypeId} onValueChange={setSelectedTypeId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Choose a pass..." />
-              </SelectTrigger>
-              <SelectContent>
-                {passTypes.map(pt => (
-                  <SelectItem key={pt.id} value={pt.id}>
-                    {pt.name} — ${pt.price.toFixed(2)} (${pt.initial_balance.toFixed(2)} balance)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Patron Email</Label>
-            <Input
-              type="email"
-              placeholder="patron@email.com"
-              value={patronEmail}
-              onChange={e => setPatronEmail(e.target.value)}
-            />
-          </div>
-
-          <PaymentMethodSelector paymentMethod={paymentMethod} onSelect={setPaymentMethod} />
-
-          {selectedType && (
-            <div className="p-4 rounded-lg bg-secondary/50 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>{selectedType.name}</span>
-                <span className="font-bold">${selectedType.price.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Pass Balance</span>
-                <span>${selectedType.initial_balance.toFixed(2)}</span>
-              </div>
-              {selectedType.expiration_days && (
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Valid For</span>
-                  <span>{selectedType.expiration_days} days</span>
+        <CardContent className="space-y-3">
+          {loadingQueue ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : queue.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nothing outstanding — every paid pass has been handed over or posted.
+            </p>
+          ) : (
+            queue.map(o => (
+              <div
+                key={o.id}
+                className={`p-4 rounded-lg bg-secondary/50 space-y-2 ${
+                  order?.id === o.id ? 'ring-2 ring-primary' : ''
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm flex items-center gap-1.5">
+                      {o.fulfillment === 'mail' ? (
+                        <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                      ) : (
+                        <Store className="h-3.5 w-3.5 text-muted-foreground" />
+                      )}
+                      {o.buyer_name || o.buyer_email || 'Unnamed buyer'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {o.quantity} × {o.pass_type_name} · {money(o.amount_paid)} paid ·{' '}
+                      {formatShowtime(o.created_at, 'MMM d')}
+                    </p>
+                    {o.buyer_email && (
+                      <p className="text-xs text-muted-foreground">{o.buyer_email}</p>
+                    )}
+                    {o.fulfillment === 'mail' && o.mailing_address && (
+                      // Shown in full: posting is a manual job and this is the
+                      // label the staff member has to write.
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Post to: {[
+                          o.mailing_address.line1,
+                          o.mailing_address.line2,
+                          `${o.mailing_address.city}, ${o.mailing_address.state} ${o.mailing_address.postal_code}`,
+                        ].filter(Boolean).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => startOrder(o)}>
+                    <ScanLine className="h-4 w-4 mr-1" /> Activate
+                  </Button>
                 </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* ---- Activate a sticker ---- */}
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <ScanLine className="h-5 w-5 text-primary" />
+              {order ? 'Hand over an order' : 'Sell a pass'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {order ? (
+              <div className="p-4 rounded-lg bg-primary/10 border border-primary/30 space-y-1">
+                <p className="text-sm font-medium">
+                  {order.buyer_name || order.buyer_email || 'Unnamed buyer'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {order.quantity} × {order.pass_type_name} · already paid
+                </p>
+                <Button variant="ghost" size="sm" className="px-0 h-auto" onClick={clearActivation}>
+                  Cancel — sell to someone else instead
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Pass Type</Label>
+                  <Select value={selectedTypeId} onValueChange={setSelectedTypeId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a pass..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {passTypes.map(pt => (
+                        <SelectItem key={pt.id} value={pt.id}>
+                          {pt.name} — {money(Number(pt.price))}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="pass-patron-name">Name (optional)</Label>
+                    <Input
+                      id="pass-patron-name"
+                      placeholder="Jane Doe"
+                      value={patronName}
+                      onChange={e => setPatronName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="pass-patron-email">Email (optional)</Label>
+                    <Input
+                      id="pass-patron-email"
+                      type="email"
+                      placeholder="patron@email.com"
+                      value={patronEmail}
+                      onChange={e => setPatronEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
+                {/* Contact is genuinely optional. A paper pass works like cash:
+                    whoever holds it can use it. Taking details only buys the
+                    ability to cancel and reissue a lost one. */}
+                <p className="text-xs text-muted-foreground -mt-1">
+                  Leave blank for a bearer pass — whoever holds the card can use it, and a
+                  lost pass cannot be replaced.
+                </p>
+
+                <PaymentMethodSelector paymentMethod={paymentMethod} onSelect={setPaymentMethod} />
+
+                {selectedType && (
+                  <div className="p-4 rounded-lg bg-secondary/50 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>{selectedType.name}</span>
+                      <span className="font-bold">{money(Number(selectedType.price))}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Loads</span>
+                      <span>
+                        {money(Number(selectedType.initial_balance))} ·{' '}
+                        {Math.floor(
+                          Number(selectedType.initial_balance) /
+                            Number(selectedType.redemption_price || 1),
+                        )}{' '}
+                        films at {money(Number(selectedType.redemption_price))} each
+                      </span>
+                    </div>
+                    {selectedType.expiration_days && (
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Valid for</span>
+                        <span>{selectedType.expiration_days} days from now</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="sticker-code">Scan the sticker</Label>
+              <Input
+                id="sticker-code"
+                ref={stickerRef}
+                placeholder="PASS:…"
+                value={stickerCode}
+                onChange={e => setStickerCode(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleActivate(); } }}
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">
+                The pass has no value until this scan. Stick it on the card first, then scan.
+              </p>
+            </div>
+
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={handleActivate}
+              disabled={activating || !stickerCode.trim() || (!order && !selectedTypeId)}
+            >
+              {activating ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Activating…</>
+              ) : (
+                <>
+                  <CreditCard className="h-4 w-4 mr-1" />
+                  {order
+                    ? 'Activate and hand over'
+                    : `Activate — ${money(Number(selectedType?.price ?? 0))}`}
+                </>
+              )}
+            </Button>
+
+            {justActivated && (
+              <div className="p-4 rounded-lg bg-[hsl(var(--success))]/15 border border-[hsl(var(--success))]/40 space-y-1">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Check className="h-4 w-4" /> {justActivated.pass_type_name} activated
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {money(Number(justActivated.remaining_balance))} ·{' '}
+                  {justActivated.admissions} films
+                  {justActivated.expires_at &&
+                    ` · expires ${formatShowtime(justActivated.expires_at, 'MMM d, yyyy')}`}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ---- Look up a pass ---- */}
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <Search className="h-5 w-5 text-primary" /> Look Up a Pass
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Scan a pass, or search email / phone…"
+                value={lookupTerm}
+                onChange={e => setLookupTerm(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleLookup()}
+                autoComplete="off"
+              />
+              <Button onClick={handleLookup} disabled={searching}>
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {foundPasses.map(pass => (
+                <div key={pass.id} className="p-4 rounded-lg bg-secondary/50 space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm">{pass.pass_type_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pass.bearer ? 'Bearer pass — no account' : pass.holder_name || pass.holder_email}
+                      </p>
+                    </div>
+                    <Badge variant={pass.status === 'active' ? 'default' : 'secondary'}>
+                      {pass.remaining_balance !== null && (
+                        <DollarSign className="h-3 w-3 mr-0.5" />
+                      )}
+                      {pass.remaining_balance !== null
+                        ? Number(pass.remaining_balance).toFixed(2)
+                        : STATUS_LABEL[pass.status] ?? pass.status}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {STATUS_LABEL[pass.status] ?? pass.status}
+                    {pass.admissions_left !== null &&
+                      pass.status === 'active' &&
+                      ` · ${pass.admissions_left} ${
+                        pass.admissions_left === 1 ? 'film' : 'films'
+                      } left`}
+                    {pass.expires_at &&
+                      ` · expires ${formatShowtime(pass.expires_at, 'MMM d, yyyy')}`}
+                  </p>
+                  {pass.qr_code && (
+                    <p className="text-[11px] font-mono text-muted-foreground break-all">
+                      {pass.qr_code}
+                    </p>
+                  )}
+                </div>
+              ))}
+              {searched && foundPasses.length === 0 && !searching && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Nothing found for that.
+                </p>
               )}
             </div>
-          )}
-
-          <Button className="w-full" size="lg" onClick={handleSell} disabled={selling || !selectedTypeId}>
-            <CreditCard className="h-4 w-4 mr-1" />
-            {selling ? 'Processing...' : `Sell Pass — $${selectedType?.price.toFixed(2) || '0.00'}`}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Lookup Passes */}
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display text-lg flex items-center gap-2">
-            <Search className="h-5 w-5 text-primary" /> Look Up Pass
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Search by email..."
-              value={lookupEmail}
-              onChange={e => setLookupEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLookup()}
-            />
-            <Button onClick={handleLookup} disabled={searching}>
-              <Search className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="space-y-3">
-            {foundPasses.map(pass => (
-              <div key={pass.id} className="p-4 rounded-lg bg-secondary/50">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-sm">{pass.display_name}</p>
-                    <p className="text-xs text-muted-foreground">{pass.pass_type_name}</p>
-                  </div>
-                  <Badge variant="default">
-                    <DollarSign className="h-3 w-3 mr-0.5" />
-                    ${Number(pass.remaining_balance).toFixed(2)}
-                  </Badge>
-                </div>
-                {pass.expires_at && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Expires {new Date(pass.expires_at).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-            ))}
-            {foundPasses.length === 0 && lookupEmail && !searching && (
-              <p className="text-sm text-muted-foreground text-center py-4">No active passes found</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

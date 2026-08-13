@@ -21,15 +21,30 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 /**
  * Check-in goes through the `check_in_ticket` RPC, so that is the whole surface
- * to mock. `from` deliberately throws: reading and writing `tickets` from the
- * browser is exactly the bug this replaced — a staff-only account has no SELECT
- * or UPDATE policy on that table, so the old path reported every valid ticket
- * as an invalid QR code, and its write was filtered by RLS into a silent no-op.
- * If someone reaches for the table again, these tests fail loudly.
+ * to mock. `from('tickets')` deliberately throws: reading and writing `tickets`
+ * from the browser is exactly the bug this replaced — a staff-only account has
+ * no SELECT or UPDATE policy on that table, so the old path reported every
+ * valid ticket as an invalid QR code, and its write was filtered by RLS into a
+ * silent no-op. If someone reaches for the table again, these tests fail loudly.
+ *
+ * `showings` is a different matter and is served rather than refused: the
+ * screening selector reads it to know which film a *pass* is being spent on,
+ * which is public, aggregate-free data the seat map already displays.
  */
 let rpcResponse: any = { data: null, error: null };
+let showingsResponse: any = { data: [], error: null };
+
 const rpc = vi.fn((_fn?: string, _args?: unknown) => Promise.resolve(rpcResponse));
+
+const showingsChain: any = {
+  eq: () => showingsChain,
+  gte: () => showingsChain,
+  lte: () => showingsChain,
+  order: () => Promise.resolve(showingsResponse),
+};
+
 const from = vi.fn((table: string) => {
+  if (table === 'showings') return { select: () => showingsChain };
   throw new Error(
     `TicketScanner must not touch ${table} directly — check-in goes through check_in_ticket`
   );
@@ -42,10 +57,36 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
+/** The guard upstream expressed as `expect(from).not.toHaveBeenCalled()`. */
+function expectNoTicketTableAccess() {
+  expect(from.mock.calls.map(([t]) => t)).not.toContain('tickets');
+}
+
+// The film-pass door scan is a server call — every rule it applies lives in one
+// database transaction, so the browser only chooses the words for a verdict.
+const admit = vi.fn();
+vi.mock('@/lib/functions', () => ({
+  invokeFunction: (name: string, body: any) => admit(name, body),
+}));
+
 // AudioContext stub
 beforeEach(() => {
   rpc.mockClear();
   from.mockClear();
+  admit.mockReset();
+  showingsResponse = {
+    data: [
+      {
+        id: 'showing-1',
+        start_time: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        film_pass_eligible: true,
+        movies: { title: 'Casablanca' },
+        events: null,
+        live_performances: null,
+      },
+    ],
+    error: null,
+  };
   (globalThis as any).AudioContext = class {
     currentTime = 0;
     destination = {};
@@ -94,6 +135,20 @@ function ticketRow(over: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * Wait until the screening selector has actually settled on a showing.
+ *
+ * The list is fetched on mount, so scanning a pass before it lands is the
+ * "no screening selected" path — which is a real behaviour with its own test,
+ * and would otherwise silently mask every other pass assertion.
+ */
+async function showingReady() {
+  await waitFor(() =>
+    expect(screen.getByText(/Film passes scanned now are spent on this screening/i))
+      .toBeInTheDocument(),
+  );
+}
+
 describe('TicketScanner - GA, event, and concert tickets', () => {
   it('accepts a general-admission movie ticket and claims its check-in', async () => {
     rpcResponse = verdict('valid', ticketRow({ id: 'ticket-ga-1' }));
@@ -108,7 +163,7 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
     expect(screen.getByText(/General Admission/i)).toBeInTheDocument();
     expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-GA-MOVIE' });
     // The claim is the server's job; the client must not write the table.
-    expect(from).not.toHaveBeenCalled();
+    expectNoTicketTableAccess();
   });
 
   it('accepts an event ticket (no movie)', async () => {
@@ -165,7 +220,7 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
     );
     // One call, and no direct table write to "re-scan" it.
     expect(rpc).toHaveBeenCalledTimes(1);
-    expect(from).not.toHaveBeenCalled();
+    expectNoTicketTableAccess();
   });
 
   it('rejects unknown QR codes as invalid', async () => {
@@ -281,5 +336,114 @@ describe('TicketScanner - centre-screen verdict', () => {
     await scanCode('QR-NEXT');
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Admit/i));
     expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-NEXT' });
+  });
+});
+
+describe('TicketScanner - film passes at the door', () => {
+  // A pass is a balance, not a seat: nothing on the sticker says which film it
+  // is being spent on, so the screening has to come from the scanner.
+  const passScan = () =>
+    admit.mock.calls.find(([name, body]) => name === 'film-pass-checkout' && body.action === 'admit');
+
+  it('spends a pass against the selected screening and shows what is left', async () => {
+    admit.mockResolvedValue({
+      result: 'admitted',
+      showing_title: 'Casablanca',
+      amount_deducted: 6,
+      remaining_balance: 54,
+      admissions_left: 9,
+    });
+
+    renderScanner();
+    await showingReady();
+    await scanCode('PASS:abc-123');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Admit/i);
+    expect(alert).toHaveTextContent(/\$54\.00 left/);
+    expect(alert).toHaveTextContent(/9 more films/);
+
+    // The showing came from the selector, not from the code.
+    expect(passScan()?.[1]).toMatchObject({ qr_code: 'PASS:abc-123', showing_id: 'showing-1' });
+    // A pass admission is not a ticket check-in and must not claim one.
+    expect(rpc).not.toHaveBeenCalled();
+    expectNoTicketTableAccess();
+  });
+
+  it('refuses a pass at a screening that does not take them, and says so', async () => {
+    admit.mockResolvedValue({
+      result: 'ineligible',
+      showing_title: 'Met Live: Tosca',
+      remaining_balance: 54,
+    });
+
+    renderScanner();
+    await showingReady();
+    await scanCode('PASS:abc-123');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Do not admit/i);
+    expect(alert).toHaveTextContent(/not valid for this screening/i);
+    // Nothing was spent — staff need to see the balance is intact.
+    expect(alert).toHaveTextContent(/\$54\.00 left/);
+  });
+
+  it('calls a depleted pass used up rather than "not active"', async () => {
+    // The balance hits zero on the tenth admission and the row stops being
+    // active, so the eleventh scan arrives as not_active/depleted. "Not active"
+    // would send staff hunting for a fault that is not there.
+    admit.mockResolvedValue({ result: 'not_active', status: 'depleted' });
+
+    renderScanner();
+    await showingReady();
+    await scanCode('PASS:spent');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/used up/i);
+  });
+
+  it('holds a second scan of the same pass at the same screening', async () => {
+    admit.mockResolvedValue({
+      result: 'already_admitted',
+      showing_title: 'Casablanca',
+      remaining_balance: 54,
+    });
+
+    renderScanner();
+    await showingReady();
+    await scanCode('PASS:abc-123');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Already used/i);
+    // A problem must never auto-clear.
+    await new Promise(r => setTimeout(r, VALID_AUTO_DISMISS_MS + 150));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('refuses to spend a pass when no screening is selected', async () => {
+    showingsResponse = { data: [], error: null };
+
+    renderScanner();
+    await waitFor(() => expect(from).toHaveBeenCalledWith('showings'));
+    await scanCode('PASS:abc-123');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Choose which screening/i);
+    // Nothing reached the server: an admission with no showing is not a request
+    // worth making.
+    expect(admit).not.toHaveBeenCalled();
+  });
+
+  it('still checks in ordinary tickets while a screening is selected', async () => {
+    rpcResponse = verdict('valid', ticketRow({ id: 'ticket-mixed' }));
+
+    renderScanner();
+    await showingReady();
+    await scanCode('QR-MIXED');
+
+    await waitFor(() => expect(screen.getByText(/Ticket validated/i)).toBeInTheDocument());
+    // A ticket carries its own showing; the selector must not touch it.
+    expect(admit).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-MIXED' });
   });
 });
