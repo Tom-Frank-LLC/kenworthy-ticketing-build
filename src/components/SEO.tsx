@@ -1,7 +1,6 @@
 import { Helmet } from "react-helmet-async";
 import { useLocation } from "react-router-dom";
-
-const SITE_URL = "https://kenworthy-ticketing.lovable.app";
+import { SITE_URL } from "@/lib/site";
 
 interface SEOProps {
   title: string;

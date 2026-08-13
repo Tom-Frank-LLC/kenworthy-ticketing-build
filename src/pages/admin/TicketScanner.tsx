@@ -56,59 +56,91 @@ export default function TicketScanner() {
     }
   }, []);
 
+  /**
+   * Validate a QR and claim its check-in, in one server-side step.
+   *
+   * This used to read the ticket and then update scanned_at from the browser,
+   * which was broken two ways.
+   *
+   * Authorisation: the only UPDATE policies on tickets are for admins and for
+   * hosts of the showing, and until this change there was no staff SELECT
+   * policy either. So a staff-only account — the account the box office is
+   * meant to use — read no row and reported every valid ticket as "invalid QR
+   * code"; and had it got past that, RLS filters an UPDATE rather than failing
+   * it, so PostgREST answers 204 and supabase-js reports success. Check-in
+   * would have looked like it worked and recorded nothing.
+   *
+   * Concurrency: read-then-write meant two devices scanning the same QR at
+   * once could both see scanned_at IS NULL and both admit the holder. The RPC
+   * claims the check-in with a conditional UPDATE, so exactly one caller wins
+   * and the other is told the ticket is already scanned.
+   *
+   * The function also refuses to stamp a ticket that is not confirmed, which
+   * the old path did not check at all — a refunded ticket used to scan as
+   * valid.
+   */
   const validateTicket = useCallback(async (qrCode: string): Promise<ScanResult> => {
-    const { data, error } = await supabase
-      .from('tickets')
-      .select(`
-        id, status, scanned_at, qr_code,
-        seats(seat_row, seat_number),
-        showings(start_time, movies(title), events(title), live_performances(title))
-      `)
-      .eq('qr_code', qrCode)
-      .maybeSingle();
+    const { data, error } = await supabase.rpc('check_in_ticket', { p_qr_code: qrCode });
 
     if (error || !data) {
-      return { status: 'invalid', message: 'Ticket not found — invalid QR code' };
+      console.error('[TicketScanner] check_in_ticket failed', error);
+      return { status: 'invalid', message: 'Could not reach the server — try again' };
     }
 
-    const showing: any = (data as any).showings;
-    const ticket = {
-      id: data.id,
-      movie_title:
-        showing?.movies?.title ||
-        showing?.events?.title ||
-        showing?.live_performances?.title ||
-        'Unknown',
-      start_time: showing?.start_time || '',
-      seat_row: (data as any).seats?.seat_row ?? null,
-      seat_number: (data as any).seats?.seat_number ?? null,
-      scanned_at: data.scanned_at as string | null,
-      patron_status: data.status,
+    const result = data as {
+      verdict: 'valid' | 'already_scanned' | 'not_confirmed' | 'not_found' | 'forbidden';
+      ticket: {
+        id: string;
+        production_title: string | null;
+        start_time: string | null;
+        seat_row: string | null;
+        seat_number: number | null;
+        scanned_at: string | null;
+        status: string;
+      } | null;
     };
 
-    if (data.scanned_at) {
+    // The overlay's vocabulary is narrower than the server's: anything that is
+    // not a clean admission or a duplicate is a refusal to be acknowledged.
+    if (result.verdict === 'not_found') {
+      return { status: 'invalid', message: 'Ticket not found — invalid QR code' };
+    }
+    if (result.verdict === 'forbidden') {
+      return { status: 'invalid', message: 'Your account cannot check in tickets' };
+    }
+
+    const t = result.ticket;
+    const ticket = t
+      ? {
+          id: t.id,
+          movie_title: t.production_title || 'Unknown',
+          start_time: t.start_time || '',
+          seat_row: t.seat_row,
+          seat_number: t.seat_number,
+          scanned_at: t.scanned_at,
+          patron_status: t.status,
+        }
+      : undefined;
+
+    if (result.verdict === 'not_confirmed') {
       return {
-        status: 'already_scanned',
+        status: 'invalid',
         ticket,
-        message: `Already scanned at ${formatShowtime(data.scanned_at, 'h:mm:ss a')}`,
+        message: `This ticket is ${t?.status ?? 'not confirmed'} — not valid for entry`,
       };
     }
 
-    // Mark as scanned
-    const { error: updateError } = await supabase
-      .from('tickets')
-      .update({ scanned_at: new Date().toISOString() })
-      .eq('id', data.id);
-
-    if (updateError) {
-      return { status: 'invalid', message: 'Failed to mark ticket as scanned' };
+    if (result.verdict === 'already_scanned') {
+      return {
+        status: 'already_scanned',
+        ticket,
+        message: t?.scanned_at
+          ? `Already scanned at ${formatShowtime(t.scanned_at, 'h:mm:ss a')}`
+          : 'Already scanned',
+      };
     }
 
-    return {
-      status: 'valid',
-      ticket: { ...ticket, scanned_at: new Date().toISOString() },
-      message: 'Ticket validated — enjoy the show!',
-    };
+    return { status: 'valid', ticket, message: 'Ticket validated — enjoy the show!' };
   }, []);
 
   /**
