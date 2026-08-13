@@ -2436,6 +2436,15 @@ export type Database = {
         Args: { p_source_key: string; p_source_type: string }
         Returns: string
       }
+      showing_attendees: {
+        Args: { p_showing_ids: string[] }
+        Returns: {
+          display_name: string | null
+          email: string | null
+          phone: string | null
+          ticket_id: string
+        }[]
+      }
       showing_availability: {
         Args: { p_showing_id: string }
         Returns: {
