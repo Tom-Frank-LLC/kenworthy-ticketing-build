@@ -75,3 +75,42 @@ and preset↔custom parity is 14/14.
 service worker gets the SPA 404 on their *first* hit to `/colorlab.html` — the
 old SW serves that navigation before the new one takes over. A single reload
 fixes it, permanently. Worth saying in the message that shares the link.
+
+## Correction: the URL guidance is backwards
+
+The brief says to use the `.html` URL because "an extensionless `/colorlab`
+would fall through to the React app and 404." Measured against the deployed
+Worker, the opposite is true. Cloudflare Workers Assets defaults
+`html_handling` to auto-trim, so:
+
+- `/colorlab.html` → **307 redirect** to `/colorlab`
+- `/colorlab` → **200**, serves the page
+
+Both work, but `/colorlab` is the canonical URL and the one to share.
+
+It also holds with the service worker installed, which is not obvious: the
+precache manifest contains `colorlab.html`, not `colorlab`. Workbox's
+`PrecacheRoute` defaults to `cleanURLs: true`, so a request for `/colorlab`
+also matches the precached `/colorlab.html`, and precache routes are
+registered ahead of the SPA `NavigationRoute`. Verified on the deployed
+staging and production Workers, not just locally.
+
+## The stale-service-worker first hit is real — observed on production
+
+Confirmed on the live production Worker: a browser that had visited the site
+before still ran the previous service worker, whose precache had no entry for
+colorlab. Its `NavigationRoute` served the SPA shell, so `/colorlab` rendered
+the React app instead of the tool. After the new SW took over, the same URL
+rendered correctly.
+
+This affects most of the team, since staff browsers have all loaded the app
+before. **When sharing the link, say: if you get the normal site instead of
+the Color Lab, reload once.** It self-heals after that.
+
+Deployed:
+- staging — `https://kenworthy-ticketing-staging.mrtomfrank.workers.dev/colorlab`
+- production — `https://kenworthy-ticketing-build.mrtomfrank.workers.dev/colorlab`
+
+Note the Worker has no custom domain route in `wrangler.jsonc`, so it is on
+`workers.dev`; `kenworthy.org` is the separate marketing site and does not
+serve this page.
