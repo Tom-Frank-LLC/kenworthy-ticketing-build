@@ -592,10 +592,11 @@ export default function HistoryPage() {
 
   const milestones = useMemo(() => {
     // Merge DB milestones with seed; DB wins by (year+title) match.
+    // Newest first: the timeline opens on the present and runs back to 1908.
     const key = (m: Milestone) => `${m.year}:${m.title.toLowerCase()}`;
     const seen = new Set(dbMilestones.map(key));
     return [...dbMilestones, ...SEED.filter((s) => !seen.has(key(s)))].sort(
-      (a, b) => a.year - b.year,
+      (a, b) => b.year - a.year,
     );
   }, [dbMilestones]);
 
