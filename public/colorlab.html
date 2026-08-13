@@ -173,17 +173,14 @@
   .badge.large{background:#5c4a12;color:#f6e6a8}
   .badge.low{background:#5c1f1f;color:#f6bcbc}
 
-  .drawer-pick{
-    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-    margin:-8px 0 20px;font-family:'Inter',sans-serif;font-size:12px;
+  /* The custom tile is a swatch like any other — it just happens to be the
+     editable one, so it flows into the slot the odd preset count leaves. */
+  .chip.custom{
+    display:flex;flex-direction:column;justify-content:flex-start;
+    outline:1px dashed hsl(var(--foreground)/.3);outline-offset:-5px;
   }
-  .drawer-pick .dp-label{color:hsl(var(--muted-foreground));font-weight:500}
-  .drawer-pick input[type=text]{
-    width:92px;font-family:'Inter',ui-monospace,monospace;font-size:12px;letter-spacing:.03em;
-    padding:5px 7px;border-radius:5px;border:1px solid hsl(var(--border));
-    background:hsl(var(--secondary));color:hsl(var(--foreground));
-  }
-  .drawer-pick input[type=text]:focus{outline:none;border-color:hsl(var(--accent))}
+  .chip.custom:focus-visible{outline:2px solid hsl(var(--accent));outline-offset:-3px}
+  .chip.custom.selected{outline:none}
 
   .reco{
     font-family:'Inter',sans-serif;font-size:13px;line-height:1.65;
@@ -357,23 +354,11 @@
 
     <h3>Purple — replacing / joining magenta</h3>
     <p class="hint">Hues in the 266–286° band. Click a swatch, or type any hex in the bar above — everything below updates live.</p>
-    <div class="grid" id="purpleGrid"></div>
-    <div class="drawer-pick">
-      <span class="dp-label">Custom purple</span>
-      <button type="button" class="sw-btn" data-cp="purple" aria-label="Choose a purple" aria-haspopup="dialog" aria-expanded="false"></button>
-      <input type="text" data-cphex="purple" spellcheck="false" aria-label="Custom purple hex">
-      <span data-cpout="purple"></span>
-    </div>
+    <div class="grid" id="purpleGrid"><div class="chip custom" data-cp="purple" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-label="Choose a custom purple" title="Click to choose any colour"><span class="seltag">◆</span><div class="name">Custom</div><div class="sample">Text colour</div><div class="meta"><span data-cphextext="purple"></span><span data-cpout="purple"></span></div></div></div>
 
     <h3>Green — heritage accent</h3>
     <p class="hint">Two families: warm olive/sage (pairs with the gold) and cooler teal/emerald (jewel tone).</p>
-    <div class="grid" id="greenGrid"></div>
-    <div class="drawer-pick">
-      <span class="dp-label">Custom green</span>
-      <button type="button" class="sw-btn" data-cp="green" aria-label="Choose a green" aria-haspopup="dialog" aria-expanded="false"></button>
-      <input type="text" data-cphex="green" spellcheck="false" aria-label="Custom green hex">
-      <span data-cpout="green"></span>
-    </div>
+    <div class="grid" id="greenGrid"><div class="chip custom" data-cp="green" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-label="Choose a custom green" title="Click to choose any colour"><span class="seltag">◆</span><div class="name">Custom</div><div class="sample">Text colour</div><div class="meta"><span data-cphextext="green"></span><span data-cpout="green"></span></div></div></div>
 
     <div class="reco" id="reco"></div>
   </div>
@@ -652,10 +637,13 @@
   const pg=document.getElementById('purpleGrid'), gg=document.getElementById('greenGrid');
 
   function renderGrid(el, data, sel, onPick){
-    el.innerHTML='';
+    // Only the presets are rebuilt. The custom tile is persistent: recreating
+    // it mid-drag would destroy the element the popover is anchored to.
+    el.querySelectorAll('.chip.preset').forEach(n=>n.remove());
+    const customTile=el.querySelector('.chip.custom');
     data.forEach(d=>{
       const chip=document.createElement('div');
-      chip.className='chip'+(d.hex===sel.hex?' selected':'');
+      chip.className='chip preset'+(d.hex===sel.hex?' selected':'');
       chip.style.background=d.hex;
       const tc = lum(d.hex)>0.4 ? '#0F0F0F' : '#F5F1E9';
       chip.style.color=tc;
@@ -665,7 +653,7 @@
         <div class="sample">Text colour</div>
         <div class="meta"><span>${d.hex}</span><span>${tierBadge(d.tier)} ${d.c}:1</span></div>`;
       chip.onclick=()=>onPick(d);
-      el.appendChild(chip);
+      el.insertBefore(chip, customTile);
     });
   }
 
@@ -703,7 +691,14 @@
   // Keyed by channel, not by element id, so the bar and the drawer are the
   // same picker rendered twice and cannot drift apart.
   function syncPicker(which, sel){
-    document.querySelectorAll(`[data-cp="${which}"]`).forEach(b=>{ b.style.background=sel.hex; });
+    document.querySelectorAll(`[data-cp="${which}"]`).forEach(b=>{
+      b.style.background=sel.hex;
+      b.style.color = lum(sel.hex)>0.4 ? '#0F0F0F' : '#F5F1E9';   // no-op on the bar chip
+    });
+    document.querySelectorAll(`[data-cphextext="${which}"]`).forEach(n=>{ n.textContent=sel.hex; });
+    // The tile reads as selected exactly when the live colour is a custom pick.
+    document.querySelectorAll(`.chip.custom[data-cp="${which}"]`)
+      .forEach(t=>t.classList.toggle('selected', sel.name==='Custom'));
     document.querySelectorAll(`[data-cphex="${which}"]`).forEach(i=>{
       if(document.activeElement!==i) i.value=sel.hex;   // don't fight mid-edit
     });
@@ -778,7 +773,13 @@
     cpop.hidden=true; cpopTarget=null; cpopAnchor=null;
     document.querySelectorAll('[data-cp]').forEach(b=>b.setAttribute('aria-expanded','false'));
   }
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Enter' && e.key!==' ') return;
+    const t=e.target.closest && e.target.closest('.chip.custom[data-cp]');
+    if(t){ e.preventDefault(); openPopover(t.dataset.cp, t); }
+  });
   document.addEventListener('click',e=>{
+    if(e.target.closest && e.target.closest('input')) return;   // typing is not picking
     const btn=e.target.closest && e.target.closest('[data-cp]');
     if(!btn) return;
     e.stopPropagation();
