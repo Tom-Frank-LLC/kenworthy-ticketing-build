@@ -81,6 +81,10 @@ export function buildEmailHtml(
   opts: {
     ticketUrl: string;
     qrUrlFor: (ticketId: string) => string;
+    /** .ics download (Apple/Outlook/most clients) served by ticket-access. */
+    calendarUrl?: string | null;
+    /** One-tap Google Calendar template link. */
+    googleCalendarUrl?: string | null;
     passwordUrl?: string | null;
     /** True only when this checkout is what created the account. */
     accountJustCreated?: boolean;
@@ -88,6 +92,29 @@ export function buildEmailHtml(
   },
 ): string {
   const greeting = opts.name ? `Hi ${esc(opts.name.split(/\s+/)[0])},` : 'Hi there,';
+
+  const calendarBlock = opts.calendarUrl
+    ? `
+      <tr>
+        <td align="center" style="padding:0 28px 22px;">
+          <div style="font:600 12px/1.5 Helvetica,Arial,sans-serif;color:#6b6560;letter-spacing:.06em;text-transform:uppercase;padding-bottom:8px;">
+            Add to your calendar
+          </div>
+          <a href="${esc(opts.calendarUrl)}"
+             style="display:inline-block;padding:9px 16px;margin:0 4px;border:1px solid #cfc8c1;color:#26211d;font:600 13px/1 Helvetica,Arial,sans-serif;text-decoration:none;border-radius:6px;">
+            Apple / Outlook (.ics)
+          </a>${
+            opts.googleCalendarUrl
+              ? `
+          <a href="${esc(opts.googleCalendarUrl)}"
+             style="display:inline-block;padding:9px 16px;margin:0 4px;border:1px solid #cfc8c1;color:#26211d;font:600 13px/1 Helvetica,Arial,sans-serif;text-decoration:none;border-radius:6px;">
+            Google Calendar
+          </a>`
+              : ''
+          }
+        </td>
+      </tr>`
+    : '';
 
   const ticketBlocks = order.tickets
     .map(
@@ -238,6 +265,8 @@ export function buildEmailHtml(
             </td>
           </tr>
 
+          ${calendarBlock}
+
           ${passwordBlock ? `<tr><td style="padding:0 28px 24px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${passwordBlock}</table></td></tr>` : ''}
 
           <tr>
@@ -261,6 +290,7 @@ export function buildEmailText(
   order: Order,
   opts: {
     ticketUrl: string;
+    calendarUrl?: string | null;
     passwordUrl?: string | null;
     accountJustCreated?: boolean;
     name?: string | null;
@@ -286,6 +316,11 @@ export function buildEmailText(
   lines.push('');
   lines.push(`Show your QR code at the door. Open your tickets here:`);
   lines.push(opts.ticketUrl);
+  if (opts.calendarUrl) {
+    lines.push('');
+    lines.push('Add it to your calendar:');
+    lines.push(opts.calendarUrl);
+  }
   if (opts.passwordUrl) {
     lines.push('');
     lines.push(
@@ -308,14 +343,18 @@ export function buildEmailText(
  * pieces reads as spam. No QR — a texted image cannot be relied on to scan, so
  * the link is the ticket.
  */
-export function buildSmsBody(order: Order, ticketUrl: string): string {
+export function buildSmsBody(order: Order, ticketUrl: string, calendarUrl?: string | null): string {
   const count = order.tickets.length;
   const seats = order.tickets.some((t) => t.seat)
     ? ` ${order.tickets.map((t) => `${t.seat!.row}${t.seat!.number}`).join(', ')}`
     : '';
-  return [
+  const lines = [
     `The Kenworthy: ${count} ticket${count === 1 ? '' : 's'} for ${order.title}`,
     `${order.start_time_display}${seats}`,
     `Show this at the door: ${ticketUrl}`,
-  ].join('\n');
+  ];
+  // A second URL pushes most sends to a 2nd segment; the calendar link is worth
+  // it, and callers can omit it to stay in one segment.
+  if (calendarUrl) lines.push(`Add to calendar: ${calendarUrl}`);
+  return lines.join('\n');
 }

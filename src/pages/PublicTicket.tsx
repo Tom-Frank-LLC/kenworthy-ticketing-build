@@ -3,10 +3,11 @@ import { useParams } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, MapPin, Ticket as TicketIcon, AlertCircle } from 'lucide-react';
+import { Calendar, CalendarPlus, MapPin, Ticket as TicketIcon, AlertCircle } from 'lucide-react';
 import { SEO } from '@/components/SEO';
 import { RedeemedQr } from '@/components/RedeemedQr';
-import { fetchPublicOrder, type PublicOrder } from '@/lib/tickets';
+import { fetchPublicOrder, ticketCalendarUrl, type PublicOrder } from '@/lib/tickets';
+import { googleCalendarUrl } from '@/lib/calendar';
 
 /**
  * Public ticket page — `/t/:token`.
@@ -96,6 +97,18 @@ export default function PublicTicket() {
             <MapPin className="h-3.5 w-3.5" />
             {order.venue || 'The Kenworthy Performing Arts Centre'}
           </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+          <Button asChild variant="outline" size="sm">
+            <a href={ticketCalendarUrl(order.order_token)}>
+              <CalendarPlus className="h-4 w-4 mr-1.5" /> Add to calendar
+            </a>
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <a href={googleCalendarUrl(order)} target="_blank" rel="noreferrer">
+              Google Calendar
+            </a>
+          </Button>
         </div>
       </div>
 

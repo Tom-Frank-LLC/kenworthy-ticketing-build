@@ -27,8 +27,15 @@ export interface PublicOrder {
   start_time: string;
   start_time_display: string;
   venue: string | null;
+  /** Movie runtime in minutes when known; null for events/live performances. */
+  duration_minutes: number | null;
   tickets: PublicOrderTicket[];
   total: number;
+}
+
+/** Public URL of the order's .ics calendar file, served by ticket-access. */
+export function ticketCalendarUrl(token: string): string {
+  return `${TICKET_ACCESS}?token=${encodeURIComponent(token)}&ics=1`;
 }
 
 // Note: the app renders QR codes client-side with qrcode.react, so there is no

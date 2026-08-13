@@ -44,6 +44,8 @@ export interface Order {
   start_time: string;
   start_time_display: string;
   venue: string | null;
+  /** Movie runtime in minutes when known; null for events/live performances. */
+  duration_minutes: number | null;
   tickets: OrderTicket[];
   total: number;
 }
@@ -93,7 +95,7 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
       showings(
         start_time,
         venues(name),
-        movies(title),
+        movies(title, duration_minutes),
         events(title),
         live_performances(title)
       )
@@ -141,6 +143,7 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
     start_time: showing?.start_time ?? '',
     start_time_display: showing?.start_time ? formatShowtime(showing.start_time) : '',
     venue: showing?.venues?.name ?? null,
+    duration_minutes: showing?.movies?.duration_minutes ?? null,
     tickets,
     total: tickets.reduce((sum, t) => sum + t.total_price, 0),
   };
