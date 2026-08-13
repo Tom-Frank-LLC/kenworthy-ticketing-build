@@ -11,8 +11,8 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { ScanLine, Camera, Search, Film, AlertTriangle } from 'lucide-react';
-import { Html5Qrcode } from 'html5-qrcode';
 import { ScanResultOverlay, type ScanResult } from '@/components/admin/ScanResultOverlay';
+import { QrScanner } from '@/components/admin/QrScanner';
 import { formatShowtime } from '@/lib/datetime';
 import { invokeFunction } from '@/lib/functions';
 
@@ -40,7 +40,6 @@ export default function TicketScanner() {
   const { isStaff, isHost, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  const [scanning, setScanning] = useState(false);
   const [lastResult, setLastResult] = useState<ScanResult | null>(null);
   const [manualCode, setManualCode] = useState('');
   const [processing, setProcessing] = useState(false);
@@ -52,8 +51,6 @@ export default function TicketScanner() {
   const [showings, setShowings] = useState<ScannerShowing[]>([]);
   const [showingId, setShowingId] = useState('');
 
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-  const scannerContainerId = 'qr-reader';
   const lastScannedRef = useRef<string>('');
   const audioCtxRef = useRef<AudioContext | null>(null);
   const processingRef = useRef(false);
@@ -380,42 +377,6 @@ export default function TicketScanner() {
     }, 3000);
   }, [validateTicket, redeemPass, playBeep]);
 
-  const startScanner = useCallback(async () => {
-    try {
-      const html5Qrcode = new Html5Qrcode(scannerContainerId);
-      scannerRef.current = html5Qrcode;
-
-      await html5Qrcode.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => handleScan(decodedText),
-        () => {} // ignore errors during scanning
-      );
-      setScanning(true);
-    } catch (err) {
-      toast.error('Unable to access camera. Please check permissions.');
-    }
-  }, [handleScan]);
-
-  const stopScanner = useCallback(async () => {
-    if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-        scannerRef.current.clear();
-      } catch {}
-      scannerRef.current = null;
-    }
-    setScanning(false);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-      }
-    };
-  }, []);
-
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualCode.trim()) return;
@@ -494,19 +455,8 @@ export default function TicketScanner() {
               <Camera className="h-5 w-5 text-primary" /> Camera Scanner
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div
-              id={scannerContainerId}
-              className={`w-full rounded-lg overflow-hidden ${!scanning ? 'h-0' : 'min-h-[300px]'}`}
-            />
-            <Button
-              className="w-full"
-              variant={scanning ? 'destructive' : 'default'}
-              onClick={scanning ? stopScanner : startScanner}
-            >
-              <Camera className="h-4 w-4 mr-2" />
-              {scanning ? 'Stop Camera' : 'Start Camera Scanner'}
-            </Button>
+          <CardContent>
+            <QrScanner onScan={handleScan} className="space-y-4" />
           </CardContent>
         </Card>
 

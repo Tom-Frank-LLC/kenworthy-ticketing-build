@@ -11,6 +11,7 @@ import {
   CreditCard, DollarSign, Search, ScanLine, Package, Mail, Store, Loader2, Check,
 } from 'lucide-react';
 import { PaymentMethodSelector, type PaymentMethod } from './PaymentMethodSelector';
+import { QrScanner } from '@/components/admin/QrScanner';
 import { invokeFunction } from '@/lib/functions';
 import { formatShowtime } from '@/lib/datetime';
 
@@ -189,8 +190,14 @@ export function FilmPassPOS() {
     setJustActivated(null);
   }
 
-  async function handleActivate() {
-    const code = stickerCode.trim();
+  /**
+   * `scanned` is passed by the camera, which cannot wait for a state update:
+   * setStickerCode is async, so activating straight off the decoded value is
+   * the difference between one tap and a sticker that silently activates the
+   * previous code.
+   */
+  async function handleActivate(scanned?: string) {
+    const code = (scanned ?? stickerCode).trim();
     if (!code) { toast.error('Scan the sticker on the pass'); return; }
     if (!code.startsWith('PASS:')) {
       toast.error('That is a ticket code, not a film pass sticker.');
@@ -431,10 +438,28 @@ export function FilmPassPOS() {
 
             <div className="space-y-2">
               <Label htmlFor="sticker-code">Scan the sticker</Label>
+
+              {/* Three ways in, because the counter is not one kind of device.
+                  A handheld reader types into the focused field and sends
+                  Enter; a phone or tablet has only its camera; and a scuffed
+                  sticker has to be typed from the code printed under its QR. */}
+              <QrScanner
+                onScan={(text) => {
+                  const code = text.trim();
+                  setStickerCode(code);
+                  // Straight through on a good scan — at a counter with someone
+                  // waiting, "scan then press a button" is a step too many.
+                  if (code.startsWith('PASS:') && !activating) void handleActivate(code);
+                }}
+                startLabel="Scan with camera"
+                stopLabel="Stop camera"
+                className="space-y-2"
+              />
+
               <Input
                 id="sticker-code"
                 ref={stickerRef}
-                placeholder="PASS:…"
+                placeholder="PASS:… (or scan with a handheld reader)"
                 value={stickerCode}
                 onChange={e => setStickerCode(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleActivate(); } }}
@@ -448,7 +473,9 @@ export function FilmPassPOS() {
             <Button
               className="w-full"
               size="lg"
-              onClick={handleActivate}
+              // Wrapped, not passed directly: handleActivate takes an optional
+              // scanned code, and onClick would hand it a MouseEvent.
+              onClick={() => handleActivate()}
               disabled={activating || !stickerCode.trim() || (!order && !selectedTypeId)}
             >
               {activating ? (
