@@ -28,6 +28,7 @@
 // the ticket rows (confirmation_sent_at / confirmation_error).
 
 import { loadOrder, ticketPageUrl, ticketQrUrl } from './tickets.ts';
+import { ticketCalendarUrl, googleCalendarUrl } from './calendar.ts';
 import { toE164, buildSubject, buildEmailHtml, buildEmailText, buildSmsBody } from './notify.ts';
 
 // Deno globals
@@ -235,6 +236,8 @@ export async function deliverConfirmation(
 
   const hasSignedIn = !!authUser?.last_sign_in_at;
   const ticketUrl = ticketPageUrl(SITE_URL, orderToken);
+  const calendarUrl = ticketCalendarUrl(SUPABASE_URL, orderToken);
+  const googleCalUrl = googleCalendarUrl(order, ticketUrl);
 
   // ---- Email path ---------------------------------------------------------
   if (email) {
@@ -266,12 +269,15 @@ export async function deliverConfirmation(
     const html = buildEmailHtml(order, {
       ticketUrl,
       qrUrlFor: (ticketId) => ticketQrUrl(SUPABASE_URL, orderToken, ticketId),
+      calendarUrl,
+      googleCalendarUrl: googleCalUrl,
       passwordUrl,
       accountJustCreated: opts.accountCreated === true,
       name,
     });
     const text = buildEmailText(order, {
       ticketUrl,
+      calendarUrl,
       passwordUrl,
       accountJustCreated: opts.accountCreated === true,
       name,
@@ -302,7 +308,7 @@ export async function deliverConfirmation(
       return { status: 'failed', channel: 'sms', error, httpStatus: 400 };
     }
 
-    const result = await sendViaTwilio(e164, buildSmsBody(order, ticketUrl));
+    const result = await sendViaTwilio(e164, buildSmsBody(order, ticketUrl, calendarUrl));
     if (!result.ok) {
       console.error('[deliver] sms send failed', result.error);
       await record({ confirmation_error: result.error });

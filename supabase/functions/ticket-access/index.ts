@@ -19,13 +19,16 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
-import { loadOrder, renderQrPng, type Order } from '../_shared/tickets.ts';
+import { loadOrder, renderQrPng, ticketPageUrl, type Order } from '../_shared/tickets.ts';
+import { buildIcs } from '../_shared/calendar.ts';
 
 // Deno globals
 declare const Deno: any;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const SITE_URL =
+  Deno.env.get('SITE_URL') || 'https://kenworthy-ticketing-build.mrtomfrank.workers.dev';
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -42,6 +45,7 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const token = (url.searchParams.get('token') || '').trim();
     const qrTicketId = (url.searchParams.get('qr') || '').trim();
+    const wantsIcs = ['1', 'true', 'yes'].includes((url.searchParams.get('ics') || '').trim().toLowerCase());
 
     if (!token) return json({ error: 'Missing ticket token' }, 400);
 
@@ -56,6 +60,22 @@ Deno.serve(async (req: Request) => {
 
     // Same 404 for an unknown token and a well-formed-but-wrong one.
     if (!order) return json({ error: 'Ticket not found' }, 404);
+
+    if (wantsIcs) {
+      // One calendar event for the whole order's showing. Bearer-safe: the
+      // token already gated access above.
+      const ticketUrl = ticketPageUrl(SITE_URL, token);
+      const ics = buildIcs(order, ticketUrl, new Date().toISOString());
+      return new Response(ics, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/calendar; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="kenworthy-ticket.ics"',
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    }
 
     if (qrTicketId) {
       // Scoped to this order: a valid token cannot render another order's QR.
