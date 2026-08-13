@@ -173,6 +173,18 @@
   .badge.large{background:#5c4a12;color:#f6e6a8}
   .badge.low{background:#5c1f1f;color:#f6bcbc}
 
+  .drawer-pick{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    margin:-8px 0 20px;font-family:'Inter',sans-serif;font-size:12px;
+  }
+  .drawer-pick .dp-label{color:hsl(var(--muted-foreground));font-weight:500}
+  .drawer-pick input[type=text]{
+    width:92px;font-family:'Inter',ui-monospace,monospace;font-size:12px;letter-spacing:.03em;
+    padding:5px 7px;border-radius:5px;border:1px solid hsl(var(--border));
+    background:hsl(var(--secondary));color:hsl(var(--foreground));
+  }
+  .drawer-pick input[type=text]:focus{outline:none;border-color:hsl(var(--accent))}
+
   .reco{
     font-family:'Inter',sans-serif;font-size:13px;line-height:1.65;
     color:hsl(var(--muted-foreground));background:hsl(var(--card));
@@ -316,16 +328,16 @@
 
     <div class="lab-group">
       <label for="cpPurple">Purple</label>
-      <button type="button" class="sw-btn" id="cpPurple" aria-label="Choose a purple" aria-haspopup="dialog" aria-expanded="false"></button>
-      <input type="text" id="cpPurpleHex" value="#B262DA" spellcheck="false" aria-label="Purple hex">
-      <span id="cpPurpleOut"></span>
+      <button type="button" class="sw-btn" data-cp="purple" aria-label="Choose a purple" aria-haspopup="dialog" aria-expanded="false"></button>
+      <input type="text" data-cphex="purple" value="#B262DA" spellcheck="false" aria-label="Purple hex">
+      <span data-cpout="purple"></span>
     </div>
 
     <div class="lab-group">
       <label for="cpGreen">Green</label>
-      <button type="button" class="sw-btn" id="cpGreen" aria-label="Choose a green" aria-haspopup="dialog" aria-expanded="false"></button>
-      <input type="text" id="cpGreenHex" value="#73A94C" spellcheck="false" aria-label="Green hex">
-      <span id="cpGreenOut"></span>
+      <button type="button" class="sw-btn" data-cp="green" aria-label="Choose a green" aria-haspopup="dialog" aria-expanded="false"></button>
+      <input type="text" data-cphex="green" value="#73A94C" spellcheck="false" aria-label="Green hex">
+      <span data-cpout="green"></span>
     </div>
 
     <span class="lab-spacer"></span>
@@ -346,10 +358,22 @@
     <h3>Purple — replacing / joining magenta</h3>
     <p class="hint">Hues in the 266–286° band. Click a swatch, or type any hex in the bar above — everything below updates live.</p>
     <div class="grid" id="purpleGrid"></div>
+    <div class="drawer-pick">
+      <span class="dp-label">Custom purple</span>
+      <button type="button" class="sw-btn" data-cp="purple" aria-label="Choose a purple" aria-haspopup="dialog" aria-expanded="false"></button>
+      <input type="text" data-cphex="purple" spellcheck="false" aria-label="Custom purple hex">
+      <span data-cpout="purple"></span>
+    </div>
 
     <h3>Green — heritage accent</h3>
     <p class="hint">Two families: warm olive/sage (pairs with the gold) and cooler teal/emerald (jewel tone).</p>
     <div class="grid" id="greenGrid"></div>
+    <div class="drawer-pick">
+      <span class="dp-label">Custom green</span>
+      <button type="button" class="sw-btn" data-cp="green" aria-label="Choose a green" aria-haspopup="dialog" aria-expanded="false"></button>
+      <input type="text" data-cphex="green" spellcheck="false" aria-label="Custom green hex">
+      <span data-cpout="green"></span>
+    </div>
 
     <div class="reco" id="reco"></div>
   </div>
@@ -655,8 +679,8 @@
     root.setProperty('--success', selGreen.hslCss);
     root.setProperty('--success-foreground', textOn(selGreen.hex));
 
-    syncPicker('cpPurple','cpPurpleHex','cpPurpleOut',selPurple);
-    syncPicker('cpGreen','cpGreenHex','cpGreenOut',selGreen);
+    syncPicker('purple', selPurple);
+    syncPicker('green', selGreen);
     if(typeof cpopTarget!=='undefined' && cpopTarget && !svDragging){
       cpopHsv=hexToHsv(cpopTarget==='purple'?selPurple.hex:selGreen.hex);
       cpopRender();
@@ -676,11 +700,17 @@
     document.getElementById('reco').innerHTML=msg;
   }
 
-  function syncPicker(colorId,hexId,outId,sel){
-    document.getElementById(colorId).style.background=sel.hex;
-    document.getElementById(hexId).value=sel.hex;
-    document.getElementById(outId).innerHTML=`${tierBadge(sel.tier)} <span style="opacity:.75">${sel.c}:1</span>`;
-    document.getElementById(outId).title=`index.css token: ${sel.hsl}`;
+  // Keyed by channel, not by element id, so the bar and the drawer are the
+  // same picker rendered twice and cannot drift apart.
+  function syncPicker(which, sel){
+    document.querySelectorAll(`[data-cp="${which}"]`).forEach(b=>{ b.style.background=sel.hex; });
+    document.querySelectorAll(`[data-cphex="${which}"]`).forEach(i=>{
+      if(document.activeElement!==i) i.value=sel.hex;   // don't fight mid-edit
+    });
+    document.querySelectorAll(`[data-cpout="${which}"]`).forEach(o=>{
+      o.innerHTML=`${tierBadge(sel.tier)} <span style="opacity:.75">${sel.c}:1</span>`;
+      o.title=`index.css token: ${sel.hsl}`;
+    });
   }
 
   function pickPurple(d){selPurple=d;renderGrid(pg,purples,selPurple,pickPurple);apply();}
@@ -689,8 +719,10 @@
   // Custom picks clear the preset highlight (no swatch matches their hex).
   function useCustomPurple(hex){ if(!isHex(hex))return; pickPurple(makeCustom(hex)); }
   function useCustomGreen(hex){ if(!isHex(hex))return; pickGreen(makeCustom(hex)); }
-  document.getElementById('cpPurpleHex').addEventListener('change',e=>useCustomPurple(e.target.value.trim()));
-  document.getElementById('cpGreenHex').addEventListener('change',e=>useCustomGreen(e.target.value.trim()));
+  document.addEventListener('change',e=>{
+    const which=e.target.dataset && e.target.dataset.cphex;
+    if(which) (which==='purple'?useCustomPurple:useCustomGreen)(e.target.value.trim());
+  });
 
   // ---- colour popover ---------------------------------------------------
   // HSV drives the square, which is the model a saturation/value area maps
@@ -716,7 +748,7 @@
   const cpop=document.getElementById('cpop'), cpopSV=document.getElementById('cpopSV'),
         cpopKnob=document.getElementById('cpopKnob'), cpopHue=document.getElementById('cpopHue'),
         cpopHex=document.getElementById('cpopHex'), cpopChip=document.getElementById('cpopChip');
-  let cpopTarget=null, cpopHsv={h:0,s:0,v:0};
+  let cpopTarget=null, cpopAnchor=null, cpopHsv={h:0,s:0,v:0};
 
   function cpopRender(){
     const hex=hsvToHex(cpopHsv.h,cpopHsv.s,cpopHsv.v);
@@ -731,7 +763,7 @@
   function cpopCommit(){ const hex=cpopRender(); (cpopTarget==='purple'?useCustomPurple:useCustomGreen)(hex); }
 
   function openPopover(which, btn){
-    cpopTarget=which;
+    cpopTarget=which; cpopAnchor=btn;
     cpopHsv=hexToHsv(which==='purple'?selPurple.hex:selGreen.hex);
     cpop.hidden=false;
     const r=btn.getBoundingClientRect();
@@ -739,23 +771,26 @@
     const left=Math.min(r.left+scrollX, scrollX+innerWidth-cpop.offsetWidth-8);
     cpop.style.left=Math.max(scrollX+8,left)+'px';
     cpop.style.top=(r.bottom+scrollY+7)+'px';
-    document.querySelectorAll('.sw-btn').forEach(b=>b.setAttribute('aria-expanded', String(b===btn)));
+    document.querySelectorAll('[data-cp]').forEach(b=>b.setAttribute('aria-expanded', String(b===btn)));
     cpopRender();
   }
   function closePopover(){
-    cpop.hidden=true; cpopTarget=null;
-    document.querySelectorAll('.sw-btn').forEach(b=>b.setAttribute('aria-expanded','false'));
+    cpop.hidden=true; cpopTarget=null; cpopAnchor=null;
+    document.querySelectorAll('[data-cp]').forEach(b=>b.setAttribute('aria-expanded','false'));
   }
-  for(const [id,which] of [['cpPurple','purple'],['cpGreen','green']]){
-    document.getElementById(id).addEventListener('click',e=>{
-      e.stopPropagation();
-      if(cpopTarget===which) closePopover(); else openPopover(which, e.currentTarget);
-    });
-  }
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest && e.target.closest('[data-cp]');
+    if(!btn) return;
+    e.stopPropagation();
+    // Clicking the *other* instance of the same channel moves the popover to
+    // it rather than closing; only re-clicking the open one dismisses.
+    if(cpopTarget===btn.dataset.cp && cpopAnchor===btn) closePopover();
+    else openPopover(btn.dataset.cp, btn);
+  });
   // Clicking anywhere off the popover dismisses it — the whole point of not
   // using the native colour dialog.
   document.addEventListener('pointerdown',e=>{
-    if(!cpop.hidden && !cpop.contains(e.target) && !e.target.closest('.sw-btn')) closePopover();
+    if(!cpop.hidden && !cpop.contains(e.target) && !(e.target.closest && e.target.closest('[data-cp]'))) closePopover();
   });
   document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !cpop.hidden) closePopover(); });
 
