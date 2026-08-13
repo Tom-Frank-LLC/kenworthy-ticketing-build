@@ -68,14 +68,77 @@ export default defineConfig(({ mode }) => {
           // view. (Excluding it via `maximumFileSizeToCacheInBytes` instead
           // makes vite-plugin-pwa fail the build outright.)
           globIgnores: ['**/backstage-logo-*.svg'],
-          navigateFallback: '/index.html',
-          // Server-rendered/edge routes and the SW itself must not be
-          // swallowed by the SPA fallback.
-          navigateFallbackDenylist: [/^\/api\//],
+          // MUST stay explicitly `undefined`, not merely omitted: vite-plugin-pwa
+          // defaults it to 'index.html' (Object.assign over its defaultWorkbox,
+          // so an explicit undefined is what clears it). navigateFallback
+          // registers workbox's own NavigationRoute *before* every
+          // runtimeCaching route, and the workbox router is first-match-wins —
+          // so it shadows the NetworkFirst shell rule below and keeps serving
+          // the precached, cache-first shell. Verified by reading the emitted
+          // dist/sw.js, not assumed. SPA navigation is handled entirely by the
+          // 'kenworthy-shell' rule instead.
+          navigateFallback: undefined,
+          // The other half of the same problem, and the non-obvious half.
+          // precacheAndRoute() registers its route BEFORE any runtimeCaching
+          // route, and workbox's PrecacheRoute defaults to `directoryIndex:
+          // 'index.html'` — so a navigation to `/` resolves to the *precached*
+          // index.html and is served cache-first, shadowing the shell rule
+          // below exactly the way navigateFallback did. Removing
+          // navigateFallback alone is NOT enough; verified by observing
+          // `performance.getEntriesByType('navigation')[0].deliveryType ===
+          // 'cache-storage'` on a controlled load. null disables the lookup
+          // (workbox only defaults it when undefined), so `/` falls through to
+          // the network-first rule.
+          //
+          // `cleanURLs` is deliberately left at its default (true) and is not
+          // exposed by generateSW: it maps `/colorlab` → the precached
+          // colorlab.html, which is correct — that page is a real, separately
+          // revisioned document, not the SPA shell.
+          directoryIndex: null,
+          navigationPreload: true,
           cleanupOutdatedCaches: true,
           clientsClaim: true,
           skipWaiting: true,
           runtimeCaching: [
+            {
+              // THE APP SHELL. Must be network-first: each build content-hashes
+              // the JS/CSS, so a cache-first shell hands the browser a document
+              // referencing asset filenames that no longer exist on the server.
+              // The Worker's `not_found_handling: single-page-application` then
+              // answers those dead requests with index.html (200, text/html)
+              // where a script was expected — which is the blank page after
+              // every deploy. Going to the network for the document means the
+              // asset hashes it names are always ones that exist.
+              //
+              // Excludes /api/ (edge routes) and the standalone static pages in
+              // public/, which are their own documents and must not be answered
+              // with the SPA shell.
+              urlPattern: ({ request, url, sameOrigin }) =>
+                sameOrigin &&
+                request.mode === 'navigate' &&
+                !url.pathname.startsWith('/api/') &&
+                !/^\/colorlab(\.html)?$/.test(url.pathname),
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'kenworthy-shell',
+                // Slow network → fall back to the cached shell rather than
+                // hanging. Offline is instant (fetch rejects immediately).
+                networkTimeoutSeconds: 3,
+                cacheableResponse: { statuses: [200] },
+                plugins: [
+                  {
+                    // Every SPA route is the same document, so store exactly one
+                    // shell under one key. Without this, an offline navigation
+                    // to a route the user had never visited online would miss
+                    // the cache and fail — `navigateFallback` used to cover that
+                    // case. Deliberately no ExpirationPlugin: a single entry
+                    // can't grow, and a maxAge would expire the offline
+                    // fallback out from under a user who is still offline.
+                    cacheKeyWillBeUsed: async () => '/index.html',
+                  },
+                ],
+              },
+            },
             {
               // Hashed build assets — the filename changes whenever the
               // content does, so cache-first is always safe here.
