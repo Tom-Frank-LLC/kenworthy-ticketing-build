@@ -81,6 +81,47 @@ export interface PricedOrder {
 export class PricingError extends Error {}
 
 /**
+ * The largest gift a checkout page may add to an order.
+ *
+ * Not a policy about generosity — a donation of any size is welcome on the
+ * Donate page, which has its own $100,000 ceiling. This is a ceiling on what a
+ * tampered-with checkout request can turn a $9 movie ticket into, and $1,000 is
+ * far above any plausible tap of the "$10" button.
+ */
+export const MAX_BUNDLED_DONATION_CENTS = 100_000;
+
+/**
+ * Read the optional donation riding along with a ticket order.
+ *
+ * Deliberately separate from `priceTicketOrder`: a donation is not a priced
+ * line, it is a number the buyer chose, and the one rule that matters is that
+ * it never enters the tax base. Tax is computed per ticket row inside
+ * priceTicketOrder and the donation is added to the charge afterwards, so there
+ * is no path by which a gift can be taxed.
+ *
+ * The $1 floor mirrors the donations table's own CHECK constraint — a 40-cent
+ * "donation" would be charged and then fail to insert, which is a payment with
+ * no record of what it was for.
+ */
+export function readDonationCents(raw: unknown): { ok: true; cents: number } | { ok: false; error: string } {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, cents: 0 };
+  const cents = Number(raw);
+  if (!Number.isInteger(cents) || cents < 0) {
+    return { ok: false, error: 'That donation amount is not valid' };
+  }
+  if (cents === 0) return { ok: true, cents: 0 };
+  if (cents < 100) return { ok: false, error: 'The smallest donation we can take is $1' };
+  if (cents > MAX_BUNDLED_DONATION_CENTS) {
+    return {
+      ok: false,
+      error:
+        'Donations over $1,000 go through our donation page so we can thank you properly — visit /donate.',
+    };
+  }
+  return { ok: true, cents };
+}
+
+/**
  * Recompute an order from the database.
  *
  * `channel` decides which Square rate the surcharge uses; pass 'none' for

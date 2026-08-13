@@ -24,7 +24,8 @@ import { PaymentMethodSelector, type PaymentMethod } from '@/components/pos/Paym
 import { ConcessionPOS } from '@/components/pos/ConcessionPOS';
 import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
-import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, computeProcessingFee, TAX_RATE } from '@/lib/booking';
+import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, computeProcessingFee, newOrderToken, TAX_RATE } from '@/lib/booking';
+import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -64,6 +65,11 @@ export default function StaffPOS() {
   const [selectedTierId, setSelectedTierId] = useState(''); // for assigned seating
 
   const hasTiers = priceTiers.length > 0;
+
+  // A gift the patron adds at the counter. It rides on the same payment — one
+  // combined amount to the terminal, or one handful of cash — and is recorded
+  // as contribution income, untaxed, exactly like the online path.
+  const [donationCents, setDonationCents] = useState(0);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
@@ -239,6 +245,9 @@ export default function StaffPOS() {
     !!selectedShowing?.pass_processing_fee && paymentMethod === 'card' && total > 0;
   const processingFee = passProcessingFee ? computeProcessingFee(total, 'in_person').fee : 0;
   const grandTotal = Math.round((total + processingFee) * 100) / 100;
+  // Tax was computed from the ticket lines above; the gift is added after it
+  // and is never part of it. This is the number the terminal is handed.
+  const chargeTotal = Math.round(grandTotal * 100 + donationCents) / 100;
 
   const toggleSeat = (seatId: string) => {
     if (takenSeatIds.has(seatId)) return;
@@ -253,11 +262,16 @@ export default function StaffPOS() {
   const createTickets = useCallback(async (
     method: PaymentMethod,
     squarePaymentId: string | null = null,
-  ): Promise<string[]> => {
+  ): Promise<{ ticketIds: string[]; orderToken: string }> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
+    // Generated here rather than left to buildTicketRows so a donation taken
+    // with this sale can be filed against the same order.
+    const orderToken = newOrderToken();
+
     const ticketRows = buildTicketRows({
+      orderToken,
       lineItems: hasTiers ? lineItems : undefined,
       selectedSeats: !hasTiers ? selectedSeats : undefined,
       quantity: !hasTiers && !isAssignedSeating ? gaQuantity : undefined,
@@ -273,8 +287,46 @@ export default function StaffPOS() {
 
     const { data, error } = await supabase.from('tickets').insert(ticketRows).select('id');
     if (error) throw error;
-    return (data || []).map(t => t.id);
-  }, [selectedSeats, gaQuantity, isAssignedSeating, selectedShowingId, selectedShowing, hasTiers, lineItems]);
+    return { ticketIds: (data || []).map(t => t.id), orderToken };
+  }, [selectedSeats, gaQuantity, isAssignedSeating, selectedShowingId, selectedShowing, hasTiers, lineItems, processingFee]);
+
+  /**
+   * File the counter donation, once the sale it rode in on has gone through.
+   *
+   * Server-side, because the donations table grants INSERT to service_role
+   * alone — the POS cannot write the row itself, and should not: the same
+   * server action sends the receipt and posts the gift to Little Green Light.
+   *
+   * A failure here is reported to the staff member and nothing else: the money
+   * is already in the till or on the card, so the answer is a note to the
+   * manager, not a rolled-back sale.
+   */
+  const recordDonation = useCallback(async (
+    channel: 'cash' | 'terminal',
+    squarePaymentId: string | null,
+    orderToken: string | null,
+  ) => {
+    if (donationCents <= 0) return;
+    try {
+      await invokeFunction('square-donation', {
+        action: 'record_in_person',
+        amountCents: donationCents,
+        paymentChannel: channel,
+        donorEmail: patronEmail.trim() || null,
+        donorPhone: patronPhone.trim() || null,
+        squarePaymentId,
+        orderToken,
+        showingId: selectedShowingId,
+      });
+      toast.success(`$${(donationCents / 100).toFixed(2)} donation recorded — thank the patron!`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'unknown error';
+      toast.error(
+        `The sale went through but the $${(donationCents / 100).toFixed(2)} donation was not recorded: ${reason}. Tell a manager.`,
+        { duration: 12000 },
+      );
+    }
+  }, [donationCents, patronEmail, patronPhone, selectedShowingId]);
 
   const refreshAfterSale = useCallback(async () => {
     if (isAssignedSeating) {
@@ -309,6 +361,9 @@ export default function StaffPOS() {
       ticketIds,
       movieTitle: selectedShowing?.movie_title || 'Unknown',
       seatLabels,
+      // The ticket total, not the charged total: this row is what the refund
+      // button acts on, and a donation is not refundable from the POS — it is a
+      // completed gift, reversed by a manager if it ever needs to be.
       total: grandTotal,
       paymentMethod: method,
       timestamp: new Date(),
@@ -327,6 +382,7 @@ export default function StaffPOS() {
     });
     setPatronEmail('');
     setPatronPhone('');
+    setDonationCents(0);
     setPaymentStatus('idle');
     setSquareCheckoutId(null);
     setIsSimulated(false);
@@ -335,9 +391,15 @@ export default function StaffPOS() {
   const handleCashSale = async () => {
     setSelling(true);
     try {
-      const ticketIds = await createTickets('cash');
+      const { ticketIds, orderToken } = await createTickets('cash');
       addTransaction(ticketIds, 'cash');
-      toast.success(`${ticketCount} ticket(s) sold (cash)!`, { duration: 5000 });
+      toast.success(
+        donationCents > 0
+          ? `${ticketCount} ticket(s) sold (cash) — collect $${chargeTotal.toFixed(2)} including the donation.`
+          : `${ticketCount} ticket(s) sold (cash)!`,
+        { duration: 5000 },
+      );
+      await recordDonation('cash', null, orderToken);
       resetForm();
       await refreshAfterSale();
       loadDailyStats();
@@ -354,13 +416,19 @@ export default function StaffPOS() {
 
     try {
       const idempotencyKey = crypto.randomUUID();
-      const amountCents = Math.round(grandTotal * 100);
+      // One charge on the reader for tickets, their tax, and the gift. Square's
+      // own checkout UI cannot show a donation button — see docs/DONATIONS.md,
+      // Part E — so the prompt happens here and the terminal is simply handed
+      // the combined amount.
+      const amountCents = Math.round(chargeTotal * 100);
 
       const { data, error } = await supabase.functions.invoke('square-terminal', {
         body: {
           action: 'create_checkout',
           amount_cents: amountCents,
-          note: `${selectedShowing!.movie_title} — ${ticketCount} ticket(s)`,
+          note: donationCents > 0
+            ? `${selectedShowing!.movie_title} — ${ticketCount} ticket(s) + $${(donationCents / 100).toFixed(2)} donation`
+            : `${selectedShowing!.movie_title} — ${ticketCount} ticket(s)`,
           idempotency_key: idempotencyKey,
         },
       });
@@ -373,12 +441,14 @@ export default function StaffPOS() {
 
       if (data.simulated || data.checkout?.status === 'COMPLETED') {
         setPaymentStatus('completed');
-        const ticketIds = await createTickets('card', data.checkout?.payment_ids?.[0] ?? null);
+        const paymentId = data.checkout?.payment_ids?.[0] ?? null;
+        const { ticketIds, orderToken } = await createTickets('card', paymentId);
         addTransaction(ticketIds, 'card');
         toast.success(
           `${ticketCount} ticket(s) sold (card)! ${data.simulated ? '(Sandbox simulation)' : ''}`,
           { duration: 5000 }
         );
+        await recordDonation('terminal', paymentId, orderToken);
         resetForm();
         await refreshAfterSale();
         loadDailyStats();
@@ -409,9 +479,10 @@ export default function StaffPOS() {
         const status = data.checkout?.status;
         if (status === 'COMPLETED') {
           setPaymentStatus('completed');
-          const ticketIds = await createTickets('card', data.payment_id ?? null);
+          const { ticketIds, orderToken } = await createTickets('card', data.payment_id ?? null);
           addTransaction(ticketIds, 'card');
           toast.success(`Payment complete! ${ticketCount} ticket(s) sold.`);
+          await recordDonation('terminal', data.payment_id ?? null, orderToken);
           resetForm();
           loadDailyStats();
           await refreshAfterSale();
@@ -439,7 +510,7 @@ export default function StaffPOS() {
     };
 
     poll();
-  }, [createTickets, addTransaction, resetForm, refreshAfterSale, ticketCount]);
+  }, [createTickets, addTransaction, resetForm, refreshAfterSale, recordDonation, ticketCount]);
 
   const handleSell = () => {
     if (!selectedShowingId || ticketCount === 0) {
@@ -759,11 +830,24 @@ export default function StaffPOS() {
                         <span>${processingFee.toFixed(2)}</span>
                       </div>
                     )}
+                    {donationCents > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Donation (not taxed)</span>
+                        <span>${(donationCents / 100).toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between font-bold text-base pt-1">
                       <span>Total</span>
-                      <span className="text-primary">${grandTotal.toFixed(2)}</span>
+                      <span className="text-primary">${chargeTotal.toFixed(2)}</span>
                     </div>
                   </div>
+
+                  <DonationPrompt
+                    variant="staff"
+                    valueCents={donationCents}
+                    onChange={setDonationCents}
+                    disabled={selling || paymentStatus === 'processing'}
+                  />
 
                   {/* Payment status indicator */}
                   {paymentStatus === 'processing' && (
@@ -810,8 +894,8 @@ export default function StaffPOS() {
                           <CreditCard className="h-4 w-4 mr-1" />
                         )}
                         {paymentMethod === 'cash'
-                          ? `Sell ${ticketCount} Ticket(s) — Cash`
-                          : `Charge $${grandTotal.toFixed(2)} on Terminal`
+                          ? `Sell ${ticketCount} Ticket(s) — Cash $${chargeTotal.toFixed(2)}`
+                          : `Charge $${chargeTotal.toFixed(2)} on Terminal`
                         }
                       </>
                     )}

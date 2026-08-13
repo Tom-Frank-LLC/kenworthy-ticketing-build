@@ -9,7 +9,13 @@
 //   deno test supabase/functions/_shared/pricing_test.ts
 
 import { assertEquals, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { PricingError, computeProcessingFee, priceTicketOrder } from './pricing.ts';
+import {
+  MAX_BUNDLED_DONATION_CENTS,
+  PricingError,
+  computeProcessingFee,
+  priceTicketOrder,
+  readDonationCents,
+} from './pricing.ts';
 
 // ---------------------------------------------------------------------------
 // A stub standing in for the PostgREST query builder, holding fixed rows.
@@ -182,4 +188,42 @@ Deno.test('refuses an empty order', async () => {
     PricingError,
     'No tickets requested',
   );
+});
+
+// ---------------------------------------------------------------------------
+// Bundled donations
+// ---------------------------------------------------------------------------
+//
+// The property that matters is negative: a donation must never reach the tax
+// base. priceTicketOrder does not take one, and readDonationCents hands back a
+// number the caller adds to the charge *after* pricing — so the test below
+// pins the validation, and the tax-free part is structural rather than a
+// number to assert.
+
+Deno.test('readDonationCents accepts nothing, zero, and the preset amounts', () => {
+  assertEquals(readDonationCents(undefined), { ok: true, cents: 0 });
+  assertEquals(readDonationCents(null), { ok: true, cents: 0 });
+  assertEquals(readDonationCents(''), { ok: true, cents: 0 });
+  assertEquals(readDonationCents(0), { ok: true, cents: 0 });
+  assertEquals(readDonationCents(100), { ok: true, cents: 100 });
+  assertEquals(readDonationCents(500), { ok: true, cents: 500 });
+  assertEquals(readDonationCents(1000), { ok: true, cents: 1000 });
+});
+
+Deno.test('readDonationCents refuses what the donations table would refuse', () => {
+  // Below the table's own CHECK (amount_cents >= 100): charging this would
+  // take the money and then fail to record what it was for.
+  const tooSmall = readDonationCents(40);
+  assertEquals(tooSmall.ok, false);
+
+  const negative = readDonationCents(-500);
+  assertEquals(negative.ok, false);
+
+  // Fractional cents are not money.
+  assertEquals(readDonationCents(12.5).ok, false);
+  assertEquals(readDonationCents('five dollars').ok, false);
+
+  // A tampered request cannot turn a $9 ticket into a five-figure charge.
+  assertEquals(readDonationCents(MAX_BUNDLED_DONATION_CENTS).ok, true);
+  assertEquals(readDonationCents(MAX_BUNDLED_DONATION_CENTS + 1).ok, false);
 });
