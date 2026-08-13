@@ -1,6 +1,5 @@
 import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { Button } from '@/components/ui/button';
 import { Printer } from 'lucide-react';
 
 export interface StickerPassType {
@@ -40,6 +39,21 @@ export interface StickerPassType {
  * Keeping the toolbar inside the portal is the other half: the component that
  * owns the print CSS owns the DOM placement that CSS depends on, so the two
  * cannot drift apart in separate files.
+ *
+ * ---------------------------------------------------------------------------
+ * Why the toolbar buttons are hand-styled rather than <Button>
+ * ---------------------------------------------------------------------------
+ * This surface is a sheet of white paper, not app chrome, and it hard-codes its
+ * own colours so it looks and prints the same whatever the app theme is doing.
+ * Themed components do not belong on it: `<Button variant="outline">` resolves
+ * to `bg-background` with no text colour of its own, and the app's default
+ * theme is dark (`--background: 0 0% 6%`), so on this white sheet it rendered a
+ * near-black button whose text inherited the sheet's black — an unreadable
+ * "Done".
+ *
+ * That is the same mistake as the blank page above, one level down: mixing a
+ * fixed colour system with a themed one and expecting them to agree. The fix is
+ * the same in kind — make the element genuinely belong to the surface it is on.
  */
 export function StickerSheet({
   codes,
@@ -115,13 +129,43 @@ export function StickerSheet({
           margin-top: 0.05in;
           word-break: break-all;
         }
+        /* Screen-only controls, coloured for this white sheet rather than for
+           the app theme. Every value is explicit for the reason in the header
+           comment: nothing here may resolve against --background. */
+        .sheet-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.375rem;
+          border-radius: 6px;
+          padding: 0.5rem 0.9rem;
+          font: 600 14px/1 Helvetica, Arial, sans-serif;
+          cursor: pointer;
+          border: 1px solid transparent;
+        }
+        .sheet-btn--primary {
+          background: #26211d;
+          color: #ffffff;
+        }
+        .sheet-btn--primary:hover { background: #3a332d; }
+        .sheet-btn--secondary {
+          background: #ffffff;
+          color: #26211d;
+          border-color: #c9c2ba;
+        }
+        .sheet-btn--secondary:hover { background: #f2efea; }
+        .sheet-btn:focus-visible {
+          outline: 2px solid #7c4dcc;
+          outline-offset: 2px;
+        }
       `}</style>
 
       <div className="sticker-sheet__meta mb-4 flex flex-wrap items-center gap-3">
-        <Button onClick={() => window.print()}>
-          <Printer className="h-4 w-4 mr-1" /> Print sheet
-        </Button>
-        <Button variant="outline" onClick={onDone}>Done</Button>
+        <button type="button" className="sheet-btn sheet-btn--primary" onClick={() => window.print()}>
+          <Printer className="h-4 w-4" /> Print sheet
+        </button>
+        <button type="button" className="sheet-btn sheet-btn--secondary" onClick={onDone}>
+          Done
+        </button>
         <div className="text-sm text-neutral-600">
           <span className="font-medium text-black">
             {codes.length} × {passType.name}

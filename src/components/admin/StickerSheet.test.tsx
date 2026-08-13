@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { StickerSheet } from './StickerSheet';
 
 /**
@@ -99,5 +99,64 @@ describe('StickerSheet', () => {
     );
     const svg = document.querySelector('.sticker svg')!;
     expect(svg.innerHTML).toContain('#000000');
+  });
+});
+
+describe('StickerSheet — the sheet is not app chrome', () => {
+  /**
+   * Theme-coupled Tailwind utilities. Each resolves against a CSS custom
+   * property, and the app's default theme is dark (`--background: 0 0% 6%`).
+   * On this hard-coded white sheet that is how "Done" became black text on a
+   * near-black button: `variant="outline"` supplies `bg-background` and no text
+   * colour of its own, so the text inherited the sheet's black.
+   */
+  const THEMED = [
+    'bg-background', 'bg-primary', 'bg-secondary', 'bg-accent', 'bg-card',
+    'bg-muted', 'bg-popover', 'bg-destructive',
+    'text-foreground', 'text-primary', 'text-secondary', 'text-accent',
+    'text-muted', 'text-card', 'text-popover', 'text-destructive',
+    'border-input', 'border-border',
+  ];
+
+  it('uses no theme-dependent colour anywhere on the sheet', () => {
+    render(
+      <StickerSheet codes={codes} passType={passType} batchId="b" onDone={() => {}} />,
+    );
+
+    const root = document.querySelector('.print-root')!;
+    const offenders: string[] = [];
+    for (const el of Array.from(root.querySelectorAll('*'))) {
+      const cls = el.getAttribute('class');
+      if (!cls) continue;
+      for (const token of cls.split(/\s+/)) {
+        // Match the utility itself and its variants (hover:bg-accent), but not
+        // fixed-palette classes that merely start the same (text-primary vs
+        // text-neutral-600 — only the former reads a theme variable).
+        const bare = token.replace(/^[a-z-]+:/, '');
+        if (THEMED.some(t => bare === t || bare.startsWith(`${t}/`))) {
+          offenders.push(`<${el.tagName.toLowerCase()}> ${token}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('gives both controls an explicit colour of their own', () => {
+    render(
+      <StickerSheet codes={codes} passType={passType} batchId="b" onDone={() => {}} />,
+    );
+    for (const name of [/print sheet/i, /done/i]) {
+      const btn = screen.getByRole('button', { name });
+      // Hand-styled against the white sheet rather than inheriting from it.
+      expect(btn.className).toMatch(/\bsheet-btn\b/);
+      expect(btn.className).toMatch(/sheet-btn--(primary|secondary)/);
+    }
+  });
+
+  it('Done closes the sheet', () => {
+    const onDone = vi.fn();
+    render(<StickerSheet codes={codes} passType={passType} batchId="b" onDone={onDone} />);
+    fireEvent.click(screen.getByRole('button', { name: /done/i }));
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 });
