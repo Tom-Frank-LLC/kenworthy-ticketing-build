@@ -3,6 +3,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Film, Building2, Sparkles, Hammer, Star, Users } from 'lucide-react';
 import { SEO } from '@/components/SEO';
+import { FilmArchiveTable } from '@/components/history/FilmArchiveTable';
+import { HistorySearch, type HistorySearchResult } from '@/components/history/HistorySearch';
+
+/** Films listed inline on a timeline card before deferring to the full table. */
+const BADGE_CAP = 24;
 
 import img1908 from '@/assets/optimized/history/Crystal-Theatre-1908.webp';
 import img1926 from '@/assets/optimized/history/Kenworthy-1926.webp';
@@ -325,10 +330,12 @@ function TimelineItem({
   milestone,
   side,
   screenings,
+  onSeeMore,
 }: {
   milestone: Milestone;
   side: 'left' | 'right';
   screenings: ArchiveRow[];
+  onSeeMore: (year: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -357,13 +364,21 @@ function TimelineItem({
   return (
     <div
       ref={ref}
-      className={`relative md:grid md:grid-cols-[1fr_auto_1fr] md:gap-8 items-start transition-all duration-700 ease-out ${
+      id={`milestone-${milestone.id}`}
+      className={`relative md:grid md:grid-cols-[1fr_auto_1fr] md:gap-8 items-start scroll-mt-24 transition-all duration-700 ease-out ${
         visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
       }`}
     >
       {/* Left column */}
       <div className={`hidden md:block ${isLeft ? '' : 'md:invisible'}`}>
-        {isLeft && <ItemCard milestone={milestone} screenings={screenings} align="right" />}
+        {isLeft && (
+          <ItemCard
+            milestone={milestone}
+            screenings={screenings}
+            align="right"
+            onSeeMore={onSeeMore}
+          />
+        )}
       </div>
 
       {/* Center spine + year marker */}
@@ -380,7 +395,14 @@ function TimelineItem({
 
       {/* Right column */}
       <div className={`hidden md:block ${isLeft ? 'md:invisible' : ''}`}>
-        {!isLeft && <ItemCard milestone={milestone} screenings={screenings} align="left" />}
+        {!isLeft && (
+          <ItemCard
+            milestone={milestone}
+            screenings={screenings}
+            align="left"
+            onSeeMore={onSeeMore}
+          />
+        )}
       </div>
 
       {/* Mobile single column */}
@@ -389,7 +411,12 @@ function TimelineItem({
           <Icon className="h-3.5 w-3.5 text-accent" />
         </div>
         <div className="font-display text-lg text-accent mb-2">{milestone.year}</div>
-        <ItemCard milestone={milestone} screenings={screenings} align="left" />
+        <ItemCard
+          milestone={milestone}
+          screenings={screenings}
+          align="left"
+          onSeeMore={onSeeMore}
+        />
       </div>
     </div>
   );
@@ -399,10 +426,12 @@ function ItemCard({
   milestone,
   screenings,
   align,
+  onSeeMore,
 }: {
   milestone: Milestone;
   screenings: ArchiveRow[];
   align: 'left' | 'right';
+  onSeeMore: (year: number) => void;
 }) {
   return (
     <div
@@ -451,7 +480,7 @@ function ItemCard({
                 align === 'right' ? 'md:justify-end' : ''
               }`}
             >
-              {screenings.slice(0, 24).map((r) => (
+              {screenings.slice(0, BADGE_CAP).map((r) => (
                 <Badge
                   key={r.id}
                   variant="secondary"
@@ -461,10 +490,14 @@ function ItemCard({
                   {r.film_year ? ` (${r.film_year})` : ''}
                 </Badge>
               ))}
-              {screenings.length > 24 && (
-                <span className="text-xs text-muted-foreground self-center">
-                  +{screenings.length - 24} more
-                </span>
+              {screenings.length > BADGE_CAP && (
+                <button
+                  type="button"
+                  onClick={() => onSeeMore(milestone.year)}
+                  className="text-xs text-muted-foreground hover:text-accent hover:underline self-center"
+                >
+                  +{(screenings.length - BADGE_CAP).toLocaleString()} more
+                </button>
               )}
             </div>
           </div>
@@ -478,7 +511,44 @@ export default function HistoryPage() {
   const [dbMilestones, setDbMilestones] = useState<Milestone[]>([]);
   const [archive, setArchive] = useState<ArchiveRow[]>([]);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [yearFilter, setYearFilter] = useState<number | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
+
+  const [tableQuery, setTableQuery] = useState('');
+  // Bumped whenever something asks to jump to the table. Scrolling runs in an effect keyed
+  // on this counter so React has committed the new filter/query before we scroll — and a
+  // counter (rather than watching the filters) still fires when the values are unchanged.
+  const [archiveJump, setArchiveJump] = useState(0);
+
+  const jumpToArchive = () => setArchiveJump((n) => n + 1);
+
+  useEffect(() => {
+    if (!archiveJump) return;
+    document.getElementById('film-archive')?.scrollIntoView({ behavior: 'smooth' });
+  }, [archiveJump]);
+
+  /** "+N more" on a timeline card: narrow the table to that year, then jump to it. */
+  const showYearInTable = (year: number) => {
+    setYearFilter(year);
+    setTableQuery('');
+    jumpToArchive();
+  };
+
+  const handleSearch = (r: HistorySearchResult) => {
+    if (r.kind === 'milestone') {
+      document.getElementById(`milestone-${r.id}`)?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    if (r.kind === 'year') {
+      showYearInTable(r.year);
+      return;
+    }
+    // A film title goes to the table, searched — not to a single year, since a film
+    // may have played in several.
+    setYearFilter(null);
+    setTableQuery(r.title);
+    jumpToArchive();
+  };
 
   useEffect(() => {
     (async () => {
@@ -529,13 +599,39 @@ export default function HistoryPage() {
     );
   }, [dbMilestones]);
 
+  // One row per screening date, so a film that ran for a week appears seven times.
+  // Collapse each year to distinct films — otherwise a long run eats the badge cap and
+  // the "see all N" count disagrees with the film table, which counts distinct titles.
   const screeningsByYear = useMemo(() => {
     const map = new Map<number, ArchiveRow[]>();
+    const seen = new Set<string>();
     for (const r of archive) {
+      const key = `${r.year}|${r.film_title_display.toLowerCase()}|${r.film_year ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       if (!map.has(r.year)) map.set(r.year, []);
       map.get(r.year)!.push(r);
     }
     return map;
+  }, [archive]);
+
+  // Distinct films for the page-wide search: one entry per title, with the years it played.
+  const filmIndex = useMemo(() => {
+    const map = new Map<string, { title: string; filmYear: number | null; years: number[] }>();
+    for (const r of archive) {
+      const title = r.film_title_display?.trim();
+      if (!title) continue;
+      const key = `${title.toLowerCase()}|${r.film_year ?? ''}`;
+      let e = map.get(key);
+      if (!e) {
+        e = { title, filmYear: r.film_year, years: [] };
+        map.set(key, e);
+      }
+      if (!e.years.includes(r.year)) e.years.push(r.year);
+    }
+    const out = [...map.values()];
+    for (const e of out) e.years.sort((a, b) => a - b);
+    return out;
   }, [archive]);
 
   return (
@@ -569,6 +665,11 @@ export default function HistoryPage() {
             One hundred years of opening nights, dark intermissions, scaffolding,
             and standing ovations — scroll the marquee.
           </p>
+          <HistorySearch
+            milestones={milestones}
+            films={filmIndex}
+            onSelect={handleSearch}
+          />
         </div>
       </header>
 
@@ -593,8 +694,19 @@ export default function HistoryPage() {
               milestone={m}
               side={i % 2 === 0 ? 'left' : 'right'}
               screenings={screeningsByYear.get(m.year) ?? []}
+              onSeeMore={showYearInTable}
             />
           ))}
+        </div>
+
+        <div className="relative mt-24 pt-12 border-t border-border/40">
+          <FilmArchiveTable
+            rows={archive}
+            yearFilter={yearFilter}
+            onClearYearFilter={() => setYearFilter(null)}
+            query={tableQuery}
+            onQueryChange={setTableQuery}
+          />
         </div>
 
         <div className="relative text-center mt-24 pt-12">

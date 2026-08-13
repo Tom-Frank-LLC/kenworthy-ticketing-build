@@ -30,6 +30,19 @@ function toIsoDate(v: any): string | null {
 }
 
 /**
+ * The first column after "Date" is the Kenworthy's own column in every sheet that
+ * labels its venues (80 of 100 year-sheets say exactly "Kenworthy" there). From 2006
+ * onward the workbook stops labelling venues altogether — those 20 sheets carry a bare
+ * "Date" header because by then the Kenworthy is the only theater still listed — so an
+ * unlabelled first column is the Kenworthy, not an unknown venue.
+ *
+ * Later unlabelled columns are a different thing entirely: they hold annotations
+ * ("Kenworthy closes for renovations", "*Kibbie Dome drive-in", "* First in 3-D"),
+ * not screenings, so they stay excluded.
+ */
+const DEFAULT_VENUE = 'Kenworthy';
+
+/**
  * Parse the "Full List of Movies at Palouse Theaters 1926 to 2026" workbook.
  * Each sheet = a year, columns = [Date, <Theater 1>, <Theater 2>, ...].
  * Returns one row per (date, venue, film title), splitting double features on " / ".
@@ -46,6 +59,12 @@ export function parseHistoricalWorkbook(buffer: ArrayBuffer): HistoricalRow[] {
     const header = rows[0].map((h: any) => (h == null ? '' : String(h).trim()));
     if (!header.length || header[0]?.toLowerCase() !== 'date') continue;
     const venues = header.slice(1);
+    // An unlabelled venue column is often narrower in the header row than in the data
+    // rows below it, so take the column count from the widest row in the sheet.
+    const columnCount = Math.max(
+      venues.length,
+      ...rows.map((r) => (r ? r.length : 0)),
+    ) - 1;
 
     for (let r = 1; r < rows.length; r++) {
       const row = rows[r];
@@ -54,8 +73,8 @@ export function parseHistoricalWorkbook(buffer: ArrayBuffer): HistoricalRow[] {
       if (!iso) continue;
       const year = parseInt(iso.slice(0, 4), 10);
 
-      for (let c = 0; c < venues.length; c++) {
-        const venue = venues[c];
+      for (let c = 0; c < columnCount; c++) {
+        const venue = c === 0 ? venues[0] || DEFAULT_VENUE : venues[c];
         if (!venue) continue;
         const cell = row[c + 1];
         if (cell == null || String(cell).trim() === '') continue;
