@@ -2481,6 +2481,10 @@ export type Database = {
         Args: { p_showing_id: string }
         Returns: undefined
       }
+      check_in_ticket: {
+        Args: { p_qr_code: string }
+        Returns: Json
+      }
       get_contract_signature: {
         Args: { p_request_id: string }
         Returns: {
@@ -2611,6 +2615,15 @@ export type Database = {
       resolve_account_id: {
         Args: { p_source_key: string; p_source_type: string }
         Returns: string
+      }
+      showing_attendees: {
+        Args: { p_showing_ids: string[] }
+        Returns: {
+          display_name: string | null
+          email: string | null
+          phone: string | null
+          ticket_id: string
+        }[]
       }
       showing_availability: {
         Args: { p_showing_id: string }

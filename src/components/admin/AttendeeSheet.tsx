@@ -6,9 +6,14 @@
  * Listings panel, so staff can go from "12 sold" to "which twelve" without
  * leaving the dashboard.
  *
- * Reads the same tickets → profiles path that `exportContactsCsv` walks, but
- * pulls the columns that path throws away: email, phone, seat, purchase time
- * and status. The CSV button here exports what is on screen.
+ * Contact details come from the `showing_attendees` RPC, not from embedding
+ * `profiles` in the tickets select. RLS on `profiles` restricts every row to its
+ * own owner or an admin, and PostgREST applies RLS to embedded resources too —
+ * so for a staff-only account the embed silently returned NULL and this drawer
+ * listed a roster of "Unknown" with no email or phone. The RPC returns three
+ * contact columns for tickets the caller is entitled to see, and deliberately
+ * not the marketing or Mailchimp lifetime-value columns that also live on that
+ * table. `exportContactsCsv` walks the same RPC.
  */
 
 import { useEffect, useState } from 'react';
@@ -41,7 +46,8 @@ interface AttendeeRow {
   payment_method: string | null;
   comp_recipient_name: string | null;
   comp_recipient_email: string | null;
-  profiles: { display_name: string | null; email: string | null; phone: string | null } | null;
+  /** Merged in from `showing_attendees`; not an embedded relation. */
+  contact: { display_name: string | null; email: string | null; phone: string | null } | null;
   seats: { seat_row: string | null; seat_number: number | null; section: string | null } | null;
   showings: { start_time: string } | null;
 }
@@ -55,8 +61,8 @@ const seatLabel = (s: AttendeeRow['seats']) => {
 // Comp tickets are issued to a recipient who may not be the account holder, so
 // fall back to the comp fields before giving up on a name.
 const attendeeName = (r: AttendeeRow) =>
-  r.profiles?.display_name || r.comp_recipient_name || 'Unknown';
-const attendeeEmail = (r: AttendeeRow) => r.profiles?.email || r.comp_recipient_email || '';
+  r.contact?.display_name || r.comp_recipient_name || 'Unknown';
+const attendeeEmail = (r: AttendeeRow) => r.contact?.email || r.comp_recipient_email || '';
 
 export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity }: AttendeeSheetProps) {
   const [rows, setRows] = useState<AttendeeRow[]>([]);
@@ -71,23 +77,46 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
     }
     let cancelled = false;
     setLoading(true);
-    supabase
-      .from('tickets')
-      .select(
-        'id, status, purchased_at, total_price, payment_method, comp_recipient_name, comp_recipient_email, ' +
-          'profiles(display_name, email, phone), seats(seat_row, seat_number, section), showings(start_time)'
-      )
-      .in('showing_id', showingIds)
-      .order('purchased_at', { ascending: false })
-      .then(({ data, error }) => {
+    // Two calls, in parallel: the ticket rows, and the contact details for
+    // them. They are separate because the contacts cannot come from a join —
+    // see the note at the top of this file.
+    Promise.all([
+      supabase
+        .from('tickets')
+        .select(
+          'id, status, purchased_at, total_price, payment_method, comp_recipient_name, comp_recipient_email, ' +
+            'seats(seat_row, seat_number, section), showings(start_time)'
+        )
+        .in('showing_id', showingIds)
+        .order('purchased_at', { ascending: false }),
+      supabase.rpc('showing_attendees', { p_showing_ids: showingIds }),
+    ])
+      .then(([ticketsRes, contactsRes]) => {
         if (cancelled) return;
-        if (error) {
-          console.error('AttendeeSheet:', error);
+        if (ticketsRes.error) {
+          console.error('AttendeeSheet tickets:', ticketsRes.error);
           toast.error('Could not load attendees');
           setRows([]);
-        } else {
-          setRows((data ?? []) as unknown as AttendeeRow[]);
+          setLoading(false);
+          return;
         }
+        // A contact lookup that fails degrades to names-only rather than an
+        // empty drawer: the seats and totals are still worth showing.
+        if (contactsRes.error) {
+          console.error('AttendeeSheet contacts:', contactsRes.error);
+          toast.error('Could not load attendee contact details');
+        }
+        const byTicket = new Map<string, AttendeeRow['contact']>(
+          ((contactsRes.data ?? []) as any[]).map(c => [
+            c.ticket_id as string,
+            { display_name: c.display_name, email: c.email, phone: c.phone },
+          ])
+        );
+        setRows(
+          ((ticketsRes.data ?? []) as any[]).map(
+            t => ({ ...t, contact: byTicket.get(t.id) ?? null }) as AttendeeRow
+          )
+        );
         setLoading(false);
       });
     return () => {
@@ -108,7 +137,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
       [
         attendeeName(r),
         attendeeEmail(r),
-        r.profiles?.phone ?? '',
+        r.contact?.phone ?? '',
         seatLabel(r.seats),
         r.showings?.start_time ? formatShowtime(r.showings.start_time, 'yyyy-MM-dd HH:mm') : '',
         r.purchased_at ? format(new Date(r.purchased_at), 'yyyy-MM-dd HH:mm') : '',
@@ -170,7 +199,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
                     <TableCell className="font-medium">{attendeeName(r)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       <div>{attendeeEmail(r) || '—'}</div>
-                      {r.profiles?.phone && <div>{r.profiles.phone}</div>}
+                      {r.contact?.phone && <div>{r.contact.phone}</div>}
                     </TableCell>
                     <TableCell className="text-sm">{seatLabel(r.seats)}</TableCell>
                     {multiShowing && (

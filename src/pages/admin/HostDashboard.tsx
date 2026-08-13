@@ -522,16 +522,21 @@ function AttendeesList({ showings }: { showings: any[] }) {
       .order('purchased_at', { ascending: false })
       .then(async ({ data }) => {
         const t = data || [];
-        const userIds = Array.from(new Set(t.map(x => x.user_id).filter(Boolean)));
-        let profiles: Record<string, any> = {};
-        if (userIds.length) {
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('id, display_name, email')
-            .in('id', userIds);
-          profiles = Object.fromEntries((prof || []).map(p => [p.id, p]));
+        // Names come from the showing_attendees RPC, not from reading profiles.
+        // RLS on profiles restricts every row to its own owner or an admin, so a
+        // host querying it directly got back only their own row and this list
+        // showed "Guest" for every attendee. The RPC scopes a host to the
+        // showings they are assigned to, which is the same rule that governs
+        // their access to the tickets above.
+        let contacts: Record<string, any> = {};
+        if (t.length) {
+          const { data: rows, error } = await supabase.rpc('showing_attendees', {
+            p_showing_ids: [showingId],
+          });
+          if (error) console.error('AttendeesList contacts:', error);
+          contacts = Object.fromEntries(((rows ?? []) as any[]).map(c => [c.ticket_id, c]));
         }
-        setTickets(t.map(x => ({ ...x, profile: profiles[x.user_id] })));
+        setTickets(t.map(x => ({ ...x, profile: contacts[x.id] })));
         setLoading(false);
       });
   }, [showingId]);

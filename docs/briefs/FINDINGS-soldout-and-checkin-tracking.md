@@ -52,12 +52,22 @@ redemption. A trigger covers all four paths, including any added later.
 The only SELECT policy on `tickets`:
 
 ```sql
-USING (user_id = auth.uid() OR public.is_admin())
+USING (user_id = auth.uid() OR public.has_role(auth.uid(), 'admin'))
 ```
 
+> **Correction (2026-08-12).** This document first quoted the policy as
+> `... OR public.is_admin()`, taken from the table's *original* migration. That
+> was stale: `20260217193757` dropped `is_admin()` and `profiles.role` outright
+> and recreated the policy in terms of `has_role`. `is_admin` does not exist in
+> the live database — confirmed against a schema dump. The conclusion below is
+> unaffected (an anonymous visitor still matches nothing), but the mechanism is
+> `has_role`, not a `profiles.role` lookup. See
+> `FINDINGS-staff-cannot-read-tickets.md`.
+
 For an anonymous visitor `auth.uid()` is NULL, so `user_id = NULL` evaluates to
-NULL — never true — and `is_admin()` is false. Verified as the anon role against
-both projects before any code was written:
+NULL — never true — and `has_role(NULL, 'admin')` returns false by its own first
+branch. Verified as the anon role against both projects before any code was
+written:
 
 | request                        | result                       |
 | ------------------------------ | ---------------------------- |
@@ -73,9 +83,10 @@ Consequences, both silent:
 - **`Showing.tsx`** — the quantity ceiling never engaged, and the seat map
   offered seats that were already sold. A buyer could pick a sold seat and only
   find out at checkout.
-- **`StaffPOS.tsx`** — worse. `is_admin()` reads `profiles.role`, a *different
-  table* from the `user_roles` that `has_role()` and every staff policy use. A
-  staff-only account therefore sees none of the sales it just rang up.
+- **`StaffPOS.tsx`** — worse. The policy requires `admin`, and `has_role`'s
+  hierarchy lets admin and superadmin satisfy `staff` but not the reverse, so an
+  account holding only `staff` matches no SELECT policy at all and sees none of
+  the sales it just rang up.
 
 ### Part B — `scanned_at` was simply never fetched
 
@@ -170,10 +181,12 @@ remaining tsc errors are pre-existing, in the untracked
   trigger changes sell behaviour, so it wants a deliberate staging pass first —
   in particular against a real assigned-seating showing, which the stub schema
   can only approximate.
-- **`is_admin()` reads `profiles.role` while `has_role()` reads `user_roles`.**
-  This is a latent bug well beyond this brief: it governs who can read tickets
-  at all. The dashboard evidently works today, so the admin accounts in use have
-  `profiles.role = 'admin'` set. Worth an audit; deliberately not touched here.
+- ~~`is_admin()` reads `profiles.role` while `has_role()` reads `user_roles`.~~
+  **Wrong, and since fixed.** `is_admin()` does not exist. The real defect was
+  that `tickets` had no staff SELECT policy at all, so a staff-only account
+  could sell tickets it could not read back. Fixed in
+  `20260812190000_staff_can_read_and_check_in_tickets.sql`; see
+  `FINDINGS-staff-cannot-read-tickets.md`.
 - **Comps cannot exceed capacity.** A sold-out showing now refuses even a staff
   comp, with a hint to raise the showing's capacity. That is the honest
   behaviour, but if the box office needs press/comp seats above the house count,
