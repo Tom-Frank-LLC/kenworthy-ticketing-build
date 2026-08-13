@@ -221,25 +221,21 @@ export default function FilmPassesTab() {
     }
   }
 
-  // The sticker sheet takes over the page while printing — print CSS hides
-  // everything outside .print-root, so leaving app chrome mounted underneath
-  // would still be correct, but a full-screen view is what staff expect.
-  if (sheet) {
-    return (
-      <div className="print-root space-y-4">
-        <div className="sticker-sheet__meta flex flex-wrap gap-2 print:hidden">
-          <Button onClick={() => window.print()}>
-            <Printer className="h-4 w-4 mr-1" /> Print sheet
-          </Button>
-          <Button variant="outline" onClick={() => setSheet(null)}>Done</Button>
-        </div>
-        <StickerSheet codes={sheet.codes} passType={sheet.passType} batchId={sheet.batchId} />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {/* Rendered alongside the tab rather than instead of it: StickerSheet
+          portals itself to <body>, which is what its print rule requires, and
+          returning it in place here would put it back inside #root — the bug
+          that printed a blank page. */}
+      {sheet && (
+        <StickerSheet
+          codes={sheet.codes}
+          passType={sheet.passType}
+          batchId={sheet.batchId}
+          onDone={() => setSheet(null)}
+        />
+      )}
+
       {/* Pass Types */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-display text-xl font-bold">Film Pass Types</h2>
