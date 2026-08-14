@@ -2,15 +2,13 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { toast } from 'sonner';
-import { ScanLine, Camera, Search, Film, AlertTriangle } from 'lucide-react';
+import { ScanLine, Search, Film, AlertTriangle, X } from 'lucide-react';
 import { ScanResultOverlay, type ScanResult } from '@/components/admin/ScanResultOverlay';
 import { QrScanner } from '@/components/admin/QrScanner';
 import { formatShowtime } from '@/lib/datetime';
@@ -29,6 +27,22 @@ const PASS_PREFIX = 'PASS:';
 const SHOWING_WINDOW_BEFORE_MS = 4 * 60 * 60 * 1000;
 const SHOWING_WINDOW_AFTER_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * How long the same code is ignored after it has been read.
+ *
+ * This guard has always been here, but it used to be belt-and-braces: a second
+ * scan of a pass was refused by the server as `already_admitted`, so a sticker
+ * held to the camera a beat too long cost nothing. That refusal is gone — a
+ * pass admits a party now, and the server cannot tell the holder's friend from
+ * the same sticker read twice — which makes this the *only* thing standing
+ * between one slow hand and a double deduction.
+ *
+ * Set just longer than the success card's own 2.2s dismissal, so the cooldown
+ * outlasts the confirmation staff are reading. A *different* code is never
+ * held: the friend behind them scans immediately.
+ */
+const SAME_CODE_COOLDOWN_MS = 3000;
+
 interface ScannerShowing {
   id: string;
   start_time: string;
@@ -36,7 +50,17 @@ interface ScannerShowing {
   film_pass_eligible: boolean;
 }
 
-export default function TicketScanner() {
+/**
+ * The door scanner.
+ *
+ * Rendered two ways, which is what `onExit` distinguishes. As the /admin/scanner
+ * route it is the whole page and exiting means going back to the dashboard; as
+ * an overlay opened from the POS it is a mode the till drops into and exiting
+ * means returning to the sale that is still sitting there. Either way the
+ * camera is full-screen and up on arrival, because a scanner boxed inside a
+ * card asks staff to aim a phone at a postage stamp while a queue waits.
+ */
+export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) {
   const { isStaff, isHost, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
@@ -229,10 +253,16 @@ export default function TicketScanner() {
    * A film pass at the door.
    *
    * Everything that decides the outcome happens server-side in one
-   * transaction — eligibility, double-admit, expiry, balance, and minting the
-   * seat. This function only chooses the words, and the words matter: "no
-   * balance left" and "not valid for this screening" send a patron to two very
-   * different conversations at the counter.
+   * transaction — eligibility, expiry, balance, and minting the seat. This
+   * function only chooses the words, and the words matter: "no balance left"
+   * and "not valid for this screening" send a patron to two very different
+   * conversations at the counter.
+   *
+   * There is no longer an `already_admitted` verdict to translate. A pass
+   * admits a party — the holder and whoever they brought — so a second scan for
+   * the same screening is an ordinary admission and reads as one. What guards
+   * against the *accidental* second scan is SAME_CODE_COOLDOWN_MS above, not a
+   * refusal from the server.
    */
   const redeemPass = useCallback(async (qrCode: string): Promise<ScanResult> => {
     const currentShowing = showingIdRef.current;
@@ -263,7 +293,13 @@ export default function TicketScanner() {
     const title = verdict.showing_title ?? selectedShowing?.title ?? null;
 
     switch (verdict.result) {
-      case 'admitted':
+      case 'admitted': {
+        // How many this sticker has now admitted to this screening. Shown from
+        // the second onwards, because that is the moment staff need to know
+        // whether the beep was the friend they meant to let in or the same
+        // pass read twice — the reassurance the removed double-admit refusal
+        // used to give them for free.
+        const nth = Number(verdict.admitted_for_showing ?? 0);
         return {
           status: 'valid',
           message: 'Film pass accepted — enjoy the show!',
@@ -272,15 +308,10 @@ export default function TicketScanner() {
             remaining_balance: remaining,
             admissions_left: left,
             amount_deducted: Number(verdict.amount_deducted ?? 0),
+            admission_number: Number.isFinite(nth) && nth > 1 ? nth : null,
           },
         };
-
-      case 'already_admitted':
-        return {
-          status: 'already_scanned',
-          message: 'This pass has already been used for this screening.',
-          pass: { title, remaining_balance: remaining, admissions_left: left },
-        };
+      }
 
       case 'ineligible':
         return {
@@ -371,10 +402,12 @@ export default function TicketScanner() {
     processingRef.current = false;
     setProcessing(false);
 
-    // Allow re-scanning same code after 3 seconds
+    // Release the cooldown so the same code can be presented again on purpose —
+    // a pass holder buying a second admission for the friend behind them holds
+    // up the same sticker, and that has to work.
     setTimeout(() => {
       if (lastScannedRef.current === qrCode) lastScannedRef.current = '';
-    }, 3000);
+    }, SAME_CODE_COOLDOWN_MS);
   }, [validateTicket, redeemPass, playBeep]);
 
   const handleManualSubmit = async (e: React.FormEvent) => {
@@ -389,103 +422,110 @@ export default function TicketScanner() {
   }
 
   return (
-    <div className="container py-8 px-4 max-w-2xl">
-      <div className="flex items-center gap-3 mb-2">
-        <ScanLine className="h-7 w-7 text-primary" />
-        <h1 className="font-display text-3xl font-bold">Ticket Scanner</h1>
-        <Badge variant="secondary">Gate</Badge>
-      </div>
-      <p className="text-muted-foreground mb-8">Scan QR codes to validate entry</p>
+    // Full-screen, and the camera underneath everything.
+    //
+    // This used to be a stack of cards in a 2xl container with the camera in
+    // the middle one, behind a "Start Camera Scanner" button. On the phone this
+    // actually runs on that meant two taps and a 250px viewfinder floating in a
+    // page of chrome, with the manual-entry form pushed below the fold. The
+    // door does exactly one thing, so the picture gets the whole screen and
+    // everything else is laid over it.
+    //
+    // z-[55] sits above the sticky site header (z-50) and below the verdict
+    // overlay (z-[60]), which must cover this the moment a scan resolves.
+    <div className="fixed inset-0 z-[55] bg-black text-white overflow-hidden">
+      <QrScanner onScan={handleScan} autoStart fill className="absolute inset-0" />
 
-      {/* Scanner controls */}
-      <div className="space-y-6">
+      {/* Top: who we are, how many, the way out, and which screening. The
+          gradient is what keeps this legible over an arbitrary camera image. */}
+      <div className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/90 via-black/70 to-transparent p-4 pb-10 pt-[max(1rem,env(safe-area-inset-top))] space-y-3">
+        <div className="flex items-center gap-2">
+          <ScanLine className="h-6 w-6 text-primary shrink-0" />
+          <h1 className="font-display text-xl font-bold">Ticket Scanner</h1>
+          <Badge variant="secondary" className="shrink-0">
+            {scanCount} scan{scanCount === 1 ? '' : 's'}
+          </Badge>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="ml-auto shrink-0"
+            onClick={() => (onExit ? onExit() : navigate('/admin'))}
+          >
+            <X className="h-4 w-4 mr-1" />
+            {onExit ? 'Back to POS' : 'Close'}
+          </Button>
+        </div>
+
         {/* Which screening film passes are being spent on. Tickets carry their
             own showing and ignore this entirely. */}
-        <Card className="glass">
-          <CardHeader>
-            <CardTitle className="font-display text-lg flex items-center gap-2">
-              <Film className="h-5 w-5 text-primary" /> Tonight's Screening
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Select value={showingId} onValueChange={setShowingId}>
-              <SelectTrigger aria-label="Screening being admitted">
-                <SelectValue placeholder="Choose the screening you are admitting for..." />
-              </SelectTrigger>
-              <SelectContent>
-                {showings.map(s => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {formatShowtime(s.start_time, 'h:mm a')} — {s.title}
-                    {!s.film_pass_eligible && ' (no passes)'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="space-y-2">
+          <Select value={showingId} onValueChange={setShowingId}>
+            <SelectTrigger
+              aria-label="Screening being admitted"
+              className="bg-black/60 border-white/25 text-white backdrop-blur"
+            >
+              <Film className="h-4 w-4 text-primary mr-2 shrink-0" />
+              <SelectValue placeholder="Choose the screening you are admitting for..." />
+            </SelectTrigger>
+            {/* Radix portals this to the end of <body> at z-50, which would put
+                it *under* this overlay. Lifted above both it and the verdict
+                card, the only two things that can be on screen with it. */}
+            <SelectContent className="z-[70]">
+              {showings.map(s => (
+                <SelectItem key={s.id} value={s.id}>
+                  {formatShowtime(s.start_time, 'h:mm a')} — {s.title}
+                  {!s.film_pass_eligible && ' (no passes)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            {showings.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Nothing scheduled in the next day. Tickets still scan; film passes need a
-                screening to be spent against.
-              </p>
-            ) : !showingId ? (
-              <p className="text-sm text-amber-500 flex items-start gap-1.5">
-                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                Pick a screening before scanning film passes.
-              </p>
-            ) : selectedShowing && !selectedShowing.film_pass_eligible ? (
-              <p className="text-sm text-amber-500 flex items-start gap-1.5">
-                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                This screening does not take film passes. Tickets scan normally.
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Film passes scanned now are spent on this screening
-                {selectedShowing &&
-                  ` (${formatShowtime(selectedShowing.start_time, 'EEE MMM d, h:mm a')})`}
-                . Tickets are unaffected.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Camera scanner */}
-        <Card className="glass overflow-hidden">
-          <CardHeader>
-            <CardTitle className="font-display text-lg flex items-center gap-2">
-              <Camera className="h-5 w-5 text-primary" /> Camera Scanner
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <QrScanner onScan={handleScan} className="space-y-4" />
-          </CardContent>
-        </Card>
-
-        {/* Manual entry */}
-        <Card className="glass">
-          <CardHeader>
-            <CardTitle className="font-display text-lg flex items-center gap-2">
-              <Search className="h-5 w-5 text-primary" /> Manual Entry
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleManualSubmit} className="flex gap-2">
-              <Input
-                value={manualCode}
-                onChange={e => setManualCode(e.target.value)}
-                placeholder="Enter ticket QR code..."
-                className="flex-1"
-              />
-              <Button type="submit" disabled={processing || !manualCode.trim()}>
-                Validate
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Stats */}
-        <div className="text-center text-sm text-muted-foreground">
-          {scanCount} scan(s) this session
+          {showings.length === 0 ? (
+            <p className="text-sm text-white/70">
+              Nothing scheduled in the next day. Tickets still scan; film passes need a
+              screening to be spent against.
+            </p>
+          ) : !showingId ? (
+            <p className="text-sm text-amber-400 flex items-start gap-1.5">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              Pick a screening before scanning film passes.
+            </p>
+          ) : selectedShowing && !selectedShowing.film_pass_eligible ? (
+            <p className="text-sm text-amber-400 flex items-start gap-1.5">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              This screening does not take film passes. Tickets scan normally.
+            </p>
+          ) : (
+            <p className="text-xs text-white/70">
+              Film passes scanned now are spent on this screening
+              {selectedShowing &&
+                ` (${formatShowtime(selectedShowing.start_time, 'EEE MMM d, h:mm a')})`}
+              . Tickets are unaffected.
+            </p>
+          )}
         </div>
+      </div>
+
+      {/* Bottom: the way in for a scuffed code or a handheld reader that types
+          rather than scans. Kept on screen rather than behind a toggle — it is
+          the fallback for exactly the moment the camera is not working, which
+          is the worst moment to go looking for it. */}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-4 pt-10 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <form onSubmit={handleManualSubmit} className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
+            <Input
+              value={manualCode}
+              onChange={e => setManualCode(e.target.value)}
+              placeholder="Enter ticket QR code..."
+              className="pl-9 bg-black/60 border-white/25 text-white placeholder:text-white/50 backdrop-blur"
+            />
+          </div>
+          <Button type="submit" disabled={processing || !manualCode.trim()}>
+            Validate
+          </Button>
+        </form>
       </div>
 
       {/* Verdict, centre-screen. Previously this rendered below the manual-entry

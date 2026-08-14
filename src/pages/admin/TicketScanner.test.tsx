@@ -402,11 +402,18 @@ describe('TicketScanner - film passes at the door', () => {
     expect(alert).toHaveTextContent(/used up/i);
   });
 
-  it('holds a second scan of the same pass at the same screening', async () => {
+  // A pass is a balance, not a season ticket: the holder brings a friend, each
+  // scan admits one more person, and the balance is the only limit. The
+  // `already_admitted` refusal that used to sit here — backed by a unique index
+  // on (pass_id, showing_id) — turned the theatre's own product into an error.
+  it('admits a second person on the same pass at the same screening', async () => {
     admit.mockResolvedValue({
-      result: 'already_admitted',
+      result: 'admitted',
       showing_title: 'Casablanca',
-      remaining_balance: 54,
+      amount_deducted: 6,
+      remaining_balance: 48,
+      admissions_left: 8,
+      admitted_for_showing: 2,
     });
 
     renderScanner();
@@ -414,10 +421,57 @@ describe('TicketScanner - film passes at the door', () => {
     await scanCode('PASS:abc-123');
 
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(/Already used/i);
-    // A problem must never auto-clear.
-    await new Promise(r => setTimeout(r, VALID_AUTO_DISMISS_MS + 150));
-    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(alert).toHaveTextContent(/Admit/i);
+    expect(alert).toHaveTextContent(/\$48\.00 left/);
+    // Staff are told which admission this was, because the server can no longer
+    // tell a friend from the same sticker read twice and they can.
+    expect(alert).toHaveTextContent(/2nd admission on this pass/i);
+  });
+
+  it('says nothing about a count on the first admission of the night', async () => {
+    admit.mockResolvedValue({
+      result: 'admitted',
+      showing_title: 'Casablanca',
+      amount_deducted: 6,
+      remaining_balance: 54,
+      admissions_left: 9,
+      admitted_for_showing: 1,
+    });
+
+    renderScanner();
+    await showingReady();
+    await scanCode('PASS:abc-123');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Admit/i);
+    expect(alert).not.toHaveTextContent(/admission on this pass/i);
+  });
+
+  // The only thing left guarding against one sticker held to the camera a beat
+  // too long, now that the server accepts a repeat scan as a real admission.
+  it('ignores a re-read of the identical code inside the cooldown', async () => {
+    admit.mockResolvedValue({
+      result: 'admitted',
+      showing_title: 'Casablanca',
+      amount_deducted: 6,
+      remaining_balance: 54,
+      admissions_left: 9,
+      admitted_for_showing: 1,
+    });
+
+    renderScanner();
+    await showingReady();
+    await scanCode('PASS:abc-123');
+    await waitFor(() => expect(admit).toHaveBeenCalledTimes(1));
+
+    // The same sticker, immediately: nothing reaches the server, so nothing is
+    // deducted twice.
+    await scanCode('PASS:abc-123');
+    expect(admit).toHaveBeenCalledTimes(1);
+
+    // A different code is the friend behind them and must not be held at all.
+    await scanCode('PASS:def-456');
+    await waitFor(() => expect(admit).toHaveBeenCalledTimes(2));
   });
 
   it('refuses to spend a pass when no screening is selected', async () => {

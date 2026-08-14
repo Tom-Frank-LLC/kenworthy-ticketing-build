@@ -35,6 +35,17 @@ export interface ScanResult {
     admissions_left?: number | null;
     /** What this admission cost, present only when one actually happened. */
     amount_deducted?: number | null;
+    /**
+     * Which admission this was on this pass for this screening — 2 for the
+     * first friend, 3 for the second, and null for the holder themselves.
+     *
+     * A pass admits a party, so the same sticker being scanned twice in a
+     * minute is no longer an error the server refuses. It is either a friend
+     * or a misfire, and only the person at the door can tell which, so they
+     * are told the number rather than left to infer it from a balance that
+     * dropped twice.
+     */
+    admission_number?: number | null;
   };
   message: string;
 }
@@ -47,6 +58,18 @@ export interface ScanResult {
  * auto-dismiss at all — see below.
  */
 export const VALID_AUTO_DISMISS_MS = 2200;
+
+/** "2nd", "3rd", "4th" — a count staff read at arm's length, not a bare digit. */
+function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
 
 const STYLES: Record<
   ScanStatus,
@@ -198,6 +221,11 @@ export function ScanResultOverlay({
               {typeof pass.amount_deducted === 'number' && (
                 <p className="text-sm text-muted-foreground">
                   {money(pass.amount_deducted)} deducted
+                </p>
+              )}
+              {typeof pass.admission_number === 'number' && pass.admission_number > 1 && (
+                <p className="text-sm font-medium text-amber-500">
+                  {ordinal(pass.admission_number)} admission on this pass for this screening
                 </p>
               )}
             </div>

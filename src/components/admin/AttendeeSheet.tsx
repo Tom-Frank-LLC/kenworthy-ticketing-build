@@ -14,6 +14,14 @@
  * contact columns for tickets the caller is entitled to see, and deliberately
  * not the marketing or Mailchimp lifetime-value columns that also live on that
  * table. `exportContactsCsv` walks the same RPC.
+ *
+ * How a seat was paid for is the third fetch, for a related reason. A ticket
+ * records `payment_method`, but *which film pass* bought it is not a column on
+ * tickets and deliberately is not one: `film_pass_redemptions` already ties a
+ * pass to the ticket it minted, and copying that onto the ticket would be a
+ * second place for the same fact to live and a second place for it to be
+ * wrong. So the pass is read from the redemption row and merged in here by
+ * ticket id, exactly as contacts are.
  */
 
 import { useEffect, useState } from 'react';
@@ -26,6 +34,7 @@ import { Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { formatShowtime } from '@/lib/datetime';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 interface AttendeeSheetProps {
   open: boolean;
@@ -48,6 +57,8 @@ interface AttendeeRow {
   comp_recipient_email: string | null;
   /** Merged in from `showing_attendees`; not an embedded relation. */
   contact: { display_name: string | null; email: string | null; phone: string | null } | null;
+  /** The sticker that bought this seat, merged in from `film_pass_redemptions`. */
+  passCode: string | null;
   seats: { seat_row: string | null; seat_number: number | null; section: string | null } | null;
   showings: { start_time: string } | null;
 }
@@ -57,6 +68,39 @@ const seatLabel = (s: AttendeeRow['seats']) => {
   const parts = [s.section, s.seat_row, s.seat_number].filter(v => v !== null && v !== undefined && v !== '');
   return parts.length ? parts.join('-') : '—';
 };
+
+/**
+ * How the seat was paid for, in the words the box office uses.
+ *
+ * Unmapped values fall through to a de-underscored version of whatever is on
+ * the row rather than to a placeholder: a payment method this list has not
+ * caught up with is still more useful shown than hidden, and showing it is what
+ * makes the omission visible.
+ */
+const PURCHASE_TYPES: Record<string, string> = {
+  card: 'Card',
+  cash: 'Cash',
+  online: 'Online',
+  comp: 'Comp',
+  free: 'Free',
+  film_pass: 'Film pass',
+};
+
+const purchaseType = (method: string | null) =>
+  method ? (PURCHASE_TYPES[method] ?? method.replace(/_/g, ' ')) : '—';
+
+/**
+ * Which pass, short enough to read off a screen.
+ *
+ * A sticker's identity is its `qr_code`, minted as `PASS:<uuid>` — unguessable
+ * by design and unreadable as a consequence. The tail is what staff can
+ * actually compare against the paper in front of them, and it is only ever used
+ * to tell two passes apart in one list, never to look one up: the box office
+ * searches by scanning the code or by the patron, both of which take the whole
+ * thing.
+ */
+const passLabel = (qrCode: string | null) =>
+  qrCode ? `…${qrCode.slice(-6).toUpperCase()}` : null;
 
 // Comp tickets are issued to a recipient who may not be the account holder, so
 // fall back to the comp fields before giving up on a name.
@@ -77,9 +121,10 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
     }
     let cancelled = false;
     setLoading(true);
-    // Two calls, in parallel: the ticket rows, and the contact details for
-    // them. They are separate because the contacts cannot come from a join —
-    // see the note at the top of this file.
+    // Three calls, in parallel: the ticket rows, the contact details for them,
+    // and the pass that bought each film-pass seat. They are separate because
+    // neither of the last two can come from a join — see the note at the top of
+    // this file.
     Promise.all([
       supabase
         .from('tickets')
@@ -90,8 +135,25 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
         .in('showing_id', showingIds)
         .order('purchased_at', { ascending: false }),
       supabase.rpc('showing_attendees', { p_showing_ids: showingIds }),
+      // Paged, unlike the two above. A pass may now admit several people to one
+      // screening, so redemptions are no longer bounded by "one per pass per
+      // showing" — and PostgREST truncates at 1,000 rows without saying so,
+      // which here would read as a handful of pass admissions mysteriously
+      // showing no pass at all.
+      fetchAllRows((from, to) =>
+        supabase
+          .from('film_pass_redemptions')
+          .select('ticket_id, user_film_passes!film_pass_redemptions_pass_id_fkey(qr_code)')
+          .in('showing_id', showingIds)
+          // Ordered by the primary key, not by redeemed_at: paging needs a
+          // total order, and two admissions on one pass now routinely share a
+          // timestamp to the second — which is exactly when a non-unique sort
+          // starts dropping and repeating rows across page boundaries.
+          .order('id')
+          .range(from, to)
+      ),
     ])
-      .then(([ticketsRes, contactsRes]) => {
+      .then(([ticketsRes, contactsRes, passesRes]) => {
         if (cancelled) return;
         if (ticketsRes.error) {
           console.error('AttendeeSheet tickets:', ticketsRes.error);
@@ -106,15 +168,32 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
           console.error('AttendeeSheet contacts:', contactsRes.error);
           toast.error('Could not load attendee contact details');
         }
+        // A pass lookup that fails degrades further still, and silently: the
+        // Purchase Type column already says "Film pass" from the ticket itself,
+        // so all that is lost is which one. Not worth a second red toast over
+        // the contacts one.
+        if (passesRes.error) {
+          console.error('AttendeeSheet pass redemptions:', passesRes.error);
+        }
         const byTicket = new Map<string, AttendeeRow['contact']>(
           ((contactsRes.data ?? []) as any[]).map(c => [
             c.ticket_id as string,
             { display_name: c.display_name, email: c.email, phone: c.phone },
           ])
         );
+        const passByTicket = new Map<string, string | null>(
+          (passesRes.data ?? [])
+            .filter(r => r.ticket_id)
+            .map(r => [r.ticket_id, r.user_film_passes?.qr_code ?? null])
+        );
         setRows(
           ((ticketsRes.data ?? []) as any[]).map(
-            t => ({ ...t, contact: byTicket.get(t.id) ?? null }) as AttendeeRow
+            t =>
+              ({
+                ...t,
+                contact: byTicket.get(t.id) ?? null,
+                passCode: passByTicket.get(t.id) ?? null,
+              }) as AttendeeRow
           )
         );
         setLoading(false);
@@ -131,7 +210,10 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
   const multiShowing = showingIds.length > 1;
 
   const exportCsv = () => {
-    const header = ['Name', 'Email', 'Phone', 'Seat', 'Showing', 'Purchased', 'Status', 'Paid'];
+    const header = [
+      'Name', 'Email', 'Phone', 'Seat', 'Showing', 'Purchased',
+      'Status', 'Purchase Type', 'Pass', 'Paid',
+    ];
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const body = rows.map(r =>
       [
@@ -142,6 +224,11 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
         r.showings?.start_time ? formatShowtime(r.showings.start_time, 'yyyy-MM-dd HH:mm') : '',
         r.purchased_at ? format(new Date(r.purchased_at), 'yyyy-MM-dd HH:mm') : '',
         r.status,
+        purchaseType(r.payment_method),
+        // The whole code in an export, not the six-character tail. A
+        // spreadsheet is where someone reconciles against the pass records,
+        // and the tail is an abbreviation for reading, not an identifier.
+        r.passCode ?? '',
         r.total_price ?? '',
       ]
         .map(esc)
@@ -190,6 +277,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
                   <TableHead>Seat</TableHead>
                   {multiShowing && <TableHead>Showing</TableHead>}
                   <TableHead>Purchased</TableHead>
+                  <TableHead>Purchase Type</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -211,6 +299,18 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
                     )}
                     <TableCell className="text-xs whitespace-nowrap">
                       {r.purchased_at ? format(new Date(r.purchased_at), 'MMM d, yyyy h:mm a') : '—'}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <span className="text-sm">{purchaseType(r.payment_method)}</span>
+                      {/* Which sticker, for pass admissions only. A pass may
+                          admit several people to one screening now, so this is
+                          what tells four separate seats apart as one party on
+                          one pass rather than four unrelated pass holders. */}
+                      {r.payment_method === 'film_pass' && (
+                        <div className="text-xs text-muted-foreground font-mono">
+                          {passLabel(r.passCode) ?? 'pass not recorded'}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge
