@@ -144,7 +144,7 @@ export function MobileNav() {
       >
         <div className="border-b border-accent/20 px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))]">
           <SheetTitle asChild>
-            <Link to="/" onClick={close} aria-label="The Kenworthy — home">
+            <Link to="/" onClick={close} aria-label="Kenworthy — home">
               <KenworthyLogo size="header" />
             </Link>
           </SheetTitle>

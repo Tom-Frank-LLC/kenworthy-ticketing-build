@@ -13,6 +13,8 @@ import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
 import { MobileNav } from '@/components/MobileNav';
 import { NewsletterSignup } from '@/components/NewsletterSignup';
 import { useHiringEnabled } from '@/hooks/useHiringEnabled';
+import { isCentenary } from '@/lib/centenary';
+import { cn } from '@/lib/utils';
 import { MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
 
 const navLinkClass =
@@ -83,11 +85,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="sticky top-0 z-50 glass border-b border-accent/20 pt-[env(safe-area-inset-top)]">
-        <div className="container flex h-[68px] items-center justify-between gap-2 sm:gap-4">
+        {/* The bar grows for the centenary lockup, which is a taller piece of
+            artwork — see KenworthyLogo. Written as two whole class strings
+            because Tailwind cannot see a class name that is built at runtime. */}
+        <div
+          className={cn(
+            'container flex items-center justify-between gap-2 sm:gap-4',
+            isCentenary() ? 'h-[84px]' : 'h-[68px]',
+          )}
+        >
           <div className="flex items-center gap-3 sm:gap-6 md:gap-8 min-w-0">
             {/* Full menu below `lg`, where the desktop links below are still hidden. */}
             <MobileNav />
-            <Link to="/" className="flex items-center group" aria-label="The Kenworthy — home">
+            <Link to="/" className="flex items-center group" aria-label="Kenworthy — home">
               <KenworthyLogo
                 size="header"
                 className="transition-opacity group-hover:opacity-80"
@@ -243,7 +253,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="md:text-right text-muted-foreground">
             <p className="font-serif">Performing Arts Centre</p>
             <p className="font-serif">Celebrating 100 Years · Est. 1926</p>
-            <p className="mt-3 text-xs">© {new Date().getFullYear()} The Kenworthy</p>
+            <p className="mt-3 text-xs">© {new Date().getFullYear()} Kenworthy</p>
             {/* Reachable, unadvertised. Staff know it is here; a patron who
                 finds it has nothing to gain by it. Dropped from sitemap.xml
                 for the same reason. */}

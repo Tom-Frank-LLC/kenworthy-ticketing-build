@@ -1,13 +1,25 @@
-import kenworthyFullLogo from '@/assets/kenworthy-logo.svg';
+import kenworthyStandardLogo from '@/assets/kenworthy-logo.svg';
+import kenworthyCentenaryLogo from '@/assets/KPAC-100-logo-white.svg';
+import { isCentenary } from '@/lib/centenary';
 import { cn } from '@/lib/utils';
 
 /**
- * Source artwork is black-on-transparent. The site's default surface is
- * the deep marquee black, so we invert the artwork to read as cream/white.
- * Pass `tone="on-light"` anywhere the logo sits on a pale surface
- * (e.g. printed receipts, light-themed emails, future light cards) so it
- * renders in its natural black form. `tone="auto"` follows the `.dark`
- * class on <html> for sites that toggle themes.
+ * The Kenworthy lockup.
+ *
+ * Two pieces of artwork, chosen by date: the "Celebrating 100 Years" lockup
+ * through the end of 2026, the standard wordmark from 2027. See
+ * `src/lib/centenary.ts`. The email templates make the same switch on the same
+ * date (`supabase/functions/_shared/brand.ts`), so the site and the mail a
+ * patron receives never disagree about which lockup is current.
+ *
+ * The two files are opposite colours, which is why `TONE_CLASS` is keyed on
+ * both tone *and* lockup rather than tone alone:
+ *
+ *   standard  — black on transparent, so it must be inverted to read on dark
+ *   centenary — already white, so it must be inverted to read on *light*
+ *
+ * Getting that backwards renders the logo invisible rather than wrong-looking,
+ * which is the kind of failure nobody notices in review.
  */
 type LogoTone = 'on-dark' | 'on-light' | 'auto';
 type LogoSize = 'header' | 'footer' | 'hero' | 'inline' | 'custom';
@@ -24,44 +36,79 @@ interface KenworthyLogoProps extends Omit<React.ImgHTMLAttributes<HTMLImageEleme
   size?: LogoSize;
 }
 
-const TONE_CLASS: Record<LogoTone, string> = {
-  // The lockup artwork is black-on-transparent, so it must be inverted to
-  // read as cream/white on the site's deep marquee black. On light surfaces
-  // it renders in its natural black form.
-  'on-dark': '[filter:invert(1)_brightness(0.95)]',
-  'on-light': '',
-  auto: 'dark:[filter:invert(1)_brightness(0.95)]',
+const INVERT = '[filter:invert(1)_brightness(0.95)]';
+
+const TONE_CLASS: Record<'standard' | 'centenary', Record<LogoTone, string>> = {
+  // Black artwork: invert it on dark surfaces, leave it alone on light ones.
+  standard: {
+    'on-dark': INVERT,
+    'on-light': '',
+    auto: `dark:${INVERT}`,
+  },
+  // White artwork: the reverse.
+  centenary: {
+    'on-dark': '',
+    'on-light': INVERT,
+    auto: `[filter:invert(1)] dark:[filter:none]`,
+  },
 };
 
-const SIZE_CLASS: Record<LogoSize, string> = {
-  // Sticky header — must clear the 68px bar with breathing room.
-  header: 'h-8 sm:h-9 md:h-10 lg:h-11',
-  // Footer brand block — slightly larger, anchors the column.
-  footer: 'h-12 sm:h-14 md:h-16',
-  // Hero / splash placements — dominant but not overwhelming on phones.
-  hero: 'h-16 sm:h-20 md:h-28 lg:h-36',
-  // Inline w/ body copy — receipts, emails, small cards.
-  inline: 'h-6 sm:h-7',
-  // Caller controls height entirely.
-  custom: '',
+const SIZE_CLASS: Record<'standard' | 'centenary', Record<LogoSize, string>> = {
+  standard: {
+    // Sticky header — must clear the bar with breathing room.
+    header: 'h-8 sm:h-9 md:h-10 lg:h-11',
+    // Footer brand block — slightly larger, anchors the column.
+    footer: 'h-12 sm:h-14 md:h-16',
+    // Hero / splash placements — dominant but not overwhelming on phones.
+    hero: 'h-16 sm:h-20 md:h-28 lg:h-36',
+    // Inline w/ body copy — receipts, emails, small cards.
+    inline: 'h-6 sm:h-7',
+    custom: '',
+  },
+  // The centenary lockup fits a third line ("Celebrating 100 Years") into the
+  // same artwork, so at a given height its wordmark is ~25% smaller than the
+  // standard one's. Every preset is scaled up to compensate: the wordmark stays
+  // the size a reader is used to and the extra line stays legible instead of
+  // collapsing into a grey smudge. The header bar in Layout.tsx grows to match.
+  centenary: {
+    header: 'h-10 sm:h-11 md:h-12 lg:h-14',
+    footer: 'h-14 sm:h-16 md:h-20',
+    hero: 'h-20 sm:h-24 md:h-32 lg:h-44',
+    inline: 'h-7 sm:h-9',
+    custom: '',
+  },
 };
+
+/** Intrinsic dimensions, so the browser reserves the right box before load. */
+const INTRINSIC = {
+  standard: { src: kenworthyStandardLogo, width: 2699, height: 551 },
+  centenary: { src: kenworthyCentenaryLogo, width: 3072, height: 812 },
+} as const;
 
 export function KenworthyLogo({
   tone = 'on-dark',
   size = 'custom',
   className,
-  alt = 'The Kenworthy Performing Arts Centre',
+  alt = 'Kenworthy Performing Arts Centre',
   ...rest
 }: KenworthyLogoProps) {
+  const lockup = isCentenary() ? 'centenary' : 'standard';
+  const art = INTRINSIC[lockup];
+
   return (
     <img
-      src={kenworthyFullLogo}
+      src={art.src}
       alt={alt}
-      width={2699}
-      height={551}
+      width={art.width}
+      height={art.height}
       loading="lazy"
       decoding="async"
-      className={cn('w-auto object-contain', SIZE_CLASS[size], TONE_CLASS[tone], className)}
+      className={cn(
+        'w-auto object-contain',
+        SIZE_CLASS[lockup][size],
+        TONE_CLASS[lockup][tone],
+        className,
+      )}
       {...rest}
     />
   );
