@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { brand, logoUrl, LOGO_WIDTH, sans, VENUE_NAME, VENUE_SHORT, BOX_OFFICE_ADDRESS } from "../_shared/brand.ts";
+import { brand, emailLockup, sans, VENUE_NAME, VENUE_SHORT, BOX_OFFICE_ADDRESS } from "../_shared/brand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,9 +106,10 @@ Deno.serve(async (req) => {
   // emails use, so a palette change moves the marketing mail with them. The
   // layout stays its own thing — this is a poster, not a receipt, so it keeps
   // the dark marquee background rather than the paper shell in email-layout.ts.
+  const lockup = emailLockup(SITE_ORIGIN);
   const html = `<!doctype html><html><body style="font-family:Georgia,serif;background:${brand.bg};color:${brand.cream};margin:0;padding:0;">
   <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${brand.bg}" style="max-width:600px;margin:0 auto;padding:32px;background:${brand.bg};">
-    <tr><td style="padding-bottom:24px;"><img src="${esc(logoUrl(SITE_ORIGIN))}" alt="${esc(VENUE_NAME)}" width="${LOGO_WIDTH}" style="display:block;width:${LOGO_WIDTH}px;height:auto;border:0;color:${brand.cream};" /></td></tr>
+    <tr><td style="padding-bottom:24px;"><img src="${esc(lockup.url)}" alt="${esc(VENUE_NAME)}" width="${lockup.width}" style="display:block;width:${lockup.width}px;height:auto;border:0;color:${brand.cream};" /></td></tr>
     ${poster ? `<tr><td><img src="${esc(poster)}" alt="${esc(title)}" style="width:100%;display:block;border-radius:8px;margin-bottom:24px;" /></td></tr>` : ""}
     <tr><td><h1 style="font-family:'Anton',Impact,sans-serif;text-transform:uppercase;letter-spacing:.06em;font-size:36px;color:${brand.cream};margin:0 0 8px;">${esc(title)}</h1></td></tr>
     ${when ? `<tr><td style="font-size:14px;color:${brand.gold};letter-spacing:.15em;text-transform:uppercase;padding-bottom:16px;">${esc(when)}</td></tr>` : ""}

@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
-import { z } from 'zod';
+import { rentalRequestSchema } from '@/lib/rentalRequest';
 
 const EQUIPMENT = [
   { key: 'podium_mic', label: 'Podium with mic' },
@@ -29,11 +29,6 @@ const VENUE_OPTIONS = [
   { value: 'backstage_speakeasy', label: 'Backstage Speakeasy' },
 ];
 
-const schema = z.object({
-  event_title: z.string().trim().min(1, 'Required').max(200),
-  applicant_name: z.string().trim().min(1, 'Required').max(120),
-  email: z.string().trim().email('Invalid email').max(255),
-});
 
 export default function RentalRequest() {
   const [params] = useSearchParams();
@@ -45,6 +40,7 @@ export default function RentalRequest() {
   const [form, setForm] = useState({
     event_title: '',
     proposed_date: '',
+    end_date: '',
     organization_name: '',
     applicant_name: '',
     email: '',
@@ -79,7 +75,7 @@ export default function RentalRequest() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = schema.safeParse(form);
+    const parsed = rentalRequestSchema.safeParse(form);
     if (!parsed.success) {
       toast.error(parsed.error.errors[0]?.message || 'Please check the form');
       return;
@@ -95,6 +91,9 @@ export default function RentalRequest() {
     const payload: any = {
       ...form,
       proposed_date: form.proposed_date || null,
+      // A single day is stored as no end date at all, so "has an end date"
+      // means "runs longer than a day" everywhere downstream.
+      end_date: form.end_date && form.end_date !== form.proposed_date ? form.end_date : null,
       expected_guests: form.expected_guests ? parseInt(form.expected_guests, 10) : null,
       venue_area: form.venue_area || null,
       equipment: equipmentClean,
@@ -148,9 +147,19 @@ export default function RentalRequest() {
           <Field label="Event Title *">
             <Input required value={form.event_title} onChange={e => set('event_title', e.target.value)} />
           </Field>
-          <Field label="Proposed Date">
-            <Input type="date" value={form.proposed_date} onChange={e => set('proposed_date', e.target.value)} />
-          </Field>
+          <div className="grid md:grid-cols-2 gap-4">
+            <Field label="Proposed Date" hint="The first day of your event.">
+              <Input type="date" value={form.proposed_date} onChange={e => set('proposed_date', e.target.value)} />
+            </Field>
+            <Field label="Last Day" hint="Only if your event runs more than one day.">
+              <Input
+                type="date"
+                min={form.proposed_date || undefined}
+                value={form.end_date}
+                onChange={e => set('end_date', e.target.value)}
+              />
+            </Field>
+          </div>
           <Field label="Organization / Applicant's Name">
             <Input value={form.organization_name} onChange={e => set('organization_name', e.target.value)} />
           </Field>

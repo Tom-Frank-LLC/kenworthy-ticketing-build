@@ -1668,6 +1668,7 @@ export type Database = {
           created_at: string
           departure_time: string | null
           email: string
+          end_date: string | null
           equipment: Json | null
           event_description: string | null
           event_end_time: string | null
@@ -1697,6 +1698,10 @@ export type Database = {
           signed_by_title: string | null
           signed_pdf_sha256: string | null
           special_needs: string | null
+          square_invoice_created_at: string | null
+          square_invoice_id: string | null
+          square_invoice_status: string | null
+          square_invoice_url: string | null
           status: Database["public"]["Enums"]["rental_request_status"]
           submitted_at: string
           updated_at: string
@@ -1716,6 +1721,7 @@ export type Database = {
           created_at?: string
           departure_time?: string | null
           email: string
+          end_date: string | null
           equipment?: Json | null
           event_description?: string | null
           event_end_time?: string | null
@@ -1745,6 +1751,10 @@ export type Database = {
           signed_by_title?: string | null
           signed_pdf_sha256?: string | null
           special_needs?: string | null
+          square_invoice_created_at?: string | null
+          square_invoice_id?: string | null
+          square_invoice_status?: string | null
+          square_invoice_url?: string | null
           status?: Database["public"]["Enums"]["rental_request_status"]
           submitted_at?: string
           updated_at?: string
@@ -1764,6 +1774,7 @@ export type Database = {
           created_at?: string
           departure_time?: string | null
           email?: string
+          end_date?: string | null
           equipment?: Json | null
           event_description?: string | null
           event_end_time?: string | null
@@ -1793,6 +1804,10 @@ export type Database = {
           signed_by_title?: string | null
           signed_pdf_sha256?: string | null
           special_needs?: string | null
+          square_invoice_created_at?: string | null
+          square_invoice_id?: string | null
+          square_invoice_status?: string | null
+          square_invoice_url?: string | null
           status?: Database["public"]["Enums"]["rental_request_status"]
           submitted_at?: string
           updated_at?: string
@@ -2537,6 +2552,7 @@ export type Database = {
           created_at: string
           departure_time: string | null
           email: string
+          end_date: string | null
           equipment: Json | null
           event_description: string | null
           event_end_time: string | null
@@ -2566,6 +2582,10 @@ export type Database = {
           signed_by_title: string | null
           signed_pdf_sha256: string | null
           special_needs: string | null
+          square_invoice_created_at: string | null
+          square_invoice_id: string | null
+          square_invoice_status: string | null
+          square_invoice_url: string | null
           status: Database["public"]["Enums"]["rental_request_status"]
           submitted_at: string
           updated_at: string

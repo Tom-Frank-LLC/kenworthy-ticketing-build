@@ -105,3 +105,41 @@ export function formatPlainDate(
   if (!y || !m || !d) return '';
   return format(new Date(y, m - 1, d), pattern);
 }
+
+/**
+ * Two `yyyy-MM-dd` days as one phrase: "Aug 14, 2026", "Aug 14–16, 2026",
+ * "Aug 30 – Sep 2, 2026", "Dec 30, 2026 – Jan 2, 2027".
+ *
+ * A multi-day rental is stored as a start (`proposed_date`) and an optional
+ * end (`end_date`); a single-day one has no end. Printing the pair as
+ * "Aug 14, 2026 – Aug 16, 2026" repeats the month and year at every reader,
+ * so the shared parts are said once.
+ *
+ * The server's twin is `formatDateSpan` in
+ * supabase/functions/_shared/rental_invoice.ts, which writes the same phrase
+ * onto the Square invoice. If the two disagree, the invoice and the contract
+ * describe different bookings.
+ */
+export function formatPlainDateRange(
+  start: string | null | undefined,
+  end?: string | null,
+  { month = 'short' }: { month?: 'short' | 'long' } = {},
+): string {
+  const M = month === 'long' ? 'MMMM' : 'MMM';
+  const single = formatPlainDate(start, `${M} d, yyyy`);
+  if (!single) return '';
+
+  const a = start!.slice(0, 10);
+  const b = end?.slice(0, 10);
+  if (!b || b === a || !formatPlainDate(b)) return single;
+
+  const [ay, am] = a.split('-');
+  const [by, bm] = b.split('-');
+  if (ay === by && am === bm) {
+    return `${formatPlainDate(a, `${M} d`)}–${formatPlainDate(b, 'd')}, ${ay}`;
+  }
+  if (ay === by) {
+    return `${formatPlainDate(a, `${M} d`)} – ${formatPlainDate(b, `${M} d`)}, ${ay}`;
+  }
+  return `${single} – ${formatPlainDate(b, `${M} d, yyyy`)}`;
+}

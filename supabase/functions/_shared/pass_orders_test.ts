@@ -38,8 +38,10 @@ import {
 function assertOnlyImageIsTheLogo(html: string, context: string) {
   const srcs = [...html.matchAll(/<img[^>]*\ssrc="([^"]*)"/g)].map((m) => m[1]);
   assertEquals(srcs.length, 1, `${context}: expected only the logo, got ${srcs.join(', ')}`);
+  // Either lockup — brand.ts swaps the standard one for the centenary artwork
+  // by date, so pinning to a single filename would fail every January.
   assertEquals(
-    srcs[0].endsWith('/email-logo.png'),
+    /\/email-logo(-centenary)?\.png$/.test(srcs[0]),
     true,
     `${context}: the one image must be the wordmark, got ${srcs[0]}`,
   );

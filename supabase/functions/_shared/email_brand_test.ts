@@ -18,7 +18,7 @@
 
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 
-import { brand, logoUrl, VENUE_NAME } from './brand.ts';
+import { brand, emailLockup, VENUE_NAME } from './brand.ts';
 import { buildEmailHtml, buildEmailText, buildSmsBody, buildSubject } from './notify.ts';
 import { buildAuthEmailHtml, buildAuthEmailText, AUTH_EMAIL_COPY } from './auth-email.ts';
 import {
@@ -190,11 +190,36 @@ Deno.test('the SMS uses the short form, since every character is billed', () => 
 
 Deno.test('every email carries the logo from a stable absolute URL', () => {
   for (const [name, html] of Object.entries(HTML_EMAILS)) {
-    assert(html.includes(logoUrl()), `${name} is missing the wordmark`);
+    assert(html.includes(emailLockup().url), `${name} is missing the wordmark`);
     // Gmail drops SVG and strips data: URIs — both render as a broken image.
     assert(!html.includes('<img src="data:'), `${name} embeds a data: URI`);
     assert(!html.includes('.svg"'), `${name} references an SVG`);
   }
+});
+
+// --- the centenary lockup ---------------------------------------------------
+
+Deno.test('the centenary lockup runs through the end of 2026, then retires itself', () => {
+  const at = (iso: string) => emailLockup('https://x.test', new Date(iso));
+
+  // Mid-centenary.
+  assertEquals(at('2026-08-14T12:00:00Z').url, 'https://x.test/email-logo-centenary.png');
+  // 11:59pm on New Year's Eve, Pacific — still the hundredth year.
+  assertEquals(at('2027-01-01T07:59:00Z').url, 'https://x.test/email-logo-centenary.png');
+  // Midnight, Pacific. Over.
+  assertEquals(at('2027-01-01T08:00:00Z').url, 'https://x.test/email-logo.png');
+  assertEquals(at('2027-06-01T12:00:00Z').url, 'https://x.test/email-logo.png');
+});
+
+Deno.test('the two lockups live at separate URLs, so a sent email never changes', () => {
+  // An email sent during the centenary must keep rendering the centenary
+  // artwork forever. That only holds if the switchover changes the URL rather
+  // than the bytes behind one URL.
+  const during = emailLockup('https://x.test', new Date('2026-08-14T12:00:00Z'));
+  const after = emailLockup('https://x.test', new Date('2027-02-01T12:00:00Z'));
+  assert(during.url !== after.url, 'both lockups resolve to the same URL');
+  // The centenary lockup carries a third line and is shown larger.
+  assert(during.width > after.width, 'centenary lockup is not given more room');
 });
 
 Deno.test('every email draws its colours from brand.ts', () => {
