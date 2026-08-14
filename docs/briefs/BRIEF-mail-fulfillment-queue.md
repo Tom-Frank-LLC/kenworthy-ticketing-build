@@ -1,6 +1,8 @@
 # Brief: Mail fulfilment queue — a posted pass is not a mailed pass
 
-**Status:** 🟢 Ready to build — open decisions resolved by Tom, August 13 2026
+**Status:** ✅ Shipped to production August 13 2026 — `999d5bb`, migration
+`20260813210000`. Tom confirmed Mark posted works end to end. One item deferred,
+see *Still open*.
 **Date:** August 13, 2026
 **Requested by:** Tom — "add a mail queue after activation for those passes, that doesn't leave the queue until the staff/admin user manually clicks it to confirm mailing."
 
@@ -209,3 +211,36 @@ Additive, so the existing `data.orders` readers keep working. Include `fulfilled
 4. Admin UI, then counter UI.
 5. Integration pass on staging with a real purchase.
 6. Production: migration first, then function, then frontend — in that order, so the frontend never ships against a database that lacks the columns.
+
+---
+
+## What shipped, and where it lives
+
+| Piece | File |
+|---|---|
+| Columns, constraint, partial index, no backfill | `supabase/migrations/20260813210000_mail_fulfillment_queue.sql` |
+| `mark_posted` action + `queue` returning `awaiting_post` | `supabase/functions/film-pass-checkout/index.ts` |
+| "It's in the mail" email (pure, Deno-tested) | `supabase/functions/_shared/pass_orders.ts` |
+| The card, shared by counter and admin | `src/components/admin/MailQueueCard.tsx` |
+| Age/label helpers (`describeAge`, vitest) | `src/lib/passOrders.ts` |
+
+Built as specced, with one thing the spec did not anticipate:
+
+**The plain-text email disagreed with the HTML.** The existing Deno suite asserts
+the "cannot be used to book online" rule appears in *both* renderings of a pass
+email. The new notice stated it only in the HTML, and the test caught it. Fixed
+in the text builder rather than by relaxing the assertion — the rule is exactly
+the thing a patron discovers at the door if the email omits it.
+
+**Verification note for whoever ships the next change here:** the shared
+`MailQueueCard` is imported by two lazily-loaded routes, so the bundler emits it
+as its own chunk (`MailQueueCard-*.js`) rather than folding it into
+`AdminDashboard-*.js` or `StaffPOS-*.js`. Grepping the route chunk for its
+strings finds nothing and looks like a failed deploy. Grep the shared chunk.
+
+## Still open
+
+**Staleness nudge.** Unchanged from the spec above: the queue shows a plain
+relative age ("activated 3 days ago") with no threshold and no colour, because
+nobody has chosen the number of days at which an unposted envelope becomes
+alarming. If watching the real queue produces that number, add the warning then.
