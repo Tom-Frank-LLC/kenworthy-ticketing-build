@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   VENUE_TIME_ZONE,
+  formatPlainDate,
+  formatPlainDateRange,
   formatShowtime,
   instantToVenueLocalInput,
   venueDayKey,
@@ -76,5 +78,50 @@ describe('admin round-trip', () => {
     expect(venueLocalToInstant('2026-12-20T13:00').toISOString()).toBe(
       '2026-12-20T21:00:00.000Z',
     );
+  });
+});
+
+describe('formatPlainDate', () => {
+  it('renders a DATE column as the day it says, west of Greenwich', () => {
+    // `new Date('2026-08-14')` is UTC midnight, which is 5 PM on the 13th
+    // here. A rental booked for the 14th must never print as the 13th on the
+    // contract the renter signs.
+    expect(formatPlainDate('2026-08-14')).toBe('August 14, 2026');
+  });
+});
+
+describe('formatPlainDateRange', () => {
+  it('says a single day once', () => {
+    expect(formatPlainDateRange('2026-08-14')).toBe('Aug 14, 2026');
+    expect(formatPlainDateRange('2026-08-14', null)).toBe('Aug 14, 2026');
+    // An end equal to the start is the same one-day booking, not a range.
+    expect(formatPlainDateRange('2026-08-14', '2026-08-14')).toBe('Aug 14, 2026');
+  });
+
+  it('shares the month and year across a span', () => {
+    expect(formatPlainDateRange('2026-08-14', '2026-08-16')).toBe('Aug 14–16, 2026');
+    expect(formatPlainDateRange('2026-08-30', '2026-09-02')).toBe('Aug 30 – Sep 2, 2026');
+    expect(formatPlainDateRange('2026-12-30', '2027-01-02')).toBe('Dec 30, 2026 – Jan 2, 2027');
+  });
+
+  it('spells the month out when asked', () => {
+    expect(formatPlainDateRange('2026-08-14', '2026-08-16', { month: 'long' }))
+      .toBe('August 14–16, 2026');
+  });
+
+  it('agrees with the invoice, which writes the same phrase in the edge function', () => {
+    // supabase/functions/_shared/rental_invoice.ts formatDateSpan — kept in
+    // step by rental_invoice_test.ts, which asserts these exact strings.
+    expect(formatPlainDateRange('2026-08-14', '2026-08-16', { month: 'long' }))
+      .toBe('August 14–16, 2026');
+    expect(formatPlainDateRange('2026-08-30', '2026-09-02', { month: 'long' }))
+      .toBe('August 30 – September 2, 2026');
+    expect(formatPlainDateRange('2026-12-30', '2027-01-02', { month: 'long' }))
+      .toBe('December 30, 2026 – January 2, 2027');
+  });
+
+  it('has nothing to say without a start date', () => {
+    expect(formatPlainDateRange(null, '2026-08-16')).toBe('');
+    expect(formatPlainDateRange('', null)).toBe('');
   });
 });
