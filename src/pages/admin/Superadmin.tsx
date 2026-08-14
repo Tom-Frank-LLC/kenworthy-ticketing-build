@@ -2,16 +2,31 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { invokeFunction } from '@/lib/functions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Shield, ShieldCheck, X, Plus, Image as ImageIcon } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Shield, ShieldCheck, X, Plus, Image as ImageIcon, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
 
 const ROLES = ['superadmin', 'admin', 'staff', 'host', 'regular_user'] as const;
 type Role = typeof ROLES[number];
+
+/**
+ * Roles the invite flow will assign. `regular_user` is missing on purpose — the
+ * signup trigger stamps it automatically, so inviting somebody *as* one is not
+ * a thing anyone means to do. The edge function rejects it too; this list only
+ * keeps the mistake off the screen.
+ */
+const INVITABLE_ROLES = ['staff', 'admin', 'host', 'superadmin'] as const;
+type InvitableRole = typeof INVITABLE_ROLES[number];
 
 const ROLE_COLOR: Record<Role, string> = {
   superadmin: 'bg-primary text-primary-foreground',
@@ -31,6 +46,12 @@ export default function Superadmin() {
   const [q, setQ] = useState('');
   const [refetching, setRefetching] = useState(false);
   const [refetchSummary, setRefetchSummary] = useState<string | null>(null);
+
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [inviteRole, setInviteRole] = useState<InvitableRole>('staff');
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -105,6 +126,31 @@ export default function Superadmin() {
     }
   }
 
+  async function invite(e: React.FormEvent) {
+    e.preventDefault();
+    setInviting(true);
+    try {
+      const res = await invokeFunction<{ created: boolean; email: string; role: string }>(
+        'invite-staff',
+        { email: inviteEmail, display_name: inviteName, role: inviteRole },
+      );
+      toast.success(
+        res.created
+          ? `Invited ${res.email} as ${res.role} — they'll get an email to set a password.`
+          : `${res.email} already had an account — granted ${res.role}.`,
+      );
+      setInviteOpen(false);
+      setInviteEmail('');
+      setInviteName('');
+      setInviteRole('staff');
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Could not send that invitation');
+    } finally {
+      setInviting(false);
+    }
+  }
+
   if (authLoading || !isSuperadmin) return null;
 
   return (
@@ -121,12 +167,77 @@ export default function Superadmin() {
           </p>
         </header>
 
-        <Input
-          placeholder="Search by email or name…"
-          value={q}
-          onChange={e => setQ(e.target.value)}
-          className="max-w-md"
-        />
+        <div className="flex flex-wrap gap-2 items-center">
+          <Input
+            placeholder="Search by email or name…"
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            className="max-w-md"
+          />
+          <Button onClick={() => setInviteOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-2" /> Invite staff member
+          </Button>
+        </div>
+
+        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+          <DialogContent className="sm:max-w-md">
+            <form onSubmit={invite}>
+              <DialogHeader>
+                <DialogTitle className="font-display uppercase">Invite staff member</DialogTitle>
+                <DialogDescription className="font-serif">
+                  Creates their account and assigns the role. They receive an email with a link to
+                  set a password, then sign in at /auth. If they already have an account — a past
+                  ticket buyer, say — the role is added to it rather than making a second one.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="invite-email">Email</Label>
+                  <Input
+                    id="invite-email"
+                    type="email"
+                    required
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    placeholder="name@example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="invite-name">Display name <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Input
+                    id="invite-name"
+                    value={inviteName}
+                    onChange={e => setInviteName(e.target.value)}
+                    placeholder="Jane Doe"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="invite-role">Role</Label>
+                  <Select value={inviteRole} onValueChange={v => setInviteRole(v as InvitableRole)}>
+                    <SelectTrigger id="invite-role">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INVITABLE_ROLES.map(role => (
+                        <SelectItem key={role} value={role}>{role}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setInviteOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={inviting || !inviteEmail.trim()}>
+                  {inviting ? 'Sending…' : 'Send invitation'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <Card className="glass">
           <CardContent className="p-4 space-y-2">
