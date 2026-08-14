@@ -99,7 +99,10 @@ export function UpcomingList({
         {view === 'calendar' ? (
           <MonthCalendar items={items} onSelect={handleCalendarPick} />
         ) : (
-        <div className="grid lg:grid-cols-[1fr_1.2fr] gap-6 lg:gap-10">
+        // The preview is itself two columns now (portrait poster + info), so it
+        // needs more room than 1.2fr left it — at the old ratio the poster
+        // squeezed the synopsis into a gutter.
+        <div className="grid lg:grid-cols-[1fr_1.8fr] gap-6 lg:gap-10">
           {/* List */}
           {/* min-w-0: grid items default to min-width:auto, which let a long
               title push this column past the viewport (112px of horizontal
