@@ -1,6 +1,6 @@
 # Brief (for Claude Code): Generalize pass eligibility (festival passes + per-showing use limits)
 
-**Status:** 🟢 Shipped to **staging** and verified end to end through the real UI, August 14, 2026, from `feat/pass-eligibility` (PR #52). **Production not done.** See **Results** at the end of this file for the decisions taken, what changed, how each claim was verified, and the deploy ordering this change requires.
+**Status:** ✅ Shipped to **staging and production**, August 14, 2026 (PR #52, merged as `e216dfa`). Verified end to end on staging through the real UI, and on production by row counts and the live scanner query. See **Results** at the end of this file for the decisions taken, what changed, how each claim was verified, and the deploy ordering this change requires.
 **Date:** August 14, 2026
 **Requested by:** Tom — add a **festival pass** (usable at a discount across a multi-day/-week festival's screenings, **not** redeemable on non-festival screenings). Rather than a one-off, generalize the model so any pass type can be scoped to specific showings, and let staff cap uses per showing.
 
@@ -150,9 +150,35 @@ This is the direct cost of dropping the column in the same release rather than k
 - Merge PR #52 to `main` **before** touching production, so any concurrent deploy already contains the frontend change. This is the real fix; the ordering alone is not enough when more than one person deploys.
 - Immediately before step 3, re-check `wrangler deployments list` and confirm the live version is still the one deployed in step 2. If it is not, stop and redeploy rather than dropping the column.
 
-# Production — still to do
+# Production — done
 
-1. **Deactivate `first test pass`.** Prod has two ACTIVE types (`10-film pass`, `first test pass`). The migration flags every active type as standard and backfills it onto every eligible screening, which would make a leftover test pass redeemable at every standard film. Decided: set it inactive first.
-2. **Confirm `20260814085500` (multi-admit) is applied to prod** before pushing. If it is not, prod still has the unique `(pass_id, showing_id)` index, which contradicts `per_showing_use_limit`.
-3. Size the backfill from a **privileged** connection — an anon count of `showings` is meaningless, RLS hides most rows.
-4. Then the three steps, with the guard above.
+Ran in the documented order, from a tree byte-identical to `origin/main`, with PR #52 merged **first** so a concurrent deploy could not reintroduce an older frontend.
+
+**Before anything — sized the work from a privileged dump**, not an anon count:
+
+| | |
+|---|---|
+| showings | 1,790 (**1,109** with `film_pass_eligible = true`) |
+| pass types | 2, **both active** |
+| issued passes | 41 |
+| redemptions | 5 |
+
+Confirmed `20260814085500` (multi-admit) was already applied, so `per_showing_use_limit` was not fighting a unique index.
+
+**The test-pass problem, which staging could not have shown.** Prod carried `first test pass` alongside the real `10-film pass`, both active — so `093200`'s seed would have flagged both and given the artefact **1,109 eligibility rows**, making it redeemable at every standard film. Handled by `20260814093250_retire_the_test_pass_type.sql`: deactivate and unflag, and delete its eligibility rows. Deactivated rather than deleted because 41 pass rows exist and some may point at it. Reproduced the exact hazard in a throwaway Postgres seeded to the production shape, confirmed the fix touches only the test pass, is idempotent, and is a clean no-op on staging.
+
+**The run:**
+
+1. `093200` + `093250` → **1,109** eligibility rows, all against `10-film pass`; **0** against the retired type, which is now inactive and invisible to anon.
+2. Built from `origin/main`; five pre-deploy checks passed (prod URL baked in, **no staging URL**, no lovable, no lbgk, no dropped-column reference in any asset). Deployed worker version `d4f7b17a-b437-4742-b68c-cfc1118329ab`, bundle `index-DCzuXy5K.js`. Rollback point captured beforehand: `68015273-8d29-4d36-8e34-67167e58f08b`.
+3. **Re-checked the live worker version was still mine** — the guard the staging clobbering taught us — then applied `093300`.
+
+**After:** `film_pass_eligible` returns `42703` on both environments; the scanner's exact nested query returns rows on production; the deployed production scanner chunk references `pass_type_showings` and not the dropped column. CLI relinked to staging.
+
+## One caveat on verifying a deploy
+
+Cloudflare edge-caches the HTML, so `curl` of the bare URL can report an older `index-*.js` for a few minutes after a correct deploy. `curl -H 'Cache-Control: no-cache'` reads through to the origin. Check `wrangler deployments list` for the authoritative live version — that is what distinguished a real clobbering (a different version id) from a stale edge copy (same id, old HTML).
+
+## Left for the box office
+
+Production has **no screenings tagged for anything but the standard pass**, which is exactly the old behaviour carried across. Creating the festival pass itself is a box-office decision: make the type under Admin → Film Passes (discounted per-admission price, optional uses-per-screening), then tag its run in **Screenings & Passes**.
