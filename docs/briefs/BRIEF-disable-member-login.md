@@ -1,6 +1,6 @@
 # Brief: Turn off patron login (staff/admin-only auth), keep the data model
 
-**Status:** ✅ Implemented August 13, 2026 — see **Results** at the end of this file for what changed, what the code contradicted, and the two manual steps still outstanding.
+**Status:** ✅ Shipped to staging and production, August 14, 2026. Nothing outstanding. See **Results** at the end of this file for what changed, what the code contradicted, and how each claim was verified.
 **Date:** August 13, 2026
 **Requested by:** Tom — patrons no longer log in; the login area is staff/admin/superadmin only. Turn the membership capability *off*, don't delete it — Kenworthy will likely reactivate it when they launch a membership program.
 
@@ -78,7 +78,7 @@ Gate all of the above behind a single flag — client build-time `VITE_MEMBER_AC
 
 # Results — implemented August 13, 2026
 
-**Status:** 🟢 Implemented behind `MEMBER_ACCOUNTS`, default off. Not deployed; Supabase Auth toggle still to be flipped by hand (see Remaining).
+**Status:** ✅ Live on staging and production behind `MEMBER_ACCOUNTS`, default off. Self-signup disabled on both projects. Guest checkout confirmed working afterwards.
 
 Decisions taken: #1 footer staff link, #3 dormant routes left registered + unlinked, #4 flag. #2 dissolved on inspection — see below.
 
@@ -182,14 +182,37 @@ flag, and that function was explicitly out of scope.
   (the nav). `dist/` was rebuilt flag-off afterwards so no flag-on bundle is
   left sitting there.
 
-## Remaining — the Supabase side (corrected against the live API and this repo)
+## Shipped — August 14, 2026
+
+Both environments are live from `af105c3`; `origin/main` and `origin/staging`
+are level at that commit and the working tree is clean.
+
+| | Staging `rpqzrpboyhshdrfdwayk` | Production `vlmslygnimfbamrtwvyo` |
+|---|---|---|
+| Worker version | `db6bf62c` | `3c3dd77b` (rollback: `60621825`) |
+| Entry chunk | `index-30RtCOnx.js` | `index-ekROYe7I.js` |
+| Functions | ticket-checkout, send-ticket-confirmation, film-pass-checkout | same |
+| Self-signup | `422 signup_disabled` | `422 signup_disabled` |
+
+**The `createUser` bypass is confirmed in practice, not just on paper.** Tom ran
+a guest checkout after self-signup was disabled on both projects and it worked.
+That was the one claim in this brief that had only been established by reading
+code, and the one with the worst failure mode — if the admin API had respected
+the project toggle, ticket sales would have stopped, with the symptom appearing
+at the customer's checkout rather than anywhere a deploy would show it. It does
+not. Guest checkout keeps creating buyer profiles with self-signup off.
+
+The two "must be done by hand" items below are **done**; the detail is kept
+because it is the reference for reversing any of it.
+
+## Reference — the Supabase side (corrected against the live API and this repo)
 
 Project refs, confirmed in `docs/RUNBOOK-deploy-staging-prod.md` and both env
 files: **staging `rpqzrpboyhshdrfdwayk`**, **prod `vlmslygnimfbamrtwvyo`**.
 Note `supabase/config.toml` pins `project_id` to *prod*, and the CLI link moves —
 pass `--project-ref` explicitly on every command rather than trusting the link.
 
-### 1. Turn off self-signup on both projects
+### 1. Turn off self-signup on both projects — ✅ done via Authentication → Sign In / Providers
 
 Dashboard: Authentication → Sign In / Providers → **Allow new users to sign up** → off.
 
@@ -220,7 +243,7 @@ this setting, so guest checkout keeps creating buyer profiles.
 
 Absent reads as off, which is the intended state, and `flags_test.ts` pins it.
 
-### 3. Redeploy — the function list, verified by grep
+### 3. Redeploy — the function list, verified by grep — ✅ done on both projects
 
 `_shared/deliver.ts` gained an import (`flags.ts`), so every function bundling it
 drifts until redeployed. Actual importers:
