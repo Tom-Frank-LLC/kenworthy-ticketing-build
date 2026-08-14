@@ -1,8 +1,51 @@
 # Runbook: Square production cutover
 
-**Written:** August 14, 2026, the day before cutover.
+**Written:** August 14, 2026. **Cutover completed the same day** — see status below.
 **Companion to:** `docs/briefs/BRIEF-square-production-cutover.md` (the ask).
 This file records what was *verified*, not what was assumed.
+
+## STATUS: live on production since 2026-08-14
+
+```
+PROD     sq0idp-gimxBVaATLLQetsP7qa_7g   LT3WAR885FA1J   production
+STAGING  sandbox-sq0idb-…                LRWDNGD4FX73S   sandbox
+```
+
+Verified by calling `get_config` on two independent functions (`ticket-checkout`,
+`film-pass-checkout`) on each project. The production **access token** was
+separately proven by loading the Admin → Labor roster, a real read against the
+live Square host — `get_config` alone cannot prove a token works, because it only
+reports which credentials were *resolved*, never calling Square.
+
+The production values were set on the **unprefixed** secrets
+(`SQUARE_ACCESS_TOKEN` / `_APPLICATION_ID` / `_LOCATION_ID`) rather than on
+`SQUARE_PRODUCTION_*`. That works — the shared config falls back to unprefixed
+names — but see the rollback warning, because it has a consequence.
+
+`SQUARE_ENVIRONMENT` has been **deleted** from both projects.
+
+### Two traps hit during the cutover, both worth remembering
+
+1. **Setting the credentials while `SQUARE_ENV` was still `sandbox`** put the
+   site in a broken half-state: production token against the sandbox host, every
+   payment path 401ing, card form unable to initialise. It is a real outage
+   window. Credentials and the flag should be changed back to back, in that
+   order, and `get_config` checked immediately after.
+2. **`SQUARE_ENVIRONMENT` is not the switch.** It was set to `production` first
+   and nothing happened, because no code reads it. The switch is `SQUARE_ENV`.
+   This is why it has now been deleted.
+
+### ⚠️ Rollback by flag alone no longer works
+
+Prod holds **no sandbox credentials**. Setting `SQUARE_ENV=sandbox` would point
+production credentials at the sandbox host — the broken half-state above, not a
+rollback.
+
+To restore a working two-way switch: set `SQUARE_PRODUCTION_*` to the current
+production values, then restore the unprefixed three to the sandbox values (they
+are still on staging as `SQUARE_SANDBOX_ACCESS_TOKEN` / `_LOCATION_ID` and
+`SQUARE_APPLICATION_ID`). Then the flag switches cleanly in both directions.
+**Until that is done, rolling back means re-entering credentials by hand.**
 
 ## The model
 
@@ -163,16 +206,20 @@ curl: prod now answers `401 Unauthorized` (the config loads, then the auth gate
 rejects) where the old code answered `500 SQUARE_SANDBOX_ACCESS_TOKEN not
 configured` before reaching auth.
 
-## Two things NOT verified
+## Still NOT verified
 
-1. **The admin-gated catalog pull was never executed end-to-end.** Every action
-   in this function requires an admin JWT, and minting one needs the service_role
-   key, which was blocked in this session. Booting and resolving config is proven;
-   *the Square catalog call itself is not*. **Click "Pull from Square" on staging
-   before the cutover** — it should succeed and toast `(sandbox)`.
-2. **The frontend fix is not live on prod.** See below.
+**The catalog pull has not been executed end-to-end.** Every action in
+`square-catalog-sync` requires an admin JWT, and minting one needs the
+service_role key, which was blocked in this session. Booting, config resolution,
+and the production access token (via the Labor roster) are all proven; *the
+catalog call itself is not*. Click **Pull from Square** in the admin UI — the
+toast now names the environment the server resolved, so it should read
+`(production)`.
 
-## ⚠️ Concurrent-deploy collision — the frontend fix did not stick
+Resolved: the frontend fix is live as of `f6946942` (see below), and the Labor
+roster confirmed the production token.
+
+## Concurrent-deploy collision — RESOLVED, but keep the lesson
 
 The prod Worker was deployed three times within 20 seconds today
 (18:35:01, 18:35:19, 18:35:21 UTC) from more than one session. The build
@@ -182,22 +229,34 @@ was **overwritten two seconds later** by version `68015273-…`, built from a
 different branch. The live site serves `index-CJi4KOYp.js`, which does **not**
 contain the fix.
 
-This was not retried, to avoid clobbering the other session's intended deploy.
+It was overwritten twice more by other sessions before finally landing as version
+`f6946942-6b1a-4292-a66d-5764d5819f4b` (`index-UITk6SR4.js`), confirmed live by
+fetching the admin chunk and grepping for the new code.
 
-**Consequence:** the *functional* fix is live (it is in the edge function, which
-deployed cleanly). Only the improved error text is missing — if a Square secret
-is wrong tomorrow, the Concessions toast will still read "non-2xx".
+**A second hazard surfaced while re-landing it.** The worktree built from a local
+`main` that was **18 commits behind `origin/main`** — including a security fix
+(admin → superadmin escalation, #59). Deploying that build would have silently
+reverted all of it on production. Always `git fetch` and check
+`git rev-list --left-right --count origin/main...HEAD` before building a deploy;
+a green build proves nothing about currency.
 
-**To land it**, once no other session is deploying, from `main`:
+Note the related divergence: the edge function was deployed straight to prod
+before its commit reached `origin/main`, so for several hours **production ran
+code that was not on the trunk**. Anyone redeploying `square-catalog-sync` from
+`main` in that window would have silently re-broken the concessions pull. Push
+first, then deploy — or at minimum, push immediately after.
+
+Two checks worth keeping permanently:
 
 ```bash
+git fetch origin && git rev-list --left-right --count origin/main...HEAD  # behind ahead
 npm run build:production
-grep -rl "vlmslygnimfbamrtwvyo" dist/assets && echo OK   # runbook gate
+grep -rl "vlmslygnimfbamrtwvyo" dist/assets && echo OK                    # env gate
 npx wrangler deploy
 curl -s https://kenworthy-ticketing-build.mrtomfrank.workers.dev/ \
-  | grep -o 'assets/index-[^"]*\.js'                     # must match dist/index.html
+  | grep -o 'assets/index-[^"]*\.js'    # MUST equal dist/index.html's hash
 ```
 
-That last line is the step worth keeping: this deploy *reported success* while
-serving someone else's build. **A successful `wrangler deploy` is not evidence
-that your build is the one being served — compare the hash.**
+That last line is the one to keep: a deploy *reported success* while serving
+someone else's build. **A successful `wrangler deploy` is not evidence that your
+build is the one being served — compare the hash.**
