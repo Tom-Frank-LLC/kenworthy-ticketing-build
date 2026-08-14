@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,18 @@ interface VenueSeat {
 
 type Mode = 'production' | 'showing';
 
+/**
+ * Lets the parent form persist the painted map to a showing that did not exist
+ * when the painting was done. The seat grid itself never needed a showing —
+ * venue_seats supply it — but showing_seat_tiers rows are keyed on showing_id,
+ * so writing has to wait for the insert. Painting no longer does.
+ */
+export interface SeatTierEditorHandle {
+  /** Checked before the showing is inserted, so a rejection cannot strand a half-created row. */
+  validate: () => boolean;
+  persist: (showingId: string) => Promise<boolean>;
+}
+
 interface SeatTierEditorProps {
   mode: Mode;
   productionType?: 'movie' | 'event' | 'concert';
@@ -47,14 +59,14 @@ function tempId() {
   return 'tmp-' + Math.random().toString(36).slice(2, 10);
 }
 
-export function SeatTierEditor({
+export const SeatTierEditor = forwardRef<SeatTierEditorHandle, SeatTierEditorProps>(function SeatTierEditor({
   mode,
   productionType,
   productionId,
   showingId,
   venueId,
   seedFromProduction,
-}: SeatTierEditorProps) {
+}: SeatTierEditorProps, ref) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [seats, setSeats] = useState<VenueSeat[]>([]);
@@ -62,6 +74,12 @@ export function SeatTierEditor({
   const [seatMap, setSeatMap] = useState<Record<string, string>>({}); // venue_seat_id -> tier localId
   const [activeTier, setActiveTier] = useState<string | null>(null);
   const [resolvedVenueId, setResolvedVenueId] = useState<string | null>(venueId || null);
+  // True once the operator has touched a tier or a seat. The load effect below
+  // reacts to seedFromProduction, which legitimately changes the moment a movie
+  // is picked in the parent form — and reloading then overwrote painting already
+  // done with the freshly seeded template, losing it without a word. Their work
+  // outranks the template, so once it exists the effect leaves it alone.
+  const dirtyRef = useRef(false);
 
   // Resolve venue: explicit > the default assigned-seat venue
   useEffect(() => {
@@ -85,6 +103,9 @@ export function SeatTierEditor({
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Never reload over unsaved work — see dirtyRef. Cleared after a
+      // successful write, so the post-save refresh still happens.
+      if (dirtyRef.current) return;
       setLoading(true);
       if (!resolvedVenueId) { setLoading(false); return; }
 
@@ -117,12 +138,19 @@ export function SeatTierEditor({
           setActiveTier(tierRows[0]?.localId ?? null);
           setLoading(false);
         }
-      } else if (mode === 'showing' && showingId) {
+      } else if (mode === 'showing') {
         // Load showing tiers + seat overrides; if none and we have a production, seed from it.
-        let tierRes = await supabase.from('showing_price_tiers')
-          .select('*').eq('showing_id', showingId).order('display_order');
-        let mapRes = await supabase.from('showing_seat_tiers')
-          .select('venue_seat_id, tier_id').eq('showing_id', showingId);
+        // showingId is null while the showing is still being composed — there is
+        // nothing stored yet, so this seeds from the production and the painting
+        // is held in local state until ShowingForm calls persist() after insert.
+        const tierRes = showingId
+          ? await supabase.from('showing_price_tiers')
+              .select('*').eq('showing_id', showingId).order('display_order')
+          : { data: [] as any[] };
+        const mapRes = showingId
+          ? await supabase.from('showing_seat_tiers')
+              .select('venue_seat_id, tier_id').eq('showing_id', showingId)
+          : { data: [] as any[] };
 
         if ((tierRes.data ?? []).length === 0 && seedFromProduction) {
           const [ptRes, psRes] = await Promise.all([
@@ -206,6 +234,7 @@ export function SeatTierEditor({
   const unassignedCount = seats.length - Object.keys(seatMap).length;
 
   function addTier() {
+    dirtyRef.current = true;
     const idx = tiers.length;
     const localId = tempId();
     setTiers(prev => [...prev, {
@@ -216,6 +245,7 @@ export function SeatTierEditor({
   }
 
   function removeTier(localId: string) {
+    dirtyRef.current = true;
     setTiers(prev => prev.filter(t => t.localId !== localId));
     setSeatMap(prev => {
       const next: Record<string, string> = {};
@@ -226,15 +256,18 @@ export function SeatTierEditor({
   }
 
   function updateTier(localId: string, patch: Partial<TierRow>) {
+    dirtyRef.current = true;
     setTiers(prev => prev.map(t => t.localId === localId ? { ...t, ...patch } : t));
   }
 
   function paintSeat(seatId: string) {
     if (!activeTier) return;
+    dirtyRef.current = true;
     setSeatMap(prev => ({ ...prev, [seatId]: activeTier }));
   }
 
   function clearSeat(seatId: string) {
+    dirtyRef.current = true;
     setSeatMap(prev => {
       const next = { ...prev };
       delete next[seatId];
@@ -244,6 +277,7 @@ export function SeatTierEditor({
 
   function paintRow(row: string) {
     if (!activeTier) return;
+    dirtyRef.current = true;
     setSeatMap(prev => {
       const next = { ...prev };
       for (const s of seats) if (s.seat_row === row) next[s.id] = activeTier;
@@ -253,8 +287,70 @@ export function SeatTierEditor({
 
   function clearAll() {
     if (!confirm('Clear all seat assignments?')) return;
+    dirtyRef.current = true;
     setSeatMap({});
   }
+
+  // The whole of a showing's seat pricing, rewritten in one go.
+  //
+  // showing_price_tiers is deleted and reinserted, and showing_seat_tiers.tier_id
+  // is ON DELETE CASCADE against it, so the assignments have to be rebuilt in the
+  // same operation — which is exactly why nothing else may write price tiers for
+  // an assigned-seating showing. ShowingForm used to delete them on every save of
+  // its own tier list, cascading the painted map away without a word.
+  async function writeShowingTiers(targetShowingId: string) {
+    await supabase.from('showing_seat_tiers').delete().eq('showing_id', targetShowingId);
+    await supabase.from('showing_price_tiers').delete().eq('showing_id', targetShowingId);
+
+    const inserts = tiers.map((t, i) => ({
+      showing_id: targetShowingId, tier_name: t.tier_name.trim(),
+      price: parseFloat(t.price), color: t.color, display_order: i, is_active: true,
+    }));
+    if (inserts.length === 0) return;
+
+    const { data: insertedTiers, error: tierErr } = await supabase
+      .from('showing_price_tiers').insert(inserts).select('id, display_order');
+    if (tierErr) throw tierErr;
+
+    const orderToServer: Record<number, string> = {};
+    for (const r of insertedTiers || []) orderToServer[(r as any).display_order] = (r as any).id;
+    const localToServer: Record<string, string> = {};
+    tiers.forEach((t, i) => { localToServer[t.localId] = orderToServer[i]; });
+
+    const mapRows = Object.entries(seatMap)
+      .filter(([, tid]) => !!localToServer[tid])
+      .map(([seatId, tid]) => ({
+        showing_id: targetShowingId, venue_seat_id: seatId, tier_id: localToServer[tid],
+      }));
+    if (mapRows.length > 0) {
+      const { error: mapErr } = await supabase.from('showing_seat_tiers').insert(mapRows);
+      if (mapErr) throw mapErr;
+    }
+  }
+
+  function validateTiers() {
+    // Never write from an editor that has not finished loading: its tiers and
+    // seat map would be empty, and writing that would erase the real ones.
+    if (loading) {
+      toast.error('The seat map is still loading — try again in a moment.');
+      return false;
+    }
+    if (tiers.some(t => !t.tier_name.trim())) {
+      toast.error('Every seat tier needs a name.');
+      return false;
+    }
+    return true;
+  }
+
+  useImperativeHandle(ref, () => ({
+    validate: validateTiers,
+    async persist(targetShowingId: string) {
+      if (!validateTiers()) return false;
+      await writeShowingTiers(targetShowingId);
+      dirtyRef.current = false;
+      return true;
+    },
+  }));
 
   async function save() {
     if (tiers.some(t => !t.tier_name.trim())) {
@@ -298,31 +394,8 @@ export function SeatTierEditor({
         }
         toast.success('Seat pricing saved.');
       } else if (mode === 'showing' && showingId) {
-        await supabase.from('showing_seat_tiers').delete().eq('showing_id', showingId);
-        await supabase.from('showing_price_tiers').delete().eq('showing_id', showingId);
-
-        const inserts = tiers.map((t, i) => ({
-          showing_id: showingId, tier_name: t.tier_name.trim(),
-          price: parseFloat(t.price), color: t.color, display_order: i, is_active: true,
-        }));
-        if (inserts.length === 0) { toast.success('Seat pricing cleared for this showing.'); setSaving(false); return; }
-        const { data: insertedTiers, error: tierErr } = await supabase
-          .from('showing_price_tiers').insert(inserts).select('id, display_order');
-        if (tierErr) throw tierErr;
-        const orderToServer: Record<number, string> = {};
-        for (const r of insertedTiers || []) orderToServer[(r as any).display_order] = (r as any).id;
-        const localToServer: Record<string, string> = {};
-        tiers.forEach((t, i) => { localToServer[t.localId] = orderToServer[i]; });
-
-        const mapRows = Object.entries(seatMap)
-          .filter(([, tid]) => !!localToServer[tid])
-          .map(([seatId, tid]) => ({
-            showing_id: showingId, venue_seat_id: seatId, tier_id: localToServer[tid],
-          }));
-        if (mapRows.length > 0) {
-          const { error: mapErr } = await supabase.from('showing_seat_tiers').insert(mapRows);
-          if (mapErr) throw mapErr;
-        }
+        await writeShowingTiers(showingId);
+        dirtyRef.current = false;
         toast.success('Showing seat pricing saved.');
       }
     } catch (err: any) {
@@ -468,12 +541,20 @@ export function SeatTierEditor({
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <Button type="button" onClick={save} disabled={saving}>
-          <Save className="h-3.5 w-3.5 mr-1" />
-          {saving ? 'Saving…' : mode === 'production' ? 'Save seat pricing' : 'Save showing override'}
-        </Button>
+      <div className="flex items-center justify-end gap-3">
+        {mode === 'showing' && !showingId ? (
+          // Nothing to write against yet. Rather than block painting behind a
+          // save, the map is painted now and stored when the showing is created.
+          <p className="text-xs text-muted-foreground">
+            Saved together with the showing.
+          </p>
+        ) : (
+          <Button type="button" onClick={save} disabled={saving}>
+            <Save className="h-3.5 w-3.5 mr-1" />
+            {saving ? 'Saving…' : mode === 'production' ? 'Save seat pricing' : 'Save showing override'}
+          </Button>
+        )}
       </div>
     </div>
   );
-}
+});

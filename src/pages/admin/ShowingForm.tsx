@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
-import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
+import { SeatTierEditor, type SeatTierEditorHandle } from '@/components/admin/SeatTierEditor';
 import { instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
 
 type Category = 'movie' | 'event' | 'concert';
@@ -57,6 +57,7 @@ export default function ShowingForm() {
   // reserved-seating. New showings default to GA.
   const [requiresSeatSelection, setRequiresSeatSelection] = useState(false);
   const [saving, setSaving] = useState(false);
+  const seatEditorRef = useRef<SeatTierEditorHandle>(null);
 
   const [tiers, setTiers] = useState<TierRow[]>([...DEFAULT_TIERS]);
   const [useTiers, setUseTiers] = useState(true);
@@ -141,6 +142,17 @@ export default function ShowingForm() {
   // has_assigned_seating is a capability, not a policy: it says this venue has
   // a seat map in venue_seats, which is what makes the per-showing toggle
   // meaningful. It does not say every showing here is reserved seating.
+  // Memoised because SeatTierEditor keys its load effect on this object. As a
+  // fresh literal it changed identity on every render of this form, so typing a
+  // price or a date reloaded the editor and silently threw away seats painted
+  // but not yet saved.
+  const seedProd = useMemo(() =>
+    category === 'movie' && itemId ? { type: 'movie' as const, id: itemId }
+    : category === 'event' && itemId ? { type: 'event' as const, id: itemId }
+    : category === 'concert' && itemId ? { type: 'concert' as const, id: itemId }
+    : undefined,
+  [category, itemId]);
+
   const selectedVenue = venues.find((v: any) => v.id === venueId);
   const venueHasSeatMap = !!selectedVenue?.has_assigned_seating;
 
@@ -160,6 +172,16 @@ export default function ShowingForm() {
     e.preventDefault();
     if (!itemId) { toast.error('Please select an item'); return; }
     setSaving(true);
+
+    const assignedSeating = venueHasSeatMap && requiresSeatSelection;
+
+    // Checked before the insert below. Failing afterwards would leave a created
+    // showing behind with the form still on screen, and a second press of the
+    // button would create a second one.
+    if (assignedSeating && seatEditorRef.current?.validate() === false) {
+      setSaving(false);
+      return;
+    }
 
     const showingData: any = {
       movie_id: category === 'movie' ? itemId : null,
@@ -202,8 +224,23 @@ export default function ShowingForm() {
       } catch (_) { /* no template — fine */ }
     }
 
-    // Save price tiers
-    if (useTiers && showingId) {
+    // Seat pricing for an assigned-seating showing is written by the seat editor
+    // and by nothing else. showing_seat_tiers.tier_id cascades from
+    // showing_price_tiers, so the tier list below deleting and reinserting its
+    // rows would take every painted seat assignment with it — which is what used
+    // to happen on every press of Update Showing.
+    if (assignedSeating && showingId) {
+      const ok = await seatEditorRef.current?.persist(showingId);
+      // `!== true` rather than `=== false`: an absent ref returns undefined, and
+      // reading that as success is exactly how the seat map got silently dropped.
+      // The showing itself is already saved by this point, so a failure here is
+      // reported rather than pretending nothing landed.
+      if (ok !== true) {
+        toast.error('Showing saved, but its seat pricing could not be stored.');
+        setSaving(false);
+        return;
+      }
+    } else if (useTiers && showingId) {
       // Delete existing tiers for this showing
       await supabase.from('showing_price_tiers').delete().eq('showing_id', showingId);
 
@@ -241,12 +278,11 @@ export default function ShowingForm() {
   // seating — not merely because the room has a seat map. Gating it on the
   // venue meant it showed for GA screenings, where per-seat prices are never
   // read, and the switch that would have made it meaningful did not exist.
-  const showSeatOverride = !!showingIdForEditor && venueHasSeatMap && requiresSeatSelection;
+  // Deliberately not gated on the showing existing yet. The seat map comes from
+  // the venue, not the showing, so there is nothing to wait for — only the write
+  // needs an id, and that happens on submit via seatEditorRef.
+  const showSeatOverride = venueHasSeatMap && requiresSeatSelection;
 
-  const seedProd = category === 'movie' && itemId ? { type: 'movie' as const, id: itemId }
-    : category === 'event' && itemId ? { type: 'event' as const, id: itemId }
-    : category === 'concert' && itemId ? { type: 'concert' as const, id: itemId }
-    : undefined;
 
   return (
     <div className={`container py-8 px-4 ${showSeatOverride ? 'max-w-4xl' : 'max-w-lg'}`}>
@@ -334,11 +370,6 @@ export default function ShowingForm() {
                   Off: general admission — buyers pick a quantity and capacity is a simple count.
                   On: buyers choose their seats from {selectedVenue?.name ?? 'the venue'}'s map.
                 </p>
-                {requiresSeatSelection && !showingIdForEditor && (
-                  <p className="text-xs text-muted-foreground">
-                    Save the showing to set per-seat prices.
-                  </p>
-                )}
               </div>
             )}
             <div className="space-y-2">
@@ -381,7 +412,11 @@ export default function ShowingForm() {
               </div>
             )}
 
-            {/* Price Tiers */}
+            {/* Price Tiers. Hidden for assigned seating: there the tiers live in the
+                seat editor, which owns both the prices and which seats carry them.
+                Two writers for showing_price_tiers is what let one of them delete
+                the other's work. */}
+            {!(venueHasSeatMap && requiresSeatSelection) && (
             <div className="space-y-3 border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-semibold">Price Tiers</Label>
@@ -426,6 +461,7 @@ export default function ShowingForm() {
                 </div>
               )}
             </div>
+            )}
 
             <Button type="submit" className="w-full" disabled={saving}>
               {saving ? 'Saving...' : isEdit ? 'Update Showing' : 'Create Showing'}
@@ -433,16 +469,19 @@ export default function ShowingForm() {
           </form>
         </CardContent>
       </Card>
-      {showSeatOverride && showingIdForEditor && (
+      {showSeatOverride && (
         <Card className="glass">
           <CardHeader>
             <CardTitle className="font-display">Seat Pricing — This Showing</CardTitle>
             <p className="text-xs text-muted-foreground font-serif">
-              Inherits the production's seat map. Any change here applies only to this showing.
+              {showingIdForEditor
+                ? "Inherits the production's seat map. Any change here applies only to this showing."
+                : "Paint the tiers now — they are stored when you create the showing."}
             </p>
           </CardHeader>
           <CardContent>
             <SeatTierEditor
+              ref={seatEditorRef}
               mode="showing"
               showingId={showingIdForEditor}
               venueId={venueId || undefined}
