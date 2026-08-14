@@ -134,9 +134,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <Link to="/dvds" className={`hidden lg:inline ${navLinkClass}`}>
-              DVDs
-            </Link>
+            {/* Logged-in only, matching the route guard in App.tsx — the
+                public does not see the lending library. Below `lg` the same
+                entry lives in the mobile drawer's Staff section. */}
+            {user && (
+              <Link to="/dvds" className={`hidden lg:inline ${navLinkClass}`}>
+                DVDs
+              </Link>
+            )}
           </div>
 
           <nav className="flex items-center gap-1.5" aria-label="Primary">

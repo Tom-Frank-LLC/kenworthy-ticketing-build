@@ -18,6 +18,7 @@ Disallow: /auth
 Disallow: /profile
 Disallow: /my-tickets
 Disallow: /my-passes
+Disallow: /dvds
 Disallow: /reset-password
 Disallow: /contract/
 Disallow: /verify/

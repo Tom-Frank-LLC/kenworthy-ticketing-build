@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { fetchAllRows } from '@/lib/fetchAllRows';
@@ -19,19 +18,23 @@ type Dvd = any;
 /**
  * The lending library.
  *
- * Reserving a DVD needs an account: the reservation is a row keyed to a
+ * Logged-in only — `RequireAuth` wraps the route in App.tsx, and both nav
+ * entries are gated to match. With member accounts off, signing in means staff,
+ * so this is the box-office catalogue: what is on the shelf, searchable, for
+ * whoever is standing at the counter. The public does not see DVDs.
+ *
+ * Reserving still needs a *patron* account: the reservation is a row keyed to a
  * `user_id`, and there is nothing like the ticket world's `/t/:token` to stand
- * in for a session. So while member accounts are off this page is a catalogue —
- * browse, search, filter, then ask at the box office. The alternative was a
- * "Sign in" button pointing at a staff-only door, which is worse than no button.
+ * in for a session. So while `MEMBER_ACCOUNTS_ENABLED` is off the card action
+ * stays "Ask at the box office" — staff check titles in and out from
+ * Admin → DVD Library, not from here.
  *
  * Nothing is deleted. `reserve`, `cancel` and the active-rentals section are all
- * still here behind `MEMBER_ACCOUNTS_ENABLED`, and come back with it.
+ * still here behind the flag, and come back with it.
  */
 
 export default function Dvds() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [dvds, setDvds] = useState<Dvd[]>([]);
   const [settings, setSettings] = useState<any>(null);
   const [myRentals, setMyRentals] = useState<any[]>([]);
@@ -63,11 +66,9 @@ export default function Dvds() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [user?.id]);
 
   async function reserve(dvd: Dvd) {
-    if (!user) {
-      toast.error('Sign in to reserve a DVD.');
-      navigate('/auth?redirect=' + encodeURIComponent('/dvds'));
-      return;
-    }
+    // The route is behind RequireAuth, so there is always a session here. This
+    // narrows the type for `user.id`; it is not a branch anyone reaches.
+    if (!user) return;
     const { error } = await (supabase as any).from('dvd_rentals').insert({
       dvd_id: dvd.id, user_id: user.id, status: 'reserved',
     });
@@ -136,7 +137,6 @@ export default function Dvds() {
         </span>
       );
     }
-    if (!user) return <Button size="sm" variant="outline" asChild><Link to="/auth?redirect=/dvds">Sign in</Link></Button>;
     if (active.some(r => r.dvd_id === d.id)) return <Badge variant="outline" className="text-xs">Reserved</Badge>;
     return <Button size="sm" disabled={out} onClick={() => reserve(d)}>{out ? 'Unavailable' : 'Reserve'}</Button>;
   };
