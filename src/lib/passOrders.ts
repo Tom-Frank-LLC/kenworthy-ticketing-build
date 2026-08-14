@@ -67,6 +67,43 @@ export function formatMailingAddress(address: PassMailingAddress | null | undefi
   return [clean(address.line1), clean(address.line2), cityLine].filter(Boolean).join(', ');
 }
 
+/**
+ * One row of the mail queue: activated, envelope not yet posted.
+ *
+ * Same shape as an outstanding order plus the activation facts, because "when
+ * was this activated and by whom" is the question a stale row raises.
+ */
+export interface AwaitingPostOrder extends QueuedPassOrder {
+  fulfilled_at: string | null;
+  fulfilled_by_name: string | null;
+}
+
+/**
+ * Whole days since a timestamp, for "activated 3 days ago".
+ *
+ * Deliberately plain: no threshold, no colour, no warning. Nobody has chosen
+ * the number of days at which an unposted envelope becomes alarming, and
+ * inventing one would put a magic number in front of staff as if it meant
+ * something. Show the age; let the reader judge.
+ */
+export function daysSince(iso: string | null | undefined, now: Date = new Date()): number | null {
+  if (!iso) return null;
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return null;
+  const ms = now.getTime() - then.getTime();
+  if (ms < 0) return 0;
+  return Math.floor(ms / 86_400_000);
+}
+
+/** "today" / "yesterday" / "3 days ago" — the age of an unposted envelope. */
+export function describeAge(iso: string | null | undefined, now: Date = new Date()): string {
+  const days = daysSince(iso, now);
+  if (days === null) return 'at an unknown time';
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  return `${days} days ago`;
+}
+
 /** Buyer label for a queue row, falling back through the fields most likely to be set. */
 export function passOrderBuyerLabel(order: Pick<QueuedPassOrder, 'buyer_name' | 'buyer_email'>): string {
   return clean(order.buyer_name) || clean(order.buyer_email) || 'Unnamed buyer';

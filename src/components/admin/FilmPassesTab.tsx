@@ -16,7 +16,13 @@ import { Link } from 'react-router-dom';
 import { invokeFunction } from '@/lib/functions';
 import { StickerSheet, type StickerPassType } from './StickerSheet';
 import { formatShowtime } from '@/lib/datetime';
-import { formatMailingAddress, passOrderBuyerLabel, type QueuedPassOrder } from '@/lib/passOrders';
+import {
+  formatMailingAddress,
+  passOrderBuyerLabel,
+  type QueuedPassOrder,
+  type AwaitingPostOrder,
+} from '@/lib/passOrders';
+import { MailQueueCard } from './MailQueueCard';
 
 interface FilmPassType {
   id: string;
@@ -79,6 +85,7 @@ export default function FilmPassesTab() {
 
   // Outstanding orders — paid online, physical pass not yet handed over
   const [queue, setQueue] = useState<QueuedPassOrder[]>([]);
+  const [awaitingPost, setAwaitingPost] = useState<AwaitingPostOrder[]>([]);
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [queueError, setQueueError] = useState<string | null>(null);
 
@@ -140,10 +147,12 @@ export default function FilmPassesTab() {
   const loadQueue = useCallback(async () => {
     setLoadingQueue(true);
     try {
-      const data = await invokeFunction<{ orders: QueuedPassOrder[] }>('film-pass-checkout', {
-        action: 'queue',
-      });
+      const data = await invokeFunction<{
+        orders: QueuedPassOrder[];
+        awaiting_post: AwaitingPostOrder[];
+      }>('film-pass-checkout', { action: 'queue' });
       setQueue(data.orders || []);
+      setAwaitingPost(data.awaiting_post || []);
       setQueueError(null);
     } catch (err) {
       setQueueError(err instanceof Error ? err.message : 'Could not load outstanding orders');
@@ -151,6 +160,32 @@ export default function FilmPassesTab() {
       setLoadingQueue(false);
     }
   }, []);
+
+  const markPosted = useCallback(async (orderId: string) => {
+    let data: { result: string; notice?: string };
+    try {
+      data = await invokeFunction<{ result: string; notice?: string }>('film-pass-checkout', {
+        action: 'mark_posted',
+        order_id: orderId,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not mark that order posted');
+      return; // Leave the row where it is — nothing was recorded.
+    }
+
+    if (data.result === 'already_posted') {
+      toast.info('Somebody already marked that one posted.');
+    } else if (data.notice === 'failed') {
+      // The order is posted either way — only the email fell over. Say so, or
+      // staff will re-click looking for the confirmation that never sent.
+      toast.warning('Marked posted, but the email to the buyer did not send.');
+    } else if (data.notice === 'no_email') {
+      toast.success('Marked posted. No email on file for this buyer.');
+    } else {
+      toast.success('Marked posted — the buyer has been emailed.');
+    }
+    await loadQueue();
+  }, [loadQueue]);
 
   useEffect(() => { loadData(); loadBatches(); loadQueue(); }, [loadData, loadBatches, loadQueue]);
 
@@ -358,6 +393,17 @@ export default function FilmPassesTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Always visible here, empty state included: an admin opening this tab
+          is asking "is anything outstanding?", and a silent absence is not an
+          answer. The counter hides it when empty instead. */}
+      <MailQueueCard
+        orders={awaitingPost}
+        loading={loadingQueue}
+        error={queueError}
+        onRetry={loadQueue}
+        onMarkPosted={markPosted}
+      />
 
       {/* Pass Types */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

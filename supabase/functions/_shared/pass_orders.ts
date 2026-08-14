@@ -153,6 +153,169 @@ export function buildPassOrderEmailText(order: PassOrderSummary): string {
   ].join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// "It's in the mail" — sent when a staff member confirms the envelope went out
+// ---------------------------------------------------------------------------
+//
+// The order confirmation already promised this would happen ("will be posted
+// to …"). This is the second half of that promise, and it is the only message
+// that turns an open-ended wait into a countable one. It carries no QR and
+// nothing to print, for the same reason the confirmation does not: the pass is
+// the physical card, and an email that looks scannable sends someone to the
+// door with a phone and no pass.
+
+export interface PassPostedSummary {
+  passTypeName: string;
+  quantity: number;
+  /** Where it was actually sent — the address on the envelope. */
+  mailingAddress: MailingAddress | null;
+  buyerName: string | null;
+  /** Balance one pass carries. Repeated here so the email stands alone. */
+  initialBalance: number;
+  redemptionPrice: number;
+}
+
+export function buildPassPostedSubject(order: PassPostedSummary): string {
+  const what = order.quantity === 1 ? 'film pass' : 'film passes';
+  return `Your ${what} ${order.quantity === 1 ? 'is' : 'are'} in the mail`;
+}
+
+/** The one sentence that matters: it has left the building, and where it went. */
+export function postedLine(order: PassPostedSummary): string {
+  const subject = order.quantity === 1 ? 'Your pass' : 'Your passes';
+  const verb = order.quantity === 1 ? 'is' : 'are';
+  const to = order.mailingAddress ? formatAddress(order.mailingAddress) : 'the address you gave us';
+  return `${subject} ${verb} on the way to ${to}. Allow a few days for the post, and give us a shout if nothing arrives within a week.`;
+}
+
+export function buildPassPostedEmailText(order: PassPostedSummary): string {
+  const first = order.buyerName ? order.buyerName.split(/\s+/)[0] : null;
+  const admissions = admissionsFor(order.initialBalance, order.redemptionPrice);
+
+  return [
+    first ? `Hi ${first},` : 'Hi there,',
+    '',
+    `Good news — ${order.quantity} × ${order.passTypeName} went in the post today.`,
+    '',
+    postedLine(order),
+    '',
+    `Each pass is already activated and carries ${formatMoney(order.initialBalance)}, covering ${formatMoney(
+      order.redemptionPrice,
+    )} of a standard movie ticket — about ${admissions} films.`,
+    'Hand it to our staff at the door and they will scan it. Nothing to set up before it arrives.',
+    'Passes cannot be used to book online, and are not valid for special events or premium screenings.',
+    '',
+    'There is nothing to print and no QR code in this email — the pass itself is the physical card.',
+    '',
+    `Questions: ${TICKET_REPLY_TO}`,
+    VENUE_NAME,
+    BOX_OFFICE_ADDRESS,
+  ].join('\n');
+}
+
+export function buildPassPostedEmailHtml(order: PassPostedSummary): string {
+  const first = order.buyerName ? esc(order.buyerName.split(/\s+/)[0]) : null;
+  const greeting = first ? `Hi ${first},` : 'Hi there,';
+  const admissions = admissionsFor(order.initialBalance, order.redemptionPrice);
+
+  // Same shell as the order confirmation on purpose — table layout, inline
+  // styles, no external assets. A patron sees these two back to back.
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${esc(buildPassPostedSubject(order))}</title>
+</head>
+<body style="margin:0;padding:0;background:#f0ece7;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    ${esc(order.passTypeName)} posted today. Activated and ready to use — no QR code needed.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0ece7;">
+    <tr>
+      <td align="center" style="padding:28px 14px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;">
+          <tr>
+            <td style="padding:26px 28px;background:#26211d;">
+              <div style="font:700 19px/1.3 Georgia,'Times New Roman',serif;color:#ffffff;letter-spacing:.01em;">
+                The Kenworthy
+              </div>
+              <div style="font:400 12px/1.5 Helvetica,Arial,sans-serif;color:#b9b1a9;letter-spacing:.08em;text-transform:uppercase;padding-top:3px;">
+                Performing Arts Centre · Moscow, Idaho
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 28px 4px;">
+              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;">${greeting}</div>
+              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;padding-top:8px;">
+                Good news — this went in the post today.
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 28px 0;">
+              <div style="font:700 23px/1.3 Georgia,'Times New Roman',serif;color:#26211d;">
+                ${esc(order.quantity)} × ${esc(order.passTypeName)}
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 28px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:22px;background:#f6f3ef;border-radius:10px;">
+                    <div style="font:600 15px/1.5 Helvetica,Arial,sans-serif;color:#26211d;padding-bottom:6px;">
+                      In the mail
+                    </div>
+                    <div style="font:400 14px/1.6 Helvetica,Arial,sans-serif;color:#55504b;">
+                      ${esc(postedLine(order))}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 28px 0;">
+              <div style="font:600 13px/1.4 Helvetica,Arial,sans-serif;color:#6b6560;letter-spacing:.06em;text-transform:uppercase;padding-bottom:8px;">
+                When it arrives
+              </div>
+              <div style="font:400 14px/1.7 Helvetica,Arial,sans-serif;color:#55504b;">
+                It is already activated and carries ${esc(formatMoney(order.initialBalance))}, covering
+                ${esc(formatMoney(order.redemptionPrice))} of a standard movie ticket —
+                about ${esc(admissions)} films.<br />
+                Hand it to our staff at the door and they will scan it. Nothing to set up first.<br />
+                Passes cannot be used to book online, and are not valid for special events
+                or premium screenings.
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 28px 28px;">
+              <div style="font:400 13px/1.6 Helvetica,Arial,sans-serif;color:#9a938c;border-top:1px solid #e6e2dd;padding-top:16px;">
+                There is nothing to print — no QR code in this email. The pass itself is the
+                physical card.<br /><br />
+                Questions? Reply to this email or write to
+                <a href="mailto:${esc(TICKET_REPLY_TO)}" style="color:#b82a6b;">${esc(TICKET_REPLY_TO)}</a>.<br />
+                ${esc(VENUE_NAME)} · ${esc(BOX_OFFICE_ADDRESS)}
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 export function buildPassOrderEmailHtml(order: PassOrderSummary): string {
   const first = order.buyerName ? esc(order.buyerName.split(/\s+/)[0]) : null;
   const greeting = first ? `Hi ${first},` : 'Hi there,';

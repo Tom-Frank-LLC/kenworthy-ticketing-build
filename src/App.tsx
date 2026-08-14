@@ -1,4 +1,5 @@
-import { Suspense, lazy } from "react";
+import { Suspense } from "react";
+import { lazyWithRecovery } from "@/lib/lazyWithRecovery";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,46 +15,50 @@ import { Layout } from "@/components/Layout";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
-const Auth = lazy(() => import("./pages/Auth"));
-const CalendarPage = lazy(() => import("./pages/Calendar"));
-const Showing = lazy(() => import("./pages/Showing"));
-const MyTickets = lazy(() => import("./pages/MyTickets"));
-const PublicTicket = lazy(() => import("./pages/PublicTicket"));
-const MyPasses = lazy(() => import("./pages/MyPasses"));
-const FilmPassesPage = lazy(() => import("./pages/FilmPasses"));
-const Profile = lazy(() => import("./pages/Profile"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
-const Sponsors = lazy(() => import("./pages/Sponsors"));
-const HistoryPage = lazy(() => import("./pages/History"));
-const RentalRequest = lazy(() => import("./pages/RentalRequest"));
-const Rentals = lazy(() => import("./pages/Rentals"));
-const RentalContract = lazy(() => import("./pages/RentalContract"));
-const VerifyContract = lazy(() => import("./pages/VerifyContract"));
-const Donate = lazy(() => import("./pages/Donate"));
-const Dvds = lazy(() => import("./pages/Dvds"));
-const AboutPage = lazy(() => import("./pages/About"));
-const HiringPage = lazy(() => import("./pages/Hiring"));
-const VolunteerPage = lazy(() => import("./pages/Volunteer"));
+// A deploy deletes the previous build's content-hashed chunks, and an
+// already-open tab is still running the old shell, so it asks for filenames
+// the server no longer has. lazyWithRecovery reloads once instead of letting
+// React unmount to a blank page. See src/lib/lazyWithRecovery.ts.
+const Auth = lazyWithRecovery(() => import("./pages/Auth"));
+const CalendarPage = lazyWithRecovery(() => import("./pages/Calendar"));
+const Showing = lazyWithRecovery(() => import("./pages/Showing"));
+const MyTickets = lazyWithRecovery(() => import("./pages/MyTickets"));
+const PublicTicket = lazyWithRecovery(() => import("./pages/PublicTicket"));
+const MyPasses = lazyWithRecovery(() => import("./pages/MyPasses"));
+const FilmPassesPage = lazyWithRecovery(() => import("./pages/FilmPasses"));
+const Profile = lazyWithRecovery(() => import("./pages/Profile"));
+const ResetPassword = lazyWithRecovery(() => import("./pages/ResetPassword"));
+const Sponsors = lazyWithRecovery(() => import("./pages/Sponsors"));
+const HistoryPage = lazyWithRecovery(() => import("./pages/History"));
+const RentalRequest = lazyWithRecovery(() => import("./pages/RentalRequest"));
+const Rentals = lazyWithRecovery(() => import("./pages/Rentals"));
+const RentalContract = lazyWithRecovery(() => import("./pages/RentalContract"));
+const VerifyContract = lazyWithRecovery(() => import("./pages/VerifyContract"));
+const Donate = lazyWithRecovery(() => import("./pages/Donate"));
+const Dvds = lazyWithRecovery(() => import("./pages/Dvds"));
+const AboutPage = lazyWithRecovery(() => import("./pages/About"));
+const HiringPage = lazyWithRecovery(() => import("./pages/Hiring"));
+const VolunteerPage = lazyWithRecovery(() => import("./pages/Volunteer"));
 
-const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
-const MovieForm = lazy(() => import("./pages/admin/MovieForm"));
-const EventForm = lazy(() => import("./pages/admin/EventForm"));
-const ConcertForm = lazy(() => import("./pages/admin/ConcertForm"));
-const VenueForm = lazy(() => import("./pages/admin/VenueForm"));
-const ShowingForm = lazy(() => import("./pages/admin/ShowingForm"));
-const StaffPOS = lazy(() => import("./pages/admin/StaffPOS"));
-const TicketScanner = lazy(() => import("./pages/admin/TicketScanner"));
-const HostDashboard = lazy(() => import("./pages/admin/HostDashboard"));
-const SponsorshipForm = lazy(() => import("./pages/admin/SponsorshipForm"));
-const AuditLog = lazy(() => import("./pages/admin/AuditLog"));
-const Superadmin = lazy(() => import("./pages/admin/Superadmin"));
+const AdminDashboard = lazyWithRecovery(() => import("./pages/admin/AdminDashboard"));
+const MovieForm = lazyWithRecovery(() => import("./pages/admin/MovieForm"));
+const EventForm = lazyWithRecovery(() => import("./pages/admin/EventForm"));
+const ConcertForm = lazyWithRecovery(() => import("./pages/admin/ConcertForm"));
+const VenueForm = lazyWithRecovery(() => import("./pages/admin/VenueForm"));
+const ShowingForm = lazyWithRecovery(() => import("./pages/admin/ShowingForm"));
+const StaffPOS = lazyWithRecovery(() => import("./pages/admin/StaffPOS"));
+const TicketScanner = lazyWithRecovery(() => import("./pages/admin/TicketScanner"));
+const HostDashboard = lazyWithRecovery(() => import("./pages/admin/HostDashboard"));
+const SponsorshipForm = lazyWithRecovery(() => import("./pages/admin/SponsorshipForm"));
+const AuditLog = lazyWithRecovery(() => import("./pages/admin/AuditLog"));
+const Superadmin = lazyWithRecovery(() => import("./pages/admin/Superadmin"));
 
 // The ComingSoon pages are named exports sharing one module, so they also
 // share one chunk.
 const comingSoon = () => import("./pages/ComingSoon");
-const SilentFilmFestivalPage = lazy(() => comingSoon().then(m => ({ default: m.SilentFilmFestivalPage })));
-const PressPage = lazy(() => comingSoon().then(m => ({ default: m.PressPage })));
-const AccessibilityPage = lazy(() => comingSoon().then(m => ({ default: m.AccessibilityPage })));
+const SilentFilmFestivalPage = lazyWithRecovery(() => comingSoon().then(m => ({ default: m.SilentFilmFestivalPage })));
+const PressPage = lazyWithRecovery(() => comingSoon().then(m => ({ default: m.PressPage })));
+const AccessibilityPage = lazyWithRecovery(() => comingSoon().then(m => ({ default: m.AccessibilityPage })));
 
 const queryClient = new QueryClient();
 

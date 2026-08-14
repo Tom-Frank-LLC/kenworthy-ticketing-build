@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatMailingAddress, passOrderBuyerLabel } from './passOrders';
+import { formatMailingAddress, passOrderBuyerLabel, describeAge, daysSince } from './passOrders';
 
 describe('formatMailingAddress', () => {
   it('renders a complete address on one line', () => {
@@ -83,5 +83,44 @@ describe('passOrderBuyerLabel', () => {
 
   it('never renders an empty label', () => {
     expect(passOrderBuyerLabel({ buyer_name: null, buyer_email: null })).toBe('Unnamed buyer');
+  });
+});
+
+describe('describeAge', () => {
+  const now = new Date('2026-08-13T12:00:00Z');
+
+  it('calls the same day today', () => {
+    expect(describeAge('2026-08-13T01:00:00Z', now)).toBe('today');
+  });
+
+  it('calls one day yesterday', () => {
+    expect(describeAge('2026-08-12T06:00:00Z', now)).toBe('yesterday');
+  });
+
+  it('counts whole days beyond that', () => {
+    expect(describeAge('2026-08-10T12:00:00Z', now)).toBe('3 days ago');
+  });
+
+  it('does not go negative on a clock skew', () => {
+    // A row activated "in the future" is a clock problem, not a negative age.
+    expect(describeAge('2026-08-14T12:00:00Z', now)).toBe('today');
+  });
+
+  it('says so rather than rendering a broken date', () => {
+    expect(describeAge(null, now)).toBe('at an unknown time');
+    expect(describeAge('not a date', now)).toBe('at an unknown time');
+  });
+});
+
+describe('daysSince', () => {
+  const now = new Date('2026-08-13T12:00:00Z');
+
+  it('returns null for a missing or unparseable timestamp', () => {
+    expect(daysSince(null, now)).toBeNull();
+    expect(daysSince('nonsense', now)).toBeNull();
+  });
+
+  it('floors to whole days', () => {
+    expect(daysSince('2026-08-11T23:00:00Z', now)).toBe(1);
   });
 });
