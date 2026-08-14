@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Download, Loader2, FileText, Link2, Unlink, CheckCircle2 } from 'lucide-react';
 import QboSyncStatus from './QboSyncStatus';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 type Aggregated = { account_id: string | null; code: string; qbo_account_name: string; account_type: string; amount: number; count: number; };
 
@@ -107,7 +108,24 @@ export default function QboExportTab() {
       supabase.from('user_film_passes').select('id,pass_type_id,price_paid,purchased_at,status').in('status', ['active', 'depleted', 'expired', 'void', 'refunded']).gte('purchased_at', fromIso).lt('purchased_at', toIso),
       supabase.from('film_pass_orders').select('pass_id,pass_type_id,amount_paid,quantity,created_at,status').in('status', ['paid', 'fulfilled']).gte('created_at', fromIso).lt('created_at', toIso),
       supabase.from('film_pass_types').select('id,name,price'),
-      supabase.from('showings').select('id,movie_id,event_id,live_performance_id'),
+      // Paged: there are ~1,800 showings and this is the map that decides which
+      // account each ticket's revenue is booked against. PostgREST truncates at
+      // 1,000 without an error, and a ticket whose showing is missing from the
+      // map falls through to the 'film' default below — so live-event and
+      // concert takings past the cut were silently booked as film revenue, in
+      // an export that looks complete.
+      fetchAllRows<{
+        id: string;
+        movie_id: string | null;
+        event_id: string | null;
+        live_performance_id: string | null;
+      }>((from, to) =>
+        supabase
+          .from('showings')
+          .select('id,movie_id,event_id,live_performance_id')
+          .order('id')
+          .range(from, to)
+      ),
       supabase.from('rental_invoice_lines' as any).select('line_kind,quantity,unit_price,account_id,is_taxable,created_at').gte('created_at', fromIso).lt('created_at', toIso),
     ]);
 

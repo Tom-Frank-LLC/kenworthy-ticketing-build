@@ -103,7 +103,20 @@ export function PassEligibilityPanel({ passTypes }: { passTypes: PassTypeOption[
           .order('id')
           .range(lo, hi),
       ),
-      supabase.from('pass_type_showings').select('showing_id').eq('pass_type_id', passTypeId),
+      // Paged for the same reason as the schedule above, and not hypothetically:
+      // the 10-film pass is already tagged to 1,108 screenings, so an unpaged
+      // read dropped 108 of them and the panel drew screenings that do accept
+      // the pass as "Not accepted". (Applying only ever writes the rows an
+      // admin explicitly selected, so the truncation misreported the state
+      // without ever untagging anything.)
+      fetchAllRows<{ showing_id: string }>((lo, hi) =>
+        supabase
+          .from('pass_type_showings')
+          .select('showing_id')
+          .eq('pass_type_id', passTypeId)
+          .order('showing_id')
+          .range(lo, hi),
+      ),
     ]);
 
     if (showingsRes.error || taggedRes.error) {

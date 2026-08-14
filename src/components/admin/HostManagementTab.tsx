@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Trash2, UserPlus, Search, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 interface Assignment {
   id: string;
@@ -45,7 +46,12 @@ export default function HostManagementTab() {
       supabase.from('host_event_assignments').select('*'),
       supabase.from('events').select('id, title'),
       supabase.from('live_performances').select('id, title'),
-      supabase.from('movies').select('id, title'),
+      // Paged, and ordered so the paging is deterministic: unordered and
+      // unpaged this returned an arbitrary 1,000 of the 1,088 titles, so the
+      // films a host could be assigned to were a silently truncated set.
+      fetchAllRows<{ id: string; title: string }>((from, to) =>
+        supabase.from('movies').select('id, title').order('title').order('id').range(from, to)
+      ),
       supabase.from('profiles').select('id, display_name'),
     ]);
 
