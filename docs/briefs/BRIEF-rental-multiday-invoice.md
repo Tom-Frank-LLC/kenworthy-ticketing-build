@@ -197,9 +197,9 @@ were pending there.
   the real Square account** — it sends nothing and charges nothing, but do the
   first run on staging and compare the result against a real Kenworthy event
   invoice before using it for a renter.
-- ~~The restyled contract has not been looked at in a browser.~~ **Tom checked
-  the deployed contract on August 14 and it renders correctly.** He did not say
-  which of the three paths he looked at, so if the check was on screen only,
-  the "Draft PDF" export is the one still worth a glance — the white
-  html2canvas background is what made the old dark-theme text invisible there,
-  and it is the path a renter's copy goes through.
+- ~~The restyled contract has not been looked at in a browser.~~ **Closed.** Tom
+  checked the deployed contract on August 14 — both on screen and through the
+  "Draft PDF" export — and both render correctly. The export was the path that
+  mattered: it forces a white html2canvas background, which is what made the
+  old dark-theme text invisible on the page, and it is the path a renter's copy
+  goes through.
