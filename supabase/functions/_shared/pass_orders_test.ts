@@ -8,6 +8,7 @@
 // the door with nothing — weeks later, in the posting case.
 
 import { assertEquals, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+
 import {
   admissionsFor,
   buildPassOrderEmailHtml,
@@ -23,6 +24,26 @@ import {
   type PassOrderSummary,
   type PassPostedSummary,
 } from './pass_orders.ts';
+
+/**
+ * Assert a pass email carries no scannable image.
+ *
+ * This used to be `html.includes('<img') === false`, which worked only because
+ * the templates had no images at all. They now share the branded shell, which
+ * puts the wordmark in the header — so "no images" is no longer the same claim
+ * as "nothing that looks scannable". Asserting the logo is the *only* image
+ * keeps the original guarantee intact: a QR sneaking in is still a failure,
+ * because it would be a second one.
+ */
+function assertOnlyImageIsTheLogo(html: string, context: string) {
+  const srcs = [...html.matchAll(/<img[^>]*\ssrc="([^"]*)"/g)].map((m) => m[1]);
+  assertEquals(srcs.length, 1, `${context}: expected only the logo, got ${srcs.join(', ')}`);
+  assertEquals(
+    srcs[0].endsWith('/email-logo.png'),
+    true,
+    `${context}: the one image must be the wordmark, got ${srcs[0]}`,
+  );
+}
 
 const address = {
   line1: '508 S Main St',
@@ -128,7 +149,7 @@ Deno.test('the confirmation never implies the email itself is the pass', () => {
     // The failure this guards: a buyer who thinks the email is scannable.
     assertStringIncludes(text, 'nothing to print');
     assertStringIncludes(html, 'nothing to print');
-    assertEquals(html.includes('<img'), false, 'no QR image belongs in a pass confirmation');
+    assertOnlyImageIsTheLogo(html, 'no QR image belongs in a pass confirmation');
 
     // And the two rules they will otherwise discover at the door.
     assertStringIncludes(text, 'in person');
@@ -207,7 +228,7 @@ Deno.test('the posted notice never implies the email itself is the pass', () => 
 
   assertStringIncludes(text, 'nothing to print');
   assertStringIncludes(html, 'nothing to print');
-  assertEquals(html.includes('<img'), false, 'no QR image belongs in a posted notice');
+  assertOnlyImageIsTheLogo(html, 'no QR image belongs in a posted notice');
   assertStringIncludes(text, 'cannot be used to book online');
 });
 

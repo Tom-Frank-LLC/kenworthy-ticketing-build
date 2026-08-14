@@ -11,7 +11,7 @@
 
 import type { PublicOrder } from './tickets';
 
-const VENUE_NAME = 'The Kenworthy Performing Arts Centre';
+const VENUE_NAME = 'Kenworthy Performing Arts Centre';
 const VENUE_ADDRESS = '508 S Main St, Moscow, ID 83843';
 const DEFAULT_DURATION_MIN = 120;
 

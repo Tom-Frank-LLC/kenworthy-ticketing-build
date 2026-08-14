@@ -61,8 +61,8 @@ export default function Sponsors() {
   return (
     <div className="container py-16 max-w-5xl">
       <SEO
-        title="Our Sponsors — The Kenworthy Performing Arts Centre"
-        description="Meet the foundations, businesses, and friends whose support sustains The Kenworthy, Moscow Idaho's historic non-profit cinema and performing arts centre."
+        title="Our Sponsors — Kenworthy Performing Arts Centre"
+        description="Meet the foundations, businesses, and friends whose support sustains the Kenworthy, Moscow Idaho's historic non-profit cinema and performing arts centre."
       />
       <header className="text-center mb-14">
         <p className="text-xs uppercase tracking-[0.3em] text-accent font-display mb-3">

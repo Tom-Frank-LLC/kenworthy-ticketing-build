@@ -129,13 +129,13 @@ export default function Auth() {
     <div className="flex min-h-screen items-center justify-center px-4">
       {MEMBER_ACCOUNTS_ENABLED ? (
         <SEO
-          title="Sign In or Create Account — The Kenworthy"
+          title="Sign In or Create Account — Kenworthy"
           description="Sign in to your Kenworthy account to buy tickets, manage film passes, and access digital QR tickets for shows at our historic Moscow, Idaho theatre."
         />
       ) : (
         <SEO
-          title="Staff sign in — The Kenworthy"
-          description="Staff and volunteer sign-in for The Kenworthy Performing Arts Centre. Tickets bought online are delivered by email — no account needed."
+          title="Staff sign in — Kenworthy"
+          description="Staff and volunteer sign-in for the Kenworthy Performing Arts Centre. Tickets bought online are delivered by email — no account needed."
         />
       )}
       <h1 className="sr-only">{MEMBER_ACCOUNTS_ENABLED ? 'Sign In or Create Account' : 'Staff sign in'}</h1>

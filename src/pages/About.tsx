@@ -52,7 +52,7 @@ export default function About() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="About — The Kenworthy"
+        title="About — Kenworthy"
         description="The mission, goals, board of directors, and history of the Kenworthy Performing Arts Centre — Moscow's historic downtown theatre and cinematic art house."
         path="/about"
       />

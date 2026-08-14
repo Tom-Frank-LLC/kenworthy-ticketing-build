@@ -58,8 +58,8 @@ export default function CalendarPage() {
   return (
     <>
       <SEO
-        title="Calendar — The Kenworthy"
-        description="Browse every upcoming film, live performance, and event at The Kenworthy Performing Arts Centre on Main Street in Moscow, Idaho."
+        title="Calendar — Kenworthy"
+        description="Browse every upcoming film, live performance, and event at the Kenworthy Performing Arts Centre on Main Street in Moscow, Idaho."
         path="/calendar"
       />
       <div className="container py-10 md:py-14">
