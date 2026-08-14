@@ -115,3 +115,33 @@ npm run build:production && npx wrangler deploy
 **Backend (Supabase) deploys** — separate from the frontend; see
 `TICKET-DELIVERY.md` for the edge-function / migration runbook. Frontend-only
 changes need none of it.
+
+---
+
+## Correction — 2026-08-13
+
+One thing this update got wrong, recorded here because the bullets above still
+describe it as a fix.
+
+**`--project-ref` on `db push` does not exist.** §2.2 and §5 were changed to say
+"always pass `--project-ref` explicitly rather than trusting the current link",
+and §4.3 gave `npx supabase db push --project-ref <ref>` as the command. The flag
+is real on `functions deploy` and on `link`, but `db push` and `migration list`
+have never accepted it — they follow the CLI link (`--linked`), or take a
+`--db-url`. Verified against CLI 2.113.0 by reading `--help` for each.
+
+The advice was right in spirit and wrong in mechanism, which is the more
+dangerous combination: it reads as a safety measure, so nobody checks the link
+it was supposed to make unnecessary. The CLI rejects the unknown flag outright
+rather than silently defaulting, so no migration ever went to the wrong project
+because of this — but only by luck of the CLI's argument parsing.
+
+`TICKET-DELIVERY.md` and `TASKS.md` already described the real behaviour
+correctly at the time this brief was written; the handoff doc simply disagreed
+with them, and nothing reconciled the two.
+
+**Fixed 2026-08-13:** PLATFORM.md §2.2, §4.3 and §5 now carry a per-command
+table of what accepts what, a check-the-link-first procedure, and a note that
+the link lives in gitignored `supabase/.temp/` and so is absent from fresh
+clones and worktrees. `DONATIONS.md` had inherited the same bad command and was
+corrected too.

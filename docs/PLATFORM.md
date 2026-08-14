@@ -50,9 +50,17 @@ independent databases, auth users, and edge function secrets. Nothing is shared.
 - **To hand off:** Invite client's email as Organization Owner via Settings → Members, then remove Tom Frank.
 - **⚠️ Never commit:** The service role key (distinct from the anon/publishable key). The anon key is safe for client-side use; the service role key has full database access and bypasses row-level security.
 - **⚠️ Know which project you're pointed at.** `supabase/config.toml` pins
-  `project_id = "vlmslygnimfbamrtwvyo"` (**production**), and the CLI's link can be
-  moved by any previous `supabase link`. Before any `db push` or `functions deploy`,
-  pass `--project-ref` explicitly rather than trusting the current link — see §5.
+  `project_id = "vlmslygnimfbamrtwvyo"` (**production**), but that is *not* what the
+  CLI uses for a database command — the **link** is, and any previous
+  `supabase link` moves it. The two disagree routinely: as of August 13 2026 the
+  link points at **staging** while `config.toml` still says production.
+  **`--project-ref` is not a universal escape hatch** — only some commands accept
+  it. Which is which, and how to check before you push, is in §4.3.
+
+- **⚠️ The link is per-checkout, and a fresh clone has none.** It lives in
+  `supabase/.temp/`, which is gitignored (`.gitignore:36`). A new clone or a
+  `git worktree` starts unlinked, so a `db push` there fails or — worse — is
+  linked to something else entirely. Check it, do not assume it carried over.
 
 ### 2.3 Cloudflare Workers
 - **Account:** A Tom Frank LLC Cloudflare account (the `*.mrtomfrank.workers.dev` subdomain belongs to it)
@@ -180,16 +188,53 @@ target environment must complete clean.
 
 ### 4.3 Backend runbook (Supabase)
 
-Migrations and edge functions are deployed with the Supabase CLI, always with an
-explicit `--project-ref` (see the warning in §2.2):
+Migrations and edge functions are deployed with the Supabase CLI — but **they do
+not target a project the same way**, which is the trap in this section.
+
+**Only some commands take `--project-ref`.** Verified against CLI **2.113.0**;
+re-check with `--help` if the CLI has moved, because this changes between
+versions:
+
+| Command | Targets a project with | Takes `--project-ref`? |
+|---|---|---|
+| `functions deploy` | `--project-ref <ref>` | ✅ yes |
+| `db push` | the **link** (`--linked`), or `--db-url` | ❌ no |
+| `migration list` | the **link** (`--linked`), or `--db-url` | ❌ no |
+| `link` | `--project-ref <ref>` | ✅ yes — this is what *sets* the link |
+
+An earlier version of this runbook said `db push --project-ref <ref>`. That flag
+does not exist on `db push`, and the CLI rejects it outright rather than
+defaulting to something — so the command fails loudly rather than pushing to the
+wrong database. Small mercy, but do not rely on it.
+
+**So: check the link, then push.**
 
 ```bash
-npx supabase db push --project-ref <ref>
+# 1. Which project am I actually linked to? (the ref, not config.toml)
+cat supabase/.temp/project-ref
+#    or, listing every project with the linked one flagged:
+npx supabase projects list        # look for "linked": true
+
+# 2. Point it at the right one if needed (this is what --project-ref is for)
+npx supabase link --project-ref <ref>
+
+# 3. See what would be applied before applying it — always worth the extra call
+npx supabase db push --linked --dry-run
+
+# 4. Apply
+npx supabase db push --linked
+
+# 5. Edge functions DO take --project-ref, so they need no link at all
 npx supabase functions deploy <name> --project-ref <ref>
 ```
 
 Staging first, production after. Full procedure, including the post-deploy curl
 check that catches a dead function, is in `TICKET-DELIVERY.md`.
+
+> **A migration is not the only way the schema moves.** `db push` applies *every*
+> pending migration, not just the one you wrote. Step 3's `--dry-run` prints the
+> list — read it. If it names files you did not expect, somebody else's work is
+> about to ship with yours.
 
 ---
 
@@ -197,7 +242,7 @@ check that catches a dead function, is in `TICKET-DELIVERY.md`.
 
 - **Platform:** Supabase (Postgres), one project per environment (§2.2)
 - **Schema migrations:** `/supabase/migrations/` in the repo
-- **To apply migrations:** `npx supabase db push --project-ref <ref>` — never rely on whatever the CLI is currently linked to
+- **To apply migrations:** `npx supabase db push --linked` — but confirm what "linked" means first, because `db push` takes no `--project-ref`. Full procedure in §4.3.
 - **Backups:** Supabase Pro plan includes daily backups. Confirm plan level on the production project before go-live.
 
 ### Key tables
