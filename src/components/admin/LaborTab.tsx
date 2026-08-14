@@ -16,7 +16,7 @@ export default function LaborTab() {
         <CardContent className="py-3 flex items-start gap-2 text-sm">
           <Info className="h-4 w-4 text-primary mt-0.5" />
           <span>
-            Square Plus features — scheduling, shift requests, labor-vs-sales, tip rules, and the QuickBooks payroll push — are wired against your Square <strong>sandbox</strong>. They switch to production automatically once live credentials are added.
+            Scheduling, timecards, labor-vs-sales and payroll read live from Square Labor. Which Square account they use follows the <code>SQUARE_ENV</code> secret, the same as ticket payments — set it to <code>production</code> with the matching <code>SQUARE_PRODUCTION_*</code> credentials to go live. The Timecards tab says so when it is reading the sandbox.
           </span>
         </CardContent>
       </Card>

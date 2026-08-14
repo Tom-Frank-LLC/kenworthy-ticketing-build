@@ -1,6 +1,6 @@
 # Brief (for Claude Code): Rental requests — multi-day dates + "Generate Invoice" (Square)
 
-**Status:** 🟡 Built August 14, 2026, not deployed. See **Results** at the end of this file for the decisions taken, what was verified, and what was not.
+**Status:** ✅ Shipped to staging and production, August 14, 2026, from `a8ee428`. See **Results** and **Shipped** at the end of this file — including what is still unverified (no Square call has been made yet).
 **Date:** August 13, 2026
 **Requested by:** Tom — (1) the rental/event request form only allows one date; some events span several days. (2) After a request is reviewed, staff need a **Generate Invoice** button on the backend listing (next to the Contract button) that creates a **Square invoice** from the filled fields, matching the event invoices already used in the Square account.
 
@@ -156,3 +156,46 @@ The rental contract currently renders in the **site theme** — the contract bod
   needs a real invite token, which needs a database read. On-screen, Print
   preview and the "Draft PDF" export all still want an eye on them.
 - Nothing is deployed and no migration has been pushed to either project.
+
+## Shipped — August 14, 2026
+
+Deployed to both environments from `a8ee428` (main at the time; main has since
+moved to `6edeb7e`, a docs-only commit that changes no bundle).
+
+| | Staging `rpqzrpboyhshdrfdwayk` | Production `vlmslygnimfbamrtwvyo` |
+|---|---|---|
+| Migrations | both applied | both applied |
+| `square-invoice` | deployed, boots | deployed, boots |
+| Worker version | `9b860e91` | `05551cc3` (rollback: `adb6a2ef`) |
+| Entry chunk | `index-D2cUxOEt.js` | `index-DgY-RyhI.js` |
+| `/` and `/rental-request` | 200 | 200 |
+
+Verified after deploy rather than assumed: production serves the entry chunk
+that was just built, and the live `AdminDashboard-BihHNEYY.js` it loads contains
+`square-invoice`, `Generate Invoice` and `Add invoice lines under Details
+first` — so what is running is this work and not a cached build. On staging the
+function answers a real POST with `401 {"error":"Staff sign-in required"}` — its
+own gate, not the gateway's, which is what proves it booted; on production the
+`OPTIONS` preflight returns the CORS header list from `_shared/http.ts` for the
+same reason.
+
+**Built and deployed from a scratch worktree, not the shared checkout.** Four
+other sessions were working in this repo at the time. Two of their migrations
+(`20260814093200`, `20260814093300`, both from `feat/pass-eligibility`) were
+already applied to staging with no file on `main`, so `db push` refused. Their
+files were copied into the worktree so the push would see them as applied — and
+then **removed again before the production push**, so that unmerged work could
+not ride along. Production's migration list confirmed only this brief's two
+were pending there.
+
+### Still not verified
+
+- **No Square call has been made from this path, in either environment.** The
+  function is deployed and boots; the Customers / Orders / Invoices request
+  shapes have never been exercised. Production's `SQUARE_ENV` selects the live
+  account, so the first press of `Generate Invoice` there creates a **draft in
+  the real Square account** — it sends nothing and charges nothing, but do the
+  first run on staging and compare the result against a real Kenworthy event
+  invoice before using it for a renter.
+- The restyled contract has not been looked at in a browser: `/contract/:token`
+  on screen, the Print preview, and the "Draft PDF" export.

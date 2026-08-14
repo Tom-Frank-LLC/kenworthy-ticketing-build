@@ -10,7 +10,15 @@ import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, subWeeks, differenceInMinutes } from 'date-fns';
 import { Loader2, Send } from 'lucide-react';
 
-interface Shift { id: string; team_member_id: string; start_at: string; end_at?: string | null; breaks?: Array<{ start_at: string; end_at?: string | null; is_paid?: boolean }> }
+interface Shift {
+  id: string;
+  team_member_id: string;
+  start_at: string;
+  end_at?: string | null;
+  /** The wage Square stamped on the shift when it was worked. */
+  wage?: { hourly_rate?: { amount?: number } } | null;
+  breaks?: Array<{ start_at: string; end_at?: string | null; is_paid?: boolean }>;
+}
 interface Member { id: string; given_name?: string; family_name?: string; wage?: { hourly_rate_cents?: number } | null }
 interface Link { user_id: string; square_team_member_id: string }
 
@@ -72,7 +80,9 @@ export function PayrollExport() {
       const m = memberMap.get(s.team_member_id);
       const name = m ? [m.given_name, m.family_name].filter(Boolean).join(' ') : s.team_member_id;
       const mins = shiftMinutes(s);
-      const rate = m?.wage?.hourly_rate_cents || 0;
+      // The rate on the shift is what was actually in effect that day; the
+      // member's current wage is only a fallback.
+      const rate = s.wage?.hourly_rate?.amount ?? m?.wage?.hourly_rate_cents ?? 0;
       const cur = buckets.get(s.team_member_id) || { user_id: userId || '', staff_name: name, minutes: 0, rateMinutes: 0, rateCentsSum: 0 };
       cur.minutes += mins;
       cur.rateCentsSum += rate * mins;
