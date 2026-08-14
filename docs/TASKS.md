@@ -75,6 +75,12 @@ Note both projects already have full `service_role` CRUD on `tickets` independen
 
 Deploy to a specific project without disturbing the shared CLI link with `supabase functions deploy <fn> --project-ref <ref>`. `db push` has no such flag — it needs `--linked` (re-link, then restore) or `--db-url`.
 
+### ✅ Press page + admin Press tab — shipped to production 2026-08-14 (see `BRIEF-press-page.md`)
+`/press` was a `ComingSoon` stub while being linked from the header and the mobile menu — a page visitors already reached that told them nothing. It is now DB-driven: `press_articles` (link metadata for third-party coverage — headline, outlet, date, a staff-written blurb, thumbnail; **never the article body**, every card links out to the outlet) plus a single-row `press_page_content` for the page's own banner photo and intro paragraph. Up to two articles pin to the top; the rest run newest→oldest. New admin **Press** tab (`isAdmin`, next to Hiring).
+**Live on staging (`66ce7bbc`) and production (`fdf043bd`, rollback `3c3dd77b`) from `42cda95`** — migration `20260814020000_press_page.sql` applied to both, anon reads work and anon writes return 401 on both, and the deployed production chunk was fetched and checked to be the real page rather than a cached stub. No edge functions involved.
+Worth carrying forward: `published_date` is a Postgres DATE, and `new Date('2026-08-01')` parses as **UTC** midnight — July 31 in Pacific — so use the new `formatPlainDate` in `src/lib/datetime.ts` for any date-only column, never `formatShowtime` (that one is for TIMESTAMPTZ instants). Same trap as the Boise/Pacific import bug, different mechanism.
+**Remaining:** the manual test plan hasn't been run in a browser — verification so far is API- and bundle-level, and both environments' Press tabs are still empty.
+
 ---
 
 ## Planned Refactors

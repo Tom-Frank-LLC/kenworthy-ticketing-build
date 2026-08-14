@@ -39,6 +39,7 @@ const Dvds = lazyWithRecovery(() => import("./pages/Dvds"));
 const AboutPage = lazyWithRecovery(() => import("./pages/About"));
 const HiringPage = lazyWithRecovery(() => import("./pages/Hiring"));
 const VolunteerPage = lazyWithRecovery(() => import("./pages/Volunteer"));
+const PressPage = lazyWithRecovery(() => import("./pages/Press"));
 
 const AdminDashboard = lazyWithRecovery(() => import("./pages/admin/AdminDashboard"));
 const MovieForm = lazyWithRecovery(() => import("./pages/admin/MovieForm"));
@@ -57,7 +58,6 @@ const Superadmin = lazyWithRecovery(() => import("./pages/admin/Superadmin"));
 // share one chunk.
 const comingSoon = () => import("./pages/ComingSoon");
 const SilentFilmFestivalPage = lazyWithRecovery(() => comingSoon().then(m => ({ default: m.SilentFilmFestivalPage })));
-const PressPage = lazyWithRecovery(() => comingSoon().then(m => ({ default: m.PressPage })));
 const AccessibilityPage = lazyWithRecovery(() => comingSoon().then(m => ({ default: m.AccessibilityPage })));
 
 const queryClient = new QueryClient();
