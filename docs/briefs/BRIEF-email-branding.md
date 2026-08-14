@@ -114,6 +114,19 @@ mangle a dark email far more readily than a light one. Flipping to full dark is
 now a change in `email-layout.ts` alone.
 
 ### The logo
+
+> **Superseded — August 14, 2026 (PR #51).** The emails shipped with the plain
+> wordmark described below, which was the wrong lockup for the centenary year.
+> Both lockups now exist and `emailLockup()` in `brand.ts` picks by date:
+> `email-logo-centenary.png` (the "Celebrating 100 Years" artwork, 200px)
+> through the end of 2026, `email-logo.png` (180px) from 2027. The date is read
+> when an email is built, not when the function is deployed, so the switchover
+> needs no redeploy — and it lands at midnight Pacific, since plain UTC would
+> retire it at 4pm on New Year's Eve. They sit at separate URLs so an email sent
+> during the centenary keeps rendering the centenary lockup in the recipient's
+> archive rather than silently changing. The centenary source is an SVG, which
+> Gmail will not render, so `make-email-logo.mjs` now rasterises it.
+
 Source art (`src/assets/kenworthy-full-logo.png`) is **black on transparent** —
 the site inverts it with a CSS filter, which email cannot do, so it would have
 been invisible on the dark header. `make-email-logo.mjs` bakes the cream in and
