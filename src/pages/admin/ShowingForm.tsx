@@ -70,7 +70,7 @@ export default function ShowingForm() {
       supabase.from('movies').select('id, title, is_active, release_year').order('title'),
       supabase.from('events').select('id, title, ticket_type, is_active').order('title'),
       supabase.from('live_performances').select('id, title, is_active').order('title'),
-      supabase.from('venues').select('id, name, has_assigned_seating').order('name'),
+      supabase.from('venues').select('id, name, has_assigned_seating, total_seats').order('name'),
     ]).then(([moviesRes, eventsRes, concertsRes, venuesRes]) => {
       setMovies(moviesRes.data || []);
       setEvents((eventsRes.data || []).filter((e: any) => e.ticket_type === 'ticketed'));
@@ -186,6 +186,13 @@ export default function ShowingForm() {
       const { error } = await supabase.from('showings').update(showingData).eq('id', id);
       if (error) { toast.error(error.message); setSaving(false); return; }
     } else {
+      // Capacity comes from the room. showings.total_seats defaults to 200 and
+      // has never been editable here, so every showing ever created has claimed
+      // a 200-seat house — 65 short of the real one, which for a GA showing is
+      // the sold-out ceiling the capacity trigger enforces. Set on create only:
+      // on edit it is left alone, so a capacity somebody deliberately reduced
+      // for a limited-seating night is not silently restored to the full house.
+      if (selectedVenue?.total_seats) showingData.total_seats = selectedVenue.total_seats;
       const { data, error } = await supabase.from('showings').insert(showingData).select('id').single();
       if (error) { toast.error(error.message); setSaving(false); return; }
       showingId = data.id;
