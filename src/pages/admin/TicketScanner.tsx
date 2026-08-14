@@ -43,11 +43,25 @@ const SHOWING_WINDOW_AFTER_MS = 24 * 60 * 60 * 1000;
  */
 const SAME_CODE_COOLDOWN_MS = 3000;
 
+/** One eligibility row as the nested embed returns it. */
+interface PassTagRow {
+  film_pass_types: { name: string } | null;
+}
+
 interface ScannerShowing {
   id: string;
   start_time: string;
   title: string;
-  film_pass_eligible: boolean;
+  /**
+   * The passes this screening actually accepts, by name.
+   *
+   * Not a boolean any more, because "does this take passes" stopped having a
+   * single answer: a festival screening takes the festival pass and refuses
+   * the standard one, and a door told only "yes" would send staff to argue
+   * with a patron holding the wrong pass. Listing them turns the refusal into
+   * something readable before the scan rather than after it.
+   */
+  passTypeNames: string[];
 }
 
 /**
@@ -103,7 +117,8 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
       const { data } = await supabase
         .from('showings')
         .select(
-          'id, start_time, film_pass_eligible, movies(title), events(title), live_performances(title)',
+          'id, start_time, movies(title), events(title), live_performances(title), ' +
+            'pass_type_showings(film_pass_types(name))',
         )
         .eq('is_active', true)
         .gte('start_time', from)
@@ -117,7 +132,10 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
         start_time: s.start_time,
         title:
           s.movies?.title || s.events?.title || s.live_performances?.title || 'Untitled',
-        film_pass_eligible: !!s.film_pass_eligible,
+        passTypeNames: ((s.pass_type_showings ?? []) as PassTagRow[])
+          .map(p => p.film_pass_types?.name)
+          .filter((n): n is string => !!n)
+          .sort(),
       }));
       setShowings(rows);
 
@@ -313,12 +331,33 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
         };
       }
 
-      case 'ineligible':
+      // `ineligible` is the pre-20260814093200 name for the same refusal, kept
+      // so a scanner running an older bundle against the new database still
+      // says something true rather than falling through to "not one of our
+      // passes" — which would send staff to the wrong conversation entirely.
+      case 'not_eligible_for_pass':
+      case 'ineligible': {
+        const accepted = selectedShowing?.passTypeNames ?? [];
         return {
           status: 'invalid',
-          message: 'Film passes are not valid for this screening.',
+          message: accepted.length
+            ? `${verdict.pass_type_name ?? 'This pass'} is not valid here — this screening takes ${accepted.join(' or ')}.`
+            : 'This screening does not take passes.',
           pass: { title, remaining_balance: remaining, admissions_left: left },
         };
+      }
+
+      // The pass is good here and has money on it; it has simply already
+      // admitted everyone this screening allows it to. Said precisely, because
+      // "not enough balance" would be a lie the counter cannot resolve.
+      case 'per_showing_limit_reached': {
+        const limit = Number(verdict.per_showing_use_limit ?? 0);
+        return {
+          status: 'invalid',
+          message: `This pass has already admitted ${verdict.admitted_for_showing ?? limit} to this screening — its limit is ${limit}.`,
+          pass: { title, remaining_balance: remaining, admissions_left: left },
+        };
+      }
 
       case 'insufficient':
         return {
@@ -475,7 +514,9 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
               {showings.map(s => (
                 <SelectItem key={s.id} value={s.id}>
                   {formatShowtime(s.start_time, 'h:mm a')} — {s.title}
-                  {!s.film_pass_eligible && ' (no passes)'}
+                  {s.passTypeNames.length === 0
+                    ? ' (no passes)'
+                    : ` (${s.passTypeNames.join(', ')})`}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -491,14 +532,14 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
               Pick a screening before scanning film passes.
             </p>
-          ) : selectedShowing && !selectedShowing.film_pass_eligible ? (
+          ) : selectedShowing && selectedShowing.passTypeNames.length === 0 ? (
             <p className="text-sm text-amber-400 flex items-start gap-1.5">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-              This screening does not take film passes. Tickets scan normally.
+              This screening does not take passes. Tickets scan normally.
             </p>
           ) : (
             <p className="text-xs text-white/70">
-              Film passes scanned now are spent on this screening
+              Accepts {selectedShowing?.passTypeNames.join(' and ')}, spent on this screening
               {selectedShowing &&
                 ` (${formatShowtime(selectedShowing.start_time, 'EEE MMM d, h:mm a')})`}
               . Tickets are unaffected.

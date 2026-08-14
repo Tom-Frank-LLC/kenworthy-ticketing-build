@@ -834,7 +834,9 @@ export type Database = {
           id: string
           initial_balance: number
           is_active: boolean
+          is_default_for_movies: boolean
           name: string
+          per_showing_use_limit: number | null
           price: number
           redemption_price: number
           updated_at: string
@@ -845,7 +847,9 @@ export type Database = {
           id?: string
           initial_balance?: number
           is_active?: boolean
+          is_default_for_movies?: boolean
           name: string
+          per_showing_use_limit?: number | null
           price?: number
           redemption_price?: number
           updated_at?: string
@@ -856,7 +860,9 @@ export type Database = {
           id?: string
           initial_balance?: number
           is_active?: boolean
+          is_default_for_movies?: boolean
           name?: string
+          per_showing_use_limit?: number | null
           price?: number
           redemption_price?: number
           updated_at?: string
@@ -1376,6 +1382,52 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      pass_type_showings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          pass_type_id: string
+          showing_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pass_type_id: string
+          showing_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pass_type_id?: string
+          showing_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pass_type_showings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pass_type_showings_pass_type_id_fkey"
+            columns: ["pass_type_id"]
+            isOneToOne: false
+            referencedRelation: "film_pass_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pass_type_showings_showing_id_fkey"
+            columns: ["showing_id"]
+            isOneToOne: false
+            referencedRelation: "showings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       production_price_tiers: {
         Row: {
@@ -1973,7 +2025,6 @@ export type Database = {
         Row: {
           created_at: string
           event_id: string | null
-          film_pass_eligible: boolean
           id: string
           is_active: boolean
           live_performance_id: string | null
@@ -1988,7 +2039,6 @@ export type Database = {
         Insert: {
           created_at?: string
           event_id?: string | null
-          film_pass_eligible?: boolean
           id?: string
           is_active?: boolean
           live_performance_id?: string | null
@@ -2003,7 +2053,6 @@ export type Database = {
         Update: {
           created_at?: string
           event_id?: string | null
-          film_pass_eligible?: boolean
           id?: string
           is_active?: boolean
           live_performance_id?: string | null

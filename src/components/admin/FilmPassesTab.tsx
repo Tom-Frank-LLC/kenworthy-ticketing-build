@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import {
   Plus, Trash2, CreditCard, DollarSign, Printer, Loader2, Ban, QrCode,
-  Package, Mail, Store, ScanLine,
+  Package, Mail, Store, ScanLine, Pencil,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { invokeFunction } from '@/lib/functions';
@@ -23,6 +23,8 @@ import {
   type AwaitingPostOrder,
 } from '@/lib/passOrders';
 import { MailQueueCard } from './MailQueueCard';
+import { PassEligibilityPanel } from './PassEligibilityPanel';
+import type { PassTypeOption } from '@/lib/passEligibility';
 
 interface FilmPassType {
   id: string;
@@ -32,7 +34,21 @@ interface FilmPassType {
   redemption_price: number;
   expiration_days: number | null;
   is_active: boolean;
+  /** NULL = unlimited: the balance is the only bound, so a holder can bring friends. */
+  per_showing_use_limit: number | null;
+  /** Pre-ticked on a newly created standard-priced movie screening. */
+  is_default_for_movies: boolean;
 }
+
+const BLANK_FORM = {
+  name: '',
+  price: '60',
+  initial_balance: '60',
+  redemption_price: '6',
+  expiration_days: '',
+  per_showing_use_limit: '',
+  is_default_for_movies: true,
+};
 
 interface UserPass {
   id: string;
@@ -79,9 +95,13 @@ export default function FilmPassesTab() {
   const [passTypes, setPassTypes] = useState<FilmPassType[]>([]);
   const [userPasses, setUserPasses] = useState<UserPass[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    name: '', price: '60', initial_balance: '60', redemption_price: '6', expiration_days: '',
-  });
+  // The same form creates and edits. Pass types gained two fields that decide
+  // real behaviour at the door, and there was no edit path at all — a type
+  // created before this change could never acquire a per-screening limit,
+  // which would have made the feature reachable only by deleting and
+  // recreating a pass patrons already hold.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState({ ...BLANK_FORM });
 
   // Outstanding orders — paid online, physical pass not yet handed over
   const [queue, setQueue] = useState<QueuedPassOrder[]>([]);
@@ -189,19 +209,67 @@ export default function FilmPassesTab() {
 
   useEffect(() => { loadData(); loadBatches(); loadQueue(); }, [loadData, loadBatches, loadQueue]);
 
-  async function handleCreateType() {
+  function startEdit(pt: FilmPassType) {
+    setEditingId(pt.id);
+    setForm({
+      name: pt.name,
+      price: String(pt.price),
+      initial_balance: String(pt.initial_balance),
+      redemption_price: String(pt.redemption_price),
+      expiration_days: pt.expiration_days === null ? '' : String(pt.expiration_days),
+      per_showing_use_limit:
+        pt.per_showing_use_limit === null ? '' : String(pt.per_showing_use_limit),
+      is_default_for_movies: pt.is_default_for_movies,
+    });
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm({ ...BLANK_FORM });
+  }
+
+  async function handleSaveType() {
     if (!form.name.trim()) { toast.error('Name is required'); return; }
-    const { error } = await supabase.from('film_pass_types').insert({
+
+    // Blank means unlimited, and that has to survive the trip: parseInt('')
+    // is NaN, which Postgres would reject, and 0 would trip the CHECK — a pass
+    // that admits nobody is a deactivated pass, not a configured one.
+    let limit: number | null = null;
+    if (form.per_showing_use_limit.trim()) {
+      limit = parseInt(form.per_showing_use_limit, 10);
+      if (!Number.isFinite(limit) || limit < 1) {
+        toast.error('Uses per screening must be 1 or more — leave it blank for unlimited.');
+        return;
+      }
+    }
+
+    const payload = {
       name: form.name.trim(),
       price: parseFloat(form.price) || 60,
       initial_balance: parseFloat(form.initial_balance) || 60,
       redemption_price: parseFloat(form.redemption_price) || 6,
       expiration_days: form.expiration_days ? parseInt(form.expiration_days) : null,
-    });
+      per_showing_use_limit: limit,
+      is_default_for_movies: form.is_default_for_movies,
+    };
+
+    // RLS filters writes rather than failing them, so a blocked update comes
+    // back as 204 with no error. The returned rows are the only thing that
+    // says whether anything landed.
+    const { data, error } = editingId
+      ? await supabase.from('film_pass_types').update(payload).eq('id', editingId).select('id')
+      : await supabase.from('film_pass_types').insert(payload).select('id');
+
     if (error) { toast.error(error.message); return; }
-    toast.success('Pass type created');
-    setForm({ name: '', price: '60', initial_balance: '60', redemption_price: '6', expiration_days: '' });
-    setShowForm(false);
+    if (!data || data.length === 0) {
+      toast.error('That did not save — check your permissions.');
+      return;
+    }
+
+    toast.success(editingId ? 'Pass type updated' : 'Pass type created');
+    closeForm();
     loadData();
   }
 
@@ -286,6 +354,17 @@ export default function FilmPassesTab() {
       toast.error(err.message || 'Could not cancel that pass');
     }
   }
+
+  // The panel takes the shared PassTypeOption shape so it reads the same
+  // fields the showing form does; numerics arrive from PostgREST as strings.
+  const eligibilityOptions: PassTypeOption[] = passTypes.map(pt => ({
+    id: pt.id,
+    name: pt.name,
+    redemption_price: Number(pt.redemption_price ?? 0),
+    per_showing_use_limit: pt.per_showing_use_limit ?? null,
+    is_default_for_movies: !!pt.is_default_for_movies,
+    is_active: !!pt.is_active,
+  }));
 
   return (
     <div className="space-y-6">
@@ -408,7 +487,11 @@ export default function FilmPassesTab() {
       {/* Pass Types */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-display text-xl font-bold">Film Pass Types</h2>
-        <Button size="sm" className="w-full sm:w-auto" onClick={() => setShowForm(!showForm)}>
+        <Button
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={() => (showForm ? closeForm() : setShowForm(true))}
+        >
           <Plus className="h-4 w-4 mr-1" /> Add Pass Type
         </Button>
       </div>
@@ -441,10 +524,45 @@ export default function FilmPassesTab() {
                 <Input type="number" value={form.expiration_days} onChange={e => setForm(f => ({ ...f, expiration_days: e.target.value }))} placeholder="365" />
                 <p className="text-xs text-muted-foreground">Counted from activation, not from purchase.</p>
               </div>
+              <div className="space-y-2">
+                <Label>Uses per screening</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.per_showing_use_limit}
+                  onChange={e => setForm(f => ({ ...f, per_showing_use_limit: e.target.value }))}
+                  placeholder="blank = unlimited"
+                />
+                <p className="text-xs text-muted-foreground">
+                  How many people one pass may admit to a single screening. Blank lets the holder
+                  bring friends, bounded only by the balance. Set 1 for one admission each.
+                </p>
+              </div>
             </div>
+
+            {/* The successor to showings.film_pass_eligible defaulting to true.
+                Without a pass carrying this, every screening created from now
+                on would start eligible for nothing, and the standard pass would
+                stop working at the door with no error anywhere. */}
+            <label className="flex items-start gap-2 text-sm cursor-pointer border-t border-border pt-4">
+              <input
+                type="checkbox"
+                checked={form.is_default_for_movies}
+                onChange={e => setForm(f => ({ ...f, is_default_for_movies: e.target.checked }))}
+                className="rounded mt-0.5"
+              />
+              <span>
+                <span className="font-semibold">Standard pass for ordinary films</span>
+                <span className="block text-xs text-muted-foreground">
+                  Pre-ticked on new movie screenings priced at the standard $8. Leave this off for
+                  a festival pass or anything else valid only at screenings you tag by hand.
+                </span>
+              </span>
+            </label>
+
             <div className="flex gap-2">
-              <Button onClick={handleCreateType}>Create</Button>
-              <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button onClick={handleSaveType}>{editingId ? 'Save changes' : 'Create'}</Button>
+              <Button variant="outline" onClick={closeForm}>Cancel</Button>
             </div>
           </CardContent>
         </Card>
@@ -466,6 +584,14 @@ export default function FilmPassesTab() {
                       {Math.floor(Number(pt.initial_balance) / Number(pt.redemption_price || 1))} films
                     </Badge>
                     {pt.expiration_days && <Badge variant="secondary" className="text-xs">{pt.expiration_days} day expiry</Badge>}
+                    <Badge variant="outline" className="text-xs">
+                      {pt.per_showing_use_limit === null
+                        ? 'Unlimited per screening'
+                        : `Max ${pt.per_showing_use_limit} per screening`}
+                    </Badge>
+                    {pt.is_default_for_movies && (
+                      <Badge variant="secondary" className="text-xs">Standard — auto on new films</Badge>
+                    )}
                     <Badge variant={pt.is_active ? 'default' : 'secondary'} className="text-xs">
                       {pt.is_active ? 'Active' : 'Inactive'}
                     </Badge>
@@ -474,6 +600,9 @@ export default function FilmPassesTab() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Switch checked={pt.is_active} onCheckedChange={() => toggleActive(pt.id, pt.is_active)} />
+                <Button variant="ghost" size="sm" onClick={() => startEdit(pt)} title="Edit this pass type">
+                  <Pencil className="h-4 w-4" />
+                </Button>
                 <Button variant="ghost" size="sm" onClick={() => deleteType(pt.id)}>
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
@@ -483,6 +612,20 @@ export default function FilmPassesTab() {
         ))}
         {passTypes.length === 0 && <p className="text-muted-foreground text-center py-8">No film pass types configured.</p>}
       </div>
+
+      {/* Eligibility, directly under the pass types that carry it. A pass is
+          defined above and given its screenings here, which is the order the
+          job is actually done in — creating a festival pass and then hunting
+          through the schedule for its run is the same task split across two
+          screens. */}
+      <h2 className="font-display text-xl font-bold pt-4">Screenings & Passes</h2>
+      {passTypes.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Create a pass type above before tagging screenings.
+        </p>
+      ) : (
+        <PassEligibilityPanel passTypes={eligibilityOptions} />
+      )}
 
       {/* Print runs */}
       <h2 className="font-display text-xl font-bold pt-4">Sticker Print Runs</h2>

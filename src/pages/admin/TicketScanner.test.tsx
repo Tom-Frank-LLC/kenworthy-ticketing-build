@@ -79,7 +79,7 @@ beforeEach(() => {
       {
         id: 'showing-1',
         start_time: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        film_pass_eligible: true,
+        pass_type_showings: [{ film_pass_types: { name: '10-Film Pass' } }],
         movies: { title: 'Casablanca' },
         events: null,
         live_performances: null,
@@ -144,7 +144,7 @@ function ticketRow(over: Record<string, unknown> = {}) {
  */
 async function showingReady() {
   await waitFor(() =>
-    expect(screen.getByText(/Film passes scanned now are spent on this screening/i))
+    expect(screen.getByText(/Accepts 10-Film Pass, spent on this screening/i))
       .toBeInTheDocument(),
   );
 }
@@ -370,7 +370,35 @@ describe('TicketScanner - film passes at the door', () => {
     expectNoTicketTableAccess();
   });
 
-  it('refuses a pass at a screening that does not take them, and says so', async () => {
+  it('refuses a pass the screening does not take, and names what it does take', async () => {
+    // The refusal that matters now is not "this screening takes no passes" but
+    // "it takes a different one" — a festival screening turning away a standard
+    // pass. Saying which pass works here is what stops the conversation at the
+    // door being an argument.
+    admit.mockResolvedValue({
+      result: 'not_eligible_for_pass',
+      pass_type_name: 'Festival Pass',
+      showing_title: 'Casablanca',
+      remaining_balance: 54,
+    });
+
+    renderScanner();
+    await showingReady();
+    await scanCode('PASS:abc-123');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Do not admit/i);
+    expect(alert).toHaveTextContent(/Festival Pass is not valid here/i);
+    expect(alert).toHaveTextContent(/takes 10-Film Pass/i);
+    // Nothing was spent — staff need to see the balance is intact.
+    expect(alert).toHaveTextContent(/\$54\.00 left/);
+  });
+
+  it('still understands the pre-rename `ineligible` verdict', async () => {
+    // A scanner running an older bundle against the new database gets the old
+    // verdict name back. Falling through to the default branch would tell staff
+    // the sticker is "not one of our passes", which is both false and the kind
+    // of thing that gets a patron sent away.
     admit.mockResolvedValue({
       result: 'ineligible',
       showing_title: 'Met Live: Tosca',
@@ -383,9 +411,31 @@ describe('TicketScanner - film passes at the door', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/Do not admit/i);
-    expect(alert).toHaveTextContent(/not valid for this screening/i);
-    // Nothing was spent — staff need to see the balance is intact.
+    expect(alert).toHaveTextContent(/not valid here/i);
     expect(alert).toHaveTextContent(/\$54\.00 left/);
+  });
+
+  it('says a pass has hit its per-screening limit rather than blaming the balance', async () => {
+    // The pass is eligible and has money on it; it has simply admitted everyone
+    // this screening allows. "Not enough balance" would be a lie the counter
+    // cannot resolve, because the balance is fine.
+    admit.mockResolvedValue({
+      result: 'per_showing_limit_reached',
+      showing_title: 'Casablanca',
+      admitted_for_showing: 2,
+      per_showing_use_limit: 2,
+      remaining_balance: 28,
+    });
+
+    renderScanner();
+    await showingReady();
+    await scanCode('PASS:festival');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Do not admit/i);
+    expect(alert).toHaveTextContent(/already admitted 2 to this screening/i);
+    expect(alert).toHaveTextContent(/limit is 2/i);
+    expect(alert).toHaveTextContent(/\$28\.00 left/);
   });
 
   it('calls a depleted pass used up rather than "not active"', async () => {
