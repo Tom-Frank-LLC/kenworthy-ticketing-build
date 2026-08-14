@@ -12,8 +12,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile } from '@/lib/mailchimp';
+import { MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
 
 type Dvd = any;
+
+/**
+ * The lending library.
+ *
+ * Reserving a DVD needs an account: the reservation is a row keyed to a
+ * `user_id`, and there is nothing like the ticket world's `/t/:token` to stand
+ * in for a session. So while member accounts are off this page is a catalogue —
+ * browse, search, filter, then ask at the box office. The alternative was a
+ * "Sign in" button pointing at a staff-only door, which is worse than no button.
+ *
+ * Nothing is deleted. `reserve`, `cancel` and the active-rentals section are all
+ * still here behind `MEMBER_ACCOUNTS_ENABLED`, and come back with it.
+ */
 
 export default function Dvds() {
   const { user } = useAuth();
@@ -113,6 +127,15 @@ export default function Dvds() {
 
   const reserveControl = (d: Dvd) => {
     const out = d.copies_available <= 0;
+    // Availability still matters to someone deciding whether to walk down —
+    // it is the reservation, not the stock count, that needs an account.
+    if (!MEMBER_ACCOUNTS_ENABLED) {
+      return (
+        <span className="text-xs font-serif text-muted-foreground">
+          {out ? 'All copies out' : 'Ask at the box office'}
+        </span>
+      );
+    }
     if (!user) return <Button size="sm" variant="outline" asChild><Link to="/auth?redirect=/dvds">Sign in</Link></Button>;
     if (active.some(r => r.dvd_id === d.id)) return <Badge variant="outline" className="text-xs">Reserved</Badge>;
     return <Button size="sm" disabled={out} onClick={() => reserve(d)}>{out ? 'Unavailable' : 'Reserve'}</Button>;
@@ -120,20 +143,30 @@ export default function Dvds() {
 
   return (
     <>
-      <SEO title="DVD Rentals — The Kenworthy" description="Browse and reserve DVDs from the Kenworthy's lending library. Pick up at the box office on Main Street, Moscow." />
+      <SEO
+        title="DVD Rentals — The Kenworthy"
+        description={
+          MEMBER_ACCOUNTS_ENABLED
+            ? "Browse and reserve DVDs from the Kenworthy's lending library. Pick up at the box office on Main Street, Moscow."
+            : "Browse the Kenworthy's DVD lending library. Ask at the box office on Main Street, Moscow, to borrow a title."
+        }
+      />
       <div className="container mx-auto px-4 py-10 space-y-8 max-w-6xl">
         <header className="space-y-2">
           <p className="font-display uppercase tracking-[0.3em] text-xs text-accent">Lending library</p>
           <h1 className="font-display uppercase text-4xl md:text-5xl">DVD Rentals</h1>
           <p className="font-serif text-muted-foreground max-w-2xl">
-            Reserve a title online and pick it up at the box office. {settings && (
+            {MEMBER_ACCOUNTS_ENABLED
+              ? 'Reserve a title online and pick it up at the box office.'
+              : 'Browse what is on the shelf, then ask for it at the box office on Main Street.'}{' '}
+            {settings && (
               <>${Number(settings.default_rental_price).toFixed(2)} per rental, {settings.loan_days}-day loan,
               ${Number(settings.late_fee_per_day).toFixed(2)}/day late fee. Up to {settings.max_active_per_user} at a time.</>
             )}
           </p>
         </header>
 
-        {user && active.length > 0 && (
+        {MEMBER_ACCOUNTS_ENABLED && user && active.length > 0 && (
           <section className="space-y-2">
             <h2 className="font-display uppercase text-sm tracking-wider text-accent">Your active rentals</h2>
             <div className="grid gap-2">

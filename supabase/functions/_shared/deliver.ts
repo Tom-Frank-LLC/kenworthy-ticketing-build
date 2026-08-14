@@ -30,6 +30,7 @@
 import { loadOrder, ticketPageUrl, ticketQrUrl } from './tickets.ts';
 import { ticketCalendarUrl, googleCalendarUrl } from './calendar.ts';
 import { toE164, buildSubject, buildEmailHtml, buildEmailText, buildSmsBody } from './notify.ts';
+import { memberAccountsEnabled } from './flags.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -247,11 +248,19 @@ export async function deliverConfirmation(
     // receipt reads like phishing. Skipped too when delivery has been
     // redirected elsewhere: minting an account-recovery link for whoever that
     // address belongs to is not a ticket receipt's business.
+    //
+    // And skipped entirely while member accounts are off. The account behind
+    // this ticket still exists — buyers.ts creates one either way — but there
+    // is no patron sign-in to send anyone to, so inviting them to set a
+    // password would be an invitation to a door that is locked. `buildEmailHtml`
+    // and `buildEmailText` render the set-password section only when there is a
+    // link, so a null here drops the section and nothing else. The QR ticket
+    // email is unaffected.
     const isAccountHolder =
       !!authUser?.email && authUser.email.toLowerCase() === email.toLowerCase();
 
     let passwordUrl: string | null = null;
-    if (!hasSignedIn && isAccountHolder) {
+    if (memberAccountsEnabled() && !hasSignedIn && isAccountHolder) {
       try {
         const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
           type: 'recovery',

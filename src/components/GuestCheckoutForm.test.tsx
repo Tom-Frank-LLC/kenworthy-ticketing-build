@@ -35,12 +35,16 @@ vi.mock('@/lib/square', () => ({
   SANDBOX_CARD_HINT: 'Test mode — use card 4111 1111 1111 1111.',
 }));
 
+// Exact labels, not /Email/i — the marketing opt-in below the contact fields is
+// also labelled "Email me about…", and a loose match now finds both.
 function fillContactDetails() {
-  fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: 'Tom Staging' } });
-  fireEvent.change(screen.getByLabelText(/Email/i), {
+  fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Tom Staging' } });
+  fireEvent.change(screen.getByLabelText(/^Email$/), {
     target: { value: 'tom@example.com' },
   });
 }
+
+const optIn = () => screen.getByRole('checkbox', { name: /Email me about/i });
 
 describe('GuestCheckoutForm', () => {
   beforeEach(() => {
@@ -63,7 +67,36 @@ describe('GuestCheckoutForm', () => {
 
     await waitFor(() =>
       expect(onPurchase).toHaveBeenCalledWith(
-        { name: 'Tom Staging', email: 'tom@example.com', phone: '' },
+        { name: 'Tom Staging', email: 'tom@example.com', phone: '', newsletter: true },
+        'cnon:card-nonce-ok',
+      ),
+    );
+  });
+
+  /**
+   * The opt-in is the only consent signal there is.
+   *
+   * With patron accounts off, nobody signs in to buy a ticket, so the old
+   * `profiles.marketing_opt_in` check that gated Mailchimp never fires. This
+   * checkbox replaced it — which means an unticked box has to actually travel,
+   * or buying a ticket silently becomes subscribing to a mailing list.
+   */
+  it('carries a cleared opt-in through to the purchase handler', async () => {
+    const onPurchase = vi.fn();
+    render(
+      <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+    );
+
+    const payButton = await screen.findByRole('button', { name: /Pay \$8\.48/ });
+    await waitFor(() => expect(payButton).toBeEnabled());
+
+    fillContactDetails();
+    fireEvent.click(optIn());
+    fireEvent.click(payButton);
+
+    await waitFor(() =>
+      expect(onPurchase).toHaveBeenCalledWith(
+        expect.objectContaining({ newsletter: false }),
         'cnon:card-nonce-ok',
       ),
     );

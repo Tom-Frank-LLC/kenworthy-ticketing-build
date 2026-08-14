@@ -18,7 +18,7 @@ import { type Seat, type PriceTier, computeSeatTotals, computeOrderTotals, compu
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
-import { syncMailchimpProfile } from '@/lib/mailchimp';
+import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
@@ -328,7 +328,7 @@ export default function Showing() {
 
   const submitPurchase = async (opts: {
     sourceId?: string;
-    guest?: { name: string; email: string; phone: string };
+    guest?: { name: string; email: string; phone: string; newsletter: boolean };
   }) => {
     setPurchasing(true);
     try {
@@ -357,25 +357,59 @@ export default function Showing() {
           : `${data.ticket_count} ticket(s) purchased!`,
       );
 
-      // Fire-and-forget Mailchimp profile sync for signed-in buyers (the order
-      // itself is recorded server-side by the checkout function).
-      if (user) {
-        try {
-          const kind = productionType === 'movie' ? 'Films' : productionType === 'event' ? 'Special Events' : 'Live Performances';
+      // Fire-and-forget marketing sync (the order itself is recorded
+      // server-side by the checkout function).
+      //
+      // Two paths, because there are two kinds of buyer. A signed-in one has a
+      // profile we can enrich — lifetime spend, favourite genre, interest
+      // groups — and `syncMailchimpProfile` reads all of it under their own
+      // session. A guest has none of that: no session to read a profile with,
+      // and `app_config.mailchimp_interests` is not anonymously readable, so
+      // the interest-group IDs cannot be resolved either. What a guest does
+      // have is the address they just typed and an explicit answer about
+      // whether they want email, so they get a plain tagged subscribe.
+      //
+      // This branch is why the checkbox exists. Before, tagging rode on the
+      // signed-in buyer's `marketing_opt_in`; with no patron logins that
+      // condition is never true and ticket buyers stopped reaching Mailchimp at
+      // all. Consent lives in Mailchimp rather than `profiles.marketing_opt_in`
+      // — the same place the footer NewsletterSignup form puts an anonymous
+      // visitor's, since neither has a session to write a profile row with.
+      const kind =
+        productionType === 'movie' ? 'Films'
+        : productionType === 'event' ? 'Special Events'
+        : 'Live Performances';
+      try {
+        if (user) {
           void syncMailchimpProfile({
             extraTags: ['ticket-buyer'],
             source: 'showing-checkout',
             addInterests: [kind as any],
           });
-        } catch { /* noop */ }
-      }
+        } else if (opts.guest?.newsletter && opts.guest.email) {
+          const [first, ...rest] = opts.guest.name.trim().split(/\s+/);
+          void subscribeToMailchimp({
+            email: opts.guest.email,
+            first_name: first ?? '',
+            last_name: rest.join(' '),
+            // Interests need IDs a guest cannot read, so the production type
+            // rides along as a tag instead — same signal, anonymous-safe.
+            tags: ['ticket-buyer', kind.toLowerCase().replace(/\s+/g, '-')],
+            source: 'showing-checkout',
+          });
+        }
+      } catch { /* noop — marketing must never fail a purchase */ }
 
       // Land the buyer on the tickets they just bought. Delivery is
       // fire-and-forget, so this is the one moment we can be certain they can
-      // see them — and it is the answer to "a guest account was created
-      // silently and they have no way to reach it".
-      if (!user && data.order_token) navigate(ticketPagePath(data.order_token));
-      else navigate('/my-tickets');
+      // see them.
+      //
+      // Always the public token page, signed in or not. Patrons have no login,
+      // so `/my-tickets` would be a page they can never open; and a staff
+      // member testing a purchase wants to see the ticket they just made, not
+      // their own empty list. One destination, no session required — the same
+      // page the confirmation email links to.
+      if (data.order_token) navigate(ticketPagePath(data.order_token));
     } catch (err: any) {
       // A failed attempt must not reuse its key.
       idempotencyKeyRef.current = crypto.randomUUID();
@@ -418,7 +452,7 @@ export default function Showing() {
   };
 
   const handleGuestPurchase = (
-    guestInfo: { name: string; email: string; phone: string },
+    guestInfo: { name: string; email: string; phone: string; newsletter: boolean },
     sourceId: string,
   ) => {
     if (ticketCount === 0) { toast.error('Please select at least one ticket'); return; }

@@ -9,6 +9,7 @@ import { RedeemedQr } from '@/components/RedeemedQr';
 import { GoogleLogo } from '@/components/GoogleLogo';
 import { fetchPublicOrder, ticketCalendarUrl, type PublicOrder } from '@/lib/tickets';
 import { googleCalendarUrl } from '@/lib/calendar';
+import { MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
 
 /**
  * Public ticket page — `/t/:token`.
@@ -176,12 +177,18 @@ export default function PublicTicket() {
         <p className="text-xs text-muted-foreground">
           Bookmark this page — it opens your tickets without signing in.
         </p>
-        <Button asChild variant="outline" size="sm">
-          <a href="/my-tickets">
-            <TicketIcon className="h-4 w-4 mr-1.5" />
-            See all your tickets
-          </a>
-        </Button>
+        {/* This page is where the confirmation email lands, so it is the one
+            page a patron reliably reaches — which makes a button to a page
+            they cannot sign in to the most expensive dead end on the site.
+            Bookmarking, per the line above, is the whole mechanism now. */}
+        {MEMBER_ACCOUNTS_ENABLED && (
+          <Button asChild variant="outline" size="sm">
+            <a href="/my-tickets">
+              <TicketIcon className="h-4 w-4 mr-1.5" />
+              See all your tickets
+            </a>
+          </Button>
+        )}
       </div>
     </div>
   );

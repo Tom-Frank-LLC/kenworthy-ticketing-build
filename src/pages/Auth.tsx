@@ -13,10 +13,26 @@ import { toast } from 'sonner';
 import { Film } from 'lucide-react';
 import { SEO } from '@/components/SEO';
 import { subscribeToMailchimp } from '@/lib/mailchimp';
+import { MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
 
+/**
+ * The sign-in door.
+ *
+ * With member accounts off this is a staff door and nothing else: one sign-in
+ * card, no signup tab, and no invitation to create anything. Patrons never come
+ * here — they reach their tickets through the `/t/:token` link in their
+ * confirmation email, which needs no session at all.
+ *
+ * The signup half is not deleted, only unrendered. Flip `VITE_MEMBER_ACCOUNTS`
+ * on and the tabbed create-account form comes back exactly as it was, newsletter
+ * opt-in included.
+ *
+ * Forgot-password stays live in both states. Staff need it.
+ */
 export default function Auth() {
   const [searchParams] = useSearchParams();
-  const defaultTab = searchParams.get('tab') === 'signup' ? 'signup' : 'signin';
+  const defaultTab =
+    MEMBER_ACCOUNTS_ENABLED && searchParams.get('tab') === 'signup' ? 'signup' : 'signin';
   const redirectTo = searchParams.get('redirect') || '/';
   const navigate = useNavigate();
   const { signIn, signUp } = useAuth();
@@ -90,73 +106,97 @@ export default function Auth() {
     }
   };
 
+  const signInForm = (
+    <form onSubmit={handleSignIn} className="space-y-4 mt-4">
+      <div className="space-y-2">
+        <Label htmlFor="signin-email">Email</Label>
+        <Input id="signin-email" type="email" required value={signinEmail} onChange={e => setSigninEmail(e.target.value)} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="signin-password">Password</Label>
+        <Input id="signin-password" type="password" required value={signinPassword} onChange={e => setSigninPassword(e.target.value)} />
+      </div>
+      <Button type="submit" className="w-full" disabled={loading}>
+        {loading ? 'Signing in...' : 'Sign In'}
+      </Button>
+      <button type="button" className="w-full text-sm text-muted-foreground hover:text-primary underline" onClick={() => { setForgotEmail(signinEmail); setShowForgot(true); }}>
+        Forgot password?
+      </button>
+    </form>
+  );
+
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <SEO
-        title="Sign In or Create Account — The Kenworthy"
-        description="Sign in to your Kenworthy account to buy tickets, manage film passes, and access digital QR tickets for shows at our historic Moscow, Idaho theatre."
-      />
-      <h1 className="sr-only">Sign In or Create Account</h1>
+      {MEMBER_ACCOUNTS_ENABLED ? (
+        <SEO
+          title="Sign In or Create Account — The Kenworthy"
+          description="Sign in to your Kenworthy account to buy tickets, manage film passes, and access digital QR tickets for shows at our historic Moscow, Idaho theatre."
+        />
+      ) : (
+        <SEO
+          title="Staff sign in — The Kenworthy"
+          description="Staff and volunteer sign-in for The Kenworthy Performing Arts Centre. Tickets bought online are delivered by email — no account needed."
+        />
+      )}
+      <h1 className="sr-only">{MEMBER_ACCOUNTS_ENABLED ? 'Sign In or Create Account' : 'Staff sign in'}</h1>
       <Card className="w-full max-w-md glass glow-primary">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-2">
             <Film className="h-10 w-10 text-primary" />
           </div>
           <CardTitle className="font-display text-2xl">The Kenworthy</CardTitle>
-          <CardDescription>Moscow, Idaho's Historic Theatre</CardDescription>
+          <CardDescription>
+            {MEMBER_ACCOUNTS_ENABLED ? "Moscow, Idaho's Historic Theatre" : 'Staff sign in'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue={defaultTab}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
-            </TabsList>
-            <TabsContent value="signin">
-              <form onSubmit={handleSignIn} className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signin-email">Email</Label>
-                  <Input id="signin-email" type="email" required value={signinEmail} onChange={e => setSigninEmail(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signin-password">Password</Label>
-                  <Input id="signin-password" type="password" required value={signinPassword} onChange={e => setSigninPassword(e.target.value)} />
-                </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Signing in...' : 'Sign In'}
-                </Button>
-                <button type="button" className="w-full text-sm text-muted-foreground hover:text-primary underline" onClick={() => { setForgotEmail(signinEmail); setShowForgot(true); }}>
-                  Forgot password?
-                </button>
-              </form>
-            </TabsContent>
-            <TabsContent value="signup">
-              <form onSubmit={handleSignUp} className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-name">Display Name</Label>
-                  <Input id="signup-name" required value={signupName} onChange={e => setSignupName(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">Email</Label>
-                  <Input id="signup-email" type="email" required value={signupEmail} onChange={e => setSignupEmail(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Password</Label>
-                  <Input id="signup-password" type="password" required minLength={6} value={signupPassword} onChange={e => setSignupPassword(e.target.value)} />
-                </div>
-                <label className="flex items-start gap-2 text-sm text-muted-foreground cursor-pointer">
-                  <Checkbox
-                    checked={signupNewsletter}
-                    onCheckedChange={(v) => setSignupNewsletter(v === true)}
-                    className="mt-0.5"
-                  />
-                  <span>Email me about upcoming films, performances, and Kenworthy news.</span>
-                </label>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Creating account...' : 'Create Account'}
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
+          {MEMBER_ACCOUNTS_ENABLED ? (
+            <Tabs defaultValue={defaultTab}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="signin">Sign In</TabsTrigger>
+                <TabsTrigger value="signup">Sign Up</TabsTrigger>
+              </TabsList>
+              <TabsContent value="signin">{signInForm}</TabsContent>
+              <TabsContent value="signup">
+                <form onSubmit={handleSignUp} className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-name">Display Name</Label>
+                    <Input id="signup-name" required value={signupName} onChange={e => setSignupName(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email">Email</Label>
+                    <Input id="signup-email" type="email" required value={signupEmail} onChange={e => setSignupEmail(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password">Password</Label>
+                    <Input id="signup-password" type="password" required minLength={6} value={signupPassword} onChange={e => setSignupPassword(e.target.value)} />
+                  </div>
+                  <label className="flex items-start gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <Checkbox
+                      checked={signupNewsletter}
+                      onCheckedChange={(v) => setSignupNewsletter(v === true)}
+                      className="mt-0.5"
+                    />
+                    <span>Email me about upcoming films, performances, and Kenworthy news.</span>
+                  </label>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? 'Creating account...' : 'Create Account'}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
+          ) : (
+            <>
+              {signInForm}
+              {/* Someone who followed an old "sign in to see your tickets" link
+                  lands here with no way in and no idea why. Say where the
+                  tickets actually are. */}
+              <p className="mt-6 border-t border-border pt-4 text-center text-xs text-muted-foreground">
+                Buying tickets? You don't need an account — we email your tickets and QR
+                codes straight to you.
+              </p>
+            </>
+          )}
         </CardContent>
       </Card>
 

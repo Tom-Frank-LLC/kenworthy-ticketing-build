@@ -3,15 +3,24 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Check, User, Mail, Phone, CreditCard, Loader2 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 
 interface GuestCheckoutFormProps {
   ticketCount: number;
   total: number;
   purchasing: boolean;
-  /** Receives the buyer's details plus a single-use Square card token. */
+  /**
+   * Receives the buyer's details plus a single-use Square card token.
+   *
+   * `newsletter` is the buyer's own answer, not an inference. It used to be
+   * unnecessary here: marketing tagging rode on the signed-in buyer's profile,
+   * so a guest simply was not tagged. With no patron accounts left, every buyer
+   * is a guest, and the only honest way to know whether someone wants email is
+   * to ask on this form.
+   */
   onPurchase: (
-    guestInfo: { name: string; email: string; phone: string },
+    guestInfo: { name: string; email: string; phone: string; newsletter: boolean },
     sourceId: string,
   ) => void;
 }
@@ -30,6 +39,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [newsletter, setNewsletter] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [tokenizing, setTokenizing] = useState(false);
   const [cardReady, setCardReady] = useState(false);
@@ -53,7 +63,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
     // Free ($0) showing — no card step. The server skips Square for $0 orders,
     // so there is no token to collect; hand back an empty source.
     if (isFree) {
-      onPurchase({ name: name.trim(), email: email.trim(), phone: phone.trim() }, '');
+      onPurchase({ name: name.trim(), email: email.trim(), phone: phone.trim(), newsletter }, '');
       return;
     }
     if (!cardRef.current) {
@@ -67,7 +77,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
     setTokenizing(true);
     try {
       const sourceId = await cardRef.current.tokenize();
-      onPurchase({ name: name.trim(), email: email.trim(), phone: phone.trim() }, sourceId);
+      onPurchase({ name: name.trim(), email: email.trim(), phone: phone.trim(), newsletter }, sourceId);
     } catch (err) {
       setErrors({ card: err instanceof Error ? err.message : 'Please check your card details.' });
     } finally {
@@ -124,8 +134,21 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
           </div>
           {errors.contact && <p className="text-xs text-destructive mt-1">{errors.contact}</p>}
           <p className="text-xs text-muted-foreground">
-            Provide email or phone so we can send your tickets. If you already have an account, the tickets will be added to it.
+            Provide email or phone so we can send your tickets and QR codes.
           </p>
+          {/* The one place a ticket buyer can opt into email. The signup form
+              used to carry this and fed Mailchimp off the new account; there is
+              no signup form now, so the ask lives on the form everyone fills
+              in. Ticked by default, and it only ever means "yes" because they
+              left it ticked — never because they bought something. */}
+          <label className="flex items-start gap-2 pt-1 text-xs text-muted-foreground cursor-pointer">
+            <Checkbox
+              checked={newsletter}
+              onCheckedChange={v => setNewsletter(v === true)}
+              className="mt-0.5"
+            />
+            <span>Email me about upcoming films, performances, and Kenworthy news.</span>
+          </label>
         </div>
       </div>
 

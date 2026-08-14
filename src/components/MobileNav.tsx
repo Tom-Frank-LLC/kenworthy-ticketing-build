@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useHiringEnabled } from '@/hooks/useHiringEnabled';
+import { MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
 
 /**
  * The primary navigation on phones and small tablets.
@@ -156,7 +157,9 @@ export function MobileNav() {
             ))}
           </div>
 
-          {user && (
+          {/* No patron accounts, so no account section — signing in means staff,
+              and the Staff block below already carries everywhere they go. */}
+          {MEMBER_ACCOUNTS_ENABLED && user && (
             <>
               <SectionHeading>My Account</SectionHeading>
               <NavRow item={{ label: 'My Tickets', to: '/my-tickets', icon: Ticket }} onNavigate={close} />
@@ -202,11 +205,15 @@ export function MobileNav() {
                   <CreditCard className="mr-2 h-4 w-4" /> Film Pass
                 </Link>
               </Button>
-              <Button asChild variant="outline" className="h-12 w-full justify-center">
-                <Link to={authHref} onClick={close}>
-                  Sign In
-                </Link>
-              </Button>
+              {/* Matches the header: the sign-in CTA is staff-only now, and
+                  lives as a quiet link in the site footer instead. */}
+              {MEMBER_ACCOUNTS_ENABLED && (
+                <Button asChild variant="outline" className="h-12 w-full justify-center">
+                  <Link to={authHref} onClick={close}>
+                    Sign In
+                  </Link>
+                </Button>
+              )}
             </>
           )}
         </div>

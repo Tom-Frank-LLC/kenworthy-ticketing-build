@@ -13,6 +13,7 @@ import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
 import { MobileNav } from '@/components/MobileNav';
 import { NewsletterSignup } from '@/components/NewsletterSignup';
 import { useHiringEnabled } from '@/hooks/useHiringEnabled';
+import { MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
 
 const navLinkClass =
   'font-display uppercase text-sm tracking-[0.25em] text-accent hover:text-primary transition-colors';
@@ -47,6 +48,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
     if (path === '/' || path.startsWith('/auth')) return '/auth';
     return `/auth?redirect=${encodeURIComponent(path)}`;
   })();
+
+  // What the "Me" menu holds. With member accounts off, a logged-in user is
+  // staff by definition — My Tickets and Profile are pages nobody with a role
+  // has a reason to open, and the tickets they might want belong to a patron
+  // who reaches them by emailed link instead. So the menu carries the signed-in
+  // person's own destinations. Flip the flag and the patron entries return.
+  const accountLinks: Array<[string, string, typeof Ticket]> = [];
+  if (MEMBER_ACCOUNTS_ENABLED) {
+    accountLinks.push(['My Tickets', '/my-tickets', Ticket]);
+    accountLinks.push(['Film Passes', '/my-passes', CreditCard]);
+    accountLinks.push(['DVD Rentals', '/dvds', Ticket]);
+    accountLinks.push(['Profile', '/profile', User]);
+  } else {
+    if (isAdmin || isStaff) accountLinks.push(['Dashboard', '/admin', Shield]);
+    if (isStaff && !isAdmin) {
+      accountLinks.push(['Point of Sale', '/admin/pos', ShoppingCart]);
+      accountLinks.push(['Ticket Scanner', '/admin/scanner', ScanLine]);
+    }
+    if (isSuperadmin) accountLinks.push(['Superadmin', '/superadmin', ShieldCheck]);
+    if (isHost && !isAdmin) accountLinks.push(['Host Dashboard', '/host', Home]);
+  }
 
   const handleSignOut = async () => {
     try {
@@ -168,19 +190,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48 bg-background">
-                    <DropdownMenuItem asChild>
-                      <Link to="/my-tickets"><Ticket className="h-4 w-4 mr-2" /> My Tickets</Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link to="/my-passes"><CreditCard className="h-4 w-4 mr-2" /> Film Passes</Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link to="/dvds"><Ticket className="h-4 w-4 mr-2" /> DVD Rentals</Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link to="/profile"><User className="h-4 w-4 mr-2" /> Profile</Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
+                    {accountLinks.map(([label, to, Icon]) => (
+                      <DropdownMenuItem key={to} asChild>
+                        <Link to={to}><Icon className="h-4 w-4 mr-2" /> {label}</Link>
+                      </DropdownMenuItem>
+                    ))}
+                    {accountLinks.length > 0 && <DropdownMenuSeparator />}
                     <DropdownMenuItem onSelect={handleSignOut}>
                       <LogOut className="h-4 w-4 mr-2" /> Sign Out
                     </DropdownMenuItem>
@@ -189,9 +204,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </>
             ) : (
               <>
-                <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex h-10">
-                  <Link to={authHref}>Sign In</Link>
-                </Button>
+                {/* Signing in is a staff act now, not a step in buying a
+                    ticket. The prominent header CTA would only send patrons to
+                    a door that never opens for them, so it moves to a quiet
+                    footer link — see below. */}
+                {MEMBER_ACCOUNTS_ENABLED && (
+                  <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex h-10">
+                    <Link to={authHref}>Sign In</Link>
+                  </Button>
+                )}
                 <Button size="sm" asChild className="h-10 px-4 sm:px-5">
                   <Link to="/calendar">Tickets</Link>
                 </Button>
@@ -223,6 +244,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <p className="font-serif">Performing Arts Centre</p>
             <p className="font-serif">Celebrating 100 Years · Est. 1926</p>
             <p className="mt-3 text-xs">© {new Date().getFullYear()} The Kenworthy</p>
+            {/* Reachable, unadvertised. Staff know it is here; a patron who
+                finds it has nothing to gain by it. Dropped from sitemap.xml
+                for the same reason. */}
+            {!MEMBER_ACCOUNTS_ENABLED && !user && (
+              <p className="mt-2 text-xs">
+                <Link to={authHref} className="text-muted-foreground/70 hover:text-primary transition-colors">
+                  Staff login
+                </Link>
+              </p>
+            )}
           </div>
         </div>
       </footer>
