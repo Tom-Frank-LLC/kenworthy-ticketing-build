@@ -14,6 +14,10 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
+  // An invited staff member is setting a password for the first time, not
+  // resetting one they forgot. Same form, honest wording.
+  const [isInvite] = useState(() =>
+    typeof window !== 'undefined' && /type=invite/.test(window.location.href));
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
@@ -21,8 +25,15 @@ export default function ResetPassword() {
         setReady(true);
       }
     });
-    // Check hash and query params for recovery token
-    if (window.location.hash.includes('type=recovery') || window.location.href.includes('type=recovery')) {
+    // Check hash and query params for a recovery *or* invite token.
+    //
+    // `invite` matters because this is where `invite-staff` sends a new staff
+    // member: Supabase's verify endpoint bounces them here with `type=invite`
+    // in the hash, and it raises SIGNED_IN rather than PASSWORD_RECOVERY. Match
+    // only on recovery and an invited person waits on "Verifying your reset
+    // link…" forever, with no way to set the password they were invited to set.
+    if (/type=(recovery|invite)/.test(window.location.hash) ||
+        /type=(recovery|invite)/.test(window.location.href)) {
       setReady(true);
     }
     return () => subscription.unsubscribe();
@@ -83,8 +94,14 @@ export default function ResetPassword() {
           <div className="flex justify-center mb-2">
             <Film className="h-10 w-10 text-primary" />
           </div>
-          <CardTitle className="font-display text-2xl">Reset Password</CardTitle>
-          <CardDescription>Enter your new password</CardDescription>
+          <CardTitle className="font-display text-2xl">
+            {isInvite ? 'Set Your Password' : 'Reset Password'}
+          </CardTitle>
+          <CardDescription>
+            {isInvite
+              ? 'Choose a password to finish setting up your account'
+              : 'Enter your new password'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleReset} className="space-y-4">
