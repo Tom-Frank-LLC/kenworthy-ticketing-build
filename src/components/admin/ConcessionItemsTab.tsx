@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeFunction } from '@/lib/functions';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,18 @@ interface ConcessionItem {
   square_synced_at?: string | null;
 }
 
+/** What the dry run reports back, so staff can see a pull before it writes. */
+interface PullPreview {
+  environment?: string;
+  allowlist?: string[];
+  included?: { category: string; count: number }[];
+  excluded?: { category: string; count: number }[];
+  will_import?: number;
+  will_skip?: number;
+  over_sanity_limit?: boolean;
+  sanity_limit?: number;
+}
+
 interface ComboChild {
   id: string;
   combo_id: string;
@@ -42,6 +55,8 @@ export default function ConcessionItemsTab() {
   const [isCombo, setIsCombo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [preview, setPreview] = useState<PullPreview | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Combo management
   const [comboDialogOpen, setComboDialogOpen] = useState(false);
@@ -50,13 +65,20 @@ export default function ConcessionItemsTab() {
   const [newChildItemId, setNewChildItemId] = useState<string>('');
   const [newChildQty, setNewChildQty] = useState<string>('1');
 
+  // Paged: a Square pull can leave far more than PostgREST's 1,000-row ceiling
+  // in this table, and an unpaged select drops the tail with no error — which is
+  // how the 2026-08-14 over-pull left rows nobody could see here to switch off.
   const loadItems = async () => {
-    const { data } = await supabase
-      .from('concession_items')
-      .select('*')
-      .order('category')
-      .order('name');
-    setItems((data as ConcessionItem[]) || []);
+    const { data, error } = await fetchAllRows<ConcessionItem>((from, to) =>
+      supabase
+        .from('concession_items')
+        .select('*')
+        .order('category')
+        .order('name')
+        .range(from, to) as never,
+    );
+    if (error) toast.error(`Could not load items: ${error.message}`);
+    setItems(data);
   };
 
   // invokeFunction unwraps the function's own error text. Plain
@@ -71,18 +93,40 @@ export default function ConcessionItemsTab() {
     }
   };
 
-  const pullFromSquare = async () => {
+  // Two steps on purpose. "Pull from Square" now only ever runs a dry run first;
+  // nothing is written until staff see the counts and confirm. One unguarded
+  // click used to import the entire catalog — 998 items, all active, straight
+  // onto the public home page.
+  const previewPull = async () => {
     setSyncing(true);
     try {
-      const result = await invokeFunction<{ pulled?: number; environment?: string }>(
-        'square-catalog-sync',
-        { action: 'pull' },
-      );
+      const result = await invokeFunction<PullPreview>('square-catalog-sync', {
+        action: 'preview',
+      });
+      setPreview(result);
+      setPreviewOpen(true);
+    } catch (e) {
+      toast.error(`Could not read the Square catalog: ${(e as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const confirmPull = async () => {
+    setSyncing(true);
+    try {
+      const result = await invokeFunction<{
+        pulled?: number; created?: number; updated?: number;
+        skipped?: number; environment?: string; note?: string;
+      }>('square-catalog-sync', { action: 'pull' });
       // The environment is whatever the server resolved — never assumed here, so
       // this can't read "sandbox" while the pull hit the live catalog.
       toast.success(
-        `Pulled ${result?.pulled ?? 0} items from Square (${result?.environment ?? 'unknown'})`,
+        `Imported ${result?.created ?? 0} new, updated ${result?.updated ?? 0}, ` +
+          `skipped ${result?.skipped ?? 0} out-of-scope (${result?.environment ?? 'unknown'})`,
       );
+      if (result?.note) toast.info(result.note);
+      setPreviewOpen(false);
       loadItems();
     } catch (e) {
       toast.error(`Sync failed: ${(e as Error).message}`);
@@ -135,13 +179,17 @@ export default function ConcessionItemsTab() {
     loadItems();
   };
 
+  // Active/inactive is purely "show this on our site" — Square has no such field,
+  // so there is nothing to push. It used to call pushToSquare anyway, and because
+  // push rebuilt the Square object from our four columns, switching items off by
+  // hand overwrote 906 live catalog entries on 2026-08-14. Never push from here.
   const toggleActive = async (item: ConcessionItem) => {
     const { error } = await supabase
       .from('concession_items')
       .update({ is_active: !item.is_active })
       .eq('id', item.id);
     if (error) toast.error(error.message);
-    else { await pushToSquare(item.id, item.is_combo); loadItems(); }
+    else loadItems();
   };
 
   const deleteItem = async (id: string) => {
@@ -246,13 +294,14 @@ export default function ConcessionItemsTab() {
         <div>
           <h2 className="font-display text-xl font-bold">Concession Menu</h2>
           <p className="text-xs text-muted-foreground">
-            Two-way synced with Square <span className="font-semibold">sandbox</span>. Changes here push to Square; use “Pull from Square” to import.
+            Name and price sync with Square. Active/inactive is site-only and never
+            touches Square. “Pull from Square” shows what it would import first.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={pullFromSquare} disabled={syncing}>
+          <Button size="sm" variant="outline" onClick={previewPull} disabled={syncing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Syncing…' : 'Pull from Square'}
+            {syncing ? 'Checking…' : 'Pull from Square'}
           </Button>
           <Button size="sm" onClick={openNew}>
             <Plus className="h-4 w-4 mr-1" /> Add Item
@@ -319,6 +368,72 @@ export default function ConcessionItemsTab() {
       {items.length === 0 && (
         <p className="text-muted-foreground text-center py-8">No concession items yet. Add your first item!</p>
       )}
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Pull from Square — {preview?.environment ?? 'unknown'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-sm">
+            <p className="text-muted-foreground">
+              Nothing has been written yet. Only the categories below count as
+              concessions; everything else in the Square catalog is left alone.
+              Newly imported items arrive <span className="font-medium">inactive</span>,
+              so nothing reaches the public site until you switch it on.
+            </p>
+
+            <div className="rounded-md border border-border/40 p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                Will import — {preview?.will_import ?? 0} item(s)
+              </p>
+              {(preview?.included ?? []).length === 0 && (
+                <p className="italic text-muted-foreground">
+                  Nothing in scope. Check the category allowlist.
+                </p>
+              )}
+              <ul className="space-y-1">
+                {(preview?.included ?? []).map((c) => (
+                  <li key={c.category} className="flex justify-between">
+                    <span>{c.category}</span>
+                    <span className="tabular-nums text-muted-foreground">{c.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <details className="rounded-md border border-border/40 p-3">
+              <summary className="cursor-pointer text-xs uppercase tracking-wide text-muted-foreground">
+                Will skip — {preview?.will_skip ?? 0} item(s)
+              </summary>
+              <ul className="space-y-1 mt-2">
+                {(preview?.excluded ?? []).map((c) => (
+                  <li key={c.category} className="flex justify-between">
+                    <span>{c.category}</span>
+                    <span className="tabular-nums text-muted-foreground">{c.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+
+            {preview?.over_sanity_limit && (
+              <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive">
+                That is more than {preview?.sanity_limit} items — well past a
+                plausible concessions menu. The server will refuse this pull.
+                Narrow the category allowlist first.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>Cancel</Button>
+            <Button
+              onClick={confirmPull}
+              disabled={syncing || preview?.over_sanity_limit || !preview?.will_import}
+            >
+              {syncing ? 'Importing…' : `Import ${preview?.will_import ?? 0} item(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

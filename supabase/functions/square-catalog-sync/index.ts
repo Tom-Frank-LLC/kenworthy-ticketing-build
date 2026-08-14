@@ -11,6 +11,39 @@
 // CORS also matters here: supabase-js sends x-supabase-client-* headers, and the
 // hand-rolled header list this file carried omitted them, so the preflight could
 // fail before the function ever ran. It uses the shared list now.
+//
+// ---------------------------------------------------------------------------
+// 2026-08-14 incident — read this before changing pull or push.
+//
+// Two faults in this file combined to damage the LIVE Square catalog:
+//
+//   1. `pull` imported every ITEM in the catalog, unscoped, and stamped
+//      `is_active: !o.is_deleted`. The Kenworthy's Square catalog is their whole
+//      sales history — 998 objects: past films, MET broadcasts, rentals, passes,
+//      posters. All of it landed in `concession_items` ACTIVE, so the public home
+//      page rendered the entire back catalogue as a concessions menu.
+//
+//   2. `push_item` rebuilt the Square object from scratch — name plus a single
+//      "Regular" variation — and Square's UpsertCatalogObject REPLACES the object
+//      it is given. Every field this file did not send was therefore cleared:
+//      description, images, category, taxes, and every variation past the first.
+//      Deactivating an item in the admin UI called push_item, so clearing the
+//      flood by hand overwrote 906 live catalog objects.
+//
+// The fixes, in order of importance:
+//
+//   * `push_item` is now read-modify-write. It RETRIEVES the current object and
+//     edits only name and the first variation's price. Never reconstruct a
+//     catalog object from our columns — we store four fields and Square stores
+//     dozens, so anything we build from scratch is a deletion of the rest.
+//   * `pull` imports only categories on an allowlist (app_config
+//     `square_concession_categories`) and never sets `is_active` on an existing
+//     row. New rows arrive inactive and an admin turns them on deliberately.
+//   * `preview` dry-runs a pull so the UI can show counts before anything writes.
+//   * `repair_categories` re-attaches the category each damaged item used to have,
+//     which is the one destroyed field we can still reconstruct — we kept the
+//     Square category NAME on every row.
+// ---------------------------------------------------------------------------
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { json, preflight } from "../_shared/http.ts";
@@ -20,6 +53,31 @@ import {
   squareFetch,
   type SquareConfig,
 } from "../_shared/square.ts";
+
+/**
+ * Square category names whose items are genuine concessions.
+ *
+ * The Kenworthy's catalog is organised by a numeric prefix: 1-5 and 7 are things
+ * sold at the stand, `6 *` is ticketing, `9 *` is passes, and `General` is the
+ * junk drawer holding posters and legacy ticket types. Only the stand belongs in
+ * `concession_items`. Overridable per-project via app_config so this never needs
+ * a deploy to change.
+ */
+const DEFAULT_CONCESSION_CATEGORIES = [
+  "1 Combos",
+  "2 Candy",
+  "3 Bottles",
+  "3 Soda",
+  "4 Beer",
+  "4 Wine",
+  "5 Popcorn",
+  "7 Merch",
+];
+
+const CATEGORY_CONFIG_KEY = "square_concession_categories";
+
+/** Refuse to write more than this in one pull without an explicit override. */
+const PULL_SANITY_LIMIT = 200;
 
 /** Call Square, or throw with Square's own message — never a silent empty result. */
 async function square(
@@ -34,6 +92,51 @@ async function square(
     );
   }
   return data ?? {};
+}
+
+/** The configured concessions allowlist, falling back to the default set. */
+async function loadCategoryAllowlist(admin: any): Promise<string[]> {
+  const { data } = await admin
+    .from("app_config")
+    .select("value")
+    .eq("key", CATEGORY_CONFIG_KEY)
+    .maybeSingle();
+  const configured = data?.value?.categories;
+  if (Array.isArray(configured)) return configured.map((c: unknown) => String(c));
+  return DEFAULT_CONCESSION_CATEGORIES;
+}
+
+/** Every ITEM and CATEGORY object in the catalog, following the cursor. */
+async function listCatalog(config: SquareConfig) {
+  let cursor: string | undefined = undefined;
+  const objects: any[] = [];
+  do {
+    const q = new URLSearchParams({ types: "ITEM,CATEGORY" });
+    if (cursor) q.set("cursor", cursor);
+    const res = await square(config, `/catalog/list?${q}`);
+    for (const o of res.objects ?? []) objects.push(o);
+    cursor = res.cursor;
+  } while (cursor);
+  return objects;
+}
+
+/** Map category object id -> category name. */
+function categoryNames(objects: any[]) {
+  const names = new Map<string, string>();
+  for (const o of objects) {
+    if (o.type === "CATEGORY") names.set(o.id, o.category_data?.name ?? "General");
+  }
+  return names;
+}
+
+/** The category name Square has this item filed under. */
+function categoryOf(o: any, names: Map<string, string>) {
+  const data = o.item_data ?? {};
+  return (
+    names.get(data.category_id) ??
+    names.get(data.categories?.[0]?.id) ??
+    "General"
+  );
 }
 
 Deno.serve(async (req) => {
@@ -62,12 +165,16 @@ Deno.serve(async (req) => {
 
   let payload: any = {};
   try { payload = await req.json(); } catch { /* GET-style ping */ }
-  const action = payload.action ?? "pull";
+  const action = payload.action ?? "preview";
 
   try {
-    if (action === "pull") return json(await pullAll(config, admin));
+    if (action === "preview") return json(await previewPull(config, admin));
+    if (action === "pull") return json(await pullAll(config, admin, payload));
     if (action === "push_item") return json(await pushItem(config, admin, payload.itemId));
     if (action === "delete_item") return json(await deleteItem(config, payload));
+    if (action === "repair_categories") {
+      return json(await repairCategories(config, admin, payload));
+    }
     if (action === "verify") return json({ ok: true, environment: config.environment });
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (e: any) {
@@ -76,58 +183,138 @@ Deno.serve(async (req) => {
   }
 });
 
-// --- PULL ---------------------------------------------------------------
-async function pullAll(config: SquareConfig, admin: any) {
-  let cursor: string | undefined = undefined;
-  const items: any[] = [];
-  do {
-    const q = new URLSearchParams({ types: "ITEM,CATEGORY" });
-    if (cursor) q.set("cursor", cursor);
-    const res = await square(config, `/catalog/list?${q}`);
-    for (const o of res.objects ?? []) items.push(o);
-    cursor = res.cursor;
-  } while (cursor);
+// --- PREVIEW (dry run) ---------------------------------------------------
+// Writes nothing. The admin UI calls this first so a pull can never be a
+// surprise: staff see exactly which categories are in scope and how many items
+// each would bring in, plus what is being left behind.
+async function previewPull(config: SquareConfig, admin: any) {
+  const allowed = await loadCategoryAllowlist(admin);
+  const allowedSet = new Set(allowed);
+  const objects = await listCatalog(config);
+  const names = categoryNames(objects);
 
-  const categories = new Map<string, string>();
-  for (const o of items) {
-    if (o.type === "CATEGORY") categories.set(o.id, o.category_data?.name ?? "General");
+  const included = new Map<string, number>();
+  const excluded = new Map<string, number>();
+  for (const o of objects) {
+    if (o.type !== "ITEM") continue;
+    const cat = categoryOf(o, names);
+    const bucket = allowedSet.has(cat) ? included : excluded;
+    bucket.set(cat, (bucket.get(cat) ?? 0) + 1);
   }
 
-  let upserts = 0;
-  for (const o of items) {
-    if (o.type !== "ITEM") continue;
+  const tally = (m: Map<string, number>) =>
+    [...m.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count);
+
+  const willImport = [...included.values()].reduce((a, b) => a + b, 0);
+  return {
+    ok: true,
+    environment: config.environment,
+    allowlist: allowed,
+    // Every category Square knows about, so the UI can offer the full choice.
+    all_categories: [...new Set([...included.keys(), ...excluded.keys()])].sort(),
+    included: tally(included),
+    excluded: tally(excluded),
+    will_import: willImport,
+    will_skip: [...excluded.values()].reduce((a, b) => a + b, 0),
+    over_sanity_limit: willImport > PULL_SANITY_LIMIT,
+    sanity_limit: PULL_SANITY_LIMIT,
+  };
+}
+
+// --- PULL ---------------------------------------------------------------
+async function pullAll(config: SquareConfig, admin: any, payload: any) {
+  const allowed = await loadCategoryAllowlist(admin);
+  const allowedSet = new Set(allowed);
+  if (allowedSet.size === 0) {
+    throw new Error(
+      "No Square categories are allowlisted for concessions — choose them before pulling.",
+    );
+  }
+
+  const objects = await listCatalog(config);
+  const names = categoryNames(objects);
+  const inScope = objects.filter(
+    (o) => o.type === "ITEM" && allowedSet.has(categoryOf(o, names)),
+  );
+
+  // A mis-scoped allowlist must not be able to mass-import in silence. The UI
+  // sends confirm_count from what preview showed, so an allowlist edited between
+  // preview and pull stops here rather than writing a surprise.
+  if (inScope.length > PULL_SANITY_LIMIT && payload?.override_limit !== true) {
+    throw new Error(
+      `Refusing to import ${inScope.length} items (limit ${PULL_SANITY_LIMIT}). ` +
+        `Narrow the category allowlist, or re-run with override_limit.`,
+    );
+  }
+
+  // Which of these already exist? Existing rows keep their is_active exactly as
+  // staff last set it; only genuinely new rows are written, and they arrive
+  // inactive. This is what stops any pull — however mis-scoped — from putting
+  // anything on the public page by itself.
+  const ids = inScope.map((o) => o.id);
+  const existing = new Set<string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await admin
+      .from("concession_items")
+      .select("square_catalog_id")
+      .in("square_catalog_id", ids.slice(i, i + 200));
+    if (error) throw new Error(`DB read failed: ${error.message}`);
+    for (const r of data ?? []) existing.add(r.square_catalog_id);
+  }
+
+  let created = 0;
+  let updated = 0;
+  for (const o of inScope) {
     const data = o.item_data ?? {};
     const variation = (data.variations ?? [])[0];
     const varData = variation?.item_variation_data ?? {};
     const price = Number(varData.price_money?.amount ?? 0) / 100;
-    const category =
-      categories.get(data.category_id) ??
-      categories.get(data.categories?.[0]?.id) ??
-      "General";
 
-    const row = {
+    // Note the absence of is_active. Square's is_deleted must never decide what
+    // the public site shows; that is an editorial choice staff make here.
+    const row: Record<string, unknown> = {
       square_catalog_id: o.id,
       square_variation_id: variation?.id ?? null,
       square_version: o.version ?? null,
       square_synced_at: new Date().toISOString(),
       name: data.name ?? "Untitled",
       price,
-      category,
-      is_active: !o.is_deleted,
+      category: categoryOf(o, names),
     };
+    if (!existing.has(o.id)) {
+      row.is_active = false; // staged; an admin turns it on
+      created++;
+    } else {
+      updated++;
+    }
 
-    // Upsert on square_catalog_id
     const { error } = await admin
       .from("concession_items")
       .upsert(row, { onConflict: "square_catalog_id" });
     if (error) throw new Error(`DB upsert failed: ${error.message}`);
-    upserts++;
   }
 
-  return { ok: true, pulled: upserts, environment: config.environment };
+  return {
+    ok: true,
+    environment: config.environment,
+    pulled: inScope.length,
+    created,
+    updated,
+    skipped: objects.filter((o) => o.type === "ITEM").length - inScope.length,
+    allowlist: allowed,
+    note: created > 0
+      ? `${created} new item(s) imported INACTIVE — activate them to show on the site.`
+      : "No new items; existing items kept their active/inactive state.",
+  };
 }
 
 // --- PUSH ---------------------------------------------------------------
+// Read-modify-write. Square's UpsertCatalogObject replaces the whole object, so
+// the only safe edit is to retrieve what is there, change the two fields we own,
+// and send it back intact. Reconstructing the object from our four columns is
+// what destroyed 906 live catalog entries on 2026-08-14.
 async function pushItem(config: SquareConfig, admin: any, itemId: string) {
   if (!itemId) throw new Error("itemId required");
   const { data: item, error } = await admin
@@ -140,46 +327,79 @@ async function pushItem(config: SquareConfig, admin: any, itemId: string) {
     return { ok: true, skipped: "combo", environment: config.environment };
   }
 
-  const catalogId = item.square_catalog_id ?? `#${item.id}`;
-  const variationId = item.square_variation_id ?? `#${item.id}-var`;
+  const amount = Math.round(Number(item.price) * 100);
+  let object: any;
 
-  const objectPayload = {
-    idempotency_key: crypto.randomUUID(),
-    object: {
+  if (item.square_catalog_id) {
+    // Existing Square item: fetch it and edit in place.
+    const current = await square(
+      config,
+      `/catalog/object/${item.square_catalog_id}?include_related_objects=false`,
+    );
+    object = current.object;
+    if (!object) {
+      throw new Error(`Square has no object ${item.square_catalog_id}`);
+    }
+    object.item_data ??= {};
+    object.item_data.name = item.name;
+
+    // Only touch the variation we track. Others keep their own names and prices.
+    const variations = object.item_data.variations ?? [];
+    const target =
+      variations.find((v: any) => v.id === item.square_variation_id) ?? variations[0];
+    if (target) {
+      target.item_variation_data ??= {};
+      target.item_variation_data.pricing_type = "FIXED_PRICING";
+      target.item_variation_data.price_money = { amount, currency: "USD" };
+    } else {
+      // No variation at all — add one rather than replacing the item wholesale.
+      object.item_data.variations = [
+        {
+          type: "ITEM_VARIATION",
+          id: `#${item.id}-var`,
+          item_variation_data: {
+            item_id: object.id,
+            name: "Regular",
+            pricing_type: "FIXED_PRICING",
+            price_money: { amount, currency: "USD" },
+          },
+        },
+      ];
+    }
+  } else {
+    // Genuinely new item — nothing upstream to preserve.
+    object = {
       type: "ITEM",
-      id: catalogId,
-      version: item.square_version ?? undefined,
+      id: `#${item.id}`,
       present_at_all_locations: true,
       item_data: {
         name: item.name,
-        item_variation_data: undefined,
         variations: [
           {
             type: "ITEM_VARIATION",
-            id: variationId,
-            version: undefined,
+            id: `#${item.id}-var`,
             present_at_all_locations: true,
             item_variation_data: {
               name: "Regular",
               pricing_type: "FIXED_PRICING",
-              price_money: {
-                amount: Math.round(Number(item.price) * 100),
-                currency: "USD",
-              },
+              price_money: { amount, currency: "USD" },
             },
           },
         ],
       },
-    },
-  };
+    };
+  }
 
   const res = await square(config, "/catalog/object", {
     method: "POST",
-    body: objectPayload,
+    body: { idempotency_key: crypto.randomUUID(), object },
   });
 
   const returned = res.catalog_object;
-  const returnedVar = returned?.item_data?.variations?.[0];
+  const returnedVar =
+    returned?.item_data?.variations?.find(
+      (v: any) => v.id === item.square_variation_id,
+    ) ?? returned?.item_data?.variations?.[0];
 
   const { error: upErr } = await admin
     .from("concession_items")
@@ -197,6 +417,111 @@ async function pushItem(config: SquareConfig, admin: any, itemId: string) {
     square_id: returned?.id,
     variation_id: returnedVar?.id,
     environment: config.environment,
+  };
+}
+
+// --- REPAIR --------------------------------------------------------------
+// The 2026-08-14 push wiped each item's category assignment in Square. We still
+// hold the category NAME every item had, because the pull recorded it before the
+// damage — so this re-files each object under the category it belonged to.
+//
+// It cannot bring back descriptions, images, taxes, or variations past the
+// first: those were never stored on our side. Only a Square-side backup can.
+//
+// dry_run: true reports what it would change and writes nothing.
+async function repairCategories(config: SquareConfig, admin: any, payload: any) {
+  const dryRun = payload?.dry_run !== false; // default to dry run
+  const limit = Number(payload?.limit ?? 0) || null;
+
+  const objects = await listCatalog(config);
+  const nameToCategoryId = new Map<string, string>();
+  for (const o of objects) {
+    if (o.type === "CATEGORY") {
+      nameToCategoryId.set(o.category_data?.name ?? "General", o.id);
+    }
+  }
+  const liveItems = new Map<string, any>();
+  for (const o of objects) if (o.type === "ITEM") liveItems.set(o.id, o);
+
+  // Every row we ever pulled, with the category it had at pull time.
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin
+      .from("concession_items")
+      .select("square_catalog_id, category, name")
+      .not("square_catalog_id", "is", null)
+      .range(from, from + 999);
+    if (error) throw new Error(`DB read failed: ${error.message}`);
+    rows.push(...(data ?? []));
+    if ((data?.length ?? 0) < 1000) break;
+  }
+
+  const plan: any[] = [];
+  const unmatched: any[] = [];
+  for (const r of rows) {
+    const live = liveItems.get(r.square_catalog_id);
+    if (!live) continue; // gone from Square entirely
+    const wantId = nameToCategoryId.get(r.category);
+    if (!wantId) {
+      unmatched.push({ name: r.name, category: r.category });
+      continue;
+    }
+    const haveId =
+      live.item_data?.category_id ?? live.item_data?.categories?.[0]?.id ?? null;
+    if (haveId === wantId) continue; // already correct
+    plan.push({
+      id: r.square_catalog_id,
+      name: r.name,
+      category: r.category,
+      category_id: wantId,
+    });
+  }
+
+  const target = limit ? plan.slice(0, limit) : plan;
+  if (dryRun) {
+    return {
+      ok: true,
+      environment: config.environment,
+      dry_run: true,
+      needs_repair: plan.length,
+      would_repair: target.length,
+      unmatched_categories: [...new Set(unmatched.map((u) => u.category))],
+      sample: target.slice(0, 10),
+    };
+  }
+
+  let repaired = 0;
+  const failures: any[] = [];
+  for (const p of target) {
+    try {
+      const current = await square(
+        config,
+        `/catalog/object/${p.id}?include_related_objects=false`,
+      );
+      const object = current.object;
+      if (!object) continue;
+      object.item_data ??= {};
+      object.item_data.category_id = p.category_id;
+      object.item_data.categories = [{ id: p.category_id, ordinal: 0 }];
+      await square(config, "/catalog/object", {
+        method: "POST",
+        body: { idempotency_key: crypto.randomUUID(), object },
+      });
+      repaired++;
+    } catch (e: any) {
+      failures.push({ id: p.id, name: p.name, error: e.message ?? String(e) });
+    }
+  }
+
+  return {
+    ok: true,
+    environment: config.environment,
+    dry_run: false,
+    repaired,
+    attempted: target.length,
+    remaining: plan.length - target.length,
+    failures: failures.slice(0, 20),
+    failure_count: failures.length,
   };
 }
 
