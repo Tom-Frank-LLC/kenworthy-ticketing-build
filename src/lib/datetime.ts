@@ -14,6 +14,7 @@
 // below, which pin the conversion to the venue's zone the same way the ticket
 // email already does (supabase/functions/_shared/tickets.ts).
 
+import { format } from 'date-fns';
 import { formatInTimeZone, fromZonedTime, toZonedTime } from 'date-fns-tz';
 
 /**
@@ -81,4 +82,26 @@ export function venueLocalToInstant(naive: string): Date {
 /** Format an instant as the `datetime-local` value the admin should see. */
 export function instantToVenueLocalInput(value: string | Date): string {
   return formatShowtime(value, "yyyy-MM-dd'T'HH:mm");
+}
+
+/**
+ * Format a bare `yyyy-MM-dd` from a Postgres DATE column.
+ *
+ * A DATE has no instant and no zone — it is a calendar day, and it should
+ * render as that same day everywhere. `new Date('2026-08-14')` does not do
+ * that: the ISO date-only form is parsed as *UTC* midnight, which is 5 PM the
+ * previous day in Pacific, so the value prints as August 13 to anyone west of
+ * Greenwich. Splitting the components and building a local-midnight Date
+ * sidesteps the conversion entirely.
+ *
+ * Do not use this on a TIMESTAMPTZ — those are instants; use formatShowtime.
+ */
+export function formatPlainDate(
+  value: string | null | undefined,
+  pattern = 'MMMM d, yyyy',
+): string {
+  if (!value) return '';
+  const [y, m, d] = value.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return format(new Date(y, m - 1, d), pattern);
 }

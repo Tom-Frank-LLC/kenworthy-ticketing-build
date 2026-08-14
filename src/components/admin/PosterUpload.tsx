@@ -10,9 +10,26 @@ interface PosterUploadProps {
   currentUrl: string;
   onUrlChange: (url: string) => void;
   folder: string; // e.g. 'movies', 'events', 'concerts'
+  /** Field label. Defaults to the poster wording this started life with. */
+  label?: string;
+  /**
+   * Sizing for the preview box and the empty dropzone, as Tailwind classes.
+   * Defaults to a 2:3 poster thumbnail; press photos are landscape, so they
+   * pass their own.
+   */
+  previewClassName?: string;
+  /** Alt text for the preview image. */
+  alt?: string;
 }
 
-export function PosterUpload({ currentUrl, onUrlChange, folder }: PosterUploadProps) {
+export function PosterUpload({
+  currentUrl,
+  onUrlChange,
+  folder,
+  label = 'Poster Image',
+  previewClassName = 'w-32 aspect-[2/3]',
+  alt = 'Movie poster preview',
+}: PosterUploadProps) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -39,15 +56,17 @@ export function PosterUpload({ currentUrl, onUrlChange, folder }: PosterUploadPr
     const { data: { publicUrl } } = supabase.storage.from('posters').getPublicUrl(path);
     onUrlChange(publicUrl);
     setUploading(false);
-    toast.success('Poster uploaded!');
+    // Deliberately not "Poster uploaded" — this component also carries the
+    // Press page's banner photo and article thumbnails now.
+    toast.success('Image uploaded');
   };
 
   return (
     <div className="space-y-2">
-      <Label>Poster Image</Label>
+      <Label>{label}</Label>
       {currentUrl ? (
-        <div className="relative w-32 aspect-[2/3] rounded-lg overflow-hidden bg-secondary">
-          <img src={currentUrl} alt="Movie poster preview" className="w-full h-full object-cover" />
+        <div className={`relative ${previewClassName} rounded-lg overflow-hidden bg-secondary`}>
+          <img src={currentUrl} alt={alt} className="w-full h-full object-cover" />
           <button
             type="button"
             onClick={() => onUrlChange('')}
@@ -60,7 +79,7 @@ export function PosterUpload({ currentUrl, onUrlChange, folder }: PosterUploadPr
       ) : (
         <div
           onClick={() => fileRef.current?.click()}
-          className="w-32 aspect-[2/3] rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-primary/50 transition-colors"
+          className={`${previewClassName} rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-primary/50 transition-colors`}
         >
           <Image className="h-6 w-6 text-muted-foreground" />
           <span className="text-xs text-muted-foreground">Upload</span>

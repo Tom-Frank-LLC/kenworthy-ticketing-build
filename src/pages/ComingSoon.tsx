@@ -48,14 +48,6 @@ export const SilentFilmFestivalPage = () => (
   />
 );
 
-export const PressPage = () => (
-  <ComingSoon
-    title="Press"
-    path="/press"
-    blurb="Press releases, high-resolution photography, and media contacts — coming soon."
-  />
-);
-
 export const AccessibilityPage = () => (
   <ComingSoon
     title="Accessibility"
