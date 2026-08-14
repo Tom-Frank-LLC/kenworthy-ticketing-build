@@ -85,9 +85,9 @@ Worth carrying forward: `published_date` is a Postgres DATE, and `new Date('2026
 
 ## Planned Refactors
 
-### 🟡 Rental invoices — first Square sandbox run (see `BRIEF-rental-multiday-invoice.md`)
-Built 2026-08-14, deployed nowhere: multi-day rental dates (`end_date` + range display through the form, admin listing and contract), a `square-invoice` edge function that builds a **draft** Square invoice from `rental_invoice_lines`, and the contract restyled as a black-on-white document. Migrations verified in a throwaway postgres, 14 Deno tests and 9 vitest tests over the billing and date rules, `tsc`/`vitest`/`build:staging` clean.
-**Nothing has ever called Square from this path.** Before production: push both migrations, deploy `square-invoice`, generate one invoice on the sandbox, and compare it line for line against a real Kenworthy event invoice — tax, terms, wording. Also wanted: an eye on `/contract/:token` on screen, in Print preview, and through the "Draft PDF" export, which needs a real invite token.
+### 🟡 Rental invoices — first Square call has still not been made (see `BRIEF-rental-multiday-invoice.md`)
+Shipped to staging and production 2026-08-14 from `a8ee428`: multi-day rental dates (`end_date` + range display through the form, admin listing and contract), a `square-invoice` edge function that builds a **draft** Square invoice from `rental_invoice_lines`, and the contract restyled as a black-on-white document. Migrations applied to both projects; the function boots on both; production serves the new admin chunk.
+**Nothing has ever called Square from this path.** The request shapes for Customers / Orders / Invoices are reasoned from the API, not observed. Production's `SQUARE_ENV` points at the live account, so the first `Generate Invoice` there creates a draft in the real Square account — it sends and charges nothing, but do the first run on **staging** and compare it line for line against a real Kenworthy event invoice (tax, terms, wording) first. Also wanted: an eye on `/contract/:token` on screen, in Print preview, and through the "Draft PDF" export, which needs a real invite token.
 
 ### 🟡 Comprehensive grants audit + single authoritative migration
 We have now hit **three separate grant-inconsistency bugs** from Lovable's migrations:
