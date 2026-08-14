@@ -116,7 +116,9 @@ export default function CalendarPage() {
         ) : view === 'month' ? (
           <MonthCalendar items={filtered} onSelect={handleSelect} />
         ) : inlinePreview ? (
-          <div className="grid grid-cols-[1fr_1.1fr] gap-10 items-start">
+          // Widened with ShowingPreview's portrait split: the pane carries two
+          // columns of its own now, and 1.1fr was sized for a stacked card.
+          <div className="grid grid-cols-[1fr_1.6fr] gap-10 items-start">
             <EditorialCalendar
               items={filtered}
               onSelect={handleSelect}

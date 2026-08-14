@@ -47,71 +47,93 @@ export function ShowingPreview({
   return (
     <div className={className}>
       <div className="rounded-lg border border-accent/20 bg-card overflow-hidden">
-        <div className="relative aspect-[16/10] bg-muted">
-          {item.posterUrl ? (
-            <img
-              src={item.posterUrl}
-              alt={item.title}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground font-serif italic">
-              No artwork yet
-            </div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent pointer-events-none" />
-          {item.isFeatured && (
-            <Badge className="absolute top-3 left-3 bg-primary text-primary-foreground">
-              Featured
-            </Badge>
-          )}
-        </div>
-        <div className="p-5 md:p-6">
-          <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
-            {formatWhen(item.startTime)}
-          </p>
-          <h3 className="font-display text-2xl md:text-3xl uppercase tracking-wide leading-tight mb-3">
-            {item.title}
-          </h3>
-          {item.curatorNote && (
-            <p className="font-serif text-sm md:text-base text-muted-foreground line-clamp-5 mb-5">
-              {item.curatorNote}
+        {/* Poster beside the text, not above it. Stacked, the artwork could
+            only be a wide band, and a one-sheet cropped to 16:10 is a strip of
+            someone's chin. A portrait column shows the poster as designed and
+            gives the synopsis a tall neighbour to fill.
+
+            This pane only ever renders at `lg` and up (both callers gate it),
+            so the split needs no breakpoint of its own. */}
+        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          {/* The cell stretches even though the poster inside it doesn't, so a
+              long synopsis leaves a clean muted plinth under the artwork
+              rather than a ragged card corner. */}
+          <div className="relative bg-muted">
+            {item.posterUrl ? (
+              // `contain`, not `cover`: the artwork is not reliably a
+              // one-sheet. Plenty of listings use square or landscape promo
+              // graphics, and cropping those to 2:3 cuts the title clean off
+              // (Farmers Market Cartoons loses the word "CARTOONS"). Same
+              // intent as ProductionMedia's `aspect='auto'` — show the whole
+              // poster — but in a fixed frame, so the sticky pane doesn't
+              // resize every time a different row is picked.
+              <img
+                src={item.posterUrl}
+                alt={item.title}
+                className="w-full aspect-[2/3] object-contain"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-full aspect-[2/3] flex items-center justify-center p-4 text-center text-muted-foreground font-serif italic">
+                No artwork yet
+              </div>
+            )}
+            {/* No gradient scrim: it existed to fade a landscape image into the
+                copy sitting beneath it, and nothing sits beneath it now. */}
+            {item.isFeatured && (
+              <Badge className="absolute top-3 left-3 bg-primary text-primary-foreground">
+                Featured
+              </Badge>
+            )}
+          </div>
+          <div className="min-w-0 p-5 md:p-6">
+            <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
+              {formatWhen(item.startTime)}
             </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {/* Straight to the ticket page. Previously the only route out of
-                this panel was the drawer, which then made the reader pick the
-                showing a second time — for a preview of one specific showing
-                that is a step with nothing in it. */}
-            {item.showingId && (
-              <Button asChild className="gap-2">
-                <Link to={`/showing/${item.showingId}`}>
-                  <Ticket className="h-4 w-4" />
-                  Get Tickets
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
+            <h3 className="font-display text-2xl md:text-3xl uppercase tracking-wide leading-tight mb-3">
+              {item.title}
+            </h3>
+            {/* A full-height poster next door buys roughly twice the room the
+                stacked layout had, so the note gets to finish more often. */}
+            {item.curatorNote && (
+              <p className="font-serif text-sm md:text-base text-muted-foreground line-clamp-[10] mb-5">
+                {item.curatorNote}
+              </p>
             )}
-            {onViewDetails && (
-              <Button
-                variant={item.showingId ? 'outline' : 'default'}
-                onClick={() => onViewDetails(item)}
-                className="gap-2"
-              >
-                All showings
-              </Button>
-            )}
-            {item.trailerUrl && onViewDetails && (
-              <Button
-                variant="outline"
-                onClick={() => onViewDetails(item)}
-                className="gap-2"
-              >
-                <PlayCircle className="h-4 w-4" />
-                Watch trailer
-              </Button>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {/* Straight to the ticket page. Previously the only route out of
+                  this panel was the drawer, which then made the reader pick the
+                  showing a second time — for a preview of one specific showing
+                  that is a step with nothing in it. */}
+              {item.showingId && (
+                <Button asChild className="gap-2">
+                  <Link to={`/showing/${item.showingId}`}>
+                    <Ticket className="h-4 w-4" />
+                    Get Tickets
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              )}
+              {onViewDetails && (
+                <Button
+                  variant={item.showingId ? 'outline' : 'default'}
+                  onClick={() => onViewDetails(item)}
+                  className="gap-2"
+                >
+                  All showings
+                </Button>
+              )}
+              {item.trailerUrl && onViewDetails && (
+                <Button
+                  variant="outline"
+                  onClick={() => onViewDetails(item)}
+                  className="gap-2"
+                >
+                  <PlayCircle className="h-4 w-4" />
+                  Watch trailer
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
