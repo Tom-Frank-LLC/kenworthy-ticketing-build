@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { SEO } from '@/components/SEO';
 import { ArrowRight, Building2, Target, Users } from 'lucide-react';
+import { publishedStaff, STAFF_BIO_COLUMNS, type StaffBio } from '@/lib/staffBios';
 
 import imgToday from '@/assets/optimized/history/kenworthy-today-marquee-night.webp';
 import img1908 from '@/assets/optimized/history/Crystal-Theatre-1908.webp';
@@ -48,7 +51,52 @@ const EARLY_HISTORY: Array<{ year: string; body: string; image?: string }> = [
   },
 ];
 
+/**
+ * Initials for a staff member with no headshot on file.
+ *
+ * A card with an empty square in a grid of faces reads as a broken image, so
+ * the placeholder is deliberate and looks intentional. Bios are publishable
+ * without a photo on purpose — waiting on a headshot is not a reason to keep
+ * someone off the page.
+ */
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
 export default function About() {
+  // The board roster above is copy; staff bios are a table, because they carry
+  // photos and paragraphs that staff edit themselves from the admin Staff tab.
+  // The section renders nothing at all until someone is flagged for it — the
+  // page has to look finished on the day it has no bios, which is today.
+  const [staff, setStaff] = useState<StaffBio[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // RLS already hides unpublished and former staff from anon, but the
+      // filters are stated here too: a signed-in staff member reading /about
+      // gets every row back from the same policy, and would otherwise see
+      // drafts on the public page and think they were live.
+      const { data, error } = await (supabase as any)
+        .from('staff_bios')
+        .select(STAFF_BIO_COLUMNS)
+        .eq('display_on_about', true)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
+      // A failed fetch leaves the section hidden rather than showing an error
+      // box on a page that is otherwise static copy.
+      if (cancelled || error) return;
+      setStaff(publishedStaff(data || []));
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <SEO
@@ -142,6 +190,52 @@ export default function About() {
           ))}
         </ul>
       </section>
+
+      {/* Staff — hidden entirely until someone is flagged for the page */}
+      {staff.length > 0 && (
+        <section className="container pb-16 max-w-5xl">
+          <h2 className="font-display uppercase text-2xl md:text-3xl mb-6 flex items-center gap-2">
+            <Users className="h-6 w-6 text-primary" /> Kenworthy Staff
+          </h2>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {staff.map((member) => (
+              <li
+                key={member.id}
+                className="rounded-lg border border-accent/20 bg-card/40 px-5 py-5"
+              >
+                {member.headshot_url ? (
+                  <img
+                    src={member.headshot_url}
+                    alt={member.name}
+                    loading="lazy"
+                    width={96}
+                    height={96}
+                    className="h-24 w-24 rounded-full object-cover bg-secondary/40"
+                  />
+                ) : (
+                  <div
+                    aria-hidden
+                    className="h-24 w-24 rounded-full bg-secondary/40 flex items-center justify-center font-display text-2xl text-accent"
+                  >
+                    {initials(member.name)}
+                  </div>
+                )}
+                <p className="font-serif text-foreground mt-4">{member.name}</p>
+                {member.title && (
+                  <p className="font-display uppercase tracking-[0.15em] text-xs text-accent mt-1">
+                    {member.title}
+                  </p>
+                )}
+                {member.bio && (
+                  <p className="font-serif text-sm text-muted-foreground leading-relaxed mt-3 whitespace-pre-line">
+                    {member.bio}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* History */}
       <section className="border-t border-accent/20 bg-card/40">

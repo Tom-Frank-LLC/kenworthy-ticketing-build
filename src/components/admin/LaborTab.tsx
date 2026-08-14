@@ -6,6 +6,7 @@ import { ShiftRequestsInbox } from './labor/ShiftRequestsInbox';
 import { LaborVsSales } from './labor/LaborVsSales';
 import { WageTipRules } from './labor/WageTipRules';
 import { PayrollExport } from './labor/PayrollExport';
+import StaffBios from './StaffBios';
 import { Card, CardContent } from '@/components/ui/card';
 import { Info } from 'lucide-react';
 
@@ -16,7 +17,7 @@ export default function LaborTab() {
         <CardContent className="py-3 flex items-start gap-2 text-sm">
           <Info className="h-4 w-4 text-primary mt-0.5" />
           <span>
-            Scheduling, timecards, labor-vs-sales and payroll read live from Square Labor. Which Square account they use follows the <code>SQUARE_ENV</code> secret, the same as ticket payments — set it to <code>production</code> with the matching <code>SQUARE_PRODUCTION_*</code> credentials to go live. The Timecards tab says so when it is reading the sandbox.
+            Scheduling, timecards, labor-vs-sales and payroll read live from Square Labor. Which Square account they use follows the <code>SQUARE_ENV</code> secret, the same as ticket payments — set it to <code>production</code> with the matching <code>SQUARE_PRODUCTION_*</code> credentials to go live. The Timecards tab says so when it is reading the sandbox. <span className="text-muted-foreground">Bios is the exception: it is our own table, and it feeds the public About page rather than Square.</span>
           </span>
         </CardContent>
       </Card>
@@ -29,6 +30,7 @@ export default function LaborTab() {
           <TabsTrigger value="rules">Wage & Tip Rules</TabsTrigger>
           <TabsTrigger value="payroll">Payroll → QBO</TabsTrigger>
           <TabsTrigger value="roster">Team & Linking</TabsTrigger>
+          <TabsTrigger value="bios">Bios</TabsTrigger>
         </TabsList>
         <TabsContent value="timecards"><LaborTimecards /></TabsContent>
         <TabsContent value="schedule"><ScheduleBuilder /></TabsContent>
@@ -37,6 +39,7 @@ export default function LaborTab() {
         <TabsContent value="rules"><WageTipRules /></TabsContent>
         <TabsContent value="payroll"><PayrollExport /></TabsContent>
         <TabsContent value="roster"><LaborRoster /></TabsContent>
+        <TabsContent value="bios"><StaffBios /></TabsContent>
       </Tabs>
     </div>
   );
