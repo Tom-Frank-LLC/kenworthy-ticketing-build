@@ -284,7 +284,21 @@ export default function ShowingForm() {
             </div>
             <div className="space-y-2">
               <Label>Venue</Label>
-              <Select value={venueId} onValueChange={setVenueId}>
+              <Select
+                value={venueId}
+                // Radix resets a controlled Select whose current value has no
+                // matching SelectItem registered yet, and it does so by calling
+                // onValueChange(''). Both paths here set the venue before the
+                // list is registered — on edit the showing fetch resolves before
+                // the venues fetch, and on a new showing the item is registered
+                // in the same commit that sets the value — so the selection was
+                // being wiped microseconds after it was made. That is why this
+                // picker read as empty even for a showing that has a venue.
+                // No item in this list carries an empty value, so an empty
+                // emission is always Radix resetting itself and never the admin
+                // making a choice; dropping it costs nothing and keeps ours.
+                onValueChange={v => { if (v) setVenueId(v); }}
+              >
                 <SelectTrigger><SelectValue placeholder="Select a venue (optional)" /></SelectTrigger>
                 <SelectContent>
                   {venues.map((v: any) => (
