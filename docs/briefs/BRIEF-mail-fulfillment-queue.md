@@ -1,10 +1,10 @@
 # Brief: Mail fulfilment queue — a posted pass is not a mailed pass
 
-**Status:** 🟡 Spec for review — no code written yet
+**Status:** 🟢 Ready to build — open decisions resolved by Tom, August 13 2026
 **Date:** August 13, 2026
 **Requested by:** Tom — "add a mail queue after activation for those passes, that doesn't leave the queue until the staff/admin user manually clicks it to confirm mailing."
 
-> **In one line.** Activation currently discharges a mail order the moment a sticker is scanned, so the envelope disappears from every screen while it is still sitting on the desk. Add a **second queue** that a mail order enters *at activation* and leaves *only* when a human clicks **Mark posted** — tracked by a new `posted_at`/`posted_by` pair, not a new status.
+> **In one line.** Activation currently discharges a mail order the moment a sticker is scanned, so the envelope disappears from every screen while it is still sitting on the desk. Add a **second queue** that a mail order enters *at activation* and leaves *only* when a human clicks **Mark posted** — tracked by a new `posted_at`/`posted_by` pair, not a new status — and email the buyer when they click.
 
 ---
 
@@ -25,6 +25,20 @@ For a pickup order, activation genuinely *is* the handoff — the patron is stan
 
 ---
 
+## Decisions (from Tom — settled, build to these)
+
+| Question | Answer |
+|---|---|
+| Backfill historical orders? | **No.** Only test data from today exists. |
+| Undo window on Mark posted? | **No.** Recovery is manual. |
+| Email the buyer on posting? | **Yes**, in phase 1. |
+| Bulk "mark all posted"? | **No.** One click each. |
+| Staleness nudge after N days? | Not settled — see *Still open*. |
+
+**On recovery:** a mis-marked order is recovered the way a wrong pass already is — void the QR, activate and send a new one. That path exists today, so the queue does not need to reimplement it. Consequence: **Mark posted is irreversible**, which is what drives the confirm step below.
+
+---
+
 ## Current state (file:line — what we build on)
 
 | Thing | Where |
@@ -36,18 +50,21 @@ For a pickup order, activation genuinely *is* the handoff — the patron is stan
 | Counter UI (queue + activate) | `src/components/pos/FilmPassPOS.tsx` |
 | Admin UI (queue, read-only) | `src/components/admin/FilmPassesTab.tsx` |
 | Shared address/label helpers | `src/lib/passOrders.ts` (+ tests) |
+| Order-confirmation email builders (pure, tested) | `supabase/functions/_shared/pass_orders.ts` |
 | **Accounting reads this table** | `src/components/admin/accounting/QboExportTab.tsx:108` |
 
 ---
 
 ## Data model
 
-### Add two columns — do **not** add a status
+### Add columns — do **not** add a status
 
 ```sql
 ALTER TABLE public.film_pass_orders
-  ADD COLUMN IF NOT EXISTS posted_at timestamptz,
-  ADD COLUMN IF NOT EXISTS posted_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS posted_at  timestamptz,
+  ADD COLUMN IF NOT EXISTS posted_by  uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS posted_notice_sent_at timestamptz,
+  ADD COLUMN IF NOT EXISTS posted_notice_error   text;
 ```
 
 **The mail queue is then:** `fulfillment = 'mail' AND status = 'fulfilled' AND posted_at IS NULL`.
@@ -59,6 +76,8 @@ ALTER TABLE public.film_pass_orders
 ```
 
 A new status value would drop every awaiting-post order out of the QuickBooks revenue export — silently, with no error, showing up only as an unexplained shortfall in a month's numbers. Posting state is also genuinely orthogonal to payment state: an order can be paid-and-unposted or fulfilled-and-unposted, and forcing both onto one `status` ladder conflates money with logistics. A nullable timestamp is the smaller, safer change, and it carries *when* and *who* for free.
+
+The last two columns mirror `confirmation_sent_at` / `confirmation_error`, which already exist on this table for the order-confirmation email. Same reasoning as the comment at `film-pass-checkout/index.ts:585`: the failure mode of a fire-and-forget send is silence, and silence here means a patron who was never told their pass shipped.
 
 Guard the invariant rather than leaving it implied:
 
@@ -76,23 +95,15 @@ CREATE INDEX IF NOT EXISTS film_pass_orders_awaiting_post_idx
   WHERE fulfillment = 'mail' AND posted_at IS NULL;
 ```
 
-Column comments, in the house style — the existing ones on this table carry the *why*, and the next person needs to know these two are not derivable from `fulfilled_at`.
+Column comments in the house style — the existing ones on this table carry the *why*, and the next person needs to know `posted_at` is not derivable from `fulfilled_at`.
 
-### Backfill — decide this deliberately
+### No backfill
 
-Any mail order already `fulfilled` before this migration has `posted_at IS NULL`, so **on deploy every historical mail order appears in the new queue as unposted**. Those passes were almost certainly mailed; staff had no way to record it.
+Per Tom: production holds only today's test data, so there is no history to assert about. Any already-fulfilled mail test order will surface in the new queue as unposted — which is **useful**, not a defect: clearing those rows by hand is the feature's first smoke test, and it exercises the button against real rows before a real patron depends on it.
 
-**Recommendation:** backfill in the same migration, so the queue is empty on arrival and only new activations populate it.
+> ⚠️ Confirm the "test data only" assumption against production before deploying, with a privileged connection — per `docs/memory`, the anon key hides most rows, so an empty-looking result is not evidence. One `SELECT count(*) … WHERE fulfillment='mail' AND status='fulfilled'` is enough. If that count is surprisingly large, stop and revisit rather than shipping a queue full of strangers' orders.
 
-```sql
-UPDATE public.film_pass_orders
-SET posted_at = fulfilled_at, posted_by = fulfilled_by
-WHERE fulfillment = 'mail' AND status = 'fulfilled' AND posted_at IS NULL;
-```
-
-This asserts something we cannot verify. It is still the right call: the alternative is a launch-day queue full of rows nobody can act on, which trains staff to ignore it — and a queue people ignore is worse than no queue. **Count the affected rows before running it** (production may have very few; the film-pass feature is new), and if the count is small enough to check by hand, do that instead.
-
-> ⚠️ Per `docs/PLATFORM.md` §2.2, run this with an explicit `--project-ref`, staging first. Do not trust the CLI's current link.
+> ⚠️ Per `docs/PLATFORM.md` §2.2, run the migration with an explicit `--project-ref`, staging first. Do not trust the CLI's current link.
 
 ---
 
@@ -100,28 +111,31 @@ This asserts something we cannot verify. It is still the right call: the alterna
 
 ### 1. `mark_posted` action (edge function)
 
-New action in `film-pass-checkout`, alongside `queue` and `activate`:
+One new action in `film-pass-checkout`, alongside `queue` and `activate`. **No `unmark_posted`** — recovery is void-and-reissue.
 
 ```
-POST { action: 'mark_posted', order_id }   → { ok, posted_at }
-POST { action: 'unmark_posted', order_id } → { ok }
+POST { action: 'mark_posted', order_id } → { ok, posted_at, notice: 'sent' | 'failed' | 'no_email' }
 ```
 
 - Gate with the existing `requireStaff()` (`index.ts:106`) — admin and superadmin already satisfy `staff` via the role hierarchy in `20260812063211_has_role_hierarchy.sql`, so no auth change is needed.
 - **The write must go through the edge function's service-role client.** `film_pass_orders` grants `UPDATE` to `service_role` only; the sole RLS policy is `SELECT` for staff (migration `:275-286`). A browser-side `supabase.from('film_pass_orders').update(...)` is filtered to zero rows and **PostgREST answers 204, which supabase-js reports as success** — the button would light up green and change nothing. This exact failure is documented in `20260812063211_has_role_hierarchy.sql:11-14` and cost real data before.
-- Validate the transition: reject unless the row is `fulfillment='mail'` and `status='fulfilled'`. Return a named result (`not_a_mail_order`, `not_yet_activated`, `already_posted`) rather than a bare 400 — the counter needs to say *why*.
-- Make it idempotent: marking an already-posted order returns `already_posted` and does not overwrite the original `posted_at`/`posted_by`. Two staff clicking at once must not rewrite history.
+- Validate the transition; reject with a named result rather than a bare 400, so the UI can say *why*: `not_a_mail_order`, `not_yet_activated`, `already_posted`.
+- **Idempotent, and that now matters more than before.** Marking an already-posted order returns `already_posted`, does not overwrite `posted_at`/`posted_by`, **and does not re-send the email.** Two staff clicking at once must not mail the patron twice. Guard it in SQL, not in JS: make the UPDATE itself conditional —
+  ```sql
+  UPDATE film_pass_orders SET posted_at = now(), posted_by = $2
+  WHERE id = $1 AND fulfillment = 'mail' AND status = 'fulfilled' AND posted_at IS NULL
+  RETURNING id;
+  ```
+  Zero rows returned means somebody else already posted it; send nothing. A read-then-write in the function would race.
 
-### 2. Extend the `queue` action
+### 2. The "it's in the mail" email
 
-Return both lists in one round trip; both screens want both:
+Fires only on a transition that actually happened (the `RETURNING` above), after the row is written.
 
-```js
-{ orders: [...],        // unchanged: status='paid', awaiting activation
-  awaiting_post: [...] } // new: mail, fulfilled, posted_at IS NULL
-```
-
-Additive, so the existing `data.orders` readers keep working. Include `fulfilled_at` and the activating staff member on the new rows — "activated three weeks ago, still not posted" is the signal worth seeing. Sort oldest-first: the longest-waiting envelope is the most urgent.
+- Build the subject/HTML/text in `supabase/functions/_shared/pass_orders.ts` as pure functions next to `buildPassOrderSubject` / `buildPassOrderEmailHtml` / `buildPassOrderEmailText`, and unit-test them the same way. That module is already pure and Deno-tested; keep it that way.
+- Send with `sendTransactionalEmail`, **fire-and-forget**: a Resend outage must not fail the mark-posted, exactly as at `film-pass-checkout/index.ts:580-600`. Write the outcome back to `posted_notice_sent_at` / `posted_notice_error`.
+- Skip cleanly when `buyer_email` is null — return `notice: 'no_email'` and still mark it posted. A missing email is not a reason to keep an envelope in the queue.
+- Content: what shipped (quantity × pass type), where it went (the address they gave), and that the pass is activated and ready to use at the door. Match the existing house rules for these emails — the tests in `pass_orders_test.ts` assert no `<img>`, so follow whatever constraints that file already encodes.
 
 ### 3. UI — both screens, both able to click
 
@@ -134,31 +148,34 @@ Unlike activation, **the Mark posted button belongs in both places.** Activation
 
 Each row shows: buyer, quantity × pass type, the full `Post to:` address (reuse `formatMailingAddress` from `src/lib/passOrders.ts` — it is what gets copied onto the envelope), how long since activation, and a **Mark posted** button.
 
-**Undo, not a confirm dialog.** A modal on every envelope is friction on a task done in batches; an undo on a misclick is cheap. After marking, leave the row in place for the rest of the session showing "Posted just now · Undo" (calling `unmark_posted`), and drop it on next load. A misclick that silently hides an unposted envelope is the one failure this whole feature exists to prevent — it must be recoverable without a database round trip through an engineer.
+**A confirm step, because there is no undo.** Two of Tom's decisions combine here: the action is irreversible *and* it emails the patron. So a stray tap tells a real person their pass shipped when it did not, and the only repair is voiding the pass and reissuing. That earns one cheap guard — an **inline two-step button** (Mark posted → "Posted? Yes / Cancel" in place), not a modal. Inline keeps a batch of envelopes fast; a modal per row does not. This is the minimum that makes an irreversible outward-facing action deliberate.
 
 Follow the error handling already in `FilmPassesTab`: a failed fetch must render as an error with a retry, **never** as an empty list. An empty "To be posted" card means "nothing to mail", and it must not be able to mean "the request failed".
 
-### 4. Optional — tell the buyer (phase 2, only if wanted)
+### 4. Extend the `queue` action
 
-`sendTransactionalEmail` and the builders in `supabase/functions/_shared/pass_orders.ts` are already there, so a "your pass is in the mail" note on `mark_posted` is a small addition. Deliberately **not** in phase 1: it changes what patrons receive, and the queue is useful without it. Decide separately.
+Return both lists in one round trip; both screens want both:
+
+```js
+{ orders: [...],         // unchanged: status='paid', awaiting activation
+  awaiting_post: [...] } // new: mail, fulfilled, posted_at IS NULL
+```
+
+Additive, so the existing `data.orders` readers keep working. Include `fulfilled_at` and the activating staff member on the new rows — "activated three weeks ago, still not posted" is the signal worth seeing. Sort oldest-first: the longest-waiting envelope is the most urgent.
 
 ---
 
-## Open decisions (for Tom)
+## Still open
 
-1. **Backfill:** set `posted_at = fulfilled_at` on existing fulfilled mail orders (recommended), or start them all in the queue and clear them by hand?
-2. **Undo window:** session-only (recommended), or should an admin be able to un-post an order from any day — say, if a returned envelope comes back?
-3. **Staleness nudge:** should a row activated more than N days ago render as a warning? If yes, what is N — 3 days? 7?
-4. **Buyer email on posting:** yes, no, or later?
-5. **Bulk action:** worth a "mark all posted" for a mailing run of several, or is one click each fine at this volume?
+**Staleness nudge.** Not answered, and I am not inventing the threshold — a "warn after N days" with an N nobody chose is a magic number. Phase 1 shows the relative age plainly ("activated 3 days ago") with no colour change. If a number later proves itself from watching the queue, add the warning then.
 
 ---
 
 ## Risks
 
-- **Backfill asserts an unverified fact.** Covered above. Count first.
-- **A second queue is a second thing to ignore.** Two cards on one screen dilutes each. Mitigation: hide the "To be posted" card entirely when empty on the counter screen (where speed matters), and keep it always visible with an explicit "nothing to post" in admin (where absence is the answer someone came for).
-- **Nothing forces the click.** A staff member can mail the envelope and never mark it. The queue makes the omission *visible*, which is all it can do — it cannot make the record true. Worth stating plainly in the runbook rather than pretending otherwise.
+- **Nothing forces the click.** A staff member can mail the envelope and never mark it, or mark it and never mail it. The queue makes the omission *visible*, which is all it can do — it cannot make the record true. Worth stating in the runbook rather than pretending otherwise.
+- **The email makes a misclick outward-facing.** Mitigated by the inline confirm and the SQL-level idempotency guard, not eliminated. Voiding and reissuing remains the repair.
+- **A second queue is a second thing to ignore.** Two cards on one screen dilutes each. Mitigation: hide "To be posted" entirely when empty on the counter screen (where speed matters), keep it always visible with an explicit "nothing to post" in admin (where absence is the answer someone came for).
 - **`updated_at` moves on marking.** The `film_pass_orders_updated_at` trigger (migration `:270`) fires on this UPDATE. Nothing reads `updated_at` today, but anything that later treats it as "when the money last changed" would be wrong.
 
 ---
@@ -167,7 +184,7 @@ Follow the error handling already in `FilmPassesTab`: a failed fetch must render
 
 **Pure/unit (vitest, `src/lib/`)** — queue partitioning and the "how long since activation" label; extend `src/lib/passOrders.test.ts`.
 
-**Edge function (deno, `supabase/functions/_shared/`)** — the transition guard as a pure function: mail+fulfilled → ok; pickup → rejected; paid-not-activated → rejected; already-posted → idempotent no-op.
+**Edge function (deno, `supabase/functions/_shared/`)** — the new email builders, asserted like the existing ones in `pass_orders_test.ts`; and the transition guard as a pure function: mail+fulfilled → ok; pickup → rejected; paid-not-activated → rejected; already-posted → no-op **and no second email**.
 > Per `docs/PLATFORM.md`, `npm run build` and vitest cover `src/` **only**. Run `deno check` and `deno test --allow-env` on `supabase/functions/` separately, and `curl` the deployed function afterwards — a local pass cannot detect a dead deploy.
 
 **Integration, against staging, with a real order:**
@@ -175,17 +192,20 @@ Follow the error handling already in `FilmPassesTab`: a failed fetch must render
 2. Activate a sticker against it → **leaves** that queue, **appears** in "To be posted".
 3. Confirm it is still there after a full page reload (this is the whole point).
 4. Mark posted from the **admin** screen → leaves the queue; verify `posted_at`/`posted_by` are actually set by reading the row back, not by trusting the toast.
-5. Undo → returns to the queue.
-6. Repeat step 4 from the **counter** screen.
-7. Buy a **pickup** pass, activate → appears in neither queue. Confirm `mark_posted` on it is rejected.
-8. Confirm the QuickBooks export for the period still includes all of these orders (the regression the column-vs-status choice avoids).
+5. Confirm the email arrived, and that `posted_notice_sent_at` is set.
+6. Click Mark posted again on the same order (via a second tab left open) → rejected as `already_posted`, **no second email**.
+7. Repeat 1–4 from the **counter** screen.
+8. Buy a **pickup** pass, activate → appears in neither queue; `mark_posted` on it is rejected.
+9. An order with no `buyer_email` marks posted cleanly and reports `no_email`.
+10. Confirm the QuickBooks export for the period still includes all of these orders (the regression the column-vs-status choice avoids).
 
 ---
 
 ## Sequencing
 
-1. Migration (columns, constraint, index, comments) → staging, with the row count checked before the backfill.
-2. `mark_posted` / `unmark_posted` + extended `queue` → deploy → `curl` it.
-3. Admin UI, then counter UI.
-4. Integration pass on staging with a real purchase.
-5. Production: migration first, then function, then frontend — in that order, so the frontend never ships against a database that lacks the columns.
+1. Migration (columns, constraint, index, comments) → staging. Check the mail/fulfilled row count on production first to confirm the no-backfill assumption.
+2. Email builders + tests in `_shared/pass_orders.ts` (pure, no deploy needed to verify).
+3. `mark_posted` + extended `queue` → deploy → `curl` it.
+4. Admin UI, then counter UI.
+5. Integration pass on staging with a real purchase.
+6. Production: migration first, then function, then frontend — in that order, so the frontend never ships against a database that lacks the columns.
