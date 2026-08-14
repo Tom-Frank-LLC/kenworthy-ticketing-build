@@ -1,6 +1,6 @@
 # Brief (for Claude Code): Generalize pass eligibility (festival passes + per-showing use limits)
 
-**Status:** 🟡 Built and verified locally, **not yet deployed**. See **Results** at the end of this file for the decisions taken, what changed, how each claim was verified, and the deploy ordering this change requires.
+**Status:** 🟢 Shipped to **staging** and verified end to end through the real UI, August 14, 2026, from `feat/pass-eligibility` (PR #52). **Production not done.** See **Results** at the end of this file for the decisions taken, what changed, how each claim was verified, and the deploy ordering this change requires.
 **Date:** August 14, 2026
 **Requested by:** Tom — add a **festival pass** (usable at a discount across a multi-day/-week festival's screenings, **not** redeemable on non-festival screenings). Rather than a one-off, generalize the model so any pass type can be scoped to specific showings, and let staff cap uses per showing.
 
@@ -113,3 +113,46 @@ Dropping the column in one step would break `TicketScanner` for any device still
 - **One claim not yet provable locally:** the scanner's nested embed `pass_type_showings(film_pass_types(name))` is unambiguous by FK and typechecks, but PostgREST embed resolution can only be confirmed against a real database. Check the scanner's screening list on staging immediately after step 2.
 - **Customer-facing "pass accepted" badge** (brief §5, second bullet) — no such UI exists today on `Showing.tsx` or anywhere else, so there was nothing to update. Worth adding separately if patrons should see which passes a screening takes before they arrive.
 - **`film_pass_types` delete** already fails with an FK violation for any type with issued passes. Pre-existing, unchanged, and arguably correct — but the error surfaces raw.
+
+
+---
+
+# Staging verification — the door, through the real UI
+
+Both migrations applied to staging in the documented order with the frontend deploy between them, then the whole test plan run through the admin screens and the door scanner against the live database. Every case below is a screenshot, not an inference.
+
+**Set-up, all through the UI:** `10-Film Pass` ($60/$60/$6, unlimited, standard) and `Festival Pass` ($40/$40/**$4**, **max 2 per screening**, not standard) created in the Film Passes tab; the bulk tagger used to give Footloose (Fri 7:00 PM) to the Festival Pass and Farmers Market Cartoons (Sat 9:00 AM) to the 10-Film Pass; two sticker batches minted and one of each activated.
+
+| # | Case | Result |
+|---|---|---|
+| 1 | Festival pass at its own screening | **Admit** — $4.00 deducted, $36.00 left |
+| 2 | Festival pass, 2nd admission (limit 2) | **Admit** — balance $32.00 |
+| 3 | Festival pass, 3rd admission | **Do not admit** — "already admitted 2 to this screening — its limit is 2", balance intact |
+| 4 | Standard pass at the festival screening | **Do not admit** — "10-Film Pass is not valid here — this screening takes Festival Pass", $60.00 intact |
+| 5 | Festival pass at the standard screening | **Do not admit** — "Festival Pass is not valid here — this screening takes 10-Film Pass", $32.00 intact |
+| 6 | Standard pass at its own screening, twice | **Admit** both times (NULL limit = unlimited) |
+
+Final state: Festival $40 − 2×$4 = **$32**; 10-Film $60 − 2×$6 = **$48**; 4 redemptions; 4 `film_pass` tickets minted, so every admission occupies a seat the house count can see.
+
+Cases 4 and 5 together are the festival-pass guarantee: each pass works only where its rows point, and the refusal **names the pass that does work** rather than leaving staff to argue at the door. The screening dropdown labels each entry with its accepted passes ("9:00 AM — Farmers Market Cartoons (10-Film Pass)").
+
+Two things checked rather than assumed:
+- The Festival Pass first saved with `is_default_for_movies = true` despite the box being unticked. That was **browser automation not driving React's checkbox onChange**, not an app bug — a real click saved `false` correctly. Verified against the database both times.
+- Staging showed "No film pass types configured", and a privileged read confirmed it: the audit log records Tom's test pass created 08-12 and deleted 08-13. So the migration's seed and backfill correctly did nothing here. **Production is different — see below.**
+
+# The deploy-ordering hazard is real, and it bit three times
+
+Between the migration landing and this being merged, other sessions deployed the staging worker **three times** from branches without this change (17:55, 18:01, 18:12/18:13 UTC). Each time staging was left with the **new schema and an old frontend**, and each time the door scanner's screening list rendered empty — "nothing scheduled" — because the deployed bundle still selected `film_pass_eligible`.
+
+This is the direct cost of dropping the column in the same release rather than keeping it read-only for one. It is recoverable on staging; on production, during opening hours, it is a door that cannot scan a pass.
+
+**Mitigations for the production run, beyond the three-step order:**
+- Merge PR #52 to `main` **before** touching production, so any concurrent deploy already contains the frontend change. This is the real fix; the ordering alone is not enough when more than one person deploys.
+- Immediately before step 3, re-check `wrangler deployments list` and confirm the live version is still the one deployed in step 2. If it is not, stop and redeploy rather than dropping the column.
+
+# Production — still to do
+
+1. **Deactivate `first test pass`.** Prod has two ACTIVE types (`10-film pass`, `first test pass`). The migration flags every active type as standard and backfills it onto every eligible screening, which would make a leftover test pass redeemable at every standard film. Decided: set it inactive first.
+2. **Confirm `20260814085500` (multi-admit) is applied to prod** before pushing. If it is not, prod still has the unique `(pass_id, showing_id)` index, which contradicts `per_showing_use_limit`.
+3. Size the backfill from a **privileged** connection — an anon count of `showings` is meaningless, RLS hides most rows.
+4. Then the three steps, with the guard above.
