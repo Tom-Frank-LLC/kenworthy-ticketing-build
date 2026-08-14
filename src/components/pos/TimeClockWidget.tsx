@@ -87,7 +87,7 @@ export function TimeClockWidget() {
   if (!linked) {
     return (
       <Card><CardContent className="py-4 text-sm text-muted-foreground">
-        Your account isn’t linked to a Square team member yet. Ask an admin to link you in the Staff tab.
+        Your account isn’t linked to a Square team member yet. Ask an admin to link you under Labor → Team &amp; Linking.
       </CardContent></Card>
     );
   }

@@ -294,7 +294,7 @@ async function clockIn(config: SquareConfig, supabase: any, userId: string) {
   const teamMemberId = await linkedTeamMemberId(supabase, userId);
   if (!teamMemberId) {
     return json({
-      error: "No Square team member linked to your account. Ask an admin to link you in the Staff tab.",
+      error: "No Square team member linked to your account. Ask an admin to link you under Labor → Team & Linking.",
     }, 400);
   }
   const data = await square(config, "/labor/shifts", {
