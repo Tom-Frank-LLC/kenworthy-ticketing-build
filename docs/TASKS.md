@@ -8,6 +8,13 @@
 
 ## Active / Launch Blockers
 
+### ✅ Pass eligibility is per pass, not per screening (see `BRIEF-film-passes-eligibility-architecture.md`)
+`showings.film_pass_eligible` — one boolean, forced false for anything without a movie — is gone. A pass is good at a screening iff a `pass_type_showings` row exists for (its type, that showing), so a festival pass covers its own run across films, events and live performances and **nothing else**, while the standard pass keeps the screenings it always had. `film_pass_types` gains `per_showing_use_limit` (NULL = unlimited, N = cap, restoring the guard #49 removed as a per-type choice) and `is_default_for_movies` (pre-ticks the standard passes on a new $8 movie, which is what stops the old default vanishing silently).
+**Shipped to staging and production 2026-08-14** — PR #52 (`e216dfa`); migrations `20260814093200`, `20260814093250`, `20260814093300`. Prod backfill: **1,109** eligibility rows against the real `10-film pass`. Staging verified through the real door scanner — admit at the discounted rate, both cross-pass refusals with balances intact, and the per-screening limit. 148 vitest tests, 17 database-level checks.
+**Note for the box office:** production has no festival pass yet — create the type under Admin → Film Passes, then tag its run in **Screenings & Passes**.
+**Deploy note:** the two migrations must straddle the frontend deploy (apply `093200`, deploy, then `093300`), and the branch must be merged to `main` first — a concurrent deploy of an older bundle breaks the door scanner, which happened three times on staging.
+
+
 ### 🔴 Film passes → physical, activated on handoff (see `BRIEF-film-passes.md`, `FINDINGS-film-passes.md`)
 A film pass is now a paper card with a stickered QR. Kenworthy prints blank batches; a sticker becomes a funded pass only when staff scan it at handoff; it is redeemed **in person only**, deducting a configured amount (default $6) from the balance at an eligible standard movie. Buying online creates a `film_pass_orders` obligation — collect at the box office or have it posted — and issues **no** digital pass. Online redemption is gone: `Showing.tsx` and `MyPasses.tsx` no longer offer it and `ticket-checkout` returns 400 for `payment_method='film_pass'`.
 **Shipped to staging 2026-08-12** — migration `20260813000000_film_passes_physical.sql`, functions `film-pass-batch` / `film-pass-checkout` / `ticket-checkout`, Worker deployed. 21 database-level lifecycle checks, 14 Deno tests, 43 vitest tests, all passing; every deployed function curl-verified to boot and enforce its own rules.
