@@ -23,9 +23,7 @@
 
 import {
   brand,
-  logoUrl,
-  LOGO_WIDTH,
-  LOGO_HEIGHT,
+  emailLockup,
   serif,
   sans,
   SITE_URL,
@@ -136,7 +134,9 @@ export interface EmailLayoutOptions {
  */
 export function emailLayout(opts: EmailLayoutOptions): string {
   const width = opts.width ?? 560;
-  const logo = logoUrl(opts.siteUrl ?? SITE_URL);
+  // Resolved per email, so the centenary lockup retires on schedule without a
+  // redeploy. See emailLockup() in brand.ts.
+  const logo = emailLockup(opts.siteUrl ?? SITE_URL);
 
   const preheader = opts.preheader
     ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${opts.preheader}</div>`
@@ -158,10 +158,10 @@ export function emailLayout(opts: EmailLayoutOptions): string {
                style="max-width:${width}px;background:${brand.surface};border-radius:14px;overflow:hidden;">
           <tr>
             <td bgcolor="${brand.bg}" style="padding:24px 28px;background:${brand.bg};">
-              <img src="${esc(logo)}"
+              <img src="${esc(logo.url)}"
                    alt="${esc(VENUE_NAME)}"
-                   width="${LOGO_WIDTH}" height="${LOGO_HEIGHT}"
-                   style="display:block;width:${LOGO_WIDTH}px;height:auto;border:0;outline:none;text-decoration:none;color:${brand.cream};font:700 19px/1.3 ${serif};" />
+                   width="${logo.width}" height="${logo.height}"
+                   style="display:block;width:${logo.width}px;height:auto;border:0;outline:none;text-decoration:none;color:${brand.cream};font:700 19px/1.3 ${serif};" />
               <div style="font:400 12px/1.5 ${sans};color:${brand.mutedText};letter-spacing:.08em;text-transform:uppercase;padding-top:8px;">
                 Moscow, Idaho · Since 1926
               </div>

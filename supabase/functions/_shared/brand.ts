@@ -51,19 +51,50 @@ export const SITE_URL =
   'https://kenworthy-ticketing-build.mrtomfrank.workers.dev';
 
 /**
- * The wordmark, cream on transparent, 360px wide (displayed at 180px).
+ * End of the centenary, as an instant.
  *
- * Served from `public/` rather than `src/assets` because Vite content-hashes
- * everything under src, and an email sent last month must still resolve its
- * images today. Regenerate with `node scripts/make-email-logo.mjs`.
+ * The theatre opened in January 1926, so 2026 is the hundredth year and the
+ * "Celebrating 100 Years" lockup runs to the end of it. Expressed as 08:00 UTC
+ * on Jan 1 2027, which is midnight in America/Los_Angeles — the zone the rest
+ * of this codebase treats as the venue's own (see `tickets.ts`). Using plain UTC
+ * would retire the lockup at 4pm on New Year's Eve, local time.
  */
-export function logoUrl(siteUrl: string = SITE_URL): string {
-  return `${siteUrl.replace(/\/$/, '')}/email-logo.png`;
+const CENTENARY_ENDS = Date.UTC(2027, 0, 1, 8, 0, 0);
+
+export interface Lockup {
+  url: string;
+  /** Displayed width in the email header, in CSS pixels. */
+  width: number;
+  height: number;
 }
 
-/** Displayed width of the logo in the email header, in CSS pixels. */
-export const LOGO_WIDTH = 180;
-export const LOGO_HEIGHT = 43;
+/**
+ * The wordmark for an email header: cream on transparent, at a stable URL.
+ *
+ * Two lockups exist and this picks between them **by date**, so the centenary
+ * artwork retires on its own rather than waiting for someone to remember. The
+ * date is read when an email is built, not when the function is deployed.
+ *
+ * They live at separate URLs deliberately. An email sent during the centenary
+ * goes on rendering the centenary lockup after the switchover — which is right,
+ * it is a dated artifact — instead of quietly changing in someone's archive on
+ * New Year's Day.
+ *
+ * The centenary lockup is shown slightly larger because it carries a third line
+ * ("CELEBRATING 100 YEARS") in the same footprint; at the standard width that
+ * line falls below legibility.
+ *
+ * Both are served from `public/` rather than `src/assets` because Vite
+ * content-hashes everything under src, and an email sent last month must still
+ * resolve its images today. Regenerate both with
+ * `node scripts/make-email-logo.mjs`.
+ */
+export function emailLockup(siteUrl: string = SITE_URL, now: Date = new Date()): Lockup {
+  const base = siteUrl.replace(/\/$/, '');
+  return now.getTime() < CENTENARY_ENDS
+    ? { url: `${base}/email-logo-centenary.png`, width: 200, height: 53 }
+    : { url: `${base}/email-logo.png`, width: 180, height: 43 };
+}
 
 // ---------------------------------------------------------------------------
 // Mixing
