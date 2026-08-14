@@ -20,11 +20,12 @@ import { StickerSheet } from './StickerSheet';
 
 const passType = { name: '$60 Film Pass', initial_balance: 60, redemption_price: 6 };
 const codes = ['PASS:aaa-111', 'PASS:bbb-222', 'PASS:ccc-333'];
+const stickers = codes.map((code, i) => ({ code, pass_number: 1000 + i }));
 
 describe('StickerSheet', () => {
   it('renders as a direct child of <body>, which is what the print CSS requires', () => {
     render(
-      <StickerSheet codes={codes} passType={passType} batchId="batch-1234-5678" onDone={() => {}} />,
+      <StickerSheet stickers={stickers} passType={passType} batchId="batch-1234-5678" onDone={() => {}} />,
     );
 
     const roots = Array.from(document.body.children).filter(el =>
@@ -43,7 +44,7 @@ describe('StickerSheet', () => {
 
   it('prints one sticker per code, each carrying its code as text', () => {
     render(
-      <StickerSheet codes={codes} passType={passType} batchId="batch-1234-5678" onDone={() => {}} />,
+      <StickerSheet stickers={stickers} passType={passType} batchId="batch-1234-5678" onDone={() => {}} />,
     );
 
     expect(document.querySelectorAll('.sticker')).toHaveLength(3);
@@ -55,10 +56,51 @@ describe('StickerSheet', () => {
     expect(document.querySelectorAll('.sticker svg')).toHaveLength(3);
   });
 
+  it('prints the pass number, which is the half a person can actually use', () => {
+    render(
+      <StickerSheet stickers={stickers} passType={passType} batchId="b" onDone={() => {}} />,
+    );
+    // Without this on the paper, "search by pass number" is a search for a
+    // number nobody can read off the pass.
+    for (const s of stickers) {
+      expect(screen.getByText(`No. ${s.pass_number}`)).toBeInTheDocument();
+    }
+  });
+
+  it('pairs each number with its own code, not with whatever came back first', () => {
+    render(
+      <StickerSheet stickers={stickers} passType={passType} batchId="b" onDone={() => {}} />,
+    );
+    // The failure this rules out is a sheet where every sticker is numbered but
+    // the numbers belong to the wrong codes — invisible on the page and only
+    // discovered when a lookup returns somebody else's pass.
+    const drawn = Array.from(document.querySelectorAll('.sticker'));
+    expect(drawn).toHaveLength(stickers.length);
+    drawn.forEach((el, i) => {
+      expect(el.textContent).toContain(stickers[i].code);
+      expect(el.textContent).toContain(`No. ${stickers[i].pass_number}`);
+    });
+  });
+
+  it('omits the number rather than faking one when a batch predates them', () => {
+    render(
+      <StickerSheet
+        stickers={[{ code: 'PASS:old', pass_number: null }]}
+        passType={passType}
+        batchId="b"
+        onDone={() => {}}
+      />,
+    );
+    // "No. —" on a sticker invites somebody to search for a pass number that
+    // does not exist.
+    expect(document.querySelector('.sticker')!.textContent).not.toMatch(/No\./);
+    expect(document.querySelector('.sticker__number')).toBeNull();
+  });
+
   it('never prints a balance or an expiry as data on a sticker', () => {
     render(
       <StickerSheet
-        codes={codes}
+        stickers={stickers}
         // A name with no money in it, so the assertion is about what the
         // component renders rather than about what staff called the product.
         passType={{ name: 'Standard Film Pass', initial_balance: 60, redemption_price: 6 }}
@@ -80,7 +122,7 @@ describe('StickerSheet', () => {
   it('states what a sticker will be worth, derived rather than hardcoded', () => {
     render(
       <StickerSheet
-        codes={['PASS:x']}
+        stickers={[{ code: 'PASS:x', pass_number: 1042 }]}
         passType={{ name: 'Half Pass', initial_balance: 30, redemption_price: 6 }}
         batchId="b"
         onDone={() => {}}
@@ -95,7 +137,7 @@ describe('StickerSheet', () => {
     // The admin UI has a dark theme. A QR that inherited a light foreground
     // would render on screen and print as an unscannable ghost.
     render(
-      <StickerSheet codes={['PASS:x']} passType={passType} batchId="b" onDone={() => {}} />,
+      <StickerSheet stickers={[{ code: 'PASS:x', pass_number: 1042 }]} passType={passType} batchId="b" onDone={() => {}} />,
     );
     const svg = document.querySelector('.sticker svg')!;
     expect(svg.innerHTML).toContain('#000000');
@@ -120,7 +162,7 @@ describe('StickerSheet — the sheet is not app chrome', () => {
 
   it('uses no theme-dependent colour anywhere on the sheet', () => {
     render(
-      <StickerSheet codes={codes} passType={passType} batchId="b" onDone={() => {}} />,
+      <StickerSheet stickers={stickers} passType={passType} batchId="b" onDone={() => {}} />,
     );
 
     const root = document.querySelector('.print-root')!;
@@ -143,7 +185,7 @@ describe('StickerSheet — the sheet is not app chrome', () => {
 
   it('gives both controls an explicit colour of their own', () => {
     render(
-      <StickerSheet codes={codes} passType={passType} batchId="b" onDone={() => {}} />,
+      <StickerSheet stickers={stickers} passType={passType} batchId="b" onDone={() => {}} />,
     );
     for (const name of [/print sheet/i, /done/i]) {
       const btn = screen.getByRole('button', { name });
@@ -155,7 +197,7 @@ describe('StickerSheet — the sheet is not app chrome', () => {
 
   it('Done closes the sheet', () => {
     const onDone = vi.fn();
-    render(<StickerSheet codes={codes} passType={passType} batchId="b" onDone={onDone} />);
+    render(<StickerSheet stickers={stickers} passType={passType} batchId="b" onDone={onDone} />);
     fireEvent.click(screen.getByRole('button', { name: /done/i }));
     expect(onDone).toHaveBeenCalledTimes(1);
   });

@@ -73,6 +73,15 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 /** A single order is a gift, a stack of them is a mistake or an attack. */
 const MAX_PASSES_PER_ORDER = 10;
 
+/**
+ * The only statuses a pass may be deleted in. Reasoning at the `delete` action.
+ *
+ * Named once and used twice — for the check that produces a readable refusal,
+ * and again on the delete itself as the race guard. Two literals here would be
+ * one edit away from a guard that no longer guards what the message claims.
+ */
+const DELETABLE_STATUSES = ['void', 'unassigned', 'depleted'];
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return preflight();
 
@@ -556,6 +565,136 @@ Deno.serve(async (req: Request) => {
     }
 
     return json({ success: true, pass: updated[0] });
+  }
+
+  // ---------------------------------------------------------------------
+  // Delete: the row goes, not just its spendability
+  // ---------------------------------------------------------------------
+  //
+  // Void and delete are not the same act and the difference matters. Void
+  // keeps the row — the balance stays readable, so "what did we kill and what
+  // was on it" is still answerable. Delete is housekeeping for a list that has
+  // grown noisy, and it is irreversible.
+  //
+  // Which statuses may be deleted, and why the two that may not:
+  //
+  //   void        cancelled already; the decision was made once.
+  //   unassigned  a blank sticker, most likely a misprint.
+  //   depleted    spent down to nothing; it can never be used again.
+  //
+  //   active      still spendable, and possibly in somebody's wallet. Cancel
+  //               it first — that is a separate deliberate act, and requiring
+  //               both means no single click destroys a live pass.
+  //   expired     expiry is a clock, not a decision, and a clock can be wrong:
+  //               a wrongly-dated pass gets its expiry corrected rather than
+  //               deleted. Cancel first if it really is finished.
+  //
+  // Why this lives here rather than in a client `.delete()`: a stale RLS
+  // policy from the original schema does grant admins DELETE, but a later
+  // migration revoked the table grant from `authenticated`, so a browser
+  // delete would be refused at the grant. It would also be refused *silently*
+  // — PostgREST reports a blocked delete as a success with no rows — and the
+  // UI would cheerfully report that a pass still in the table was gone.
+  if (action === 'delete') {
+    if (!signedIn) return json({ error: 'Sign-in required' }, 401);
+    const { data: isAdmin } = await admin.rpc('has_role', {
+      _user_id: signedIn.id,
+      _role: 'admin',
+    });
+    if (!isAdmin) return json({ error: 'Admin access required' }, 403);
+
+    const passId = String(body.pass_id ?? '').trim();
+    if (!passId) return json({ error: 'Which pass?' }, 400);
+
+    // Read before deleting, so a refusal can say *why*. Deleting straight off
+    // with a status filter can only report "nothing happened", which is the
+    // same answer for "already gone" and "that pass is still active" — two
+    // situations needing opposite responses from the person at the screen.
+    const { data: pass, error: readErr } = await admin
+      .from('user_film_passes')
+      .select('id, qr_code, pass_number, status, remaining_balance')
+      .eq('id', passId)
+      .maybeSingle();
+
+    if (readErr) {
+      console.error('[film-pass-checkout] delete lookup failed', readErr);
+      return json({ error: 'Could not read that pass' }, 500);
+    }
+    if (!pass) return json({ error: 'That pass no longer exists.' }, 404);
+
+    if (!DELETABLE_STATUSES.includes(pass.status)) {
+      return json(
+        {
+          error:
+            pass.status === 'active'
+              ? 'That pass is still active. Cancel it first, then delete it.'
+              : 'That pass has expired rather than been cancelled. Cancel it first, then delete it.',
+        },
+        409,
+      );
+    }
+
+    // Counted before the delete because the cascade is about to remove them,
+    // and the count is what makes the loss reportable afterwards rather than
+    // merely warned about beforehand.
+    const { count: redemptions } = await admin
+      .from('film_pass_redemptions')
+      .select('id', { count: 'exact', head: true })
+      .eq('pass_id', passId);
+
+    const { data: removed, error } = await admin
+      .from('user_film_passes')
+      .delete()
+      .eq('id', passId)
+      // Re-stated at the delete itself, not just checked above: between the
+      // read and here, somebody at the counter could have activated this very
+      // sticker. The filter makes that race end in a no-op rather than in a
+      // live pass being deleted out from under them.
+      .in('status', DELETABLE_STATUSES)
+      .select('id');
+
+    if (error) {
+      console.error('[film-pass-checkout] delete failed', error);
+      return json({ error: 'Could not delete that pass' }, 500);
+    }
+    if (!removed || removed.length === 0) {
+      return json(
+        { error: 'That pass changed while you were looking at it — reload and try again.' },
+        409,
+      );
+    }
+
+    // Name whoever did it on the audit entry.
+    //
+    // The audit trigger already captured the whole row — which is what makes a
+    // deleted pass reconstructible at all — but it reads the actor from
+    // auth.uid(), and this write is the service role's, so it lands as NULL.
+    // "A pass was destroyed and nobody did it" is a poor record of the one
+    // action here that cannot be undone.
+    //
+    // Not a race: the trigger fires inside the delete above, so the row is
+    // already there, and a given pass can only ever be deleted once — so
+    // entity_id plus the action names exactly one row, now and forever.
+    const { error: stampErr } = await admin
+      .from('admin_audit_log')
+      .update({ actor_id: signedIn.id, actor_email: signedIn.email })
+      .eq('entity_type', 'user_film_passes')
+      .eq('entity_id', passId)
+      .eq('action', 'user_film_passes.delete');
+
+    if (stampErr) {
+      // Logged, not surfaced: the pass is already gone, and failing the
+      // response now would tell the admin the delete did not happen.
+      console.error('[film-pass-checkout] could not attribute the delete', stampErr);
+    }
+
+    return json({
+      success: true,
+      pass_number: pass.pass_number ?? null,
+      qr_code: pass.qr_code,
+      status: pass.status,
+      redemptions_removed: redemptions ?? 0,
+    });
   }
 
   if (action !== 'order') return json({ error: `Unknown action: ${action}` }, 400);
