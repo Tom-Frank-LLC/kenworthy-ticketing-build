@@ -13,10 +13,15 @@ import {
   buildPassOrderEmailHtml,
   buildPassOrderEmailText,
   buildPassOrderSubject,
+  buildPassPostedEmailHtml,
+  buildPassPostedEmailText,
+  buildPassPostedSubject,
   formatAddress,
   fulfillmentLine,
+  postedLine,
   readMailingAddress,
   type PassOrderSummary,
+  type PassPostedSummary,
 } from './pass_orders.ts';
 
 const address = {
@@ -159,4 +164,75 @@ Deno.test('quantity is reflected everywhere it is stated', () => {
   assertStringIncludes(buildPassOrderSubject(o), '3 film passes');
   assertStringIncludes(buildPassOrderEmailText(o), '3 × $60 Film Pass');
   assertStringIncludes(buildPassOrderEmailHtml(o), '$180.00 paid');
+});
+
+// ---------------------------------------------------------------------------
+// The "it's in the mail" notice
+// ---------------------------------------------------------------------------
+//
+// Sent once, when a staff member confirms the envelope went out. It inherits
+// the same trap as the confirmation — a patron who reads it as the pass itself
+// — so it inherits the same assertions.
+
+const posted = (over: Partial<PassPostedSummary> = {}): PassPostedSummary => ({
+  passTypeName: '$60 Film Pass',
+  quantity: 1,
+  mailingAddress: address,
+  buyerName: 'Ada Lovelace',
+  initialBalance: 60,
+  redemptionPrice: 6,
+  ...over,
+});
+
+Deno.test('the posted notice says it is in the mail', () => {
+  assertStringIncludes(buildPassPostedSubject(posted()), 'is in the mail');
+  assertStringIncludes(buildPassPostedSubject(posted({ quantity: 2 })), 'are in the mail');
+});
+
+Deno.test('the posted notice names the address it went to', () => {
+  assertStringIncludes(postedLine(posted()), '508 S Main St, Moscow, ID 83843');
+  assertStringIncludes(buildPassPostedEmailText(posted()), '508 S Main St, Moscow, ID 83843');
+  assertStringIncludes(buildPassPostedEmailHtml(posted()), '508 S Main St, Moscow, ID 83843');
+});
+
+Deno.test('the posted notice degrades without an address rather than printing null', () => {
+  const line = postedLine(posted({ mailingAddress: null }));
+  assertStringIncludes(line, 'the address you gave us');
+  assertEquals(line.includes('null'), false);
+});
+
+Deno.test('the posted notice never implies the email itself is the pass', () => {
+  const html = buildPassPostedEmailHtml(posted());
+  const text = buildPassPostedEmailText(posted());
+
+  assertStringIncludes(text, 'nothing to print');
+  assertStringIncludes(html, 'nothing to print');
+  assertEquals(html.includes('<img'), false, 'no QR image belongs in a posted notice');
+  assertStringIncludes(text, 'cannot be used to book online');
+});
+
+Deno.test('the posted notice states the value in films, derived not hardcoded', () => {
+  assertStringIncludes(buildPassPostedEmailText(posted()), 'about 10 films');
+  assertStringIncludes(
+    buildPassPostedEmailText(posted({ initialBalance: 30, redemptionPrice: 6 })),
+    'about 5 films',
+  );
+});
+
+Deno.test('a buyer name with markup cannot reach the posted notice as markup', () => {
+  const html = buildPassPostedEmailHtml(posted({ buyerName: '<script>alert(1)</script> Bobby' }));
+  assertEquals(html.includes('<script>'), false);
+  assertStringIncludes(html, '&lt;script&gt;');
+});
+
+Deno.test('an anonymous order still gets a posted notice it can read', () => {
+  assertStringIncludes(buildPassPostedEmailText(posted({ buyerName: null })), 'Hi there,');
+  assertStringIncludes(buildPassPostedEmailHtml(posted({ buyerName: null })), 'Hi there,');
+});
+
+Deno.test('the posted notice reflects quantity', () => {
+  const o = posted({ quantity: 3 });
+  assertStringIncludes(buildPassPostedSubject(o), 'film passes');
+  assertStringIncludes(buildPassPostedEmailText(o), '3 × $60 Film Pass');
+  assertStringIncludes(buildPassPostedEmailHtml(o), '3 × $60 Film Pass');
 });

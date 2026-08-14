@@ -18,7 +18,9 @@ import {
   formatMailingAddress,
   passOrderBuyerLabel,
   type QueuedPassOrder as QueuedOrder,
+  type AwaitingPostOrder,
 } from '@/lib/passOrders';
+import { MailQueueCard } from '@/components/admin/MailQueueCard';
 
 /**
  * Film passes at the counter.
@@ -77,6 +79,8 @@ const STATUS_LABEL: Record<string, string> = {
 export function FilmPassPOS() {
   const [passTypes, setPassTypes] = useState<PassType[]>([]);
   const [queue, setQueue] = useState<QueuedOrder[]>([]);
+  const [awaitingPost, setAwaitingPost] = useState<AwaitingPostOrder[]>([]);
+  const [queueError, setQueueError] = useState<string | null>(null);
   const [loadingQueue, setLoadingQueue] = useState(true);
 
   // Activation
@@ -101,16 +105,44 @@ export function FilmPassPOS() {
   const loadQueue = useCallback(async () => {
     setLoadingQueue(true);
     try {
-      const data = await invokeFunction<{ orders: QueuedOrder[] }>('film-pass-checkout', {
-        action: 'queue',
-      });
+      const data = await invokeFunction<{
+        orders: QueuedOrder[];
+        awaiting_post: AwaitingPostOrder[];
+      }>('film-pass-checkout', { action: 'queue' });
       setQueue(data.orders || []);
+      setAwaitingPost(data.awaiting_post || []);
+      setQueueError(null);
     } catch (err: any) {
       toast.error(err.message || 'Could not load the pickup queue');
+      setQueueError(err?.message || 'Could not load the queue');
     } finally {
       setLoadingQueue(false);
     }
   }, []);
+
+  const markPosted = useCallback(async (orderId: string) => {
+    let data: { result: string; notice?: string };
+    try {
+      data = await invokeFunction<{ result: string; notice?: string }>('film-pass-checkout', {
+        action: 'mark_posted',
+        order_id: orderId,
+      });
+    } catch (err: any) {
+      toast.error(err?.message || 'Could not mark that order posted');
+      return; // Leave the row where it is — nothing was recorded.
+    }
+
+    if (data.result === 'already_posted') {
+      toast.info('Somebody already marked that one posted.');
+    } else if (data.notice === 'failed') {
+      toast.warning('Marked posted, but the email to the buyer did not send.');
+    } else if (data.notice === 'no_email') {
+      toast.success('Marked posted. No email on file for this buyer.');
+    } else {
+      toast.success('Marked posted — the buyer has been emailed.');
+    }
+    await loadQueue();
+  }, [loadQueue]);
 
   useEffect(() => {
     supabase
@@ -323,6 +355,19 @@ export function FilmPassPOS() {
           )}
         </CardContent>
       </Card>
+
+      {/* ---- Activated, still to go in the post ----
+          Hidden when empty: the counter is a working screen and an always-on
+          "nothing to post" is noise between a queue and a scanner. The admin
+          tab keeps it visible instead, where absence is the answer. */}
+      <MailQueueCard
+        orders={awaitingPost}
+        loading={loadingQueue}
+        error={queueError}
+        onRetry={loadQueue}
+        onMarkPosted={markPosted}
+        hideWhenEmpty
+      />
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* ---- Activate a sticker ---- */}

@@ -13,11 +13,13 @@
 // "who is asking" before they do anything. Splitting them across functions
 // would mean four copies of that answer.
 //
-//   order       public   take the card, record what the theatre now owes
-//   activate    staff    scan a blank sticker; it becomes a funded pass
-//   lookup      staff    find a pass by its code, or a patron's passes
-//   queue       staff    orders paid for and not yet handed over
-//   void        admin    kill a lost, stolen or misprinted pass
+//   order        public   take the card, record what the theatre now owes
+//   activate     staff    scan a blank sticker; it becomes a funded pass
+//   lookup       staff    find a pass by its code, or a patron's passes
+//   queue        staff    orders paid for and not yet handed over, plus mail
+//                         orders activated and not yet posted
+//   mark_posted  staff    the envelope went out; emails the buyer, once
+//   void         admin    kill a lost, stolen or misprinted pass
 //
 // Two things this function will not do any more, both deliberately answered
 // with an error rather than silently ignored:
@@ -53,6 +55,9 @@ import {
   buildPassOrderEmailHtml,
   buildPassOrderEmailText,
   buildPassOrderSubject,
+  buildPassPostedEmailHtml,
+  buildPassPostedEmailText,
+  buildPassPostedSubject,
   readMailingAddress,
   type Fulfillment,
   type MailingAddress,
@@ -124,20 +129,59 @@ Deno.serve(async (req: Request) => {
     const staff = await requireStaff();
     if (staff instanceof Response) return staff;
 
-    const { data, error } = await admin
-      .from('film_pass_orders')
-      .select(
-        'id, quantity, fulfillment, mailing_address, buyer_name, buyer_email, buyer_phone, amount_paid, status, created_at, user_id, pass_type_id, film_pass_types!film_pass_orders_pass_type_id_fkey(name, price, initial_balance, redemption_price)',
-      )
-      .eq('status', 'paid')
-      .order('created_at');
+    // Two obligations, two lists, one round trip — both screens show both.
+    //
+    //   orders         paid, no sticker scanned yet. Someone is waiting.
+    //   awaiting_post  mail only: sticker scanned, envelope not yet posted.
+    //                  Activation used to end the story here, which is how an
+    //                  envelope could sit on the desk with nothing recording it.
+    const [{ data, error }, { data: awaiting, error: awaitingErr }] = await Promise.all([
+      admin
+        .from('film_pass_orders')
+        .select(
+          'id, quantity, fulfillment, mailing_address, buyer_name, buyer_email, buyer_phone, amount_paid, status, created_at, user_id, pass_type_id, film_pass_types!film_pass_orders_pass_type_id_fkey(name, price, initial_balance, redemption_price)',
+        )
+        .eq('status', 'paid')
+        .order('created_at'),
+      admin
+        .from('film_pass_orders')
+        .select(
+          'id, quantity, fulfillment, mailing_address, buyer_name, buyer_email, buyer_phone, amount_paid, status, created_at, fulfilled_at, user_id, pass_type_id, film_pass_types!film_pass_orders_pass_type_id_fkey(name, price, initial_balance, redemption_price), profiles!film_pass_orders_fulfilled_by_fkey(display_name)',
+        )
+        .eq('fulfillment', 'mail')
+        .eq('status', 'fulfilled')
+        .is('posted_at', null)
+        // Oldest first: the longest-waiting envelope is the most urgent, which
+        // is the opposite of the newest-first instinct.
+        .order('fulfilled_at'),
+    ]);
 
     if (error) {
       console.error('[film-pass-checkout] queue failed', error);
       return json({ error: 'Could not read the pickup queue' }, 500);
     }
+    if (awaitingErr) {
+      console.error('[film-pass-checkout] mail queue failed', awaitingErr);
+      return json({ error: 'Could not read the mail queue' }, 500);
+    }
 
     return json({
+      awaiting_post: (awaiting || []).map((o: any) => ({
+        id: o.id,
+        quantity: o.quantity,
+        fulfillment: o.fulfillment,
+        mailing_address: o.mailing_address,
+        buyer_name: o.buyer_name,
+        buyer_email: o.buyer_email,
+        buyer_phone: o.buyer_phone,
+        amount_paid: Number(o.amount_paid ?? 0),
+        created_at: o.created_at,
+        fulfilled_at: o.fulfilled_at,
+        fulfilled_by_name: o.profiles?.display_name ?? null,
+        user_id: o.user_id,
+        pass_type_id: o.pass_type_id,
+        pass_type_name: o.film_pass_types?.name ?? 'Film Pass',
+      })),
       orders: (data || []).map((o: any) => ({
         id: o.id,
         quantity: o.quantity,
@@ -153,6 +197,118 @@ Deno.serve(async (req: Request) => {
         pass_type_name: o.film_pass_types?.name ?? 'Film Pass',
       })),
     });
+  }
+
+  // ---------------------------------------------------------------------
+  // Mark posted: the envelope actually went out
+  // ---------------------------------------------------------------------
+  //
+  // Activation puts a sticker on the card. This records that the card left the
+  // building — the step nothing used to capture, so a mailed pass could be
+  // marked fulfilled and then sit on a desk indefinitely.
+  //
+  // There is no undo. A mis-marked order is recovered the way a wrong pass
+  // already is: void the QR, activate a fresh sticker, post that. So the click
+  // is guarded in the UI, and the effects here are made to happen at most once.
+  if (action === 'mark_posted') {
+    const staff = await requireStaff();
+    if (staff instanceof Response) return staff;
+
+    const orderId = String(body.order_id ?? '').trim();
+    if (!orderId) return json({ error: 'Which order?' }, 400);
+
+    // The whole guard is this WHERE clause.
+    //
+    // Read-then-write would race: two staff on two devices, both holding a
+    // queue fetched before either clicked, both read posted_at IS NULL, both
+    // decide to send. Postgres lets exactly one UPDATE match, and the loser
+    // gets zero rows — so the email below is reached only by the winner. This
+    // matters more than it looks: a duplicate here is not a duplicate write,
+    // it is a second email telling a patron their pass shipped.
+    const { data: marked, error: markErr } = await admin
+      .from('film_pass_orders')
+      .update({ posted_at: new Date().toISOString(), posted_by: staff.id })
+      .eq('id', orderId)
+      .eq('fulfillment', 'mail')
+      .eq('status', 'fulfilled')
+      .is('posted_at', null)
+      .select(
+        'id, quantity, buyer_name, buyer_email, mailing_address, posted_at, film_pass_types!film_pass_orders_pass_type_id_fkey(name, initial_balance, redemption_price)',
+      )
+      .maybeSingle();
+
+    if (markErr) {
+      console.error('[film-pass-checkout] mark_posted failed', markErr);
+      return json({ error: 'Could not mark that order posted' }, 500);
+    }
+
+    // No row matched. Say which of the three reasons it was, because the
+    // counter needs to tell the difference between "somebody beat me to it"
+    // and "this is not ready to post".
+    if (!marked) {
+      const { data: existing } = await admin
+        .from('film_pass_orders')
+        .select('id, fulfillment, status, posted_at')
+        .eq('id', orderId)
+        .maybeSingle();
+
+      if (!existing) return json({ error: 'That order no longer exists' }, 404);
+      if (existing.fulfillment !== 'mail') {
+        return json({ result: 'not_a_mail_order', error: 'That order is for collection, not post' }, 400);
+      }
+      if (existing.posted_at) {
+        return json({ result: 'already_posted', posted_at: existing.posted_at });
+      }
+      return json(
+        {
+          result: 'not_yet_activated',
+          error: 'Activate a sticker against this order before posting it',
+        },
+        400,
+      );
+    }
+
+    // -------------------------------------------------------------------
+    // Tell them it is on the way
+    // -------------------------------------------------------------------
+    //
+    // Awaited, not fire-and-forget, unlike the order confirmation: nothing is
+    // being held open behind this, and the staff member watching the button is
+    // the only person who will ever be in a position to notice the send
+    // failed. The outcome is still written to the row either way — the row
+    // outlives the toast.
+    const type = (marked as any).film_pass_types;
+    let notice: 'sent' | 'failed' | 'no_email' = 'no_email';
+
+    if (marked.buyer_email) {
+      const summary = {
+        passTypeName: type?.name ?? 'Film Pass',
+        quantity: marked.quantity,
+        mailingAddress: (marked.mailing_address ?? null) as MailingAddress | null,
+        buyerName: marked.buyer_name ?? null,
+        initialBalance: Number(type?.initial_balance ?? 0),
+        redemptionPrice: Number(type?.redemption_price ?? 0),
+      };
+
+      const result = await sendTransactionalEmail(
+        marked.buyer_email,
+        buildPassPostedSubject(summary),
+        buildPassPostedEmailHtml(summary),
+        buildPassPostedEmailText(summary),
+      );
+
+      notice = result.ok ? 'sent' : 'failed';
+      await admin
+        .from('film_pass_orders')
+        .update(
+          result.ok
+            ? { posted_notice_sent_at: new Date().toISOString(), posted_notice_error: null }
+            : { posted_notice_error: result.error.slice(0, 500) },
+        )
+        .eq('id', marked.id);
+    }
+
+    return json({ result: 'posted', posted_at: marked.posted_at, notice });
   }
 
   // ---------------------------------------------------------------------
