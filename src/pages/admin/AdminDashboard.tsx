@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Archive, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye } from 'lucide-react';
+import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Archive, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Briefcase } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
@@ -28,6 +28,7 @@ import SponsorsTab from '@/components/admin/SponsorsTab';
 import DvdLibraryTab from '@/components/admin/DvdLibraryTab';
 import MailchimpTab from '@/components/admin/MailchimpTab';
 import LglTab from '@/components/admin/LglTab';
+import HiringTab from '@/components/admin/HiringTab';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
@@ -451,6 +452,7 @@ export default function AdminDashboard() {
             { value: 'rentals', label: 'Rentals', icon: KeyRound, show: true },
             { value: 'labor', label: 'Staff', icon: Clock, show: isAdmin },
             { value: 'sponsors', label: 'Sponsors', icon: Handshake, show: true },
+            { value: 'hiring', label: 'Hiring', icon: Briefcase, show: isAdmin },
             { value: 'analytics', label: 'Analytics', icon: BarChart3, show: isAdmin },
             { value: 'mailchimp', label: 'Mailchimp', icon: Mail, show: isAdmin },
             { value: 'lgl', label: 'LGL', icon: Heart, show: isAdmin },
@@ -897,6 +899,12 @@ export default function AdminDashboard() {
         <TabsContent value="sponsors">
           <SponsorsTab />
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="hiring">
+            <HiringTab />
+          </TabsContent>
+        )}
 
         {isAdmin && (
           <TabsContent value="mailchimp">

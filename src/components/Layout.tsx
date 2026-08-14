@@ -12,6 +12,7 @@ import {
 import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
 import { MobileNav } from '@/components/MobileNav';
 import { NewsletterSignup } from '@/components/NewsletterSignup';
+import { useHiringEnabled } from '@/hooks/useHiringEnabled';
 
 const navLinkClass =
   'font-display uppercase text-sm tracking-[0.25em] text-accent hover:text-primary transition-colors';
@@ -35,6 +36,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, isStaff, isHost, isSuperadmin, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  // Hiring is admin-toggled; when it is off the page redirects away, so the
+  // menu entry has to go with it rather than advertise a bounce.
+  const { enabled: hiringEnabled } = useHiringEnabled();
+  const visibleInfoLinks = infoLinks.filter(
+    ([, to]) => to !== '/hiring' || hiringEnabled,
+  );
   const authHref = (() => {
     const path = location.pathname + location.search;
     if (path === '/' || path.startsWith('/auth')) return '/auth';
@@ -76,7 +83,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 Info <ChevronDown className="h-3.5 w-3.5 opacity-70" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56 bg-background">
-                {infoLinks.map(([label, to]) => (
+                {visibleInfoLinks.map(([label, to]) => (
                   <DropdownMenuItem key={to} asChild>
                     <Link to={to}>{label}</Link>
                   </DropdownMenuItem>

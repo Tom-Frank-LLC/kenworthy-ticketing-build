@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Film, Calendar, Clock, DollarSign, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard } from 'lucide-react';
+import { Film, Calendar, Clock, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard } from 'lucide-react';
 import { SeatMap } from '@/components/SeatMap';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
 import { DonationPrompt } from '@/components/DonationPrompt';
@@ -546,9 +546,12 @@ export default function Showing() {
               <span className="flex items-center gap-1">
                 <Clock className="h-4 w-4" /> {formatShowtime(showing.start_time, 'h:mm a')}
               </span>
-              <span className="flex items-center gap-1">
-                <DollarSign className="h-4 w-4" /> {priceDisplay}
-              </span>
+              {/* No icon here on purpose: priceDisplay already starts with a
+                  "$", and a DollarSign glyph in front of it rendered
+                  "$ $10.00 per ticket". The currency symbol in the string is
+                  the one that has to stay — it is what every other price in
+                  the app is formatted with. */}
+              <span className="flex items-center gap-1">{priceDisplay}</span>
               {venue && (
                 <span className="flex items-center gap-1">
                   <MapPin className="h-4 w-4" /> {venue.name}
@@ -645,13 +648,17 @@ export default function Showing() {
                         </div>
                       </div>
                     ))}
-                    <p className="text-xs text-muted-foreground">{gaAvailable} tickets available</p>
+                    {/* The remaining-count line is deliberately not rendered.
+                        gaAvailable still caps the steppers below and still
+                        drives `soldOut`, so the limit is enforced — patrons
+                        just aren't shown how thin the house is. */}
                   </div>
                 ) : (
                   <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50">
                     <div>
                       <p className="font-medium">Tickets</p>
-                      <p className="text-xs text-muted-foreground">{gaAvailable} available</p>
+                      {/* Remaining count hidden — see the note in the tiered
+                          branch above. */}
                     </div>
                     <div className="flex items-center gap-3">
                       <Button variant="outline" size="icon" onClick={() => setGaQuantity(q => Math.max(0, q - 1))} disabled={gaQuantity === 0}>

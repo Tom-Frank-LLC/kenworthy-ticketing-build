@@ -1,28 +1,15 @@
 import { useMemo, useState } from 'react';
-import { addDays } from 'date-fns';
-import { List as ListIcon, Calendar as CalendarIcon, Film, Sparkles, Music, Ticket, PlayCircle, ChevronRight } from 'lucide-react';
+import { List as ListIcon, Calendar as CalendarIcon, Film, Sparkles, Music, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { MonthCalendar } from './MonthCalendar';
+import { ShowingPreview } from './ShowingPreview';
 import { useIsSplitLayout } from '@/hooks/use-mobile';
-import { formatShowtime, venueDayKey } from '@/lib/datetime';
+import { formatShowtime } from '@/lib/datetime';
 import type { FeedItem } from './TrailerFeed';
 
 const TYPE_ICON = { movie: Film, event: Sparkles, concert: Music } as const;
 const TYPE_LABEL = { movie: 'Film', event: 'Event', concert: 'Live' } as const;
-
-function formatWhen(iso: string) {
-  // "Tonight" has to mean tonight at the theatre. Comparing against the
-  // viewer's own day would label a 7 PM Pacific show "Tomorrow" for anyone
-  // whose clock has already crossed midnight.
-  const day = venueDayKey(iso);
-  const now = new Date();
-  const time = formatShowtime(iso, 'h:mm a');
-  if (day === venueDayKey(now)) return `Tonight · ${time}`;
-  if (day === venueDayKey(addDays(now, 1))) return `Tomorrow · ${time}`;
-  return formatShowtime(iso, 'EEE, MMM d · h:mm a');
-}
 
 export function UpcomingList({
   items,
@@ -127,7 +114,6 @@ export function UpcomingList({
                   <button
                     type="button"
                     onClick={() => handleRowActivate(it)}
-                    onMouseEnter={() => { if (splitLayout) setActiveId(it.id); }}
                     className={cn(
                       'w-full text-left rounded-md border p-3 md:p-4 transition-colors flex items-start gap-3 group',
                       selected
@@ -170,59 +156,11 @@ export function UpcomingList({
           {/* Preview. The drawer replaces this pane below lg, where it was
               stranded underneath the full list. */}
           {active && (
-            <div className="hidden min-w-0 lg:block lg:sticky lg:top-4 lg:self-start">
-              <div className="rounded-lg border border-accent/20 bg-card overflow-hidden">
-                <div className="relative aspect-[16/10] bg-muted">
-                  {active.posterUrl ? (
-                    <img
-                      src={active.posterUrl}
-                      alt={active.title}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground font-serif italic">
-                      No artwork yet
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent pointer-events-none" />
-                  {active.isFeatured && (
-                    <Badge className="absolute top-3 left-3 bg-primary text-primary-foreground">
-                      Featured
-                    </Badge>
-                  )}
-                </div>
-                <div className="p-5 md:p-6">
-                  <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
-                    {formatWhen(active.startTime)}
-                  </p>
-                  <h3 className="font-display text-2xl md:text-3xl uppercase tracking-wide leading-tight mb-3">
-                    {active.title}
-                  </h3>
-                  {active.curatorNote && (
-                    <p className="font-serif text-sm md:text-base text-muted-foreground line-clamp-5 mb-5">
-                      {active.curatorNote}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => onSelect?.(active)} className="gap-2">
-                      <Ticket className="h-4 w-4" />
-                      View details
-                    </Button>
-                    {active.trailerUrl && (
-                      <Button
-                        variant="outline"
-                        onClick={() => onSelect?.(active)}
-                        className="gap-2"
-                      >
-                        <PlayCircle className="h-4 w-4" />
-                        Watch trailer
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ShowingPreview
+              item={active}
+              onViewDetails={onSelect}
+              className="hidden min-w-0 lg:block lg:sticky lg:top-4 lg:self-start"
+            />
           )}
         </div>
         )}
