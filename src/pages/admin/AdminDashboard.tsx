@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Archive, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye } from 'lucide-react';
+import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Archive, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
@@ -120,6 +120,7 @@ export default function AdminDashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [concerts, setConcerts] = useState<any[]>([]);
   const [showings, setShowings] = useState<any[]>([]);
+  const [venues, setVenues] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
   const [ticketCount, setTicketCount] = useState(0);
   const [scheduleQuery, setScheduleQuery] = useState(() => searchParams.get('q') || '');
@@ -179,7 +180,7 @@ export default function AdminDashboard() {
   }, [isStaff, authLoading, navigate]);
 
   async function loadData() {
-    const [moviesRes, eventsRes, concertsRes, showingsRes, ticketsRes] = await Promise.all([
+    const [moviesRes, eventsRes, concertsRes, showingsRes, venuesRes, ticketsRes] = await Promise.all([
       fetchAllPages((from, to) => supabase.from('movies').select('*').order('title').order('id').range(from, to)),
       fetchAllPages((from, to) => supabase.from('events').select('*').order('title').order('id').range(from, to)),
       fetchAllPages((from, to) =>
@@ -193,6 +194,10 @@ export default function AdminDashboard() {
           .order('id')
           .range(from, to)
       ),
+      // Seat counts come along so the list can say whether a venue actually has
+      // a map behind its flag — the two disagreed for months without anyone
+      // being able to see it, because there was no Venues screen at all.
+      supabase.from('venues').select('*, venue_seats(count)').order('name'),
       // Sold counts, so unpaid checkout attempts (pending) and declines
       // (failed) are excluded.
       // scanned_at comes along so the dashboard can report attendance, not only
@@ -204,6 +209,7 @@ export default function AdminDashboard() {
     setEvents(eventsRes);
     setConcerts(concertsRes);
     setShowings(showingsRes);
+    setVenues(venuesRes.data || []);
     setTickets(ticketsRes);
     setTicketCount(ticketsRes.length);
   }
@@ -370,6 +376,24 @@ export default function AdminDashboard() {
     );
   }));
 
+  // Venues get their own delete rather than the generic one: venue_seats is
+  // ON DELETE CASCADE, so removing a venue takes its whole seat map with it,
+  // and every seat-tier assignment hanging off those seats. A showing still
+  // pointing at the venue blocks the delete at the foreign key — surfaced as
+  // the error toast below rather than pre-empted, so the count shown here and
+  // the database cannot disagree.
+  const deleteVenue = async (venue: any, seatCount: number, showingCount: number) => {
+    const consequences = [
+      seatCount > 0 ? `its ${seatCount}-seat map and any seat pricing set against it` : null,
+      showingCount > 0 ? `${showingCount} showing${showingCount === 1 ? '' : 's'} still reference it and will block the delete` : null,
+    ].filter(Boolean);
+    const detail = consequences.length ? `\n\nThis also removes ${consequences.join(', and ')}.` : '';
+    if (!confirm(`Delete "${venue.name}"?${detail}`)) return;
+    const { error } = await supabase.from('venues').delete().eq('id', venue.id);
+    if (error) toast.error(error.message);
+    else { toast.success('Venue deleted'); loadData(); }
+  };
+
   const deleteItem = async (table: 'movies' | 'events' | 'live_performances' | 'showings', id: string, label: string) => {
 
     if (!confirm(`Delete this ${label}?`)) return;
@@ -518,7 +542,11 @@ export default function AdminDashboard() {
               <TabsList>
                 <TabsTrigger value="movies">Movies</TabsTrigger>
                 <TabsTrigger value="live-events">Live Events</TabsTrigger>
+                <TabsTrigger value="venues">Venues</TabsTrigger>
               </TabsList>
+              {/* Title search, ratings and showtime sorting have nothing to
+                  filter on the Venues list. */}
+              {activeScheduleTab !== 'venues' && (
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
                 <div className="relative w-full sm:w-56">
                   <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -638,6 +666,7 @@ export default function AdminDashboard() {
                   </Button>
                 </div>
               </div>
+              )}
             </div>
             <TabsContent value="movies">
           <div className="flex items-center justify-between mb-4">
@@ -806,6 +835,73 @@ export default function AdminDashboard() {
               );
             })}
             {filteredLiveEvents.length === 0 && <p className="text-muted-foreground text-center py-8">No live events match the filters.</p>}
+          </div>
+            </TabsContent>
+            {/* Venues. Previously reachable only by typing /admin/venues/new,
+                which is why the theatre ran for months with no venue row at all
+                and an empty venue picker on every showing. */}
+            <TabsContent value="venues">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-xl font-bold">Venues</h2>
+            <Button size="sm" asChild>
+              <Link to="/admin/venues/new"><Plus className="h-4 w-4 mr-1" /> Add Venue</Link>
+            </Button>
+          </div>
+          <div className="space-y-3">
+            {venues.map(venue => {
+              // venue_seats(count) comes back as [{ count: n }], or [] when the
+              // venue has no seats. A venue flagged as having a seat map but
+              // holding no seats is exactly the state this whole fix was about,
+              // so it is called out rather than left to be inferred.
+              const seatCount = venue.venue_seats?.[0]?.count ?? 0;
+              const showingCount = showings.filter(s => s.venue_id === venue.id).length;
+              const flaggedButEmpty = venue.has_assigned_seating && seatCount === 0;
+              return (
+                <Card key={venue.id} className="glass">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Building2 className="h-5 w-5 text-primary" />
+                      <div>
+                        <p className="font-medium">{venue.name}</p>
+                        <div className="flex gap-2 mt-1 flex-wrap">
+                          <Badge variant="secondary" className="text-xs">
+                            {venue.total_seats} seats
+                          </Badge>
+                          <Badge variant={venue.has_assigned_seating ? 'default' : 'outline'} className="text-xs">
+                            {venue.has_assigned_seating ? `Seat map · ${seatCount}` : 'No seat map'}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {showingCount} {showingCount === 1 ? 'showing' : 'showings'}
+                          </Badge>
+                          <Badge variant={venue.is_active ? 'default' : 'secondary'} className="text-xs">
+                            {venue.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        {flaggedButEmpty && (
+                          <p className="text-xs text-amber-500 mt-1">
+                            Marked as having a seat map, but no seats are attached — assigned
+                            seating here would show an empty picker.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link to={`/admin/venues/${venue.id}`}><Edit className="h-4 w-4" /></Link>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteVenue(venue, seatCount, showingCount)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+            {venues.length === 0 && (
+              <p className="text-muted-foreground text-center py-8">
+                No venues yet. Add one so showings have a room to sit in.
+              </p>
+            )}
           </div>
             </TabsContent>
           </Tabs>

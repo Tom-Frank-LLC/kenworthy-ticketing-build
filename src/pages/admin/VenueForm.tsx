@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
+import { isPlainRowLayout, type VenueSeat } from '@/lib/venueSeatLayout';
 
 interface SeatRow {
   rowLabel: string;
@@ -30,6 +31,10 @@ export default function VenueForm() {
   const [hasAssignedSeating, setHasAssignedSeating] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [seatRows, setSeatRows] = useState<SeatRow[]>([]);
+  const [existingSeats, setExistingSeats] = useState<VenueSeat[]>([]);
+  // False when the stored map is richer than the row editor can express. The
+  // map is then shown read-only and left untouched on save.
+  const [seatMapEditable, setSeatMapEditable] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -52,13 +57,18 @@ export default function VenueForm() {
     // Load existing seat layout
     const { data: seats } = await supabase
       .from('venue_seats')
-      .select('*')
+      .select('seat_row, seat_number, seat_type, section')
       .eq('venue_id', id!)
       .order('seat_row')
       .order('seat_number');
-    if (seats && seats.length > 0) {
+    const rows = (seats ?? []) as VenueSeat[];
+    setExistingSeats(rows);
+
+    const editable = isPlainRowLayout(rows);
+    setSeatMapEditable(editable);
+    if (editable && rows.length > 0) {
       const rowMap = new Map<string, { count: number; seatType: string }>();
-      seats.forEach(s => {
+      rows.forEach(s => {
         const existing = rowMap.get(s.seat_row);
         if (!existing || s.seat_number > existing.count) {
           rowMap.set(s.seat_row, { count: s.seat_number, seatType: s.seat_type });
@@ -69,6 +79,23 @@ export default function VenueForm() {
       })));
     }
   }
+
+  // Rows of the stored map, for the read-only view: "K — 18 seats · left, center, right".
+  const seatSummary = (() => {
+    const byRow = new Map<string, VenueSeat[]>();
+    for (const s of existingSeats) {
+      const list = byRow.get(s.seat_row);
+      if (list) list.push(s);
+      else byRow.set(s.seat_row, [s]);
+    }
+    return Array.from(byRow.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([rowLabel, seats]) => ({
+        rowLabel,
+        count: seats.length,
+        sections: [...new Set(seats.map(s => (s.section || 'center').toLowerCase()))].sort(),
+      }));
+  })();
 
   const addSeatRow = () => {
     const nextLabel = String.fromCharCode(65 + seatRows.length); // A, B, C...
@@ -88,7 +115,7 @@ export default function VenueForm() {
     setSaving(true);
 
     const computedTotal = hasAssignedSeating
-      ? seatRows.reduce((sum, r) => sum + r.count, 0)
+      ? (seatMapEditable ? seatRows.reduce((sum, r) => sum + r.count, 0) : existingSeats.length)
       : totalSeats;
 
     const venueData = {
@@ -109,8 +136,11 @@ export default function VenueForm() {
       venueId = data.id;
     }
 
-    // Save seat layout if assigned seating
-    if (hasAssignedSeating && venueId) {
+    // Save seat layout if assigned seating. Skipped when the stored map is one
+    // the row editor cannot express — see isPlainRowLayout. There is nothing
+    // to write in that case (the editor never loaded it), and writing anyway
+    // would replace a real seat chart with a regenerated approximation.
+    if (hasAssignedSeating && venueId && seatMapEditable) {
       // Delete existing seats
       await supabase.from('venue_seats').delete().eq('venue_id', venueId);
       // Insert new seats
@@ -159,8 +189,11 @@ export default function VenueForm() {
                 onCheckedChange={(checked) => setHasAssignedSeating(checked === true)}
               />
               <div>
-                <Label htmlFor="assigned-seating" className="cursor-pointer">Assigned seating</Label>
-                <p className="text-xs text-muted-foreground">Configure specific seat rows and numbers</p>
+                <Label htmlFor="assigned-seating" className="cursor-pointer">Has a seat map</Label>
+                <p className="text-xs text-muted-foreground">
+                  This room has numbered seats, so a showing here <em>may</em> be sold as assigned
+                  seating. Whether it is, is set per showing.
+                </p>
               </div>
             </div>
 
@@ -171,7 +204,28 @@ export default function VenueForm() {
               </div>
             )}
 
-            {hasAssignedSeating && (
+            {hasAssignedSeating && !seatMapEditable && (
+              <div className="space-y-3">
+                <Label>Seat Map</Label>
+                <p className="text-xs text-muted-foreground">
+                  {existingSeats.length} seats across {seatSummary.length} rows and separate banks,
+                  with gaps where there is no seat. The simple row editor cannot describe this
+                  layout, so it is shown read-only and is left untouched when you save. Seat
+                  prices are set per showing, under Seat Pricing on the showing.
+                </p>
+                <div className="rounded-md border border-border bg-secondary/30 p-3 max-h-56 overflow-y-auto space-y-1">
+                  {seatSummary.map(r => (
+                    <div key={r.rowLabel} className="flex items-baseline gap-2 text-xs">
+                      <span className="font-display w-6 shrink-0 tracking-wider">{r.rowLabel}</span>
+                      <span className="tabular-nums w-16 shrink-0">{r.count} seats</span>
+                      <span className="text-muted-foreground">{r.sections.join(' · ')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {hasAssignedSeating && seatMapEditable && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label>Seat Rows</Label>

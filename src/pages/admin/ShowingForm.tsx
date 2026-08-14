@@ -49,6 +49,13 @@ export default function ShowingForm() {
   // covered. Events cannot be eligible at all — a database trigger forces the
   // flag off for them — so this control only ever governs movies.
   const [filmPassEligible, setFilmPassEligible] = useState(true);
+  // GA or reserved seating, decided here rather than on the venue: the same
+  // auditorium hosts a general-admission movie on Friday and a reserved-seat
+  // performance on Saturday. This is the column the customer picker, the box
+  // office, pricing and the capacity trigger all already read; until now
+  // nothing wrote it, so it sat at its default and no showing was ever
+  // reserved-seating. New showings default to GA.
+  const [requiresSeatSelection, setRequiresSeatSelection] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [tiers, setTiers] = useState<TierRow[]>([...DEFAULT_TIERS]);
@@ -68,7 +75,13 @@ export default function ShowingForm() {
       setMovies(moviesRes.data || []);
       setEvents((eventsRes.data || []).filter((e: any) => e.ticket_type === 'ticketed'));
       setConcerts(concertsRes.data || []);
-      setVenues(venuesRes.data || []);
+      const venueList = venuesRes.data || [];
+      setVenues(venueList);
+      // One venue means there is no choice to make, so don't make the admin
+      // make it. Only on a new showing — auto-filling an existing showing that
+      // was saved with no venue would rewrite its row on the next save without
+      // anyone asking for that.
+      if (!isEdit && venueList.length === 1) setVenueId(venueList[0].id);
     });
 
     if (isEdit) {
@@ -90,6 +103,7 @@ export default function ShowingForm() {
           setStartTime(instantToVenueLocalInput(data.start_time));
           setTicketPrice(String(data.ticket_price));
           setFilmPassEligible(data.film_pass_eligible ?? true);
+          setRequiresSeatSelection(data.requires_seat_selection ?? false);
         }
 
         const tierData = tiersRes.data || [];
@@ -124,6 +138,12 @@ export default function ShowingForm() {
     return { value: item.id, label: item.title, hint: hint || undefined };
   }), [currentItems, category]);
 
+  // has_assigned_seating is a capability, not a policy: it says this venue has
+  // a seat map in venue_seats, which is what makes the per-showing toggle
+  // meaningful. It does not say every showing here is reserved seating.
+  const selectedVenue = venues.find((v: any) => v.id === venueId);
+  const venueHasSeatMap = !!selectedVenue?.has_assigned_seating;
+
   const addTier = () => {
     setTiers(prev => [...prev, { tier_name: '', price: '8.00', display_order: prev.length }]);
   };
@@ -154,6 +174,10 @@ export default function ShowingForm() {
       start_time: venueLocalToInstant(startTime).toISOString(),
       ticket_price: parseFloat(ticketPrice),
       film_pass_eligible: category === 'movie' && filmPassEligible,
+      // Only claim reserved seating when there is a seat map to reserve from.
+      // A showing flagged reserved with no seats behind it renders an empty
+      // picker the buyer cannot get past.
+      requires_seat_selection: venueHasSeatMap && requiresSeatSelection,
     };
 
     let showingId = id;
@@ -206,8 +230,11 @@ export default function ShowingForm() {
   if (authLoading) return null;
 
   const showingIdForEditor = savedShowingId ?? (isEdit ? id ?? null : null);
-  const venueForEditor = venues.find(v => v.id === venueId);
-  const showSeatOverride = !!showingIdForEditor && !!venueForEditor?.has_assigned_seating;
+  // The tier grid appears when this showing is actually sold as reserved
+  // seating — not merely because the room has a seat map. Gating it on the
+  // venue meant it showed for GA screenings, where per-seat prices are never
+  // read, and the switch that would have made it meaningful did not exist.
+  const showSeatOverride = !!showingIdForEditor && venueHasSeatMap && requiresSeatSelection;
 
   const seedProd = category === 'movie' && itemId ? { type: 'movie' as const, id: itemId }
     : category === 'event' && itemId ? { type: 'event' as const, id: itemId }
@@ -255,12 +282,44 @@ export default function ShowingForm() {
                 <SelectContent>
                   {venues.map((v: any) => (
                     <SelectItem key={v.id} value={v.id}>
-                      {v.name}{v.has_assigned_seating ? ' (Assigned Seats)' : ' (GA)'}
+                      {v.name}{v.has_assigned_seating ? ' — seat map' : ' — no seat map'}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {venues.length === 0 && (
+                <p className="text-xs text-amber-500">
+                  No venues exist yet. Add one under Listings → Venues.
+                </p>
+              )}
             </div>
+
+            {/* Seating model. Per showing, because the same room runs a GA
+                screening one night and a reserved-seat performance the next.
+                Only offered when the chosen venue has a seat map to reserve
+                from — without one there is nothing to pick. */}
+            {venueHasSeatMap && (
+              <div className="space-y-2 border-t border-border pt-4">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={requiresSeatSelection}
+                    onChange={e => setRequiresSeatSelection(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="font-semibold">Assigned seating for this showing</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Off: general admission — buyers pick a quantity and capacity is a simple count.
+                  On: buyers choose their seats from {selectedVenue?.name ?? 'the venue'}'s map.
+                </p>
+                {requiresSeatSelection && !showingIdForEditor && (
+                  <p className="text-xs text-muted-foreground">
+                    Save the showing to set per-seat prices.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Date & Time *</Label>
               <Input type="datetime-local" required value={startTime} onChange={e => setStartTime(e.target.value)} />
