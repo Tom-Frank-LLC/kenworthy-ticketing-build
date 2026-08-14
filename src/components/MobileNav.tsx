@@ -41,7 +41,6 @@ type NavItem = {
 const primaryLinks: NavItem[] = [
   { label: "What's On", to: '/calendar', icon: CalendarDays },
   { label: 'Theatre Rentals', to: '/rentals', icon: Building2 },
-  { label: 'DVD Rentals', to: '/dvds', icon: Disc3 },
   { label: 'Donate', to: '/donate', icon: Heart },
 ];
 
@@ -124,6 +123,11 @@ export function MobileNav() {
   }
   if (isSuperadmin) staffLinks.push({ label: 'Superadmin', to: '/superadmin', icon: ShieldCheck });
   if (isHost && !isAdmin) staffLinks.push({ label: 'Host Dashboard', to: '/host', icon: Home });
+  // The lending library moved out of the public list: it is behind RequireAuth
+  // now, and signing in means staff. Keyed on `user` rather than a role because
+  // the page needs a session, not a particular one — it sits last so the
+  // role destinations above stay at the top of the section.
+  if (user) staffLinks.push({ label: 'DVD Rentals', to: '/dvds', icon: Disc3 });
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

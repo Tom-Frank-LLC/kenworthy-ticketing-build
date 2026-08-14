@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import { Layout } from "@/components/Layout";
+import { RequireAuth } from "@/components/RequireAuth";
 
 // The home page is the overwhelming majority of first loads, so it ships in
 // the entry chunk. Everything else is split per route: this is what keeps
@@ -113,7 +114,11 @@ const App = () => (
                 <Route path="/rental-request" element={<RentalRequest />} />
                 <Route path="/rentals" element={<Rentals />} />
                 <Route path="/donate" element={<Donate />} />
-                <Route path="/dvds" element={<Dvds />} />
+                {/* The lending library is not public. Signing in means staff
+                    while member accounts are off, so this is the box-office
+                    catalogue — a logged-out visitor is sent to /auth rather
+                    than shown a shelf they cannot borrow from. */}
+                <Route path="/dvds" element={<RequireAuth><Dvds /></RequireAuth>} />
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/silent-film-festival" element={<SilentFilmFestivalPage />} />
                 <Route path="/press" element={<PressPage />} />
