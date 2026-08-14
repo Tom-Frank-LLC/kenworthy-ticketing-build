@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +31,8 @@ export default function Dvds() {
   async function load() {
     setLoading(true);
     const [{ data: d }, { data: s }] = await Promise.all([
-      (supabase as any).from('dvds').select('*').eq('is_active', true).order('title'),
+      fetchAllRows<Dvd>((from, to) =>
+        (supabase as any).from('dvds').select('*').eq('is_active', true).order('title').range(from, to)),
       (supabase as any).from('dvd_settings').select('*').limit(1).maybeSingle(),
     ]);
     setDvds(d || []);
@@ -108,6 +110,13 @@ export default function Dvds() {
     setQ(''); setYearFilter('all'); setGenreFilter('all'); setFormatFilter('all'); setKeywordFilter('all');
   };
   const active = myRentals.filter(r => ['reserved','checked_out','overdue'].includes(r.status));
+
+  const reserveControl = (d: Dvd) => {
+    const out = d.copies_available <= 0;
+    if (!user) return <Button size="sm" variant="outline" asChild><Link to="/auth?redirect=/dvds">Sign in</Link></Button>;
+    if (active.some(r => r.dvd_id === d.id)) return <Badge variant="outline" className="text-xs">Reserved</Badge>;
+    return <Button size="sm" disabled={out} onClick={() => reserve(d)}>{out ? 'Unavailable' : 'Reserve'}</Button>;
+  };
 
   return (
     <>
@@ -199,43 +208,39 @@ export default function Dvds() {
         ) : filtered.length === 0 ? (
           <p className="text-muted-foreground font-serif text-center py-12">No DVDs match your search.</p>
         ) : (
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {filtered.map(d => {
-              const out = d.copies_available <= 0;
-              const alreadyHas = active.some(r => r.dvd_id === d.id);
-              return (
-                <Card key={d.id} className="glass overflow-hidden flex flex-col">
-                  <div className="aspect-[2/3] bg-muted relative">
-                    {d.cover_url
-                      ? <img src={d.cover_url} alt={d.title} className="w-full h-full object-cover" loading="lazy" />
-                      : <div className="w-full h-full flex items-center justify-center"><Disc className="h-12 w-12 text-muted-foreground/40" /></div>}
-                    {out && <Badge variant="outline" className="absolute top-2 right-2 bg-background/90">Checked out</Badge>}
-                  </div>
-                  <CardContent className="p-3 flex-1 flex flex-col gap-2">
-                    <div className="flex-1">
-                      <p className="font-display uppercase text-sm leading-tight">{d.title}</p>
-                      <p className="text-xs text-muted-foreground font-serif">
+          <Card className="glass overflow-hidden">
+            <ul className="divide-y divide-border/60">
+              {filtered.map(d => {
+                const out = d.copies_available <= 0;
+                const fmt = parseNote(d.notes, 'Format');
+                return (
+                  <li key={d.id} className="flex items-center gap-3 p-3">
+                    {/* Nothing has cover art yet, but admins can set one per title, so keep the slot. */}
+                    <div className="h-16 w-11 shrink-0 bg-muted rounded overflow-hidden">
+                      {d.cover_url
+                        ? <img src={d.cover_url} alt={d.title} className="w-full h-full object-cover" loading="lazy" />
+                        : <div className="w-full h-full flex items-center justify-center"><Disc className="h-5 w-5 text-muted-foreground/40" /></div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-display uppercase text-sm leading-tight truncate">{d.title}</p>
+                      <p className="text-xs text-muted-foreground font-serif truncate">
                         {[d.year, d.director].filter(Boolean).join(' • ')}
                       </p>
-                      {d.genre && <p className="text-xs text-accent font-serif italic">{d.genre}</p>}
+                      {d.genre && <p className="text-xs text-accent font-serif italic truncate">{d.genre}</p>}
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-display text-primary">${Number(d.rental_price).toFixed(2)}</span>
-                      {!user ? (
-                        <Button size="sm" variant="outline" asChild><Link to="/auth?redirect=/dvds">Sign in</Link></Button>
-                      ) : alreadyHas ? (
-                        <Badge variant="outline" className="text-xs">Reserved</Badge>
-                      ) : (
-                        <Button size="sm" disabled={out} onClick={() => reserve(d)}>
-                          {out ? 'Unavailable' : 'Reserve'}
-                        </Button>
-                      )}
+                    <div className="hidden sm:flex items-center gap-2 shrink-0">
+                      {fmt && <Badge variant="outline" className="text-[10px] font-serif">{fmt}</Badge>}
+                      {out && <Badge variant="outline" className="text-[10px] bg-background/90">Checked out</Badge>}
                     </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+                    <span className="font-display text-primary shrink-0 w-14 text-right">
+                      ${Number(d.rental_price).toFixed(2)}
+                    </span>
+                    <div className="shrink-0">{reserveControl(d)}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         )}
       </div>
     </>
