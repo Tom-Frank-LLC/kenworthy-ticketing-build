@@ -11,14 +11,25 @@
 // notify.ts: a posted pass with an unusable address is a silent failure that
 // only surfaces weeks later as "I never got it".
 
-import { esc } from './notify.ts';
+import { brand, sans } from './brand.ts';
+import {
+  emailLayout,
+  esc,
+  eyebrow,
+  heading,
+  panel,
+  paragraph,
+  row,
+  textFooter,
+} from './email-layout.ts';
 
-// Deno globals
-declare const Deno: any;
-
-const TICKET_REPLY_TO = Deno.env.get('TICKET_REPLY_TO') || 'events@kenworthy.org';
-const VENUE_NAME = 'The Kenworthy Performing Arts Centre';
-const BOX_OFFICE_ADDRESS = '508 S Main St, Moscow, ID 83843';
+/**
+ * Both pass emails end with this. It is the single most important line in
+ * either of them: a patron who thinks the email is the pass turns up at the
+ * door with a phone and nothing to scan.
+ */
+const NOTHING_TO_PRINT =
+  'There is nothing to print — no QR code in this email. The pass itself is the physical card.';
 
 export type Fulfillment = 'pickup' | 'mail';
 
@@ -145,11 +156,7 @@ export function buildPassOrderEmailText(order: PassOrderSummary): string {
     '',
     `Paid: ${formatMoney(order.amountPaid)}`,
     '',
-    'There is nothing to print and no QR code in this email — the pass itself is a physical card.',
-    '',
-    `Questions: ${TICKET_REPLY_TO}`,
-    VENUE_NAME,
-    BOX_OFFICE_ADDRESS,
+    ...textFooter(NOTHING_TO_PRINT),
   ].join('\n');
 }
 
@@ -205,11 +212,7 @@ export function buildPassPostedEmailText(order: PassPostedSummary): string {
     'Hand it to our staff at the door and they will scan it. Nothing to set up before it arrives.',
     'Passes cannot be used to book online, and are not valid for special events or premium screenings.',
     '',
-    'There is nothing to print and no QR code in this email — the pass itself is the physical card.',
-    '',
-    `Questions: ${TICKET_REPLY_TO}`,
-    VENUE_NAME,
-    BOX_OFFICE_ADDRESS,
+    ...textFooter(NOTHING_TO_PRINT),
   ].join('\n');
 }
 
@@ -218,102 +221,48 @@ export function buildPassPostedEmailHtml(order: PassPostedSummary): string {
   const greeting = first ? `Hi ${first},` : 'Hi there,';
   const admissions = admissionsFor(order.initialBalance, order.redemptionPrice);
 
-  // Same shell as the order confirmation on purpose — table layout, inline
-  // styles, no external assets. A patron sees these two back to back.
-  return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>${esc(buildPassPostedSubject(order))}</title>
-</head>
-<body style="margin:0;padding:0;background:#f0ece7;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    ${esc(order.passTypeName)} posted today. Activated and ready to use — no QR code needed.
-  </div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0ece7;">
-    <tr>
-      <td align="center" style="padding:28px 14px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;">
-          <tr>
-            <td style="padding:26px 28px;background:#26211d;">
-              <div style="font:700 19px/1.3 Georgia,'Times New Roman',serif;color:#ffffff;letter-spacing:.01em;">
-                The Kenworthy
-              </div>
-              <div style="font:400 12px/1.5 Helvetica,Arial,sans-serif;color:#b9b1a9;letter-spacing:.08em;text-transform:uppercase;padding-top:3px;">
-                Performing Arts Centre · Moscow, Idaho
-              </div>
-            </td>
-          </tr>
+  // Same shell as the order confirmation on purpose — a patron sees these two
+  // back to back, and emailLayout is what guarantees they match.
+  const content = `
+          ${row(
+            `${paragraph(greeting)}
+             <div style="padding-top:8px;">${paragraph('Good news — this went in the post today.')}</div>`,
+            '28px 28px 4px',
+          )}
 
-          <tr>
-            <td style="padding:28px 28px 4px;">
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;">${greeting}</div>
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;padding-top:8px;">
-                Good news — this went in the post today.
-              </div>
-            </td>
-          </tr>
+          ${row(heading(`${order.quantity} × ${order.passTypeName}`))}
 
-          <tr>
-            <td style="padding:22px 28px 0;">
-              <div style="font:700 23px/1.3 Georgia,'Times New Roman',serif;color:#26211d;">
-                ${esc(order.quantity)} × ${esc(order.passTypeName)}
+          ${row(
+            panel(`
+              <div style="font:600 15px/1.5 ${sans};color:${brand.ink};padding-bottom:6px;">
+                In the mail
               </div>
-            </td>
-          </tr>
+              <div style="font:400 14px/1.6 ${sans};color:${brand.body};">
+                ${esc(postedLine(order))}
+              </div>
+            `),
+          )}
 
-          <tr>
-            <td style="padding:22px 28px 0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="padding:22px;background:#f6f3ef;border-radius:10px;">
-                    <div style="font:600 15px/1.5 Helvetica,Arial,sans-serif;color:#26211d;padding-bottom:6px;">
-                      In the mail
-                    </div>
-                    <div style="font:400 14px/1.6 Helvetica,Arial,sans-serif;color:#55504b;">
-                      ${esc(postedLine(order))}
-                    </div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
+          ${row(`
+            <div style="padding-bottom:8px;">${eyebrow('When it arrives')}</div>
+            <div style="font:400 14px/1.7 ${sans};color:${brand.body};">
+              It is already activated and carries ${esc(formatMoney(order.initialBalance))}, covering
+              ${esc(formatMoney(order.redemptionPrice))} of a standard movie ticket —
+              about ${esc(admissions)} films.<br />
+              Hand it to our staff at the door and they will scan it. Nothing to set up first.<br />
+              Passes cannot be used to book online, and are not valid for special events
+              or premium screenings.
+            </div>
+          `)}
 
-          <tr>
-            <td style="padding:22px 28px 0;">
-              <div style="font:600 13px/1.4 Helvetica,Arial,sans-serif;color:#6b6560;letter-spacing:.06em;text-transform:uppercase;padding-bottom:8px;">
-                When it arrives
-              </div>
-              <div style="font:400 14px/1.7 Helvetica,Arial,sans-serif;color:#55504b;">
-                It is already activated and carries ${esc(formatMoney(order.initialBalance))}, covering
-                ${esc(formatMoney(order.redemptionPrice))} of a standard movie ticket —
-                about ${esc(admissions)} films.<br />
-                Hand it to our staff at the door and they will scan it. Nothing to set up first.<br />
-                Passes cannot be used to book online, and are not valid for special events
-                or premium screenings.
-              </div>
-            </td>
-          </tr>
+          <tr><td style="height:28px;line-height:28px;font-size:0;">&nbsp;</td></tr>`;
 
-          <tr>
-            <td style="padding:22px 28px 28px;">
-              <div style="font:400 13px/1.6 Helvetica,Arial,sans-serif;color:#9a938c;border-top:1px solid #e6e2dd;padding-top:16px;">
-                There is nothing to print — no QR code in this email. The pass itself is the
-                physical card.<br /><br />
-                Questions? Reply to this email or write to
-                <a href="mailto:${esc(TICKET_REPLY_TO)}" style="color:#b82a6b;">${esc(TICKET_REPLY_TO)}</a>.<br />
-                ${esc(VENUE_NAME)} · ${esc(BOX_OFFICE_ADDRESS)}
-              </div>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+  return emailLayout({
+    title: buildPassPostedSubject(order),
+    preheader: `${esc(order.passTypeName)} posted today. Activated and ready to use — no QR code needed.`,
+    contentHtml: content,
+    footerNote: NOTHING_TO_PRINT,
+  });
 }
 
 export function buildPassOrderEmailHtml(order: PassOrderSummary): string {
@@ -321,106 +270,50 @@ export function buildPassOrderEmailHtml(order: PassOrderSummary): string {
   const greeting = first ? `Hi ${first},` : 'Hi there,';
   const admissions = admissionsFor(order.initialBalance, order.redemptionPrice);
 
-  // Matches the ticket confirmation's markup deliberately: table layout, inline
-  // styles, no external assets. It is the layout mail clients render the same
-  // way twice.
-  return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>${esc(buildPassOrderSubject(order))}</title>
-</head>
-<body style="margin:0;padding:0;background:#f0ece7;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    ${esc(order.passTypeName)} — ${
+  // Same shell as every other transactional email — see email-layout.ts.
+  const content = `
+          ${row(
+            `${paragraph(greeting)}
+             <div style="padding-top:8px;">${paragraph('Thank you — your order is in.')}</div>`,
+            '28px 28px 4px',
+          )}
+
+          ${row(`
+            ${heading(`${order.quantity} × ${order.passTypeName}`)}
+            <div style="padding-top:8px;">${paragraph(`${esc(formatMoney(order.amountPaid))} paid`)}</div>
+          `)}
+
+          ${row(
+            panel(`
+              <div style="font:600 15px/1.5 ${sans};color:${brand.ink};padding-bottom:6px;">
+                ${order.fulfillment === 'pickup' ? 'Collect it at the box office' : 'On its way to you'}
+              </div>
+              <div style="font:400 14px/1.6 ${sans};color:${brand.body};">
+                ${esc(fulfillmentLine(order))}
+              </div>
+            `),
+          )}
+
+          ${row(`
+            <div style="padding-bottom:8px;">${eyebrow('How the pass works')}</div>
+            <div style="font:400 14px/1.7 ${sans};color:${brand.body};">
+              Each pass carries ${esc(formatMoney(order.initialBalance))} and covers
+              ${esc(formatMoney(order.redemptionPrice))} of a standard movie ticket —
+              about ${esc(admissions)} films.<br />
+              Hand it to our staff at the door and they will scan it.<br />
+              Passes cannot be used to book online, and are not valid for special events
+              or premium screenings.
+            </div>
+          `)}
+
+          <tr><td style="height:28px;line-height:28px;font-size:0;">&nbsp;</td></tr>`;
+
+  return emailLayout({
+    title: buildPassOrderSubject(order),
+    preheader: `${esc(order.passTypeName)} — ${
       order.fulfillment === 'pickup' ? 'ready at the box office' : 'posting to you'
-    }. No QR code needed.
-  </div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0ece7;">
-    <tr>
-      <td align="center" style="padding:28px 14px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;">
-          <tr>
-            <td style="padding:26px 28px;background:#26211d;">
-              <div style="font:700 19px/1.3 Georgia,'Times New Roman',serif;color:#ffffff;letter-spacing:.01em;">
-                The Kenworthy
-              </div>
-              <div style="font:400 12px/1.5 Helvetica,Arial,sans-serif;color:#b9b1a9;letter-spacing:.08em;text-transform:uppercase;padding-top:3px;">
-                Performing Arts Centre · Moscow, Idaho
-              </div>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:28px 28px 4px;">
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;">${greeting}</div>
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;padding-top:8px;">
-                Thank you — your order is in.
-              </div>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:22px 28px 0;">
-              <div style="font:700 23px/1.3 Georgia,'Times New Roman',serif;color:#26211d;">
-                ${esc(order.quantity)} × ${esc(order.passTypeName)}
-              </div>
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;padding-top:8px;">
-                ${esc(formatMoney(order.amountPaid))} paid
-              </div>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:22px 28px 0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="padding:22px;background:#f6f3ef;border-radius:10px;">
-                    <div style="font:600 15px/1.5 Helvetica,Arial,sans-serif;color:#26211d;padding-bottom:6px;">
-                      ${order.fulfillment === 'pickup' ? 'Collect it at the box office' : 'On its way to you'}
-                    </div>
-                    <div style="font:400 14px/1.6 Helvetica,Arial,sans-serif;color:#55504b;">
-                      ${esc(fulfillmentLine(order))}
-                    </div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:22px 28px 0;">
-              <div style="font:600 13px/1.4 Helvetica,Arial,sans-serif;color:#6b6560;letter-spacing:.06em;text-transform:uppercase;padding-bottom:8px;">
-                How the pass works
-              </div>
-              <div style="font:400 14px/1.7 Helvetica,Arial,sans-serif;color:#55504b;">
-                Each pass carries ${esc(formatMoney(order.initialBalance))} and covers
-                ${esc(formatMoney(order.redemptionPrice))} of a standard movie ticket —
-                about ${esc(admissions)} films.<br />
-                Hand it to our staff at the door and they will scan it.<br />
-                Passes cannot be used to book online, and are not valid for special events
-                or premium screenings.
-              </div>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:22px 28px 28px;">
-              <div style="font:400 13px/1.6 Helvetica,Arial,sans-serif;color:#9a938c;border-top:1px solid #e6e2dd;padding-top:16px;">
-                There is nothing to print — no QR code in this email. The pass itself is the
-                physical card, and it is activated when it reaches your hands.<br /><br />
-                Questions? Reply to this email or write to
-                <a href="mailto:${esc(TICKET_REPLY_TO)}" style="color:#b82a6b;">${esc(TICKET_REPLY_TO)}</a>.<br />
-                ${esc(VENUE_NAME)} · ${esc(BOX_OFFICE_ADDRESS)}
-              </div>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+    }. No QR code needed.`,
+    contentHtml: content,
+    footerNote: `${NOTHING_TO_PRINT} It is activated when it reaches your hands.`,
+  });
 }

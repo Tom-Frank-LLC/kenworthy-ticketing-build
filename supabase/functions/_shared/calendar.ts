@@ -11,9 +11,7 @@
 // display-offset bug tracked in BRIEF-listings-time-offset.
 
 import { type Order } from './tickets.ts';
-
-const VENUE_NAME = 'The Kenworthy Performing Arts Centre';
-const VENUE_ADDRESS = '508 S Main St, Moscow, ID 83843';
+import { VENUE_NAME, BOX_OFFICE_ADDRESS as VENUE_ADDRESS } from './brand.ts';
 /** Fallback event length when the production carries no duration (events, live). */
 const DEFAULT_DURATION_MIN = 120;
 
@@ -101,7 +99,7 @@ export function buildIcs(order: Order, ticketUrl: string, stampIso: string): str
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//The Kenworthy Performing Arts Centre//Ticketing//EN',
+    `PRODID:-//${VENUE_NAME}//Ticketing//EN`,
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',

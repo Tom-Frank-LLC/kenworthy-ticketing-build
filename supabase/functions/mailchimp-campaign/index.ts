@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { brand, logoUrl, LOGO_WIDTH, sans, VENUE_NAME, VENUE_SHORT, BOX_OFFICE_ADDRESS } from "../_shared/brand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,7 +94,7 @@ Deno.serve(async (req) => {
         subject_line: `This week at the Kenworthy: ${title}`,
         preview_text: when || "New showing at the Kenworthy",
         title: `${title} — ${when || showing.id.slice(0, 8)}`,
-        from_name: "The Kenworthy",
+        from_name: VENUE_SHORT,
         reply_to: "info@kenworthy.org",
       },
     }),
@@ -101,14 +102,19 @@ Deno.serve(async (req) => {
   const created = await createRes.json();
   if (!createRes.ok) return json({ error: "Campaign create failed", detail: created }, 502);
 
-  const html = `<!doctype html><html><body style="font-family:Georgia,serif;background:#0f0f10;color:#f4efe6;margin:0;padding:0;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;padding:32px;">
+  // Colours come from _shared/brand.ts, the same module the transactional
+  // emails use, so a palette change moves the marketing mail with them. The
+  // layout stays its own thing — this is a poster, not a receipt, so it keeps
+  // the dark marquee background rather than the paper shell in email-layout.ts.
+  const html = `<!doctype html><html><body style="font-family:Georgia,serif;background:${brand.bg};color:${brand.cream};margin:0;padding:0;">
+  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${brand.bg}" style="max-width:600px;margin:0 auto;padding:32px;background:${brand.bg};">
+    <tr><td style="padding-bottom:24px;"><img src="${esc(logoUrl(SITE_ORIGIN))}" alt="${esc(VENUE_NAME)}" width="${LOGO_WIDTH}" style="display:block;width:${LOGO_WIDTH}px;height:auto;border:0;color:${brand.cream};" /></td></tr>
     ${poster ? `<tr><td><img src="${esc(poster)}" alt="${esc(title)}" style="width:100%;display:block;border-radius:8px;margin-bottom:24px;" /></td></tr>` : ""}
-    <tr><td><h1 style="font-family:'Anton',Impact,sans-serif;text-transform:uppercase;letter-spacing:.06em;font-size:36px;color:#f4efe6;margin:0 0 8px;">${esc(title)}</h1></td></tr>
-    ${when ? `<tr><td style="font-size:14px;color:#c4a44a;letter-spacing:.15em;text-transform:uppercase;padding-bottom:16px;">${esc(when)}</td></tr>` : ""}
-    ${description ? `<tr><td style="font-size:16px;line-height:1.6;color:#d8d3c9;padding-bottom:24px;">${esc(description)}</td></tr>` : ""}
-    <tr><td><a href="${esc(buyUrl)}" style="display:inline-block;background:#d93a89;color:#fff;padding:14px 28px;font-family:'Anton',Impact,sans-serif;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;border-radius:4px;">Buy tickets</a></td></tr>
-    <tr><td style="padding-top:32px;font-size:12px;color:#8a8578;">The Kenworthy Performing Arts Centre — 508 S Main St, Moscow, ID</td></tr>
+    <tr><td><h1 style="font-family:'Anton',Impact,sans-serif;text-transform:uppercase;letter-spacing:.06em;font-size:36px;color:${brand.cream};margin:0 0 8px;">${esc(title)}</h1></td></tr>
+    ${when ? `<tr><td style="font-size:14px;color:${brand.gold};letter-spacing:.15em;text-transform:uppercase;padding-bottom:16px;">${esc(when)}</td></tr>` : ""}
+    ${description ? `<tr><td style="font-size:16px;line-height:1.6;color:${brand.mutedText};padding-bottom:24px;">${esc(description)}</td></tr>` : ""}
+    <tr><td><a href="${esc(buyUrl)}" style="display:inline-block;background:${brand.primary};color:${brand.onPrimary};padding:14px 28px;font-family:'Anton',Impact,sans-serif;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;border-radius:4px;">Buy tickets</a></td></tr>
+    <tr><td style="padding-top:32px;font-size:12px;font-family:${sans};color:${brand.mutedText};">${esc(VENUE_NAME)} — ${esc(BOX_OFFICE_ADDRESS)}</td></tr>
   </table></body></html>`;
 
   const contentRes = await mc(`/campaigns/${created.id}/content`, {

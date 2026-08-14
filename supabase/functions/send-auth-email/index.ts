@@ -28,7 +28,7 @@ declare const Deno: any;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const HOOK_SECRET = Deno.env.get('SEND_EMAIL_HOOK_SECRET') || '';
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
-const FROM_EMAIL = Deno.env.get('TICKET_FROM_EMAIL') || 'The Kenworthy <tickets@kenworthy.org>';
+const FROM_EMAIL = Deno.env.get('TICKET_FROM_EMAIL') || 'Kenworthy <tickets@kenworthy.org>';
 const REPLY_TO = Deno.env.get('TICKET_REPLY_TO') || 'events@kenworthy.org';
 
 /**

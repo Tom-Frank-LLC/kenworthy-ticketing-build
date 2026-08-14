@@ -31,6 +31,7 @@ import { loadOrder, ticketPageUrl, ticketQrUrl } from './tickets.ts';
 import { ticketCalendarUrl, googleCalendarUrl } from './calendar.ts';
 import { toE164, buildSubject, buildEmailHtml, buildEmailText, buildSmsBody } from './notify.ts';
 import { memberAccountsEnabled } from './flags.ts';
+import { SITE_URL } from './brand.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -38,8 +39,11 @@ declare const Deno: any;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
+// The inbox From line. Note this is only the *default* — if TICKET_FROM_EMAIL
+// is set in the deployed environment, that value wins and has to be updated
+// there too.
 const TICKET_FROM_EMAIL =
-  Deno.env.get('TICKET_FROM_EMAIL') || 'The Kenworthy <tickets@kenworthy.org>';
+  Deno.env.get('TICKET_FROM_EMAIL') || 'Kenworthy <tickets@kenworthy.org>';
 const TICKET_REPLY_TO = Deno.env.get('TICKET_REPLY_TO') || 'events@kenworthy.org';
 
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') || '';
@@ -51,8 +55,8 @@ const TWILIO_API_KEY_SECRET = Deno.env.get('TWILIO_API_KEY_SECRET') || '';
 const TWILIO_FROM_NUMBER = Deno.env.get('TWILIO_FROM_NUMBER') || '';
 const TWILIO_MESSAGING_SERVICE_SID = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || '';
 
-const SITE_URL =
-  Deno.env.get('SITE_URL') || 'https://kenworthy-ticketing-build.mrtomfrank.workers.dev';
+// SITE_URL is imported from brand.ts — the email logo needs the same origin as
+// the patron links, and one default is one thing to go stale instead of two.
 
 type SendResult = { ok: true } | { ok: false; error: string };
 

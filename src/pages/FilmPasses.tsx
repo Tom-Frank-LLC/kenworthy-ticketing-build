@@ -174,7 +174,7 @@ export default function FilmPasses() {
     return (
       <div className="container py-12 px-4 max-w-xl">
         <SEO
-          title="Film pass ordered — The Kenworthy"
+          title="Film pass ordered — Kenworthy"
           description="Your Kenworthy film pass order is confirmed."
         />
         <Card className="glass">
@@ -216,8 +216,8 @@ export default function FilmPasses() {
     return (
       <div className="container py-16 px-4 max-w-xl text-center">
         <SEO
-          title="Film Passes — The Kenworthy"
-          description="Prepaid film passes for The Kenworthy Performing Arts Centre in Moscow, Idaho."
+          title="Film Passes — Kenworthy"
+          description="Prepaid film passes for the Kenworthy Performing Arts Centre in Moscow, Idaho."
         />
         <Ticket className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
         <h1 className="font-display text-2xl font-bold mb-2">Film Passes</h1>
@@ -231,8 +231,8 @@ export default function FilmPasses() {
   return (
     <div className="container py-8 px-4 max-w-3xl">
       <SEO
-        title="Film Passes — The Kenworthy"
-        description="Buy a prepaid film pass for The Kenworthy in Moscow, Idaho. Collect it at the box office or have it posted, then hand it over at the door."
+        title="Film Passes — Kenworthy"
+        description="Buy a prepaid film pass for the Kenworthy in Moscow, Idaho. Collect it at the box office or have it posted, then hand it over at the door."
       />
 
       <h1 className="font-display text-3xl font-bold mb-2">Film Passes</h1>

@@ -57,7 +57,7 @@ export default function Hiring() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Job Opportunities — The Kenworthy"
+        title="Job Opportunities — Kenworthy"
         description="Staff and volunteer openings at the Kenworthy Performing Arts Centre in Moscow, Idaho. Concessions, box office, clean-up, and special events — 16 and older."
         path="/hiring"
       />

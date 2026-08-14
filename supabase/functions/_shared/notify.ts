@@ -9,26 +9,30 @@ import {
   formatMoney,
   type Order,
 } from './tickets.ts';
+import { brand, serif, sans, mono } from './brand.ts';
+import {
+  emailLayout,
+  esc,
+  eyebrow,
+  heading,
+  outlineButton,
+  panel,
+  paragraph,
+  primaryButton,
+  row,
+  textFooter,
+  VENUE_NAME,
+  VENUE_SHORT,
+} from './email-layout.ts';
 
-// Deno globals
-declare const Deno: any;
-
-const TICKET_REPLY_TO = Deno.env.get('TICKET_REPLY_TO') || 'events@kenworthy.org';
-const VENUE_NAME = 'The Kenworthy Performing Arts Centre';
+// The shell, the palette and the venue name all live in email-layout.ts /
+// brand.ts now, so a brand change is one edit rather than one per template.
+// Re-exported because callers and tests have long imported `esc` from here.
+export { esc };
 
 // ---------------------------------------------------------------------------
 // Formatting helpers (pure — covered by tickets_test.ts)
 // ---------------------------------------------------------------------------
-
-/** Minimal HTML escaping for values interpolated into the email body. */
-export function esc(s: unknown): string {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 /**
  * Normalize a free-text phone number to E.164 for Twilio.
@@ -96,21 +100,10 @@ export function buildEmailHtml(
   const calendarBlock = opts.calendarUrl
     ? `
       <tr>
-        <td align="center" style="padding:0 28px 22px;">
-          <div style="font:600 12px/1.5 Helvetica,Arial,sans-serif;color:#6b6560;letter-spacing:.06em;text-transform:uppercase;padding-bottom:8px;">
-            Add to your calendar
-          </div>
-          <a href="${esc(opts.calendarUrl)}"
-             style="display:inline-block;padding:9px 16px;margin:0 4px;border:1px solid #cfc8c1;color:#26211d;font:600 13px/1 Helvetica,Arial,sans-serif;text-decoration:none;border-radius:6px;">
-            Apple / Outlook (.ics)
-          </a>${
-            opts.googleCalendarUrl
-              ? `
-          <a href="${esc(opts.googleCalendarUrl)}"
-             style="display:inline-block;padding:9px 16px;margin:0 4px;border:1px solid #cfc8c1;color:#26211d;font:600 13px/1 Helvetica,Arial,sans-serif;text-decoration:none;border-radius:6px;">
-            Google Calendar
-          </a>`
-              : ''
+        <td align="center" style="padding:22px 28px 0;">
+          <div style="padding-bottom:8px;">${eyebrow('Add to your calendar')}</div>
+          ${outlineButton(opts.calendarUrl, 'Apple / Outlook (.ics)')}${
+            opts.googleCalendarUrl ? outlineButton(opts.googleCalendarUrl, 'Google Calendar') : ''
           }
         </td>
       </tr>`
@@ -120,17 +113,18 @@ export function buildEmailHtml(
     .map(
       (t, i) => `
       <tr>
-        <td style="padding:20px 0;border-top:1px solid #e6e2dd;">
+        <td style="padding:20px 0;border-top:1px solid ${brand.rule};">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td align="center" style="padding-bottom:10px;">
-                <div style="font:600 13px/1.4 Helvetica,Arial,sans-serif;color:#6b6560;letter-spacing:.06em;text-transform:uppercase;">
-                  Ticket ${i + 1} of ${order.tickets.length}
-                </div>
+                ${eyebrow(`Ticket ${i + 1} of ${order.tickets.length}`)}
               </td>
             </tr>
             <tr>
               <td align="center" style="padding:6px 0;">
+                <!-- Literal white, not a brand colour: a scanner needs a true
+                     white quiet zone around the code, and tinting it to match
+                     the palette is how a QR stops scanning at the door. -->
                 <img src="${esc(opts.qrUrlFor(t.id))}"
                      alt="QR code for ticket ${i + 1}"
                      width="200" height="200"
@@ -139,13 +133,13 @@ export function buildEmailHtml(
             </tr>
             <tr>
               <td align="center" style="padding-top:10px;">
-                <div style="font:400 15px/1.5 Helvetica,Arial,sans-serif;color:#26211d;">
+                <div style="font:400 15px/1.5 ${sans};color:${brand.ink};">
                   ${esc(describeSeat(t))}
                 </div>
-                <div style="font:400 13px/1.5 Helvetica,Arial,sans-serif;color:#6b6560;padding-top:2px;">
+                <div style="font:400 13px/1.5 ${sans};color:${brand.soft};padding-top:2px;">
                   ${esc(formatMoney(t.total_price))}
                 </div>
-                <div style="font:400 11px/1.5 'SFMono-Regular',Consolas,monospace;color:#9a938c;padding-top:6px;word-break:break-all;">
+                <div style="font:400 11px/1.5 ${mono};color:${brand.faint};padding-top:6px;word-break:break-all;">
                   ${esc(t.qr_code)}
                 </div>
               </td>
@@ -161,105 +155,64 @@ export function buildEmailHtml(
   // used. Telling a returning customer "we created an account for you" is
   // wrong and reads like phishing.
   const passwordBlock = opts.passwordUrl
-    ? `
-      <tr>
-        <td style="padding:22px 28px;background:#f6f3ef;border-radius:10px;">
-          <div style="font:600 15px/1.5 Helvetica,Arial,sans-serif;color:#26211d;padding-bottom:6px;">
+    ? row(
+        panel(`
+          <div style="font:600 15px/1.5 ${sans};color:${brand.ink};padding-bottom:6px;">
             ${opts.accountJustCreated ? 'We created an account for you' : 'Finish setting up your account'}
           </div>
-          <div style="font:400 14px/1.6 Helvetica,Arial,sans-serif;color:#55504b;padding-bottom:14px;">
+          <div style="font:400 14px/1.6 ${sans};color:${brand.body};padding-bottom:14px;">
             ${
               opts.accountJustCreated
                 ? 'Your tickets are saved to it. Set a password to sign in any time and see every ticket you have with us.'
                 : 'Your tickets are saved to your account, but you have not set a password yet. Set one to sign in any time and see every ticket you have with us.'
             }
           </div>
-          <a href="${esc(opts.passwordUrl)}"
-             style="display:inline-block;padding:11px 20px;background:#b82a6b;color:#ffffff;font:600 14px/1 Helvetica,Arial,sans-serif;text-decoration:none;border-radius:6px;">
-            Set your password
-          </a>
-        </td>
-      </tr>`
+          ${primaryButton(opts.passwordUrl, 'Set your password')}
+        `),
+        '22px 28px 0',
+      )
     : '';
 
-  return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>${esc(buildSubject(order))}</title>
-</head>
-<body style="margin:0;padding:0;background:#f0ece7;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    ${esc(order.title)} — ${esc(order.start_time_display)}. Your QR code${order.tickets.length === 1 ? ' is' : 's are'} inside.
-  </div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0ece7;">
-    <tr>
-      <td align="center" style="padding:28px 14px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;">
-          <tr>
-            <td style="padding:26px 28px;background:#26211d;">
-              <div style="font:700 19px/1.3 Georgia,'Times New Roman',serif;color:#ffffff;letter-spacing:.01em;">
-                The Kenworthy
-              </div>
-              <div style="font:400 12px/1.5 Helvetica,Arial,sans-serif;color:#b9b1a9;letter-spacing:.08em;text-transform:uppercase;padding-top:3px;">
-                Performing Arts Centre · Moscow, Idaho
-              </div>
-            </td>
-          </tr>
+  const content = `
+          ${row(
+            `${paragraph(greeting)}
+             <div style="padding-top:8px;">${paragraph(
+               `You're all set. Here ${
+                 order.tickets.length === 1 ? 'is your ticket' : 'are your tickets'
+               } — show the QR code${order.tickets.length === 1 ? '' : 's'} at the door.`,
+             )}</div>`,
+            '28px 28px 4px',
+          )}
+
+          ${row(`
+            ${heading(order.title)}
+            <div style="padding-top:8px;">${paragraph(esc(order.start_time_display))}</div>
+            ${paragraph(esc(order.venue || VENUE_NAME))}
+          `)}
+
+          ${row(
+            `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              ${ticketBlocks}
+              <tr>
+                <td style="padding:16px 0;border-top:1px solid ${brand.rule};">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td style="font:600 15px/1.5 ${sans};color:${brand.ink};">Total paid</td>
+                      <td align="right" style="font:600 15px/1.5 ${sans};color:${brand.ink};">
+                        ${esc(formatMoney(order.total))}
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>`,
+            '8px 28px 0',
+          )}
 
           <tr>
-            <td style="padding:28px 28px 4px;">
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;">${greeting}</div>
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;padding-top:8px;">
-                You're all set. Here ${order.tickets.length === 1 ? 'is your ticket' : 'are your tickets'} —
-                show the QR code${order.tickets.length === 1 ? '' : 's'} at the door.
-              </div>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:22px 28px 0;">
-              <div style="font:700 23px/1.3 Georgia,'Times New Roman',serif;color:#26211d;">
-                ${esc(order.title)}
-              </div>
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;padding-top:8px;">
-                ${esc(order.start_time_display)}
-              </div>
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;">
-                ${esc(order.venue || VENUE_NAME)}
-              </div>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:8px 28px 0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${ticketBlocks}
-                <tr>
-                  <td style="padding:16px 0;border-top:1px solid #e6e2dd;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                      <tr>
-                        <td style="font:600 15px/1.5 Helvetica,Arial,sans-serif;color:#26211d;">Total paid</td>
-                        <td align="right" style="font:600 15px/1.5 Helvetica,Arial,sans-serif;color:#26211d;">
-                          ${esc(formatMoney(order.total))}
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <tr>
-            <td align="center" style="padding:6px 28px 24px;">
-              <a href="${esc(opts.ticketUrl)}"
-                 style="display:inline-block;padding:13px 26px;background:#26211d;color:#ffffff;font:600 15px/1 Helvetica,Arial,sans-serif;text-decoration:none;border-radius:7px;">
-                View tickets on your phone
-              </a>
-              <div style="font:400 12px/1.6 Helvetica,Arial,sans-serif;color:#8b847d;padding-top:10px;">
+            <td align="center" style="padding:22px 28px 0;">
+              ${primaryButton(opts.ticketUrl, 'View tickets on your phone')}
+              <div style="font:400 12px/1.6 ${sans};color:${brand.faint};padding-top:10px;">
                 Keep this link — it opens your tickets without signing in.
               </div>
             </td>
@@ -267,22 +220,17 @@ export function buildEmailHtml(
 
           ${calendarBlock}
 
-          ${passwordBlock ? `<tr><td style="padding:0 28px 24px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${passwordBlock}</table></td></tr>` : ''}
+          ${passwordBlock}
 
-          <tr>
-            <td style="padding:20px 28px 26px;background:#faf8f6;border-top:1px solid #e6e2dd;">
-              <div style="font:400 13px/1.6 Helvetica,Arial,sans-serif;color:#8b847d;">
-                Questions? Reply to this email or write to
-                <a href="mailto:${esc(TICKET_REPLY_TO)}" style="color:#b82a6b;text-decoration:none;">${esc(TICKET_REPLY_TO)}</a>.
-              </div>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+          <tr><td style="height:28px;line-height:28px;font-size:0;">&nbsp;</td></tr>`;
+
+  return emailLayout({
+    title: buildSubject(order),
+    preheader: `${esc(order.title)} — ${esc(order.start_time_display)}. Your QR code${
+      order.tickets.length === 1 ? ' is' : 's are'
+    } inside.`,
+    contentHtml: content,
+  });
 }
 
 /** Plain-text alternative. Some clients show only this, so it must stand alone. */
@@ -332,8 +280,7 @@ export function buildEmailText(
     lines.push(opts.passwordUrl);
   }
   lines.push('');
-  lines.push(`Questions? Write to ${TICKET_REPLY_TO}.`);
-  lines.push('The Kenworthy Performing Arts Centre, Moscow, Idaho');
+  lines.push(...textFooter());
   return lines.join('\n');
 }
 
@@ -349,7 +296,7 @@ export function buildSmsBody(order: Order, ticketUrl: string, calendarUrl?: stri
     ? ` ${order.tickets.map((t) => `${t.seat!.row}${t.seat!.number}`).join(', ')}`
     : '';
   const lines = [
-    `The Kenworthy: ${count} ticket${count === 1 ? '' : 's'} for ${order.title}`,
+    `${VENUE_SHORT}: ${count} ticket${count === 1 ? '' : 's'} for ${order.title}`,
     `${order.start_time_display}${seats}`,
     `Show this at the door: ${ticketUrl}`,
   ];
