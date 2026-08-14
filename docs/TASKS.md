@@ -81,6 +81,18 @@ Deploy to a specific project without disturbing the shared CLI link with `supaba
 Worth carrying forward: `published_date` is a Postgres DATE, and `new Date('2026-08-01')` parses as **UTC** midnight — July 31 in Pacific — so use the new `formatPlainDate` in `src/lib/datetime.ts` for any date-only column, never `formatShowtime` (that one is for TIMESTAMPTZ instants). Same trap as the Boise/Pacific import bug, different mechanism.
 **Remaining:** the manual test plan hasn't been run in a browser — verification so far is API- and bundle-level, and both environments' Press tabs are still empty.
 
+### ✅ Square Labor — tested for the first time, then fixed — shipped to production 2026-08-14 (see `BRIEF-square-labor-testing.md`, `FINDINGS-square-labor-testing.md`)
+The suite had never worked, and not because the sandbox was unseeded: **five Square requests were malformed**, and every failure was returned as `200 {simulated:true, note:"…sandbox…"}`. So the tabs read "no data yet" instead of broken, and scheduled-shift create and delete showed **success toasts while writing nothing**. Wrong shapes (each replayed against live Square to confirm): shift search nested a TimeRange inside `start_at` (400); wages came from `/labor/team-member-wages/search`, which doesn't exist (404); scheduled search asked for `limit 200` against a cap of 50 (400); create sent flat fields instead of `draft_shift_details` and omitted the required `job_id`; delete used `DELETE`, which doesn't exist. `publish_week` wrote a `draft:false` field Square has no concept of — now `bulk-publish`.
+`square-labor` also answered **500 to every request on production**, because it hardcoded the sandbox host and read only `SQUARE_SANDBOX_*` while prod holds the unprefixed secrets. It now resolves through `_shared/square.ts`, so Labor follows `SQUARE_ENV` exactly like ticket payments, and the LaborTab banner no longer promises a switchover that could not happen.
+Errors now throw and surface as 502 with Square's own message — which immediately exposed two more live defects: **breaks were impossible** (`break_type_id` is required and was never sent) and **scheduling fails for any member with no job assigned** (now resolved from their wage record). Also fixed a live crash: `TimeClockWidget` read `start_at` off the nested scheduled-shift payload and called `format(new Date(undefined))`, throwing `RangeError` for any linked staffer with an upcoming shift.
+**Live on staging (`5b0dc7bc`, bundle `index-nCExKFm7.js`) and production (`1dc853de`, bundle `index-l4K9NmuB.js`) from `e4958f6`** — `square-labor` deployed to both projects, no migrations. Verified end to end against the sandbox: a seeded 5h shift with a 30-minute unpaid break at $18.50/hr reports 4.5 hours and **$83.25**. Role gates re-checked with a purpose-made staff-only account (403 "Admin required") and a non-staff account (403 "Staff access required"). The deployed production chunk was fetched and confirmed to carry the fix.
+**Remaining, none of it code:**
+- `qbo-sync` is deployed to **neither** project, so Payroll Export's preview computes but has no push target. Deploy it or hide the tab.
+- **No break types are configured in Square** — staff cannot take breaks until one is added (Team → Settings → Breaks).
+- Every real team member needs a **job assigned** in Square, or they cannot be scheduled.
+- Square refuses to schedule **more than 10 days ahead without Team Plus**. A plan question, not a code one.
+- Labor now reads whichever Square account `SQUARE_ENV` selects. The Timecards tab says so on screen when it is reading the sandbox — worth a glance on prod to confirm which account is live.
+
 ---
 
 ## Planned Refactors
