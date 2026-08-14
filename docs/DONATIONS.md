@@ -209,8 +209,12 @@ inserts `source` and `payment_channel`; against an un-migrated database that
 insert fails and donations stop working.
 
 ```sh
-# 1. Migration first, on each project
-npx supabase db push --project-ref rpqzrpboyhshdrfdwayk
+# 1. Migration first, on each project.
+#    `db push` takes no --project-ref — it follows the CLI link, so set and
+#    verify that first. See PLATFORM.md §4.3.
+npx supabase link --project-ref rpqzrpboyhshdrfdwayk
+npx supabase db push --linked --dry-run   # read the list before applying
+npx supabase db push --linked
 
 # 2. Then the functions
 npx supabase functions deploy square-donation lgl-sync-donation ticket-checkout \
