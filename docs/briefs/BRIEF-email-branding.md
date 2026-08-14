@@ -61,8 +61,9 @@ Extract the repeated header (logo) + footer + shell into one `_shared/email-layo
 
 # Delivered — August 14, 2026
 
-**Status:** 🟢 Built and verified locally. **Not deployed** — see *Redeploy* below;
-the edge functions still send the old branding until they are pushed.
+**Status:** ✅ **Shipped to staging and production — August 14, 2026.** Merged as
+`abdf6ef` (PR #50). Frontend and 7 edge functions live on both projects; see
+*Redeploy — done* below for exactly what was deployed and what was not.
 
 ## Decisions as answered
 
@@ -144,45 +145,62 @@ at build and an email sent last month must still resolve its images today.
   copies of the old branding, and two of them (`flags_test 2.ts`,
   `pass_orders_test 2.ts`) are picked up by `deno test` on the directory.
 
-## Redeploy — required, or nothing changes
+## Redeploy — done
 
-`_shared` is bundled into each function at deploy time, so every function below
-keeps sending the old branding until it is pushed.
+`_shared` is bundled into each function at deploy time, so a function keeps
+sending the old branding until it is pushed. All of these were deployed on
+August 14, 2026, frontend first so the logo existed before any email could
+reference it.
 
-| Function | Pulls in |
-|---|---|
-| `ticket-checkout` | `deliver.ts`, `donations.ts` |
-| `send-ticket-confirmation` | `deliver.ts` |
-| `film-pass-checkout` | `deliver.ts`, `pass_orders.ts` |
-| `send-auth-email` | `auth-email.ts` |
-| `square-donation` | `donations.ts` |
-| `lgl-sync-donation` | `donations.ts` |
-| `ticket-access` | `calendar.ts` |
-| `mailchimp-campaign` | `brand.ts` |
+| Function | Pulls in | Staging | Production |
+|---|---|---|---|
+| `ticket-checkout` | `deliver.ts`, `donations.ts` | ✅ v21 | ✅ v20 |
+| `send-ticket-confirmation` | `deliver.ts` | ✅ v21 | ✅ v21 |
+| `film-pass-checkout` | `deliver.ts`, `pass_orders.ts` | ✅ v17 | ✅ v16 |
+| `send-auth-email` | `auth-email.ts` | ✅ v12 | ✅ v12 |
+| `square-donation` | `donations.ts` | ✅ v15 | ✅ v18 |
+| `lgl-sync-donation` | `donations.ts` | ✅ v3 | ✅ v3 |
+| `ticket-access` | `calendar.ts` | ✅ v15 | ✅ v18 |
+| `mailchimp-campaign` | `brand.ts` | — not deployed | — not deployed |
 
-```bash
-for ref in rpqzrpboyhshdrfdwayk vlmslygnimfbamrtwvyo; do
-  for fn in ticket-checkout send-ticket-confirmation film-pass-checkout \
-            send-auth-email square-donation lgl-sync-donation \
-            ticket-access mailchimp-campaign; do
-    npx supabase functions deploy "$fn" --project-ref "$ref"
-  done
-done
-```
+**`mailchimp-campaign` was deployed to neither project, and still isn't.** Nor
+are the other four Mailchimp functions (`ecommerce`, `subscribe`, `webhook`,
+`bootstrap`), which is worth knowing for a different reason: `ticket-checkout`
+fire-and-forgets a call to `mailchimp-ecommerce` on every purchase
+(`ticket-checkout/index.ts:553`), and that call currently 404s in silence. Its
+rebrand is committed and will apply whenever the function is first deployed.
 
-Check `functions list` on both projects first — not everything in this repo is
-deployed everywhere — and curl each afterwards, since a BOOT_ERROR is invisible
-on a fire-and-forget delivery path.
+Frontend workers: staging `ceebbe43` (`index-D2cUxOEt.js`), production
+`984ad289` (`index-DgY-RyhI.js`). **Production rollback point:**
+`05f9c782-ef66-4be1-ae6d-5e780b1295e5`.
 
-**The frontend must ship too.** `public/email-logo.png` is served by the site,
-so until the site is deployed the logo 404s in every email. Deploy the frontend
-*before or with* the functions.
+### Verified after deploying, not assumed
 
-**Two secrets to check** — code defaults do not win over a set value:
-- `TICKET_FROM_EMAIL` — if set, it still reads `The Kenworthy <tickets@kenworthy.org>`.
-  The inbox From line is the most visible place the old name survives.
-- `SITE_URL` — must be the real public origin on both projects, or the logo
-  points somewhere that is not serving it.
+Every function was curled: a deploy reporting success proves nothing when a
+BOOT_ERROR is invisible on a fire-and-forget path. All 14 (7 per project) came
+back alive — `send-auth-email` with *Invalid webhook signature* and
+`ticket-access` with *Missing ticket token*, both of which are their own handler
+code and therefore prove the new `_shared` bundle boots. `/email-logo.png`
+returns HTTP 200 on both origins.
+
+### The two secrets — both resolved, no action needed
+
+Secrets are stored hashed, so these were confirmed by matching the SHA-256
+digest against candidate values rather than by guessing:
+
+- `TICKET_FROM_EMAIL` is **not set on either project**, so the code default
+  applies and the From line now reads `Kenworthy <tickets@kenworthy.org>`.
+  If anyone sets it later, it must not reintroduce the leading "The".
+- `SITE_URL` is correct on both — staging → the staging worker, production →
+  the production worker. This is what makes the logo URL resolve.
+
+### No migrations
+
+This change adds none. At deploy time the only unapplied migrations on either
+project were two uncommitted rental-invoice files belonging to another session's
+unfinished feature, so `db push` was deliberately never run — it would have
+applied only that. The scanner migration (`20260814085500`) was already applied
+on both.
 
 ## Site name — what changed and what did not
 
