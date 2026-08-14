@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Disc, Plus, Pencil, Trash2, RefreshCw, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, differenceInCalendarDays, subDays } from 'date-fns';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 type Dvd = any;
 type Rental = any;
@@ -45,7 +46,8 @@ function LibraryPanel() {
 
   async function load() {
     const [{ data, error }, { data: rentals }] = await Promise.all([
-      (supabase as any).from('dvds').select('*').order('title'),
+      fetchAllRows<Dvd>((from, to) =>
+        (supabase as any).from('dvds').select('*').order('title').range(from, to)),
       (supabase as any)
         .from('dvd_rentals')
         .select('id, dvd_id, status, due_at, reserved_at, profiles(display_name, email)')
@@ -340,7 +342,8 @@ function ReportsPanel() {
         .select('id, dvd_id, status, reserved_at, checked_out_at, returned_at, due_at, rental_price, tax_amount, late_fee, total_paid, dvds(title)')
         .gte('reserved_at', since)
         .order('reserved_at', { ascending: false }),
-      (supabase as any).from('dvds').select('id, title, copies_total, copies_available'),
+      fetchAllRows<Dvd>((from, to) =>
+        (supabase as any).from('dvds').select('id, title, copies_total, copies_available').range(from, to)),
     ]);
     setRentals(r || []);
     setDvds(d || []);
