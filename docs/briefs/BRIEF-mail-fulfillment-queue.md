@@ -105,7 +105,7 @@ Per Tom: production holds only today's test data, so there is no history to asse
 
 > ⚠️ Confirm the "test data only" assumption against production before deploying, with a privileged connection — per `docs/memory`, the anon key hides most rows, so an empty-looking result is not evidence. One `SELECT count(*) … WHERE fulfillment='mail' AND status='fulfilled'` is enough. If that count is surprisingly large, stop and revisit rather than shipping a queue full of strangers' orders.
 
-> ⚠️ Per `docs/PLATFORM.md` §2.2, run the migration with an explicit `--project-ref`, staging first. Do not trust the CLI's current link.
+> ⚠️ Staging first. Note that `db push` takes **no** `--project-ref` — it follows the CLI link, which must be set and checked first. Corrected procedure in `docs/PLATFORM.md` §4.3.
 
 ---
 
