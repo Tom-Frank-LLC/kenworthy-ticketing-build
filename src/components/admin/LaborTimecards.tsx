@@ -78,7 +78,7 @@ export function LaborTimecards() {
   const [loading, setLoading] = useState(false);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [simulated, setSimulated] = useState(false);
+  const [environment, setEnvironment] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (new Date(begin) > new Date(end)) {
@@ -95,8 +95,8 @@ export function LaborTimecards() {
       ]);
       if (shiftsRes.error) throw shiftsRes.error;
       setShifts(shiftsRes.data?.shifts || []);
-      setSimulated(!!shiftsRes.data?.simulated);
       setMembers(teamRes.data?.team_members || []);
+      setEnvironment(teamRes.data?.environment ?? null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load shifts');
     } finally {
@@ -290,12 +290,14 @@ export function LaborTimecards() {
     const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 200;
     doc.setFontSize(8);
     doc.setTextColor(140);
-    doc.text(
-      'Sandbox data — staff figures reflect Square sandbox shifts until production credentials are wired.',
-      40,
-      Math.min(finalY + 24, doc.internal.pageSize.getHeight() - 30),
-      { maxWidth: pageWidth - 80 },
-    );
+    if (environment === 'sandbox') {
+      doc.text(
+        'Sandbox data — these figures come from the Square sandbox and are not payroll.',
+        40,
+        Math.min(finalY + 24, doc.internal.pageSize.getHeight() - 30),
+        { maxWidth: pageWidth - 80 },
+      );
+    }
 
     doc.save(`timecards-${begin}-to-${end}.pdf`);
   };
@@ -341,11 +343,11 @@ export function LaborTimecards() {
           </div>
         </CardContent>
       </Card>
-      {simulated && (
+      {environment === 'sandbox' && (
         <Card className="border-accent/40 bg-accent/5">
           <CardContent className="py-3 flex items-start gap-2 text-sm">
             <AlertTriangle className="h-4 w-4 text-accent mt-0.5" />
-            <span>Sandbox returned no shift records. Punch in/out from the POS time clock to seed test shifts.</span>
+            <span>Connected to the Square <strong>sandbox</strong> — these are test shifts, not payroll. Punch in/out from the POS time clock to seed more.</span>
           </CardContent>
         </Card>
       )}

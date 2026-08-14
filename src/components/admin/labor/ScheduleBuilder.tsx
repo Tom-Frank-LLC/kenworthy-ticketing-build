@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeFunction } from '@/lib/functions';
 import { toast } from 'sonner';
 import { addDays, addWeeks, endOfWeek, format, parseISO, startOfWeek, subWeeks } from 'date-fns';
 import { ChevronLeft, ChevronRight, Loader2, Plus, Send, Trash2 } from 'lucide-react';
@@ -14,7 +14,9 @@ import { ChevronLeft, ChevronRight, Loader2, Plus, Send, Trash2 } from 'lucide-r
 interface Member { id: string; given_name?: string; family_name?: string }
 interface ScheduledShift {
   id: string;
+  version?: number;
   team_member_id: string;
+  job_id?: string | null;
   start_at: string;
   end_at: string;
   notes?: string | null;
@@ -39,17 +41,15 @@ export function ScheduleBuilder() {
     setLoading(true);
     try {
       const [team, scheduled] = await Promise.all([
-        supabase.functions.invoke('square-labor', { body: { action: 'list_team' } }),
-        supabase.functions.invoke('square-labor', {
-          body: {
-            action: 'list_scheduled_shifts',
-            begin: weekStart.toISOString(),
-            end: weekEnd.toISOString(),
-          },
+        invokeFunction<{ team_members?: Member[] }>('square-labor', { action: 'list_team' }),
+        invokeFunction<{ scheduled_shifts?: ScheduledShift[] }>('square-labor', {
+          action: 'list_scheduled_shifts',
+          begin: weekStart.toISOString(),
+          end: weekEnd.toISOString(),
         }),
       ]);
-      setMembers(team.data?.team_members || []);
-      setShifts(scheduled.data?.scheduled_shifts || []);
+      setMembers(team?.team_members || []);
+      setShifts(scheduled?.scheduled_shifts || []);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load schedule');
     } finally {
@@ -64,46 +64,58 @@ export function ScheduleBuilder() {
       toast.error('Pick a staff member and start/end time.');
       return;
     }
-    const { error } = await supabase.functions.invoke('square-labor', {
-      body: {
+    try {
+      await invokeFunction('square-labor', {
         action: 'upsert_scheduled_shift',
         id: editing.id,
         team_member_id: editing.team_member_id,
+        job_id: editing.job_id,
         start_at: editing.start_at,
         end_at: editing.end_at,
         notes: editing.notes,
-        draft: true,
-      },
-    });
-    if (error) { toast.error(error.message); return; }
-    toast.success(editing.id ? 'Shift updated' : 'Draft shift added');
-    setDialogOpen(false);
-    setEditing(null);
-    load();
+      });
+      toast.success(editing.id ? 'Shift updated' : 'Draft shift added');
+      setDialogOpen(false);
+      setEditing(null);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save the shift');
+    }
   };
 
-  const removeShift = async (id: string) => {
+  // Square has no delete for scheduled shifts — removal is an update that needs
+  // the shift's own fields, so the whole row goes back, not just its id.
+  const removeShift = async (shift: ScheduledShift) => {
     if (!confirm('Remove this shift?')) return;
-    const { error } = await supabase.functions.invoke('square-labor', {
-      body: { action: 'delete_scheduled_shift', id },
-    });
-    if (error) { toast.error(error.message); return; }
-    toast.success('Shift removed');
-    load();
+    try {
+      await invokeFunction('square-labor', {
+        action: 'delete_scheduled_shift',
+        id: shift.id,
+        team_member_id: shift.team_member_id,
+        job_id: shift.job_id,
+        start_at: shift.start_at,
+        end_at: shift.end_at,
+      });
+      toast.success('Shift removed');
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove the shift');
+    }
   };
 
   const publishWeek = async () => {
     setPublishing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('square-labor', {
-        body: {
-          action: 'publish_week',
-          begin: weekStart.toISOString(),
-          end: weekEnd.toISOString(),
-        },
+      const data = await invokeFunction<{ published?: number; failures?: string[] }>('square-labor', {
+        action: 'publish_week',
+        begin: weekStart.toISOString(),
+        end: weekEnd.toISOString(),
       });
-      if (error) throw error;
-      toast.success(`Published ${data?.published ?? 0} shifts`);
+      if (data?.failures?.length) {
+        toast.warning(`Published ${data.published ?? 0}; ${data.failures.length} failed`);
+      } else {
+        toast.success(`Published ${data?.published ?? 0} shifts`);
+      }
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Publish failed');
@@ -122,6 +134,7 @@ export function ScheduleBuilder() {
   const shiftsByCell = useMemo(() => {
     const m = new Map<string, ScheduledShift[]>();
     for (const s of shifts) {
+      if (!s.start_at || !s.end_at) continue;
       const key = `${s.team_member_id}|${s.start_at.slice(0, 10)}`;
       const arr = m.get(key) || []; arr.push(s); m.set(key, arr);
     }
@@ -150,7 +163,7 @@ export function ScheduleBuilder() {
           {loading ? (
             <div className="py-8 text-center text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading…</div>
           ) : members.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">No team members found in Square sandbox yet.</div>
+            <div className="py-8 text-center text-muted-foreground">No team members found in Square for this location.</div>
           ) : (
             <table className="w-full text-sm border-collapse">
               <thead>
@@ -180,7 +193,7 @@ export function ScheduleBuilder() {
                                   {format(parseISO(s.start_at), 'h:mm a')}–{format(parseISO(s.end_at), 'h:mm a')}
                                 </span>
                                 {s.draft && <Badge variant="outline" className="text-[10px]">draft</Badge>}
-                                <button className="text-muted-foreground hover:text-destructive" onClick={() => removeShift(s.id)}>
+                                <button className="text-muted-foreground hover:text-destructive" onClick={() => removeShift(s)}>
                                   <Trash2 className="h-3 w-3" />
                                 </button>
                               </div>

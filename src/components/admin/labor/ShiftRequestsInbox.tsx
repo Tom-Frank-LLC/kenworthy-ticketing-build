@@ -54,9 +54,10 @@ export function ShiftRequestsInbox() {
   useEffect(() => { load(); }, [load]);
 
   const decide = async (id: string, status: 'approved' | 'denied') => {
+    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase
       .from('shift_requests')
-      .update({ status, resolved_at: new Date().toISOString() })
+      .update({ status, resolved_at: new Date().toISOString(), resolved_by: user?.id ?? null })
       .eq('id', id);
     if (error) { toast.error(error.message); return; }
     toast.success(`Request ${status}`);

@@ -30,7 +30,7 @@ interface Link {
 
 export function LaborRoster() {
   const [loading, setLoading] = useState(true);
-  const [simulated, setSimulated] = useState(false);
+  const [wagesError, setWagesError] = useState<string | null>(null);
   const [members, setMembers] = useState<SquareMember[]>([]);
   const [staff, setStaff] = useState<StaffProfile[]>([]);
   const [links, setLinks] = useState<Link[]>([]);
@@ -45,7 +45,7 @@ export function LaborRoster() {
       ]);
       if (labor.error) throw labor.error;
       setMembers(labor.data?.team_members || []);
-      setSimulated(!!labor.data?.simulated);
+      setWagesError(labor.data?.wages_error ?? null);
       setLinks(linksRes.data || []);
 
       const userIds = [...new Set((roles.data || []).map((r) => r.user_id))];
@@ -88,11 +88,11 @@ export function LaborRoster() {
 
   return (
     <div className="space-y-4">
-      {simulated && (
-        <Card className="border-accent/40 bg-accent/5">
+      {wagesError && (
+        <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="py-3 flex items-start gap-2 text-sm">
-            <AlertTriangle className="h-4 w-4 text-accent mt-0.5" />
-            <span>Square sandbox returned no team data. Add team members in your Square sandbox dashboard, or wait for production wire-up.</span>
+            <AlertTriangle className="h-4 w-4 text-destructive mt-0.5" />
+            <span>Could not load wages from Square, so the Wage column is blank: {wagesError}</span>
           </CardContent>
         </Card>
       )}
@@ -118,7 +118,7 @@ export function LaborRoster() {
                   <TableRow key={m.id}>
                     <TableCell className="font-medium">{[m.given_name, m.family_name].filter(Boolean).join(' ') || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{m.email || '—'}</TableCell>
-                    <TableCell>{m.wage?.hourly_rate_cents ? `$${(m.wage.hourly_rate_cents / 100).toFixed(2)}/hr` : <span className="text-muted-foreground text-xs">Set in production</span>}</TableCell>
+                    <TableCell>{m.wage?.hourly_rate_cents ? `$${(m.wage.hourly_rate_cents / 100).toFixed(2)}/hr` : <span className="text-muted-foreground text-xs">No hourly rate in Square</span>}</TableCell>
                     <TableCell><Badge variant={m.status === 'ACTIVE' ? 'default' : 'secondary'}>{m.status || '—'}</Badge></TableCell>
                     <TableCell>
                       <div className="flex gap-2 items-center">
