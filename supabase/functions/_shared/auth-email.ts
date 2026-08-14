@@ -6,10 +6,24 @@
 // SMTP is configured anywhere, and Supabase's rate-limited built-in mailer is
 // never used.
 
-// Deno globals
-declare const Deno: any;
+import { brand, serif, sans, mono } from './brand.ts';
+import {
+  emailLayout,
+  esc,
+  heading,
+  paragraph,
+  primaryButton,
+  row,
+  textFooter,
+} from './email-layout.ts';
 
-const REPLY_TO = Deno.env.get('TICKET_REPLY_TO') || 'events@kenworthy.org';
+// The shell, palette and venue name come from email-layout.ts / brand.ts, so
+// these emails are visually identical to the ticket, receipt and film-pass
+// ones. Re-exported because auth_email_test.ts imports `esc` from here.
+export { esc };
+
+/** Shown in both the HTML footer and the plain-text sign-off. */
+const NOT_YOU = 'If you did not request this, you can ignore this email — nothing will change.';
 
 /** The action types Supabase's Send Email Hook can deliver. */
 export type AuthAction =
@@ -49,7 +63,7 @@ const COPY: Record<AuthAction, Copy> = {
     cta: 'Sign in',
   },
   invite: {
-    subject: "You've been invited to The Kenworthy",
+    subject: "You've been invited to the Kenworthy Performing Arts Centre",
     heading: "You've been invited",
     body: 'Accept the invitation to set up your Kenworthy account.',
     cta: 'Accept invitation',
@@ -84,15 +98,6 @@ export function copyFor(action: string): Copy {
   return COPY[action as AuthAction] ?? COPY.magiclink;
 }
 
-export function esc(s: unknown): string {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 /**
  * The link the user clicks.
  *
@@ -124,60 +129,33 @@ export function buildAuthEmailHtml(opts: {
 
   const action = isCodeOnly
     ? `
-      <div style="font:700 34px/1.2 'SFMono-Regular',Consolas,monospace;letter-spacing:.18em;color:#26211d;padding:8px 0 4px;">
+      <div style="font:700 34px/1.2 ${mono};letter-spacing:.18em;color:${brand.ink};padding:8px 0 4px;">
         ${esc(opts.token ?? '')}
       </div>`
     : `
-      <a href="${esc(opts.verifyUrl)}"
-         style="display:inline-block;padding:13px 26px;background:#26211d;color:#ffffff;font:600 15px/1 Helvetica,Arial,sans-serif;text-decoration:none;border-radius:7px;">
-        ${esc(c.cta)}
-      </a>
-      <div style="font:400 12px/1.6 Helvetica,Arial,sans-serif;color:#8b847d;padding-top:14px;word-break:break-all;">
+      ${primaryButton(opts.verifyUrl, c.cta)}
+      <div style="font:400 12px/1.6 ${sans};color:${brand.faint};padding-top:14px;word-break:break-all;">
         Or paste this into your browser:<br />${esc(opts.verifyUrl)}
       </div>`;
 
-  return `<!doctype html>
-<html>
-<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>${esc(c.subject)}</title></head>
-<body style="margin:0;padding:0;background:#f0ece7;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0ece7;">
-    <tr>
-      <td align="center" style="padding:28px 14px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:520px;background:#ffffff;border-radius:14px;overflow:hidden;">
+  const content = `
           <tr>
-            <td style="padding:26px 28px;background:#26211d;">
-              <div style="font:700 19px/1.3 Georgia,'Times New Roman',serif;color:#ffffff;">The Kenworthy</div>
-              <div style="font:400 12px/1.5 Helvetica,Arial,sans-serif;color:#b9b1a9;letter-spacing:.08em;text-transform:uppercase;padding-top:3px;">
-                Performing Arts Centre · Moscow, Idaho
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding:32px 28px 28px;">
-              <div style="font:700 23px/1.3 Georgia,'Times New Roman',serif;color:#26211d;padding-bottom:10px;">
-                ${esc(c.heading)}
-              </div>
-              <div style="font:400 15px/1.6 Helvetica,Arial,sans-serif;color:#55504b;padding-bottom:22px;">
-                ${esc(c.body)}
-              </div>
+            <td align="center" style="padding:32px 28px 32px;">
+              <div style="padding-bottom:10px;">${heading(c.heading)}</div>
+              <div style="padding-bottom:22px;">${paragraph(esc(c.body))}</div>
               ${action}
             </td>
-          </tr>
-          <tr>
-            <td style="padding:20px 28px 26px;background:#faf8f6;border-top:1px solid #e6e2dd;">
-              <div style="font:400 13px/1.6 Helvetica,Arial,sans-serif;color:#8b847d;">
-                If you did not request this, you can ignore this email — nothing will change.
-                Questions? Write to <a href="mailto:${esc(REPLY_TO)}" style="color:#b82a6b;text-decoration:none;">${esc(REPLY_TO)}</a>.
-              </div>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+          </tr>`;
+
+  return emailLayout({
+    title: c.subject,
+    preheader: esc(c.body),
+    contentHtml: content,
+    footerNote: NOT_YOU,
+    // Narrower than the ticket email: this is one heading, one sentence and one
+    // button, and a 560px card leaves it stranded in white space.
+    width: 520,
+  });
 }
 
 export function buildAuthEmailText(opts: {
@@ -189,12 +167,7 @@ export function buildAuthEmailText(opts: {
   const lines = [c.heading, '', c.body, ''];
   if (opts.action === 'reauthentication') lines.push(`Code: ${opts.token ?? ''}`);
   else lines.push(opts.verifyUrl);
-  lines.push(
-    '',
-    'If you did not request this, you can ignore this email — nothing will change.',
-    `Questions? Write to ${REPLY_TO}.`,
-    'The Kenworthy Performing Arts Centre, Moscow, Idaho',
-  );
+  lines.push('', ...textFooter(NOT_YOU));
   return lines.join('\n');
 }
 

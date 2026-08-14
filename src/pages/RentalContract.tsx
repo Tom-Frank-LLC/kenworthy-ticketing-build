@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Printer, Save, ShieldCheck, BadgeCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { formatPlainDate } from '@/lib/datetime';
 // @ts-ignore - no types
 import html2pdf from 'html2pdf.js';
 
@@ -174,11 +175,16 @@ export default function RentalContract() {
   if (loading) return <div className="container py-16 text-center text-muted-foreground">Loading…</div>;
   if (!request) return <div className="container py-16 text-center text-muted-foreground">Contract not found.</div>;
 
+  // `agreement_date` and `proposed_date` are calendar days, not instants:
+  // `new Date('2026-08-14')` is UTC midnight and prints as the 13th here, on
+  // the document a renter signs. formatPlainDate reads the day as written.
   const agreementDate = data.agreement_date
-    ? format(new Date(data.agreement_date), 'MMMM d, yyyy')
+    ? formatPlainDate(data.agreement_date)
     : format(new Date(request.created_at), 'MMMM d, yyyy');
   const eventDate = request.proposed_date
-    ? format(new Date(request.proposed_date), 'EEEE MMMM do, yyyy')
+    ? request.end_date
+      ? `${formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')} through ${formatPlainDate(request.end_date, 'EEEE MMMM do, yyyy')}`
+      : formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')
     : '__________';
   const timeRange = [request.event_start_time, request.event_end_time].filter(Boolean).join('–') || '__________';
   const licensee = request.applicant_name || request.organization_name || '__________';
@@ -187,7 +193,7 @@ export default function RentalContract() {
   const alcoholYes = data.alcohol_addendum === 'served' || request.wants_beer_wine;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background print:bg-white">
       {/* Admin/editor toolbar — hidden on print */}
       {isAdmin && (
         <div className="print:hidden border-b border-border/40 bg-card/50 sticky top-0 z-10">
@@ -258,11 +264,21 @@ export default function RentalContract() {
         </div>
       )}
 
-      {/* Contract body — print target */}
-      <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-background text-foreground font-serif text-[15px] leading-relaxed print:py-0">
+      {/*
+        Contract body — print target.
+
+        Black on white, deliberately outside the site theme. The site is a dark
+        theme, so `bg-background text-foreground` here rendered the licence
+        agreement as pale text — and the PDF export forces a white html2canvas
+        background (see renderPdfBlob), which left the signed document nearly
+        invisible on the page. A contract is a paper document; it is styled as
+        one on screen, in Print, and in the export, with fixed neutrals rather
+        than theme tokens so no future theme change can wash it out again.
+      */}
+      <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-white text-neutral-900 font-serif text-[15px] leading-relaxed print:py-0">
         <header className="text-center mb-8">
           <h1 className="font-display text-3xl uppercase tracking-wider">License Agreement</h1>
-          <p className="text-muted-foreground text-sm mt-2">{agreementDate}</p>
+          <p className="text-neutral-600 text-sm mt-2">{agreementDate}</p>
         </header>
 
         <p>
@@ -327,7 +343,7 @@ export default function RentalContract() {
             <Row label={`Additional KPAC Staff ($${num(data.staff_rate)}/hr × ${num(data.staff_hours)})`} value={totals.staff} />
             <Row label="Concessions Fees" value={totals.conc} />
             <Row label="LCD / DVD / DCP Fees" value={totals.av} />
-            <tr className="border-t border-border/60 font-semibold">
+            <tr className="border-t border-neutral-400 font-semibold">
               <td className="py-2">Subtotal</td>
               <td className="py-2 text-right">${totals.subtotal.toFixed(2)}</td>
             </tr>
@@ -354,21 +370,21 @@ export default function RentalContract() {
           <div>
             <p className="font-semibold">OWNER</p>
             <p>Kenworthy Performing Arts Centre, Inc.</p>
-            <div className="mt-12 border-t border-foreground/60 pt-2">
+            <div className="mt-12 border-t border-neutral-800 pt-2">
               <p>Jordan Goins</p>
-              <p className="text-sm text-muted-foreground">Operations Manager</p>
+              <p className="text-sm text-neutral-600">Operations Manager</p>
             </div>
           </div>
           <div>
             <p className="font-semibold">LICENSEE</p>
             <p>&nbsp;</p>
-            <div className="mt-12 border-t border-foreground/60 pt-2">
+            <div className="mt-12 border-t border-neutral-800 pt-2">
               <p>{licensee}</p>
             </div>
           </div>
         </div>
 
-        <hr className="my-12 border-border/60" />
+        <hr className="my-12 border-neutral-400" />
 
         {/* Addendum */}
         {alcoholYes ? (
@@ -409,13 +425,13 @@ export default function RentalContract() {
 
         <div className="grid md:grid-cols-2 gap-8 mt-10">
           <div>
-            <div className="mt-12 border-t border-foreground/60 pt-2">
+            <div className="mt-12 border-t border-neutral-800 pt-2">
               <p>Jordan Goins</p>
-              <p className="text-sm text-muted-foreground">Operations Manager</p>
+              <p className="text-sm text-neutral-600">Operations Manager</p>
             </div>
           </div>
           <div>
-            <div className="mt-12 border-t border-foreground/60 pt-2">
+            <div className="mt-12 border-t border-neutral-800 pt-2">
               <p>{licensee}</p>
             </div>
           </div>
@@ -445,12 +461,14 @@ function H2({ children }: { children: React.ReactNode }) {
 }
 
 function Fill({ children }: { children: React.ReactNode }) {
-  return <span className="bg-accent/15 border-b border-accent/60 px-1">{children}</span>;
+  // The filled-in blanks of the agreement. On a dark page these were a tinted
+  // highlight; on paper they read as the ruled blank a typed value sits on.
+  return <span className="bg-neutral-100 border-b border-neutral-500 px-1">{children}</span>;
 }
 
 function Row({ label, value }: { label: string; value: number }) {
   return (
-    <tr className="border-b border-border/40">
+    <tr className="border-b border-neutral-300">
       <td className="py-1.5">{label}</td>
       <td className="py-1.5 text-right">${value.toFixed(2)}</td>
     </tr>

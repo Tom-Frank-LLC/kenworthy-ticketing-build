@@ -49,6 +49,8 @@ This mirrors what the box-office Terminal path already did correctly: it awaited
 | `ticket-checkout` | **The only web path to a ticket.** Guest and signed-in, card and film-pass redemption. |
 | `film-pass-checkout` | Pass sales: `purchase` (self-serve card), `staff_sale` (box office), `lookup` (patron search). |
 | `square-refund` | Real Square refunds, film-pass balance restoration, staff-only. |
+| `_shared/rental_invoice.ts` | What a rental is billed: line items, discounts, 6% on taxable lines, net-14 due date, the date span. Pure — tested without Square. |
+| `square-invoice` | Builds a **draft** Square invoice for a rental request from its `rental_invoice_lines`. Customer → order → invoice. Staff or admin; sends nothing. |
 | `guest-checkout` | Retired. Answers 410 and points at `ticket-checkout`. **Must be redeployed** — deleting it from the repo would leave the old free-ticket function running. |
 | `square-donation` | Unchanged behaviour, now on the shared env config. |
 | `square-terminal` | Same, plus it returns `payment_id` so box-office card sales are refundable. |
@@ -224,6 +226,40 @@ else's order.
 
 Box-office card sales record `payment_id` from the Terminal checkout, so they
 are refundable too.
+
+---
+
+## Rental invoices
+
+Every other Square path here takes money. This one does not: `square-invoice`
+turns a rental request's `rental_invoice_lines` — the same rows the QBO export
+reads — into a **draft** invoice in Square and stops. Staff review it in the
+Square dashboard and press Send there.
+
+`Generate Invoice` sits beside `Contract` on the admin rental listing
+(`RentalRequestsTab.tsx`). It is disabled until the request has invoice lines,
+and once an invoice exists the button becomes `View Invoice`; making a second
+one requires the explicit `Regenerate` action in the details dialog, which
+deletes the old draft in Square first.
+
+What the invoice says, and where each rule comes from:
+
+| | | |
+|---|---|---|
+| Tax | 6% on lines flagged taxable | `TAX_RATE` in `RentalInvoiceLines.tsx` — the number staff already see on screen |
+| Due | 14 days from generation | Licence agreement clause 3, "paid in full no later than fourteen (14) days following the receipt of event invoice" |
+| Discounts | `nonprofit_discount`, or any negative line, becomes an order-level FIXED_AMOUNT discount | Square rejects a negative `base_price_money` |
+| Quantity | whole numbers bill per unit ("4 × $180"); fractional ones bill the extended amount with the arithmetic in the line note | Square's `quantity` is a whole-number string without a `quantity_unit` |
+| Delivery | `EMAIL`, card only, DRAFT | Nothing reaches a renter until staff send it |
+
+Square only gives an invoice a `public_url` once it is published, so
+`square_invoice_url` holds the dashboard link for a draft and Square's own
+public URL after it is sent.
+
+Note one arithmetic difference: Square applies an order-level discount before
+tax, while the admin table taxes each line at full price. Where a rental has
+both a discount and a taxable line, the two totals can differ by a few cents —
+the invoice reports Square's total back to the toast so it can be compared.
 
 ---
 

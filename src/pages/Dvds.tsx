@@ -144,7 +144,7 @@ export default function Dvds() {
   return (
     <>
       <SEO
-        title="DVD Rentals — The Kenworthy"
+        title="DVD Rentals — Kenworthy"
         description={
           MEMBER_ACCOUNTS_ENABLED
             ? "Browse and reserve DVDs from the Kenworthy's lending library. Pick up at the box office on Main Street, Moscow."

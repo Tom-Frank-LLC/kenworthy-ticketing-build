@@ -17,7 +17,7 @@ export default function Volunteer() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Volunteer — The Kenworthy"
+        title="Volunteer — Kenworthy"
         description="Volunteer at the historic Kenworthy Performing Arts Centre in Moscow, Idaho — ushering, concessions, box office, clean-up days, and committees. 16 and older."
         path="/volunteer"
       />

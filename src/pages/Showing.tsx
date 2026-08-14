@@ -498,10 +498,10 @@ export default function Showing() {
     // Extra bottom padding on mobile clears the sticky order bar below.
     <div className="container py-8 px-4 max-w-5xl pb-28 lg:pb-8">
       <SEO
-        title={`${production?.title ?? 'Showing'} — ${formatShowtime(showing.start_time, 'MMM d, yyyy')} at The Kenworthy`}
+        title={`${production?.title ?? 'Showing'} — ${formatShowtime(showing.start_time, 'MMM d, yyyy')} at Kenworthy`}
         description={
           production?.description?.slice(0, 160) ??
-          `Tickets for ${production?.title ?? 'this showing'} at The Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`
+          `Tickets for ${production?.title ?? 'this showing'} at the Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`
         }
         ogType="event"
         image={production?.poster_url || undefined}
@@ -516,7 +516,7 @@ export default function Showing() {
           description: production?.description || undefined,
           location: {
             "@type": "Place",
-            name: venue?.name || "The Kenworthy Performing Arts Centre",
+            name: venue?.name || "Kenworthy Performing Arts Centre",
             address: {
               "@type": "PostalAddress",
               streetAddress: "508 S Main St",
@@ -528,7 +528,7 @@ export default function Showing() {
           },
           organizer: {
             "@type": "Organization",
-            name: "The Kenworthy Performing Arts Centre",
+            name: "Kenworthy Performing Arts Centre",
             url: `${SITE_URL}/`,
           },
         }}

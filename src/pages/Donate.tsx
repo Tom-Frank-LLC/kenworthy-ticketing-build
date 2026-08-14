@@ -111,7 +111,7 @@ export default function Donate() {
     return (
       <div className="container max-w-2xl py-20 text-center">
         <SEO
-          title="Thank You — The Kenworthy Performing Arts Centre"
+          title="Thank You — Kenworthy Performing Arts Centre"
           description="Thank you for supporting the Kenworthy Performing Arts Centre."
         />
         <CheckCircle2 className="h-16 w-16 text-accent mx-auto mb-6" />
@@ -145,7 +145,7 @@ export default function Donate() {
   return (
     <div className="container max-w-5xl py-16">
       <SEO
-        title="Donate — The Kenworthy Performing Arts Centre"
+        title="Donate — Kenworthy Performing Arts Centre"
         description="Support the Kenworthy Performing Arts Centre, Moscow Idaho's historic non-profit cinema, with a tax-deductible donation."
       />
 

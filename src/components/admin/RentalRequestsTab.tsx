@@ -7,9 +7,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Copy, ExternalLink, Trash2, Eye, FileText, Link2 } from 'lucide-react';
+import { Copy, ExternalLink, Trash2, Eye, FileText, Link2, Receipt, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { formatPlainDateRange } from '@/lib/datetime';
+import { fetchAllRows } from '@/lib/fetchAllRows';
+import { invokeFunction } from '@/lib/functions';
 import RentalInvoiceLines from './RentalInvoiceLines';
 
 type RentalRequest = any;
@@ -29,16 +32,79 @@ export default function RentalRequestsTab() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [open, setOpen] = useState<RentalRequest | null>(null);
+  const [lineCounts, setLineCounts] = useState<Record<string, number>>({});
+  const [generating, setGenerating] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('rental_requests')
-      .select('*')
-      .order('submitted_at', { ascending: false });
+    const [{ data, error }, lines] = await Promise.all([
+      supabase
+        .from('rental_requests')
+        .select('*')
+        .order('submitted_at', { ascending: false }),
+      // Just the owning ids: enough to know which requests have something to
+      // bill, without loading every line of every rental to find out.
+      fetchAllRows<{ rental_request_id: string }>((from, to) =>
+        supabase
+          .from('rental_invoice_lines' as any)
+          .select('rental_request_id')
+          .order('rental_request_id')
+          .range(from, to) as any),
+    ]);
     if (error) toast.error(error.message);
+    if (lines.error) toast.error((lines.error as any).message);
+
+    const counts: Record<string, number> = {};
+    for (const line of lines.data) {
+      counts[line.rental_request_id] = (counts[line.rental_request_id] || 0) + 1;
+    }
+    setLineCounts(counts);
     setRequests(data || []);
+    // Keep an open details dialog looking at the row that was just reloaded,
+    // or it goes on showing the invoice state from before the click.
+    setOpen(prev => (prev ? (data || []).find(r => r.id === prev.id) || prev : prev));
     setLoading(false);
+  }
+
+  /**
+   * Build the Square invoice from this request's invoice lines.
+   *
+   * The function creates a DRAFT and stops — staff send it from Square. A
+   * second click cannot open a second invoice: the server answers with the
+   * existing one unless `regenerate` is asked for explicitly, and a
+   * regeneration deletes the old draft in Square first.
+   */
+  async function generateInvoice(request: RentalRequest, regenerate = false) {
+    if (
+      regenerate &&
+      !confirm('Replace this rental\'s Square invoice? The current draft is deleted in Square and a new one built from the lines below.')
+    ) return;
+
+    setGenerating(request.id);
+    try {
+      const result = await invokeFunction<{
+        invoice_url?: string;
+        status?: string;
+        already_generated?: boolean;
+        warning?: string | null;
+        total_cents?: number | null;
+      }>('square-invoice', { rental_request_id: request.id, regenerate });
+
+      if (result.warning) toast.warning(result.warning);
+      if (result.already_generated) {
+        toast.info('This rental already has a Square invoice');
+      } else {
+        const amount = typeof result.total_cents === 'number'
+          ? ` — $${(result.total_cents / 100).toFixed(2)}`
+          : '';
+        toast.success(`Draft invoice created in Square${amount}. Review and send it there.`);
+      }
+      await load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setGenerating(null);
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -122,7 +188,7 @@ export default function RentalRequestsTab() {
                   </div>
                   <p className="font-serif text-xs text-muted-foreground mt-1">
                     {r.applicant_name} • {r.email}
-                    {r.proposed_date && ` • ${format(new Date(r.proposed_date), 'MMM d, yyyy')}`}
+                    {r.proposed_date && ` • ${formatPlainDateRange(r.proposed_date, r.end_date)}`}
                   </p>
                   <p className="font-serif text-xs text-muted-foreground">
                     Submitted {format(new Date(r.submitted_at), 'MMM d, yyyy h:mm a')}
@@ -134,6 +200,32 @@ export default function RentalRequestsTab() {
                       <FileText className="h-4 w-4 mr-1" /> Contract
                     </a>
                   </Button>
+                  {r.square_invoice_id ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      asChild
+                      title={`Square invoice — ${(r.square_invoice_status || 'draft').toLowerCase()}`}
+                    >
+                      <a href={r.square_invoice_url} target="_blank" rel="noreferrer">
+                        <Receipt className="h-4 w-4 mr-1" /> View Invoice
+                      </a>
+                    </Button>
+                  ) : (
+                    // A disabled button swallows its own tooltip, so the reason
+                    // it is disabled lives on the wrapper.
+                    <span title={lineCounts[r.id] ? 'Create a draft invoice in Square' : 'Add invoice lines under Details first'}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!lineCounts[r.id] || generating === r.id}
+                        onClick={() => generateInvoice(r)}
+                      >
+                        <Receipt className="h-4 w-4 mr-1" />
+                        {generating === r.id ? 'Generating…' : 'Generate Invoice'}
+                      </Button>
+                    </span>
+                  )}
                   <Button size="sm" variant="ghost" title="Copy contract link for renter" onClick={() => {
                     navigator.clipboard.writeText(`${window.location.origin}/contract/${r.invite_token}`);
                     toast.success('Renter contract link copied');
@@ -158,6 +250,8 @@ export default function RentalRequestsTab() {
               onStatus={(s) => updateStatus(open.id, s)}
               onSaveNotes={(n) => saveNotes(open.id, n)}
               onDelete={() => deleteRequest(open.id)}
+              onGenerateInvoice={(regenerate) => generateInvoice(open, regenerate)}
+              generating={generating === open.id}
             />
           )}
         </DialogContent>
@@ -166,11 +260,13 @@ export default function RentalRequestsTab() {
   );
 }
 
-function RequestDetail({ request: r, onStatus, onSaveNotes, onDelete }: {
+function RequestDetail({ request: r, onStatus, onSaveNotes, onDelete, onGenerateInvoice, generating }: {
   request: RentalRequest;
   onStatus: (s: string) => void;
   onSaveNotes: (n: string) => void;
   onDelete: () => void;
+  onGenerateInvoice: (regenerate: boolean) => void;
+  generating: boolean;
 }) {
   const [notes, setNotes] = useState(r.admin_notes || '');
   const equipment = (r.equipment && typeof r.equipment === 'object') ? r.equipment as Record<string, number> : {};
@@ -206,7 +302,7 @@ function RequestDetail({ request: r, onStatus, onSaveNotes, onDelete }: {
       </DetailSection>
 
       <DetailSection title="Event">
-        <KV k="Proposed date" v={r.proposed_date ? format(new Date(r.proposed_date), 'MMM d, yyyy') : null} />
+        <KV k={r.end_date ? 'Proposed dates' : 'Proposed date'} v={formatPlainDateRange(r.proposed_date, r.end_date, { month: 'long' }) || null} />
         <KV k="Venue area" v={r.venue_area?.replace(/_/g, ' ')} />
         <KV k="Arrival" v={r.arrival_time} />
         <KV k="Event start" v={r.event_start_time} />
@@ -250,7 +346,41 @@ function RequestDetail({ request: r, onStatus, onSaveNotes, onDelete }: {
       </DetailSection>
 
       <DetailSection title="Invoice">
+        {r.square_invoice_id && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border/40 px-3 py-2">
+            <div className="min-w-0">
+              <p className="font-serif text-sm">
+                Square invoice{' '}
+                <span className="uppercase text-xs tracking-wider text-accent">
+                  {(r.square_invoice_status || 'draft').toLowerCase()}
+                </span>
+              </p>
+              <p className="font-serif text-xs text-muted-foreground">
+                Generated {r.square_invoice_created_at ? format(new Date(r.square_invoice_created_at), 'MMM d, yyyy h:mm a') : '—'}
+                {' • '}send it from Square
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button size="sm" variant="outline" asChild>
+                <a href={r.square_invoice_url} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-1" /> Open in Square
+                </a>
+              </Button>
+              <Button size="sm" variant="ghost" disabled={generating} onClick={() => onGenerateInvoice(true)}>
+                <RefreshCw className="h-4 w-4 mr-1" /> {generating ? 'Working…' : 'Regenerate'}
+              </Button>
+            </div>
+          </div>
+        )}
         <RentalInvoiceLines rentalRequestId={r.id} />
+        {!r.square_invoice_id && (
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" disabled={generating} onClick={() => onGenerateInvoice(false)}>
+              <Receipt className="h-4 w-4 mr-1" />
+              {generating ? 'Generating…' : 'Generate Square invoice'}
+            </Button>
+          </div>
+        )}
       </DetailSection>
 
       <DetailSection title="Admin notes">
