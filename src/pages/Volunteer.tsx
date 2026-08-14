@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { SEO } from '@/components/SEO';
 import { HeartHandshake, Mail, Phone } from 'lucide-react';
 import { VOLUNTEER_COORDINATOR, VOLUNTEER_DUTIES } from '@/lib/volunteering';
+import { useHiringEnabled } from '@/hooks/useHiringEnabled';
 
 import imgToday from '@/assets/optimized/history/kenworthy-today-marquee-night.webp';
 
@@ -11,6 +12,7 @@ import imgToday from '@/assets/optimized/history/kenworthy-today-marquee-night.w
 
 export default function Volunteer() {
   const { name, title, email, phone, phoneHref } = VOLUNTEER_COORDINATOR;
+  const { enabled: hiringEnabled, loading: hiringLoading } = useHiringEnabled();
 
   return (
     <div className="min-h-screen bg-background">
@@ -105,9 +107,21 @@ export default function Volunteer() {
               <Phone className="h-4 w-4 mr-2" /> {phone}
             </a>
           </Button>
-          <Button asChild size="lg" variant="outline">
-            <Link to="/hiring">See all openings</Link>
-          </Button>
+          {/* /hiring redirects here when the toggle is off, so without this
+              guard the button would send the reader back to the page they are
+              already on.
+
+              Gated on `!hiringLoading` as well, unlike the two nav menus: those
+              sit inside a closed dropdown and have always resolved by the time
+              anyone opens them, but this button is on screen at first paint.
+              The hook's optimistic default would show it and then take it away,
+              and a control that appears a beat late is far less jarring than
+              one that vanishes under the cursor. */}
+          {!hiringLoading && hiringEnabled && (
+            <Button asChild size="lg" variant="outline">
+              <Link to="/hiring">See all openings</Link>
+            </Button>
+          )}
         </div>
       </section>
     </div>

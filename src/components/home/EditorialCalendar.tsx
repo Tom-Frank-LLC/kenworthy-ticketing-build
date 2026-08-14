@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Film, Sparkles, Music, Calendar as CalendarIcon, ArrowRight } from 'lucide-react';
 import { addDays, isThisWeek } from 'date-fns';
+import { cn } from '@/lib/utils';
 import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
 import type { FeedItem } from './TrailerFeed';
 
@@ -14,7 +15,7 @@ const TYPE_ICON = {
 
 function dayLabel(iso: string) {
   // Relative labels are relative to the venue's day, not the reader's — see
-  // the note in formatWhen in UpcomingList.tsx.
+  // the note in formatWhen in ShowingPreview.tsx.
   const day = venueDayKey(iso);
   const now = new Date();
   if (day === venueDayKey(now)) return 'Tonight';
@@ -30,9 +31,21 @@ function dayKey(iso: string) {
 export function EditorialCalendar({
   items,
   onSelect,
+  selectedId = null,
+  compact = false,
 }: {
   items: FeedItem[];
   onSelect?: (item: FeedItem) => void;
+  /**
+   * Row to mark as chosen. Only meaningful where the click feeds a preview
+   * pane that stays on screen — a drawer is its own feedback.
+   */
+  selectedId?: string | null;
+  /**
+   * Drop the page-width chrome (outer padding, the closing address block) for
+   * use inside a narrow split column, where they only steal width.
+   */
+  compact?: boolean;
 }) {
   // Curator-controlled featured pick: prefer the earliest item flagged
   // is_featured. If nothing is flagged, fall back to the first chronological
@@ -54,7 +67,7 @@ export function EditorialCalendar({
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="px-6 md:px-10 py-10 max-w-[640px] mx-auto">
+      <div className={cn('max-w-[640px] mx-auto', compact ? 'py-2' : 'px-6 md:px-10 py-10')}>
         {/* Curator header */}
         <div className="mb-10">
           <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mb-3">
@@ -144,7 +157,16 @@ export function EditorialCalendar({
                         <button
                           type="button"
                           onClick={() => onSelect?.(item)}
-                          className="w-full text-left py-4 flex items-start gap-4 group hover:bg-card/40 -mx-2 px-2 rounded-sm transition-colors min-h-[64px]"
+                          aria-current={selectedId === item.id ? 'true' : undefined}
+                          className={cn(
+                            'w-full text-left py-4 flex items-start gap-4 group -mx-2 px-2 rounded-sm transition-colors min-h-[64px]',
+                            // Hover stays styling only — picking a showing is a
+                            // click, so a moused-over row must not read the
+                            // same as the one actually chosen.
+                            selectedId === item.id
+                              ? 'bg-primary/10 ring-1 ring-primary/40'
+                              : 'hover:bg-card/40',
+                          )}
                         >
                           <div className="font-display text-2xl tabular-nums text-accent shrink-0 w-20">
                             {formatShowtime(item.startTime, 'h:mm')}
@@ -181,19 +203,23 @@ export function EditorialCalendar({
           </div>
         )}
 
-        <div className="marquee-rule my-12" />
+        {!compact && (
+          <>
+            <div className="marquee-rule my-12" />
 
-        <div className="text-center">
-          <p className="font-serif text-xs uppercase tracking-[0.3em] text-muted-foreground mb-2">
-            Visit the marquee
-          </p>
-          <p className="font-serif text-muted-foreground">
-            508 S Main Street · Moscow, Idaho
-          </p>
-          <p className="font-serif text-xs text-muted-foreground/70 mt-2 italic">
-            A century of stories, told one screening at a time.
-          </p>
-        </div>
+            <div className="text-center">
+              <p className="font-serif text-xs uppercase tracking-[0.3em] text-muted-foreground mb-2">
+                Visit the marquee
+              </p>
+              <p className="font-serif text-muted-foreground">
+                508 S Main Street · Moscow, Idaho
+              </p>
+              <p className="font-serif text-xs text-muted-foreground/70 mt-2 italic">
+                A century of stories, told one screening at a time.
+              </p>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

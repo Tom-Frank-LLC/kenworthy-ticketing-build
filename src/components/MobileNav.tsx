@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { useHiringEnabled } from '@/hooks/useHiringEnabled';
 
 /**
  * The primary navigation on phones and small tablets.
@@ -82,6 +83,12 @@ function NavRow({ item, onNavigate }: { item: NavItem; onNavigate: () => void })
 
 export function MobileNav() {
   const { user, isAdmin, isStaff, isHost, isSuperadmin, signOut } = useAuth();
+  // See the matching note in Layout.tsx — the toggle hides the entry, it does
+  // not just make the destination unhelpful.
+  const { enabled: hiringEnabled } = useHiringEnabled();
+  const visibleInfoLinks = infoLinks.filter(
+    item => item.to !== '/hiring' || hiringEnabled,
+  );
   const location = useLocation();
   const [open, setOpen] = useState(false);
 
@@ -168,7 +175,7 @@ export function MobileNav() {
           )}
 
           <SectionHeading>Info</SectionHeading>
-          {infoLinks.map(item => (
+          {visibleInfoLinks.map(item => (
             <NavRow key={item.to} item={item} onNavigate={close} />
           ))}
 
