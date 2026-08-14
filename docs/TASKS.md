@@ -85,6 +85,10 @@ Worth carrying forward: `published_date` is a Postgres DATE, and `new Date('2026
 
 ## Planned Refactors
 
+### 🟡 Rental invoices — first Square sandbox run (see `BRIEF-rental-multiday-invoice.md`)
+Built 2026-08-14, deployed nowhere: multi-day rental dates (`end_date` + range display through the form, admin listing and contract), a `square-invoice` edge function that builds a **draft** Square invoice from `rental_invoice_lines`, and the contract restyled as a black-on-white document. Migrations verified in a throwaway postgres, 14 Deno tests and 9 vitest tests over the billing and date rules, `tsc`/`vitest`/`build:staging` clean.
+**Nothing has ever called Square from this path.** Before production: push both migrations, deploy `square-invoice`, generate one invoice on the sandbox, and compare it line for line against a real Kenworthy event invoice — tax, terms, wording. Also wanted: an eye on `/contract/:token` on screen, in Print preview, and through the "Draft PDF" export, which needs a real invite token.
+
 ### 🟡 Comprehensive grants audit + single authoritative migration
 We have now hit **three separate grant-inconsistency bugs** from Lovable's migrations:
 1. `anon` missing SELECT on many tables (fixed)
