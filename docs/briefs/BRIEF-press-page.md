@@ -1,6 +1,6 @@
 # Brief (for Claude Code): Press page + admin Press tab
 
-**Status:** 🟢 Implemented August 14, 2026 — applied to staging, not yet deployed or applied to production. See **Results** at the end of this file for the decisions taken and how each claim was verified.
+**Status:** ✅ Shipped to staging and production, August 14, 2026, from `42cda95`. See **Results** at the end of this file for the decisions taken and how each claim was verified.
 **Date:** August 14, 2026
 **Requested by:** Tom — an admin Press tab where staff add links to press articles that show as previews on the Press page; two can be **featured** (pinned to top), the rest newest→oldest; plus one manually-added **photo** and one manual **text field** on the page.
 
@@ -50,7 +50,7 @@ Replace the stub with a real page (mirror an existing content page's layout + th
 
 # Results — implemented August 14, 2026
 
-**Status:** 🟢 Built, typechecked, tested, and applied to **staging**. Not yet
+**Status (at time of writing):** 🟢 Built, typechecked, tested, and applied to **staging**. Not yet
 deployed to a Worker and not applied to production — see **Remaining**.
 
 ## Decisions taken
@@ -122,13 +122,45 @@ just not as a link.
   leave no data behind (writes are shut). Re-read afterwards confirmed the
   probes landed nothing.
 
+## Shipped — August 14, 2026
+
+Both environments are live from `42cda95`; `main`, `staging`, `origin/main` and
+`origin/staging` are all level at that commit.
+
+| | Staging `rpqzrpboyhshdrfdwayk` | Production `vlmslygnimfbamrtwvyo` |
+|---|---|---|
+| Worker version | `66ce7bbc` | `fdf043bd` (rollback: `3c3dd77b`) |
+| Entry chunk | `index-CChn-i4J.js` | `index-BdxPAP3K.js` |
+| Migration | applied | applied |
+| `/press` | 200 | 200 |
+| Anon read / write | row + `[]` / **401** | row + `[]` / **401** |
+
+No edge functions were touched, so none were redeployed.
+
+Both builds passed the runbook's pre-deploy greps, plus a fourth added here:
+that the *other* environment's Supabase URL is absent from the bundle. The
+runbook only checks that the intended URL is present, which a stale `dist/`
+would also satisfy.
+
+Verified after deploy rather than assumed: the production `Press-*.js` chunk
+contains `Read at` and `press_articles`, so what is live is the real page and
+not a cached build of the `ComingSoon` stub.
+
+**Built and deployed from a scratch git worktree, not the main checkout.**
+Another session was working in that tree throughout — by the end it held 58
+modified/untracked files, including `index.html`, which the frontend build
+bakes. Building there would have shipped their unfinished email-branding work
+to production inside this deploy. The worktree also carried its own
+`supabase/.temp`, so linking it to production to run the migration left the
+shared checkout still linked to staging. See
+[[repo-tree-shared-across-sessions]] and [[git-worktrees-need-env-files-copied]] —
+the gitignored `.env.staging` / `.env.production` had to be copied in.
+
 ## Remaining
 
-- Frontend deploy per `RUNBOOK-deploy-staging-prod.md` (`npm run
-  build:staging` → `npx wrangler deploy --env staging`), then the manual test
-  plan above against the staging Worker.
-- Production: apply the same migration to `vlmslygnimfbamrtwvyo`, then
-  `build:production` + deploy. Not done here.
+- The manual test plan above has not been run against a browser — the
+  verification here is API- and bundle-level. Both Press tabs are empty, so
+  the first real check is adding an article.
 - The Press tab is **admin-only** (`show: isAdmin`), matching Hiring. Article
   RLS is written at `staff` level so opening it to a marketing staffer later is
   a one-line UI change — but note the `posters` storage bucket's upload policy
