@@ -12,6 +12,13 @@ import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
 import { SeatTierEditor, type SeatTierEditorHandle } from '@/components/admin/SeatTierEditor';
 import { instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
+import {
+  STANDARD_MOVIE_TICKET_PRICE,
+  fetchPassTypes,
+  fetchShowingEligibility,
+  setShowingEligibility,
+  type PassTypeOption,
+} from '@/lib/passEligibility';
 
 type Category = 'movie' | 'event' | 'concert';
 
@@ -44,11 +51,19 @@ export default function ShowingForm() {
   const [venueId, setVenueId] = useState('');
   const [startTime, setStartTime] = useState('');
   const [ticketPrice, setTicketPrice] = useState('8.00');
-  // Whether a film pass may be redeemed at the door for this screening.
-  // Passes are for standard movies; premium screenings and events are not
-  // covered. Events cannot be eligible at all — a database trigger forces the
-  // flag off for them — so this control only ever governs movies.
-  const [filmPassEligible, setFilmPassEligible] = useState(true);
+  // Which passes may be redeemed at the door for this screening.
+  //
+  // This used to be one boolean that could only speak for every pass at once,
+  // and only for movies — a trigger forced it off for anything else. Both
+  // limits are gone: eligibility is a row per (pass type, showing), so a
+  // festival pass can cover an event or a live performance inside its run
+  // while an ordinary Tuesday film takes only the standard pass.
+  const [passTypes, setPassTypes] = useState<PassTypeOption[]>([]);
+  const [eligiblePassTypeIds, setEligiblePassTypeIds] = useState<string[]>([]);
+  // Kept separate from the selection so unticking the box does not throw away
+  // which passes were chosen — reticking it restores them, which is what an
+  // admin who unticked it to look at something else expects.
+  const [passEligible, setPassEligible] = useState(false);
   // GA or reserved seating, decided here rather than on the venue: the same
   // auditorium hosts a general-admission movie on Friday and a reserved-seat
   // performance on Saturday. This is the column the customer picker, the box
@@ -72,7 +87,8 @@ export default function ShowingForm() {
       supabase.from('events').select('id, title, ticket_type, is_active').order('title'),
       supabase.from('live_performances').select('id, title, is_active').order('title'),
       supabase.from('venues').select('id, name, has_assigned_seating, total_seats').order('name'),
-    ]).then(([moviesRes, eventsRes, concertsRes, venuesRes]) => {
+      fetchPassTypes().catch(() => [] as PassTypeOption[]),
+    ]).then(([moviesRes, eventsRes, concertsRes, venuesRes, types]) => {
       setMovies(moviesRes.data || []);
       setEvents((eventsRes.data || []).filter((e: any) => e.ticket_type === 'ticketed'));
       setConcerts(concertsRes.data || []);
@@ -83,13 +99,33 @@ export default function ShowingForm() {
       // was saved with no venue would rewrite its row on the next save without
       // anyone asking for that.
       if (!isEdit && venueList.length === 1) setVenueId(venueList[0].id);
+
+      setPassTypes(types);
+      // A new standard-priced movie takes the standard passes, as it always
+      // did — showings.film_pass_eligible defaulted to true and nobody had to
+      // think about it. Under an explicit model that default has to be stated
+      // somewhere or the standard pass quietly stops working at everything
+      // created from now on; this is where it is stated, in front of an admin
+      // who can see it and change it.
+      if (!isEdit) {
+        const defaults = types.filter(t => t.is_default_for_movies && t.is_active);
+        setEligiblePassTypeIds(defaults.map(t => t.id));
+        setPassEligible(defaults.length > 0);
+      }
     });
 
     if (isEdit) {
       Promise.all([
         supabase.from('showings').select('*').eq('id', id).single(),
         supabase.from('showing_price_tiers').select('*').eq('showing_id', id).order('display_order'),
-      ]).then(([showingRes, tiersRes]) => {
+        fetchShowingEligibility(id!).catch(() => [] as string[]),
+      ]).then(([showingRes, tiersRes, eligibleIds]) => {
+        // What is actually tagged, never a guess. An existing screening's
+        // eligibility is a decision somebody already made — re-deriving it
+        // from the price here would overwrite that decision on the next save.
+        setEligiblePassTypeIds(eligibleIds);
+        setPassEligible(eligibleIds.length > 0);
+
         const data = showingRes.data;
         if (data) {
           if (data.movie_id) { setCategory('movie'); setItemId(data.movie_id); }
@@ -103,7 +139,6 @@ export default function ShowingForm() {
           // late — and saving then wrote that wrong hour back.
           setStartTime(instantToVenueLocalInput(data.start_time));
           setTicketPrice(String(data.ticket_price));
-          setFilmPassEligible(data.film_pass_eligible ?? true);
           setRequiresSeatSelection(data.requires_seat_selection ?? false);
         }
 
@@ -156,6 +191,62 @@ export default function ShowingForm() {
   const selectedVenue = venues.find((v: any) => v.id === venueId);
   const venueHasSeatMap = !!selectedVenue?.has_assigned_seating;
 
+  /**
+   * Editing the price re-applies the pass default for a movie.
+   *
+   * The standard pass deducts a fixed amount, so it only makes sense against
+   * the standard face value: at $12 a $6 redemption gives away twice what the
+   * theatre intended, and there is no version of that which is an accident
+   * worth preserving. Moving the price off $8 therefore unticks the box, and
+   * moving it back ticks it again.
+   *
+   * Deliberately not a lock. Whoever is standing here can retick it — a $10
+   * screening the theatre has decided to honour passes at is a real thing, and
+   * this is a default rather than a rule. The door does not consult the price
+   * at all: eligibility is the rows, and the rows are what this form writes.
+   *
+   * Only fired by a keystroke in the price field, never on load. Recomputing
+   * this while loading an existing showing would overwrite a decision somebody
+   * already made, at the moment they opened the form to look at it.
+   */
+  const handleTicketPriceChange = (value: string) => {
+    setTicketPrice(value);
+    if (category !== 'movie') return;
+
+    const isStandardPrice = parseFloat(value) === STANDARD_MOVIE_TICKET_PRICE;
+    const defaults = passTypes.filter(t => t.is_default_for_movies && t.is_active);
+
+    if (isStandardPrice) {
+      // Union, not replacement: a festival pass somebody deliberately added to
+      // this screening is not a casualty of correcting a typo in the price.
+      setEligiblePassTypeIds(prev => [...new Set([...prev, ...defaults.map(t => t.id)])]);
+      setPassEligible(true);
+    } else {
+      dropDefaultPasses(defaults);
+    }
+  };
+
+  /**
+   * Remove the standard passes from the selection, leaving anything tagged by
+   * hand alone.
+   *
+   * Shared by the two events that invalidate the movie default — moving the
+   * price off the standard fare, and switching the screening to an event or a
+   * performance.
+   */
+  const dropDefaultPasses = (defaults: PassTypeOption[]) => {
+    const defaultIds = new Set(defaults.map(t => t.id));
+    const remaining = eligiblePassTypeIds.filter(passId => !defaultIds.has(passId));
+    setEligiblePassTypeIds(remaining);
+    setPassEligible(remaining.length > 0);
+  };
+
+  const togglePassType = (passTypeId: string) => {
+    setEligiblePassTypeIds(prev =>
+      prev.includes(passTypeId) ? prev.filter(p => p !== passTypeId) : [...prev, passTypeId],
+    );
+  };
+
   const addTier = () => {
     setTiers(prev => [...prev, { tier_name: '', price: '8.00', display_order: prev.length }]);
   };
@@ -195,7 +286,6 @@ export default function ShowingForm() {
       // machine the admin happened to use.
       start_time: venueLocalToInstant(startTime).toISOString(),
       ticket_price: parseFloat(ticketPrice),
-      film_pass_eligible: category === 'movie' && filmPassEligible,
       // Only claim reserved seating when there is a seat map to reserve from.
       // A showing flagged reserved with no seats behind it renders an empty
       // picker the buyer cannot get past.
@@ -261,6 +351,24 @@ export default function ShowingForm() {
       await supabase.from('showing_price_tiers').delete().eq('showing_id', showingId);
     }
 
+    // Pass eligibility, after the showing exists so a new one has an id to
+    // hang rows off. Reported rather than swallowed on failure: the showing is
+    // already saved by this point, and a screening silently accepting no
+    // passes is invisible until somebody is turned away at the door.
+    if (showingId) {
+      try {
+        await setShowingEligibility(showingId, passEligible ? eligiblePassTypeIds : []);
+      } catch (err) {
+        toast.error(
+          `Showing saved, but its pass eligibility was not stored — ${
+            err instanceof Error ? err.message : 'unknown error'
+          }`,
+        );
+        setSaving(false);
+        return;
+      }
+    }
+
     toast.success(isEdit ? 'Showing updated!' : 'Showing created!');
     if (!isEdit && showingId) {
       setSavedShowingId(showingId);
@@ -296,7 +404,23 @@ export default function ShowingForm() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label>Category *</Label>
-              <Select value={category} onValueChange={(v) => { setCategory(v as Category); setItemId(''); }}>
+              {/* Switching away from Movie drops the standard passes with it.
+                  They are pre-ticked because a new film at the standard price
+                  takes them; an event is not that, and carrying the tick across
+                  would make a gala silently redeemable — which is precisely
+                  what the trigger this replaces existed to prevent. A festival
+                  pass ticked by hand stays ticked, because that is a decision
+                  rather than a default. */}
+              <Select
+                value={category}
+                onValueChange={(v) => {
+                  setCategory(v as Category);
+                  setItemId('');
+                  if (v !== 'movie') {
+                    dropDefaultPasses(passTypes.filter(t => t.is_default_for_movies));
+                  }
+                }}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="movie">Movie</SelectItem>
@@ -381,36 +505,95 @@ export default function ShowingForm() {
             </div>
             <div className="space-y-2">
               <Label>Base Ticket Price ($)</Label>
-              <Input type="number" step="0.01" value={ticketPrice} onChange={e => setTicketPrice(e.target.value)} />
+              <Input type="number" step="0.01" value={ticketPrice} onChange={e => handleTicketPriceChange(e.target.value)} />
               <p className="text-xs text-muted-foreground">Fallback price when no tiers are used</p>
             </div>
 
-            {/* Film pass eligibility. Only meaningful for movies — the database
-                forces it off for events and concerts regardless of what is
-                submitted here, so showing the control for them would be a lie. */}
-            {category === 'movie' && (
-              <div className="space-y-2 border-t border-border pt-4">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filmPassEligible}
-                    onChange={e => setFilmPassEligible(e.target.checked)}
-                    className="rounded"
-                  />
-                  <span className="font-semibold">Accept film passes at the door</span>
-                </label>
+            {/* Pass eligibility. Shown for every category now: the trigger that
+                forced events and live performances ineligible is gone, because
+                a festival pass covering a performance inside its run is the
+                point rather than drift. Which passes work here is the only
+                question left, and it is asked in one place for all three. */}
+            <div className="space-y-3 border-t border-border pt-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={passEligible}
+                  onChange={e => setPassEligible(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="font-semibold">Accept passes at the door</span>
+              </label>
+
+              {passTypes.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Standard screenings take passes. Turn this off for premium screenings — a pass
-                  covers a fixed amount, so a higher-priced film gives away more than intended.
+                  No pass types exist yet. Create one under Admin → Film Passes before tagging
+                  screenings.
                 </p>
-                {filmPassEligible && parseFloat(ticketPrice) > 8 && (
+              ) : !passEligible ? (
+                <p className="text-xs text-muted-foreground">
+                  No pass is valid at this screening. Anyone presenting one is turned away at the
+                  door with "not valid for this screening".
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Tick every pass that works here. A pass is valid at this screening only if it
+                    is ticked — there is no default.
+                  </p>
+                  {passTypes.map(pt => (
+                    <label
+                      key={pt.id}
+                      className="flex items-start gap-2 text-sm cursor-pointer rounded-md bg-secondary/40 px-3 py-2"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={eligiblePassTypeIds.includes(pt.id)}
+                        onChange={() => togglePassType(pt.id)}
+                        className="rounded mt-0.5"
+                      />
+                      <span className="min-w-0">
+                        <span className="font-medium">{pt.name}</span>
+                        {!pt.is_active && (
+                          <span className="text-muted-foreground"> · no longer sold</span>
+                        )}
+                        <span className="block text-xs text-muted-foreground">
+                          ${pt.redemption_price.toFixed(2)} per admission ·{' '}
+                          {pt.per_showing_use_limit === null
+                            ? 'no per-screening limit'
+                            : `up to ${pt.per_showing_use_limit} admission${
+                                pt.per_showing_use_limit === 1 ? '' : 's'
+                              } here`}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                  {eligiblePassTypeIds.length === 0 && (
+                    <p className="text-xs text-amber-500">
+                      Nothing ticked — this screening will accept no passes.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* The price rule, stated where it can be acted on. Passes deduct
+                  a fixed amount, so a screening above the standard face value
+                  gives away more than intended — editing the price unticks the
+                  standard passes for exactly that reason, and this says so
+                  rather than leaving the change to be noticed. */}
+              {category === 'movie' &&
+                parseFloat(ticketPrice) !== STANDARD_MOVIE_TICKET_PRICE &&
+                eligiblePassTypeIds.some(passId =>
+                  passTypes.find(t => t.id === passId)?.is_default_for_movies,
+                ) && (
                   <p className="text-xs text-amber-500">
-                    This screening is priced above the standard ${'8'}.00. Passes still deduct
-                    their usual amount — turn this off unless that is deliberate.
+                    This screening is not priced at the standard $
+                    {STANDARD_MOVIE_TICKET_PRICE.toFixed(2)}, but a standard pass is still ticked.
+                    A pass deducts a fixed amount whatever the seat costs — leave it only if that
+                    is deliberate.
                   </p>
                 )}
-              </div>
-            )}
+            </div>
 
             {/* Price Tiers. Hidden for assigned seating: there the tiers live in the
                 seat editor, which owns both the prices and which seats carry them.
