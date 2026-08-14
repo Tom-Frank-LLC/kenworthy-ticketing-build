@@ -1,60 +1,47 @@
-// Square Catalog two-way sync — SANDBOX ONLY.
-// Hard-coded to sandbox base URL and the sandbox access token env var.
-// Do not change either without an explicit go-live decision.
+// Square Catalog two-way sync for concession items.
+//
+// Credentials and API host come from _shared/square.ts like every other Square
+// function, so going live is a secrets change (SQUARE_ENV=production) rather
+// than a code edit. This file used to hardcode the sandbox host, guard against
+// any non-sandbox URL, and read SQUARE_SANDBOX_ACCESS_TOKEN by name — which is
+// why "Pull from Square" answered 500 on production, where that secret does not
+// exist. The reported environment now comes from the resolved config instead of
+// the string "sandbox", so the UI can never claim sandbox while charging live.
+//
+// CORS also matters here: supabase-js sends x-supabase-client-* headers, and the
+// hand-rolled header list this file carried omitted them, so the preflight could
+// fail before the function ever ran. It uses the shared list now.
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { json, preflight } from "../_shared/http.ts";
+import {
+  loadSquareConfig,
+  squareErrorMessage,
+  squareFetch,
+  type SquareConfig,
+} from "../_shared/square.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-const SQUARE_SANDBOX_BASE = "https://connect.squareupsandbox.com/v2";
-const SQUARE_VERSION = "2024-10-17";
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-
-async function squareFetch(
-  token: string,
+/** Call Square, or throw with Square's own message — never a silent empty result. */
+async function square(
+  config: SquareConfig,
   path: string,
-  init: RequestInit = {},
-) {
-  // Defensive: refuse if the URL is ever anything but sandbox.
-  const url = `${SQUARE_SANDBOX_BASE}${path}`;
-  if (!url.startsWith("https://connect.squareupsandbox.com/")) {
-    throw new Error("Refusing non-sandbox Square URL");
-  }
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Square-Version": SQUARE_VERSION,
-      "Content-Type": "application/json",
-      ...(init.headers ?? {}),
-    },
-  });
-  const text = await res.text();
-  let body: any = null;
-  try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
-  if (!res.ok) {
+  init: { method?: string; body?: unknown } = {},
+): Promise<any> {
+  const { ok, status, data } = await squareFetch(config, path, init);
+  if (!ok) {
     throw new Error(
-      `Square ${res.status}: ${body?.errors?.[0]?.detail ?? text}`,
+      `Square ${status}: ${squareErrorMessage(data, `${init.method ?? "GET"} ${path} failed`)}`,
     );
   }
-  return body;
+  return data ?? {};
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return preflight();
 
-  const token = Deno.env.get("SQUARE_SANDBOX_ACCESS_TOKEN");
-  if (!token) return json({ error: "SQUARE_SANDBOX_ACCESS_TOKEN not configured" }, 500);
+  const loaded = loadSquareConfig();
+  if (!loaded.ok) return json({ error: loaded.error }, 500);
+  const config = loaded.config;
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -78,10 +65,10 @@ Deno.serve(async (req) => {
   const action = payload.action ?? "pull";
 
   try {
-    if (action === "pull") return json(await pullAll(token, admin));
-    if (action === "push_item") return json(await pushItem(token, admin, payload.itemId));
-    if (action === "delete_item") return json(await deleteItem(token, admin, payload));
-    if (action === "verify") return json({ ok: true, environment: "sandbox" });
+    if (action === "pull") return json(await pullAll(config, admin));
+    if (action === "push_item") return json(await pushItem(config, admin, payload.itemId));
+    if (action === "delete_item") return json(await deleteItem(config, payload));
+    if (action === "verify") return json({ ok: true, environment: config.environment });
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (e: any) {
     console.error("square-catalog-sync error", e);
@@ -90,13 +77,13 @@ Deno.serve(async (req) => {
 });
 
 // --- PULL ---------------------------------------------------------------
-async function pullAll(token: string, admin: any) {
+async function pullAll(config: SquareConfig, admin: any) {
   let cursor: string | undefined = undefined;
   const items: any[] = [];
   do {
     const q = new URLSearchParams({ types: "ITEM,CATEGORY" });
     if (cursor) q.set("cursor", cursor);
-    const res = await squareFetch(token, `/catalog/list?${q}`);
+    const res = await square(config, `/catalog/list?${q}`);
     for (const o of res.objects ?? []) items.push(o);
     cursor = res.cursor;
   } while (cursor);
@@ -137,11 +124,11 @@ async function pullAll(token: string, admin: any) {
     upserts++;
   }
 
-  return { ok: true, pulled: upserts, environment: "sandbox" };
+  return { ok: true, pulled: upserts, environment: config.environment };
 }
 
 // --- PUSH ---------------------------------------------------------------
-async function pushItem(token: string, admin: any, itemId: string) {
+async function pushItem(config: SquareConfig, admin: any, itemId: string) {
   if (!itemId) throw new Error("itemId required");
   const { data: item, error } = await admin
     .from("concession_items")
@@ -150,7 +137,7 @@ async function pushItem(token: string, admin: any, itemId: string) {
     .single();
   if (error || !item) throw new Error(error?.message ?? "Item not found");
   if (item.is_combo) {
-    return { ok: true, skipped: "combo", environment: "sandbox" };
+    return { ok: true, skipped: "combo", environment: config.environment };
   }
 
   const catalogId = item.square_catalog_id ?? `#${item.id}`;
@@ -186,9 +173,9 @@ async function pushItem(token: string, admin: any, itemId: string) {
     },
   };
 
-  const res = await squareFetch(token, "/catalog/object", {
+  const res = await square(config, "/catalog/object", {
     method: "POST",
-    body: JSON.stringify(objectPayload),
+    body: objectPayload,
   });
 
   const returned = res.catalog_object;
@@ -209,17 +196,16 @@ async function pushItem(token: string, admin: any, itemId: string) {
     ok: true,
     square_id: returned?.id,
     variation_id: returnedVar?.id,
-    environment: "sandbox",
+    environment: config.environment,
   };
 }
 
 async function deleteItem(
-  token: string,
-  _admin: any,
+  config: SquareConfig,
   payload: { square_catalog_id?: string },
 ) {
   const id = payload.square_catalog_id;
   if (!id) return { ok: true, skipped: "no square id" };
-  await squareFetch(token, `/catalog/object/${id}`, { method: "DELETE" });
-  return { ok: true, deleted: id, environment: "sandbox" };
+  await square(config, `/catalog/object/${id}`, { method: "DELETE" });
+  return { ok: true, deleted: id, environment: config.environment };
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeFunction } from '@/lib/functions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,25 +59,36 @@ export default function ConcessionItemsTab() {
     setItems((data as ConcessionItem[]) || []);
   };
 
+  // invokeFunction unwraps the function's own error text. Plain
+  // supabase.functions.invoke reports every 500 as "non-2xx status code", which
+  // is how a missing Square secret reached staff as an unreadable toast.
   const pushToSquare = async (itemId: string, isCombo: boolean) => {
     if (isCombo) return; // combos not synced
-    const { data, error } = await supabase.functions.invoke('square-catalog-sync', {
-      body: { action: 'push_item', itemId },
-    });
-    if (error) toast.error(`Square push failed: ${error.message}`);
-    else if ((data as any)?.error) toast.error(`Square: ${(data as any).error}`);
+    try {
+      await invokeFunction('square-catalog-sync', { action: 'push_item', itemId });
+    } catch (e) {
+      toast.error(`Square push failed: ${(e as Error).message}`);
+    }
   };
 
   const pullFromSquare = async () => {
     setSyncing(true);
-    const { data, error } = await supabase.functions.invoke('square-catalog-sync', {
-      body: { action: 'pull' },
-    });
-    setSyncing(false);
-    if (error) { toast.error(`Sync failed: ${error.message}`); return; }
-    if ((data as any)?.error) { toast.error(`Sync: ${(data as any).error}`); return; }
-    toast.success(`Pulled ${(data as any)?.pulled ?? 0} items from Square (sandbox)`);
-    loadItems();
+    try {
+      const result = await invokeFunction<{ pulled?: number; environment?: string }>(
+        'square-catalog-sync',
+        { action: 'pull' },
+      );
+      // The environment is whatever the server resolved — never assumed here, so
+      // this can't read "sandbox" while the pull hit the live catalog.
+      toast.success(
+        `Pulled ${result?.pulled ?? 0} items from Square (${result?.environment ?? 'unknown'})`,
+      );
+      loadItems();
+    } catch (e) {
+      toast.error(`Sync failed: ${(e as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   useEffect(() => { loadItems(); }, []);
@@ -139,9 +151,16 @@ export default function ConcessionItemsTab() {
     if (error) { toast.error(error.message); return; }
     toast.success('Item deleted');
     if (target?.square_catalog_id) {
-      await supabase.functions.invoke('square-catalog-sync', {
-        body: { action: 'delete_item', square_catalog_id: target.square_catalog_id },
-      });
+      try {
+        await invokeFunction('square-catalog-sync', {
+          action: 'delete_item',
+          square_catalog_id: target.square_catalog_id,
+        });
+      } catch (e) {
+        // The row is already gone locally; say so rather than leave a silent
+        // orphan sitting in the Square catalog.
+        toast.error(`Deleted here, but Square delete failed: ${(e as Error).message}`);
+      }
     }
     loadItems();
   };
