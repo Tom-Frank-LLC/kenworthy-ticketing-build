@@ -149,7 +149,19 @@ one UI-created showing in the window, that exposure is nil.
   unit tests pass.
 - The paging loop was replayed against both projects' live REST APIs: 1,088 and
   1,087 titles returned, ending at *Young Washington*, no duplicates.
-- Still to do in a browser: open the **Aug 30 Train Dreams** showing and confirm
-  the film field now shows *Train Dreams ~ Roots of a Nation: An Idaho Film
-  Festival* instead of an empty box. That is the original report, and it is the
-  one check that closes it.
+- **Confirmed in a browser (Aug 14):** the showing that surfaced this now shows
+  its film instead of an empty box. That was the original report, and it is
+  closed.
+
+Deployed to staging (`c413f8ac`) and production (`39345b14`) on Aug 14. Frontend
+worker only — no migrations pushed and no edge functions deployed. The prod page
+appeared to serve the old bundle for a few minutes; that was a Cloudflare edge
+cache `HIT` on `index.html`, not a bad deploy, and a cache-busted request served
+the new hash straight away.
+
+## Follow-up not covered here
+
+Any **QuickBooks export already handed to the bookkeeper** was built from the
+truncated showings map, so live-event and concert takings past the cut were
+booked as film revenue. Those exports are worth re-running now that the map
+reads all ~1,789 showings.
