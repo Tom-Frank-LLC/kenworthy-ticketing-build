@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import {
   ShoppingCart, Film, User, Loader2, CheckCircle2, AlertTriangle,
   RotateCcw, Banknote, CreditCard, Minus, Plus, UtensilsCrossed, Ticket,
+  ScanLine,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -30,6 +31,7 @@ import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatShowtime } from '@/lib/datetime';
+import TicketScanner from './TicketScanner';
 
 interface ShowingOption {
   id: string;
@@ -82,6 +84,17 @@ export default function StaffPOS() {
   const [refunding, setRefunding] = useState(false);
 
   const [dailyStats, setDailyStats] = useState({ revenue: 0, ticketCount: 0, refundCount: 0 });
+
+  // The door, without leaving the till.
+  //
+  // An overlay rather than a fourth tab, and rather than a link to
+  // /admin/scanner. A tab would box the camera inside the page furniture, which
+  // is the thing the scanner was just rebuilt to stop doing; a link would throw
+  // away a half-rung sale — selected seats, patron details, a donation the
+  // patron just agreed to — every time someone at the counter is handed a
+  // ticket to check. Unmounting is what stops the camera, so closing this
+  // releases the device exactly as navigating away used to.
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const loadDailyStats = useCallback(async () => {
     const todayStart = new Date();
@@ -582,6 +595,14 @@ export default function StaffPOS() {
         <ShoppingCart className="h-7 w-7 text-primary" />
         <h1 className="font-display text-3xl font-bold">Staff POS</h1>
         <Badge variant="secondary">Box Office</Badge>
+        <Button
+          variant="secondary"
+          className="ml-auto"
+          onClick={() => setScannerOpen(true)}
+        >
+          <ScanLine className="h-4 w-4 mr-2" />
+          Open Scanner
+        </Button>
       </div>
       <p className="text-muted-foreground mb-6">Sell tickets and concessions to walk-in patrons</p>
 
@@ -916,6 +937,11 @@ export default function StaffPOS() {
           <FilmPassPOS />
         </TabsContent>
       </Tabs>
+
+      {/* Mounted only while open, so the camera exists exactly as long as the
+          scanner is on screen. The POS underneath keeps its state — the sale in
+          progress is still there when staff come back. */}
+      {scannerOpen && <TicketScanner onExit={() => setScannerOpen(false)} />}
 
       {/* Refund confirmation dialog */}
       <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
