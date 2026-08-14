@@ -2370,6 +2370,7 @@ export type Database = {
           created_at: string
           expires_at: string | null
           id: string
+          pass_number: number
           pass_type_id: string
           payment_method: string
           price_paid: number | null
@@ -2390,6 +2391,7 @@ export type Database = {
           created_at?: string
           expires_at?: string | null
           id?: string
+          pass_number?: number
           pass_type_id: string
           payment_method?: string
           price_paid?: number | null
@@ -2410,6 +2412,7 @@ export type Database = {
           created_at?: string
           expires_at?: string | null
           id?: string
+          pass_number?: number
           pass_type_id?: string
           payment_method?: string
           price_paid?: number | null
@@ -2708,6 +2711,16 @@ export type Database = {
       resolve_account_id: {
         Args: { p_source_key: string; p_source_type: string }
         Returns: string
+      }
+      search_film_passes: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_query?: string | null
+          p_sort?: string
+          p_status?: string
+        }
+        Returns: Json
       }
       showing_attendees: {
         Args: { p_showing_ids: string[] }

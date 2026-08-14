@@ -10,11 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import {
   Plus, Trash2, CreditCard, DollarSign, Printer, Loader2, Ban, QrCode,
-  Package, Mail, Store, ScanLine, Pencil,
+  Package, Mail, Store, ScanLine, Pencil, Search, X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { invokeFunction } from '@/lib/functions';
-import { StickerSheet, type StickerPassType } from './StickerSheet';
+import { StickerSheet, type StickerPassType, type Sticker } from './StickerSheet';
 import { formatShowtime } from '@/lib/datetime';
 import {
   formatMailingAddress,
@@ -50,18 +50,103 @@ const BLANK_FORM = {
   is_default_for_movies: true,
 };
 
-interface UserPass {
+/**
+ * A row as `search_film_passes` returns it — already flattened across the pass,
+ * its type, the account it belongs to, and the order it was bought under.
+ *
+ * The flattening happens in SQL rather than here because a bearer pass has no
+ * account at all: its only contact details live on the order. Assembling that
+ * client-side would mean this list could only search what it had already
+ * loaded, which is the bug the whole feature exists to remove.
+ */
+interface SearchedPass {
   id: string;
+  pass_number: number | null;
   qr_code: string | null;
   status: string;
   remaining_balance: number | null;
-  payment_method: string;
+  payment_method: string | null;
   purchased_at: string;
   activated_at: string | null;
   expires_at: string | null;
   user_id: string | null;
-  profile: { display_name: string | null } | null;
-  pass_type: { name: string } | null;
+  pass_type_name: string | null;
+  holder_name: string | null;
+  holder_email: string | null;
+  holder_phone: string | null;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  buyer_phone: string | null;
+  redemption_count: number;
+}
+
+interface PassSearchResult {
+  /** Matching the search *and* the status filter. */
+  total: number;
+  /** Per status, matching the search but before the status filter. */
+  counts: Record<string, number>;
+  passes: SearchedPass[];
+}
+
+/**
+ * Statuses a pass may be deleted in — the same three the edge function
+ * enforces. Repeated here only to decide whether to draw the button; the
+ * server is the authority, and a browser with a stale bundle that offers the
+ * button anyway gets a 409 rather than a delete.
+ */
+const DELETABLE_STATUSES = new Set(['void', 'unassigned', 'depleted']);
+
+const PAGE_SIZE = 50;
+
+/** Value, label. 'issued' and 'all' are views; the rest are literal statuses. */
+const STATUS_FILTERS: { value: string; label: string }[] = [
+  { value: 'issued', label: 'Issued (hides blanks)' },
+  { value: 'all', label: 'Everything' },
+  { value: 'active', label: 'Active' },
+  { value: 'depleted', label: 'Used up' },
+  { value: 'expired', label: 'Expired' },
+  { value: 'void', label: 'Cancelled' },
+  { value: 'unassigned', label: 'Blank' },
+];
+
+const SORTS: { value: string; label: string }[] = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'expiring', label: 'Expiring soonest' },
+  { value: 'balance_desc', label: 'Highest balance' },
+  { value: 'balance_asc', label: 'Lowest balance' },
+  { value: 'name', label: 'Name (A–Z)' },
+  { value: 'number', label: 'Pass number' },
+];
+
+/** The order the summary chips read in: live money first, housekeeping last. */
+const COUNT_ORDER = ['active', 'depleted', 'expired', 'void', 'unassigned'];
+
+/**
+ * Who the pass belongs to, in one line.
+ *
+ * The fallbacks are ordered by how much they are worth knowing: the account
+ * name, then the name it was bought under, then the honest admission that a
+ * bearer pass has no owner — which is a fact about the pass, not a gap in the
+ * record, and reads wrongly as "Unknown".
+ */
+function holderLabel(p: SearchedPass): string {
+  return p.holder_name || p.buyer_name || (p.user_id ? 'Unknown user' : 'Bearer pass');
+}
+
+/** Contact lines worth showing, deduplicated — holder and buyer often agree. */
+function contactLines(p: SearchedPass): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of [p.holder_email, p.buyer_email, p.holder_phone, p.buyer_phone]) {
+    const trimmed = (v ?? '').trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
 }
 
 interface BatchSummary {
@@ -93,7 +178,6 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function FilmPassesTab() {
   const [passTypes, setPassTypes] = useState<FilmPassType[]>([]);
-  const [userPasses, setUserPasses] = useState<UserPass[]>([]);
   const [showForm, setShowForm] = useState(false);
   // The same form creates and edits. Pass types gained two fields that decide
   // real behaviour at the door, and there was no edit path at all — a type
@@ -115,34 +199,77 @@ export default function FilmPassesTab() {
   const [batchQuantity, setBatchQuantity] = useState('30');
   const [minting, setMinting] = useState(false);
   const [sheet, setSheet] = useState<
-    { codes: string[]; passType: StickerPassType; batchId: string } | null
+    { stickers: Sticker[]; passType: StickerPassType; batchId: string } | null
   >(null);
 
+  // Issued passes — searched server-side, because the list is longer than a page
+  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('issued');
+  const [sort, setSort] = useState('newest');
+  const [passes, setPasses] = useState<SearchedPass[]>([]);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [total, setTotal] = useState(0);
+  const [loadingPasses, setLoadingPasses] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [passesError, setPassesError] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
-    const [typesRes, passesRes] = await Promise.all([
-      supabase.from('film_pass_types').select('*').order('created_at', { ascending: false }),
-      supabase
-        .from('user_film_passes')
-        .select(
-          '*, profiles!user_film_passes_user_id_fkey(display_name), film_pass_types!user_film_passes_pass_type_id_fkey(name)',
-        )
-        // Blanks are inventory, not passes: a batch of 300 would bury every real
-        // pass in this list. They are counted under Print Runs instead.
-        .neq('status', 'unassigned')
-        .order('purchased_at', { ascending: false })
-        .limit(50),
-    ]);
-    const types = (typesRes.data || []) as FilmPassType[];
+    const { data } = await supabase
+      .from('film_pass_types')
+      .select('*')
+      .order('created_at', { ascending: false });
+    const types = (data || []) as FilmPassType[];
     setPassTypes(types);
     if (types.length > 0 && !batchTypeId) setBatchTypeId(types[0].id);
-    setUserPasses(
-      (passesRes.data || []).map((p: any) => ({
-        ...p,
-        profile: p.profiles,
-        pass_type: p.film_pass_types,
-      })),
-    );
   }, [batchTypeId]);
+
+  // Typing is not a query. Without this, every keystroke is a round trip and
+  // the answers race each other back — the list settling on whichever reply
+  // happened to arrive last rather than on what was typed.
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  /**
+   * One RPC serves the page, the total, and the per-status counts.
+   *
+   * `offset` is the only argument because the rest of the search lives in
+   * state: changing the query, filter or sort rebuilds this callback, which
+   * re-runs the effect below from offset 0. Appending is the one case that
+   * needs to say where it is up to.
+   */
+  const loadPasses = useCallback(async (offset = 0) => {
+    if (offset === 0) setLoadingPasses(true);
+    else setLoadingMore(true);
+    try {
+      const { data, error } = await supabase.rpc('search_film_passes', {
+        p_query: query.trim() || null,
+        p_status: statusFilter,
+        p_sort: sort,
+        p_limit: PAGE_SIZE,
+        p_offset: offset,
+      });
+      if (error) throw error;
+
+      const result = (data ?? { total: 0, counts: {}, passes: [] }) as unknown as PassSearchResult;
+      setPasses(prev => (offset === 0 ? result.passes : [...prev, ...result.passes]));
+      setCounts(result.counts ?? {});
+      setTotal(result.total ?? 0);
+      setPassesError(null);
+    } catch (err) {
+      // Surfaced rather than swallowed, for the same reason the pickup queue
+      // is: an empty list that is really a failed fetch answers "is this pass
+      // in the system?" with a confident no.
+      setPassesError(err instanceof Error ? err.message : 'Could not search the passes');
+    } finally {
+      setLoadingPasses(false);
+      setLoadingMore(false);
+    }
+  }, [query, statusFilter, sort]);
+
+  useEffect(() => { loadPasses(0); }, [loadPasses]);
 
   const loadBatches = useCallback(async () => {
     try {
@@ -297,7 +424,7 @@ export default function FilmPassesTab() {
         batch_id: string;
         quantity: number;
         pass_type: StickerPassType;
-        passes: { qr_code: string }[];
+        passes: { qr_code: string; pass_number: number | null }[];
       }>('film-pass-batch', {
         action: 'create',
         pass_type_id: batchTypeId,
@@ -305,7 +432,7 @@ export default function FilmPassesTab() {
       });
 
       setSheet({
-        codes: data.passes.map(p => p.qr_code),
+        stickers: data.passes.map(p => ({ code: p.qr_code, pass_number: p.pass_number ?? null })),
         passType: data.pass_type,
         batchId: data.batch_id,
       });
@@ -323,35 +450,91 @@ export default function FilmPassesTab() {
       const data = await invokeFunction<{
         batch_id: string;
         pass_type: StickerPassType | null;
-        passes: { qr_code: string; status: string }[];
+        passes: { qr_code: string; pass_number: number | null; status: string }[];
       }>('film-pass-batch', { action: 'list', batch_id: batchId });
 
       if (!data.pass_type) { toast.error('That batch has no pass type'); return; }
       // Reprinting only the blanks, never the activated ones. A second sticker
       // carrying a code already stuck to somebody's pass is a duplicate pass.
-      const blanks = data.passes.filter(p => p.status === 'unassigned').map(p => p.qr_code);
+      const blanks = data.passes
+        .filter(p => p.status === 'unassigned')
+        .map(p => ({ code: p.qr_code, pass_number: p.pass_number ?? null }));
       if (blanks.length === 0) {
         toast.info('Every sticker in that batch has already been activated.');
         return;
       }
-      setSheet({ codes: blanks, passType: data.pass_type, batchId: data.batch_id });
+      setSheet({ stickers: blanks, passType: data.pass_type, batchId: data.batch_id });
     } catch (err: any) {
       toast.error(err.message || 'Could not load that batch');
     }
   }
 
-  async function voidPass(pass: UserPass) {
-    const label = pass.profile?.display_name || pass.qr_code || 'this pass';
+  /** "Pass 1042 (Jane Smith)" — what a confirmation dialog has to name. */
+  function passLabel(pass: SearchedPass): string {
+    const id = pass.pass_number ? `Pass ${pass.pass_number}` : pass.qr_code || 'this pass';
+    return `${id} (${holderLabel(pass)})`;
+  }
+
+  async function voidPass(pass: SearchedPass) {
     if (!confirm(
-      `Cancel ${label}?\n\nThe pass stops working immediately. Any balance on it is lost — refund from the till separately if that is the agreement.`,
+      `Cancel ${passLabel(pass)}?\n\nThe pass stops working immediately. Any balance on it is lost — refund from the till separately if that is the agreement.`,
     )) return;
 
     try {
       await invokeFunction('film-pass-checkout', { action: 'void', pass_id: pass.id });
       toast.success('Pass cancelled');
-      loadData();
+      loadPasses(0);
     } catch (err: any) {
       toast.error(err.message || 'Could not cancel that pass');
+    }
+  }
+
+  /**
+   * Delete: housekeeping, and irreversible.
+   *
+   * The dialog is built rather than fixed because the consequences differ by
+   * status, and the one thing a person needs at the moment of clicking is the
+   * consequence *of this pass*. A generic "are you sure?" gives them nothing
+   * to be sure about — most importantly it hides the redemption count, which
+   * is the only warning that deleting this row also removes people from past
+   * attendance figures.
+   */
+  async function deletePass(pass: SearchedPass) {
+    const lines = [
+      `Delete ${passLabel(pass)}?`,
+      '',
+      'The pass record is removed permanently. This cannot be undone.',
+    ];
+
+    if (pass.redemption_count > 0) {
+      lines.push(
+        '',
+        `${pass.redemption_count} recorded admission${pass.redemption_count === 1 ? '' : 's'} ` +
+          'will be deleted with it, so past attendance figures will drop by that much.',
+      );
+    }
+    if (pass.status === 'unassigned') {
+      lines.push('', 'If that sticker has been printed, it will stop working when scanned.');
+    }
+    if (!confirm(lines.join('\n'))) return;
+
+    try {
+      const data = await invokeFunction<{ redemptions_removed: number }>('film-pass-checkout', {
+        action: 'delete',
+        pass_id: pass.id,
+      });
+      // Reported after the fact as well as warned about before it: the count
+      // in the dialog was read from a list that may have been minutes old.
+      toast.success(
+        data.redemptions_removed > 0
+          ? `Pass deleted, along with ${data.redemptions_removed} admission${
+              data.redemptions_removed === 1 ? '' : 's'
+            }.`
+          : 'Pass deleted',
+      );
+      loadPasses(0);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not delete that pass');
     }
   }
 
@@ -374,7 +557,7 @@ export default function FilmPassesTab() {
           that printed a blank page. */}
       {sheet && (
         <StickerSheet
-          codes={sheet.codes}
+          stickers={sheet.stickers}
           passType={sheet.passType}
           batchId={sheet.batchId}
           onDone={() => setSheet(null)}
@@ -694,59 +877,219 @@ export default function FilmPassesTab() {
         </CardContent>
       </Card>
 
-      {/* Issued passes */}
+      {/* ---- Issued passes ----
+          Searched, filtered and sorted in the database. The list used to be
+          the newest 50 rows with no controls, which is fine as a dashboard and
+          wrong as a register: the pass somebody is asking about at the counter
+          is exactly the one that has aged off the bottom. */}
       <h2 className="font-display text-xl font-bold pt-4">Issued Passes</h2>
-      <div className="space-y-3">
-        {userPasses.map(up => (
-          <Card key={up.id} className="glass">
-            <CardContent className="p-4 flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3 min-w-0 flex-1">
-                <DollarSign className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">
-                    {up.profile?.display_name || (up.user_id ? 'Unknown user' : 'Bearer pass')}
-                  </p>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    <Badge variant="outline" className="text-xs">{up.pass_type?.name}</Badge>
-                    {up.remaining_balance !== null && (
-                      <Badge variant="secondary" className="text-xs">
-                        ${Number(up.remaining_balance).toFixed(2)} remaining
+
+      <Card className="glass">
+        <CardContent className="p-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+            <div className="space-y-2">
+              <Label htmlFor="pass-search">Search</Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="pass-search"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Pass number, name, email, phone or QR code"
+                  className="pl-8 pr-8"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    aria-label="Clear search"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="sm:w-52"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STATUS_FILTERS.map(s => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Sort</Label>
+              <Select value={sort} onValueChange={setSort}>
+                <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SORTS.map(s => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Counts describe the search, not the current filter — so they say
+              in advance what switching the filter will turn up, and clicking
+              one is the fastest way to get there. */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {COUNT_ORDER.filter(s => (counts[s] ?? 0) > 0).map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
+              >
+                <Badge
+                  variant={statusFilter === s ? (STATUS_VARIANT[s] ?? 'secondary') : 'outline'}
+                  className="text-xs cursor-pointer"
+                >
+                  {counts[s]} {STATUS_LABEL[s] ?? s}
+                </Badge>
+              </button>
+            ))}
+            {Object.keys(counts).length === 0 && !loadingPasses && (
+              <span className="text-xs text-muted-foreground">Nothing matches that search.</span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {passesError ? (
+        <div className="space-y-2">
+          <p className="text-sm text-destructive">Could not search the passes — {passesError}</p>
+          <p className="text-xs text-muted-foreground">
+            This is not the same as "no such pass". Retry before telling anyone their pass is
+            not in the system.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => loadPasses(0)}>Retry</Button>
+        </div>
+      ) : loadingPasses ? (
+        <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
+          <Loader2 className="h-4 w-4 animate-spin" /> Searching…
+        </p>
+      ) : passes.length === 0 ? (
+        <p className="text-muted-foreground text-center py-8">
+          {query.trim()
+            ? 'No pass matches that search.'
+            : 'No passes issued yet.'}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Showing {passes.length} of {total}
+            {query.trim() ? ' matching' : ''} {total === 1 ? 'pass' : 'passes'}.
+          </p>
+
+          {passes.map(up => (
+            <Card key={up.id} className="glass">
+              <CardContent className="p-4 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <DollarSign className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium flex flex-wrap items-baseline gap-x-2">
+                      {up.pass_number !== null && (
+                        <span className="font-mono text-sm text-muted-foreground">
+                          #{up.pass_number}
+                        </span>
+                      )}
+                      <span>{holderLabel(up)}</span>
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {up.pass_type_name && (
+                        <Badge variant="outline" className="text-xs">{up.pass_type_name}</Badge>
+                      )}
+                      {up.remaining_balance !== null && (
+                        <Badge variant="secondary" className="text-xs">
+                          ${Number(up.remaining_balance).toFixed(2)} remaining
+                        </Badge>
+                      )}
+                      <Badge variant={STATUS_VARIANT[up.status] ?? 'secondary'} className="text-xs">
+                        {STATUS_LABEL[up.status] ?? up.status}
                       </Badge>
+                      {up.payment_method && (
+                        <Badge variant="outline" className="text-xs">{up.payment_method}</Badge>
+                      )}
+                      {up.redemption_count > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          {up.redemption_count} admitted
+                        </Badge>
+                      )}
+                      {up.expires_at && (
+                        <Badge
+                          variant={new Date(up.expires_at) < new Date() ? 'destructive' : 'secondary'}
+                          className="text-xs"
+                        >
+                          {new Date(up.expires_at) < new Date()
+                            ? 'Expired'
+                            : `Expires ${formatShowtime(up.expires_at, 'MMM d, yyyy')}`}
+                        </Badge>
+                      )}
+                    </div>
+                    {/* Shown because they are searchable: a staff member who
+                        found this row by typing an email should be able to see
+                        which email matched. */}
+                    {contactLines(up).length > 0 && (
+                      <p className="text-xs text-muted-foreground break-all mt-1">
+                        {contactLines(up).join(' · ')}
+                      </p>
                     )}
-                    <Badge variant={STATUS_VARIANT[up.status] ?? 'secondary'} className="text-xs">
-                      {STATUS_LABEL[up.status] ?? up.status}
-                    </Badge>
-                    <Badge variant="outline" className="text-xs">{up.payment_method}</Badge>
-                    {up.expires_at && (
-                      <Badge
-                        variant={new Date(up.expires_at) < new Date() ? 'destructive' : 'secondary'}
-                        className="text-xs"
-                      >
-                        {new Date(up.expires_at) < new Date()
-                          ? 'Expired'
-                          : `Expires ${formatShowtime(up.expires_at, 'MMM d, yyyy')}`}
-                      </Badge>
+                    {up.qr_code && (
+                      <p className="text-[11px] font-mono text-muted-foreground break-all mt-1">
+                        {up.qr_code}
+                      </p>
                     )}
                   </div>
-                  {up.qr_code && (
-                    <p className="text-[11px] font-mono text-muted-foreground break-all mt-1">
-                      {up.qr_code}
-                    </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {up.status !== 'void' && (
+                    <Button variant="ghost" size="sm" onClick={() => voidPass(up)} title="Cancel this pass">
+                      <Ban className="h-4 w-4 text-destructive" />
+                    </Button>
+                  )}
+                  {/* Active and expired passes are absent here on purpose:
+                      cancel is the step that decides a pass is finished, and
+                      delete only clears up after it. */}
+                  {DELETABLE_STATUSES.has(up.status) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deletePass(up)}
+                      title="Delete this pass permanently"
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   )}
                 </div>
-              </div>
-              {up.status !== 'void' && (
-                <Button variant="ghost" size="sm" onClick={() => voidPass(up)} title="Cancel this pass">
-                  <Ban className="h-4 w-4 text-destructive" />
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-        {userPasses.length === 0 && (
-          <p className="text-muted-foreground text-center py-8">No passes issued yet.</p>
-        )}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+
+          {passes.length < total && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loadingMore}
+                onClick={() => loadPasses(passes.length)}
+              >
+                {loadingMore ? (
+                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Loading…</>
+                ) : (
+                  `Show ${Math.min(PAGE_SIZE, total - passes.length)} more`
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

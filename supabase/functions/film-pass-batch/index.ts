@@ -70,9 +70,13 @@ Deno.serve(async (req: Request) => {
 
     const { data, error } = await admin
       .from('user_film_passes')
-      .select('id, qr_code, status, batch_id, created_at, film_pass_types!user_film_passes_pass_type_id_fkey(name, price, initial_balance, redemption_price)')
+      .select('id, qr_code, pass_number, status, batch_id, created_at, film_pass_types!user_film_passes_pass_type_id_fkey(name, price, initial_balance, redemption_price)')
       .eq('batch_id', batchId)
-      .order('created_at');
+      // By number rather than by created_at: a batch is minted in one insert,
+      // so its rows can share a timestamp to the microsecond, and a reprinted
+      // sheet that shuffles its own order is a sheet nobody can file against
+      // the original.
+      .order('pass_number');
 
     if (error) {
       console.error('[film-pass-batch] list failed', error);
@@ -85,6 +89,7 @@ Deno.serve(async (req: Request) => {
       passes: (data || []).map((p: any) => ({
         id: p.id,
         qr_code: p.qr_code,
+        pass_number: p.pass_number ?? null,
         status: p.status,
       })),
     });
@@ -169,10 +174,15 @@ Deno.serve(async (req: Request) => {
     expires_at: null,
   }));
 
+  // pass_number is deliberately absent from `rows`: it comes from the column
+  // default, so the sequence is the only thing that ever picks one and two
+  // simultaneous print runs cannot land on the same number. Selected back
+  // because the sheet has to print it.
   const { data: created, error } = await admin
     .from('user_film_passes')
     .insert(rows)
-    .select('id, qr_code');
+    .select('id, qr_code, pass_number')
+    .order('pass_number');
 
   if (error || !created) {
     console.error('[film-pass-batch] mint failed', error);
@@ -193,6 +203,10 @@ Deno.serve(async (req: Request) => {
       // recompute it and drift.
       admissions: Math.floor(Number(passType.initial_balance) / Number(passType.redemption_price)),
     },
-    passes: created.map((p: any) => ({ id: p.id, qr_code: p.qr_code })),
+    passes: created.map((p: any) => ({
+      id: p.id,
+      qr_code: p.qr_code,
+      pass_number: p.pass_number ?? null,
+    })),
   });
 });

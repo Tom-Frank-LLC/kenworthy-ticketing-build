@@ -9,6 +9,21 @@ export interface StickerPassType {
 }
 
 /**
+ * One sticker: the scannable half and the sayable half.
+ *
+ * These travel together rather than as two parallel arrays because they are
+ * two names for the same object, and a pair of arrays that drift by one prints
+ * a sheet where every number is attached to the wrong code — a defect no test
+ * of either array alone would catch, and one that only shows up at the counter
+ * weeks later.
+ */
+export interface Sticker {
+  code: string;
+  /** NULL only for a batch minted before pass numbers existed. */
+  pass_number: number | null;
+}
+
+/**
  * A printable sheet of blank film-pass QR stickers.
  *
  * What is deliberately *not* on a sticker: the balance, the expiry, the
@@ -19,6 +34,15 @@ export interface StickerPassType {
  * The code itself is printed beneath each QR in monospace, so a sticker with a
  * scuffed or badly-printed code can still be typed in by hand rather than
  * thrown away.
+ *
+ * Above it, larger, is the pass number. It is the same identifier said in a
+ * form a person can use: "pass 1042" survives a phone call and a handwritten
+ * note, and `PASS:9f3c1a2e-...` survives neither. It is printed rather than
+ * merely stored because a number nobody can read off the pass is a number the
+ * admin search cannot be given.
+ *
+ * It is not a secret and does not need to be. The number identifies; the QR
+ * authorises. Everything that spends a balance keys off the code.
  *
  * ---------------------------------------------------------------------------
  * Why this renders through a portal
@@ -56,12 +80,12 @@ export interface StickerPassType {
  * the same in kind — make the element genuinely belong to the surface it is on.
  */
 export function StickerSheet({
-  codes,
+  stickers,
   passType,
   batchId,
   onDone,
 }: {
-  codes: string[];
+  stickers: Sticker[];
   passType: StickerPassType;
   batchId: string;
   onDone: () => void;
@@ -123,10 +147,19 @@ export function StickerSheet({
           color: #444;
           margin-bottom: 0.05in;
         }
+        /* Bigger than the code beneath it on purpose: this is the line
+           somebody reads aloud or writes on a note, and the uuid below it is
+           the fallback for when a scanner cannot manage the QR. */
+        .sticker__number {
+          font: 700 9pt/1.2 Helvetica, Arial, sans-serif;
+          color: #000;
+          letter-spacing: 0.02em;
+          margin-top: 0.04in;
+        }
         .sticker__code {
           font: 400 5pt/1.15 'SFMono-Regular', Consolas, monospace;
           color: #333;
-          margin-top: 0.05in;
+          margin-top: 0.02in;
           word-break: break-all;
         }
         /* Screen-only controls, coloured for this white sheet rather than for
@@ -168,7 +201,7 @@ export function StickerSheet({
         </button>
         <div className="text-sm text-neutral-600">
           <span className="font-medium text-black">
-            {codes.length} × {passType.name}
+            {stickers.length} × {passType.name}
           </span>
           {' — '}batch {batchId.slice(0, 8)}, each activates to $
           {passType.initial_balance.toFixed(2)} ({admissions} films) when scanned at the counter
@@ -176,21 +209,27 @@ export function StickerSheet({
       </div>
 
       <div className="sticker-sheet__grid">
-        {codes.map(code => (
-          <div className="sticker" key={code}>
+        {stickers.map(sticker => (
+          <div className="sticker" key={sticker.code}>
             <div className="sticker__name">{passType.name}</div>
             <div className="sticker__sub">The Kenworthy · {admissions} films</div>
             {/* Explicit colours: the admin UI may be in dark mode, and a QR
                 inheriting a light foreground on white will not scan. */}
             <QRCodeSVG
-              value={code}
+              value={sticker.code}
               size={104}
               level="M"
               marginSize={0}
               bgColor="#ffffff"
               fgColor="#000000"
             />
-            <div className="sticker__code">{code}</div>
+            {/* Omitted rather than faked when absent: a reprint of a batch
+                minted before pass numbers existed has none, and printing
+                "No. —" on a sticker invites somebody to search for it. */}
+            {sticker.pass_number !== null && (
+              <div className="sticker__number">No. {sticker.pass_number}</div>
+            )}
+            <div className="sticker__code">{sticker.code}</div>
           </div>
         ))}
       </div>
