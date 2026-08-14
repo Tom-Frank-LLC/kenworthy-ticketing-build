@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
 import { SeatTierEditor, type SeatTierEditorHandle } from '@/components/admin/SeatTierEditor';
 import { instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import {
   STANDARD_MOVIE_TICKET_PRICE,
   fetchPassTypes,
@@ -83,7 +84,22 @@ export default function ShowingForm() {
     if (!isAdmin) { navigate('/'); return; }
 
     Promise.all([
-      supabase.from('movies').select('id, title, is_active, release_year').order('title'),
+      // Paged: the catalog passed 1,000 titles with the historical import, and
+      // PostgREST truncates at 1,000 without an error. Ordered by title, the
+      // rows it dropped were the alphabetical tail — every film from "The Marx
+      // Brothers: Horse Feathers" on was simply absent from the picker, and the
+      // search box could not find what had never been loaded. The secondary
+      // sort on id keeps the paging stable when two titles match.
+      fetchAllRows((from, to) =>
+        supabase
+          .from('movies')
+          .select('id, title, is_active, release_year')
+          .order('title')
+          .order('id')
+          .range(from, to)
+      ),
+      // events and live_performances are ~200 and ~0 rows, well under the
+      // ceiling; they would need the same treatment before they approach it.
       supabase.from('events').select('id, title, ticket_type, is_active').order('title'),
       supabase.from('live_performances').select('id, title, is_active').order('title'),
       supabase.from('venues').select('id, name, has_assigned_seating, total_seats').order('name'),

@@ -34,6 +34,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
 import { formatShowtime } from '@/lib/datetime';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 /**
  * PostgREST caps every response at 1000 rows, so a bare `.select('*')` silently
@@ -44,7 +45,6 @@ import { formatShowtime } from '@/lib/datetime';
  * Each query must carry a total ordering (a unique tiebreak) or rows can shift
  * between pages and be dropped or duplicated.
  */
-const PAGE_ROWS = 1000;
 
 type SortOrder = 'showtime_desc' | 'showtime_asc' | 'title_asc' | 'title_desc' | 'newest' | 'oldest';
 
@@ -97,21 +97,15 @@ function TicketCountBadge({
   );
 }
 
+// Thin wrapper over the shared pager: this screen wants the rows bare and a
+// failure logged rather than surfaced, which is local to the dashboard. The
+// paging itself lives in one place so a fix to it reaches every caller.
 async function fetchAllPages<T>(
   makeQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
 ): Promise<T[]> {
-  const rows: T[] = [];
-  for (let from = 0; ; from += PAGE_ROWS) {
-    const { data, error } = await makeQuery(from, from + PAGE_ROWS - 1);
-    if (error) {
-      console.error('AdminDashboard fetchAllPages:', error);
-      break;
-    }
-    if (!data?.length) break;
-    rows.push(...data);
-    if (data.length < PAGE_ROWS) break;
-  }
-  return rows;
+  const { data, error } = await fetchAllRows<T, unknown>(makeQuery);
+  if (error) console.error('AdminDashboard fetchAllPages:', error);
+  return data;
 }
 
 export default function AdminDashboard() {
