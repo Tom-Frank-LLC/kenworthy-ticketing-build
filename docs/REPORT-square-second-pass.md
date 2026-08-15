@@ -135,21 +135,32 @@ not app-generated data we could regenerate. That is what was overwritten.
 
 ---
 
-## 5. Reconciliation architecture
+## 5. Money paths and reconciliation
 
-Prompted by the question: if Square is the verifiable register, can our reports
-be confirmed against it without aligning how the systems track data?
+**Scope, corrected by Tom 15 Aug.** The money paths that actually exist today are:
+online tickets, in-person tickets, online film-pass purchases, in-person
+film-pass purchases, and film-pass redemptions. **Concessions are rung up on the
+theatre's own Square register**, not through our app. **DVD rentals are connected
+to nothing, by design.**
 
-### What works today — verified
+| Path | Card | Cash |
+|---|---|---|
+| Online tickets (`ticket-checkout`) | ✅ Square payment | n/a |
+| In-person tickets (`StaffPOS`) | ✅ Square terminal | 🔴 **DB only** |
+| Online film pass (`film-pass-checkout`) | ✅ Square payment | n/a |
+| In-person film pass (`FilmPassPOS`) | ✅ Square terminal | 🔴 **DB only** |
+| Film-pass redemption | no money moves — but see below | |
 
-Two deliberate hooks make this **two-way**:
+### What works — verified
+
+Two deliberate hooks make card reconciliation **two-way**:
 
 - `square_payment_id` stored on paid rows (`tickets`, `donations`,
   `film_pass_orders`)
 - `reference_id` on the Square payment = our `order_token`
 
-The decomposition was tested on all 7 real production payments and ties out
-exactly, including many-tickets-to-one-payment:
+Tested on all 7 real production payments; ties out exactly, including
+many-tickets-to-one-payment:
 
 ```
 order_token 393bd22e…  1 ticket   $8.48   = Square $8.48
@@ -157,21 +168,10 @@ order_token d738ce8a…  2 tickets  $21.20  = Square $21.20
 order_token db046567…  3 tickets  $25.44  = Square $25.44
 ```
 
-### 🔴 Cash never reaches Square — a policy violation, not a design choice
+### 🔴 Finding A — in-person cash never registers in Square
 
-**The policy** (stated by Tom, 15 Aug): *no money is collected that doesn't go
-through Square — cash transactions must be registered with Square to keep the
-books accurate.* Square is intended to be the **complete** register.
-
-**The code does not implement that.** Verified by reading every POS flow:
-
-| Flow | Card | Cash |
-|---|---|---|
-| Online ticket checkout | ✅ Square payment | n/a |
-| `StaffPOS` tickets | ✅ Square terminal | 🔴 **DB only** |
-| `FilmPassPOS` | ✅ Square terminal | 🔴 **DB only** |
-| `ConcessionPOS` | 🔴 **DB only** | 🔴 **DB only** |
-| DVD rentals (`DvdLibraryTab`) | 🔴 **DB only** | 🔴 **DB only** |
+**The policy** (Tom): no money is collected that doesn't go through Square; cash
+included, so the books stay accurate. **The code does not implement it for cash.**
 
 The gate is explicit — `FilmPassPOS.tsx:236`:
 
@@ -181,106 +181,109 @@ if (!order && paymentMethod === 'card' && selectedType) {
 }
 ```
 
-Cash falls straight through with `squarePaymentId = null`. `StaffPOS.handleCashSale`
-is the same shape: it calls `createTickets('cash')` and writes rows, and never
-contacts Square.
+Cash falls through with `squarePaymentId = null`. `StaffPOS.handleCashSale` has
+the same shape: it calls `createTickets('cash')`, writes rows, and never contacts
+Square.
 
-**Verified: nothing in the codebase creates a Square cash tender.** No
+**Verified: nothing in the codebase creates a Square cash tender** — no
 `cash_details`, no `source_id: 'CASH'`, no `buyer_supplied_money`. Square's
 Payments API supports cash tenders; we never use them.
 
-`ConcessionPOS` is the sharpest case: it contacts Square for **neither** cash nor
-card. It inserts `concession_sales` + `concession_sale_items` and shows a success
-toast. For a card sale it does not charge a card.
+Confirmed with Tom that no second register compensates: staff ring these on our
+POS and nothing else. So the books are short by exactly the in-person cash take
+on tickets and film passes.
 
-**Now verified — there is no second register.** Tom, 15 Aug: staff ring sales on
-*our* POS, which is *meant* to interact with Square to account for them. So there
-is no double-entry safety net; what our POS fails to send to Square is simply not
-in Square.
+**Fix:** a Square cash-tender payment on both cash paths. The terminal card path
+already in place on both flows is the working model.
 
-### 🔴 `ConcessionPOS` takes no payment at all
+### 🟡 Finding B — redemptions lose their Square record
 
-The most serious finding in this document, and the reason it is not a disaster is
-timing.
+Redeeming a pass moves no money, so no *payment* is owed. But Square's catalog
+holds a `6 Redeem` category of ten $0.00 items:
 
-`ConcessionPOS` is rendered by `StaffPOS.tsx:933` with exactly one callback:
+```
+Kenworthy Film Pass Redeemed      MET Pass Redeemed
+Silent Film Pass Redeemed         Movie Night Gift Pass Redeemed   … (10 total)
+```
+
+Those exist so staff can ring a zero-dollar line recording that a pass was
+redeemed — which is how redemption volume is tracked in Square today. Our
+redemption path decrements `remaining_balance` and issues a ticket without
+touching Square, so that record stops accruing as usage moves to our system.
+
+Not a money gap; a **reporting continuity** gap. Worth a decision rather than an
+automatic fix — our system may simply be the better home for redemption counts,
+provided whoever reads Square's reports knows they have stopped.
+
+### 🟡 Finding C — an unfinished till is reachable in the staff POS
+
+`ConcessionPOS` is not part of the live workflow, but it is a **visible, ungated
+tab** in `StaffPOS`:
 
 ```jsx
-<ConcessionPOS onSaleComplete={loadDailyStats} />
+<TabsTrigger value="concessions">Concessions</TabsTrigger>
+<TabsContent value="concessions"><ConcessionPOS onSaleComplete={loadDailyStats} /></TabsContent>
 ```
 
-`loadDailyStats` refreshes a stats panel. **The parent does not take payment.**
-So `handleSell` is the entire sale: insert `concession_sales`, insert
-`concession_sale_items`, toast success. No card is charged and no cash tender is
-recorded, for **either** payment method.
+Its only callback refreshes a stats panel; the parent takes no payment. So
+`handleSell` inserts two rows and toasts `Concession sale — $12.50 (card)`
+**without charging a card**. `concession_sales` has no Square column at all.
 
-For a **card** concession sale, staff tap "Card", the app reports
-`Concession sale — $12.50 (card)`, and **no card is ever charged.** That is
-uncollected revenue, not merely an accounting gap. For **cash** the money reaches
-the drawer but never reaches Square.
+**Zero rows on production** — never used. But it looks like a working till to a
+staff member who opens the tab. **Hide the tab until the flow is finished**, or
+finish it.
 
-The schema confirms this was structural rather than a missed call —
-`concession_sales` has no Square column whatsoever:
+### ⭐ Finding D — the catalog sync should be one-way
 
-```
-id, showing_id, staff_user_id, payment_method,
-subtotal, tax_rate, tax_amount, total, created_at
-```
+Concessions on the platform are **display only** (Tom, 15 Aug): `concession_items`
+backs the public menu on the website, and selling happens on the theatre's Square
+register. Square is therefore the source of truth for concession names and prices;
+our menu should *follow* it.
 
-**Nothing has been lost.** `concession_sales` contains **zero rows** on
-production — the flow has not been used in anger yet. This is caught before
-go-live, which is the only reason it is a design fix rather than a recovery job.
+Which means **the push direction has no purpose** — and the push is precisely what
+destroyed 906 catalog objects. A website menu never needs to write back to a point
+of sale.
 
-### Correction to an earlier reading
+**Recommendation: make `square-catalog-sync` pull-only and delete `pushItem`
+entirely,** along with `pushToSquare` on add/edit and the Square arm of delete.
+The read-modify-write fix already shipped makes the existing push safe, but the
+safest write is the one that does not exist. This removes the entire bug class
+from this integration rather than defending against it, and it removes the
+possibility that editing a display price silently repriced the register.
 
-An earlier draft treated 8 cash film passes ($480) as evidence that "Square is
-structurally a subset of revenue, and that is by design." **That was wrong on
-both counts.** Those rows are test data, and the policy is the opposite: Square
-is meant to be complete. The correct reading is that they are **8 instances of
-the gap above**, not a category Square cannot see.
+This is the single highest-value change in this document relative to its size.
 
 ### Consequence
 
-- **Card revenue** — verifiable against Square one-to-one. Already aligned.
-- **Cash and concession revenue** — currently unverifiable against Square,
-  because it never gets there. This is the gap to close, not a reporting nuance
-  to work around.
+- **Card** — verifiable against Square one-to-one. Already aligned.
+- **In-person cash** — the one genuine accounting gap. Close it with cash tenders.
 - **Per-film attribution** — our system only. Square holds a total plus the title
   as free text in `note`. Verifiable in aggregate, not independently attributable.
 
-Once cash is registered in Square, the "unifier" model works as intended: our
-system holds the itemised detail, Square holds the complete money record, and the
-two tie out through `square_payment_id` / `reference_id`.
+Once cash is registered, the "unifier" model works as intended: our system holds
+the itemised detail, Square holds the complete money record, and the two tie out
+through `square_payment_id` / `reference_id`.
 
-### Reporting-shape gap at cutover
+### Correction history
 
-Tickets rung up on the Square register against a catalog item appear in Square's
-**Item Sales** reports per film. Tickets sold through our system appear only as
-payments. As sales shift to the new system, Square item-sales exports will show
-film revenue *apparently declining* while total payments stay correct.
-
-**Unverified:** whether staff actually ring tickets against those catalog items.
-Inferred from the catalog holding 243 items under `6 Film Tickets`. *Settled by:*
-asking the box office. This determines whether the gap matters at all.
-
-Note `AccountingTab` imports a yearly xlsx with monthly sheets, not a Square item
-export — so today's bookkeeping may already not depend on Square itemisation,
-which would shrink this considerably.
-
----
+An earlier draft read 8 cash film passes ($480) as proof that Square is
+structurally a subset of revenue *by design*. Wrong: those rows are test data and
+the policy is the opposite. A later draft then treated `ConcessionPOS` as a
+launch blocker for concessions accounting. Also wrong: concessions run on the
+theatre's Square register, so the component is an unfinished feature exposed too
+early, not a hole in the books. Both corrections came from Tom, not from the
+audit — noted because the audit's method (reading write semantics) cannot detect
+a write that never happens, nor tell which code is actually in use.
 
 ## 6. Open items
 
 **Time-sensitive**
 
-1. **`ConcessionPOS` must take payment before it goes live.** It currently
-   charges nothing for either method and has no Square column to record one. A
-   card sale reports success without charging the card. Zero rows so far, so this
-   is a design fix — but it is a **launch blocker**, not a backlog item.
-2. **Register cash in Square** on every other flow — POS tickets, film passes,
-   DVD rentals. Money reaches the drawer but never reaches Square, so the books
-   are incomplete by exactly the cash take. Confirmed with Tom that no second
-   register compensates for this.
+1. **Make `square-catalog-sync` pull-only; delete `pushItem`.** Concessions are
+   display-only, so the push has no purpose — and it is what caused the incident.
+   Removes the bug class rather than defending against it.
+2. **Hide the Concessions tab in `StaffPOS`.** An unfinished till that reports a
+   sale without charging a card. Zero rows so far; hide it until it is real.
 3. Obtain a Square item-library export, or open a Square Support ticket, for the
    descriptions/images/variations on ~906 items. Backups age. Nothing on our side
    can reconstruct these.
@@ -288,9 +291,9 @@ which would shrink this considerably.
 
 **Code**
 
-5. Add Square cash tenders (`source_id: 'CASH'` + `cash_details`) to every cash
-   path, and make `ConcessionPOS` take payment through Square rather than only
-   writing rows. Scope depends on item 1.
+5. Add Square cash tenders (`source_id: 'CASH'` + `cash_details`) to the two
+   in-person cash paths — `StaffPOS.handleCashSale` and `FilmPassPOS`. The
+   terminal card path on both flows is the working model.
 6. Fix `square-labor` `updateScheduledShift` and `deleteScheduledShift` —
    source the full record from the list endpoint before the PUT.
 7. Re-run `repair_categories` restore (the `additional_category` duplicate is
