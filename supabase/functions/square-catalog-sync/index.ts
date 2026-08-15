@@ -562,6 +562,82 @@ function desiredCategory(
   return null;
 }
 
+/** Which field Square actually ended up storing the category in, if any. */
+function storedCategoryId(itemData: any): string | null {
+  return (
+    itemData?.category_id ??
+    itemData?.categories?.[0]?.id ??
+    itemData?.reporting_category?.id ??
+    null
+  );
+}
+
+/**
+ * Set an item's category and prove Square kept it.
+ *
+ * Square's catalog has two category representations and which one is writable
+ * depends on the pinned API version. On 2024-01-18 the legacy `category_id` is
+ * the one that takes; `categories` is derived, so writing it is accepted and
+ * silently discarded. Sending BOTH is rejected outright —
+ * "duplicate int value 0 ... for attribute additional_category".
+ *
+ * So: try one shape at a time, and after each attempt read the category back out
+ * of Square's own response. A 2xx only means the request was well-formed; it is
+ * not evidence that anything changed. Returns the shape that stuck and the
+ * object Square echoed (whose version is current), or null if none did.
+ */
+async function writeCategoryVerified(
+  config: SquareConfig,
+  object: any,
+  categoryId: string,
+): Promise<{ shape: "legacy" | "modern"; object: any } | null> {
+  const shapes: Array<{ name: "legacy" | "modern"; apply: (o: any) => void }> = [
+    {
+      // Legacy first: correct for the pinned API version.
+      name: "legacy",
+      apply: (o) => {
+        delete o.item_data.categories;
+        delete o.item_data.reporting_category;
+        o.item_data.category_id = categoryId;
+      },
+    },
+    {
+      name: "modern",
+      apply: (o) => {
+        delete o.item_data.category_id;
+        o.item_data.categories = [{ id: categoryId, ordinal: 0 }];
+        o.item_data.reporting_category = { id: categoryId };
+      },
+    },
+  ];
+
+  let base = object;
+  for (const shape of shapes) {
+    const candidate = JSON.parse(JSON.stringify(base));
+    candidate.item_data ??= {};
+    shape.apply(candidate);
+
+    let res: any;
+    try {
+      res = await square(config, "/catalog/object", {
+        method: "POST",
+        body: { idempotency_key: crypto.randomUUID(), object: candidate },
+      });
+    } catch {
+      continue; // rejected outright; try the other shape
+    }
+
+    const returned = res?.catalog_object;
+    if (storedCategoryId(returned?.item_data) === categoryId) {
+      return { shape: shape.name, object: returned };
+    }
+    // Accepted but not stored. The version moved anyway, so the next attempt
+    // must build on what Square just returned or it will 409 on a stale version.
+    if (returned) base = returned;
+  }
+  return null;
+}
+
 async function repairCategories(config: SquareConfig, admin: any, payload: any) {
   const dryRun = payload?.dry_run !== false; // default to dry run
   const limit = Number(payload?.limit ?? 0) || null;
@@ -608,9 +684,9 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
       unmatched.push({ name: r.name, category: want });
       continue;
     }
-    const haveId =
-      live.item_data?.category_id ?? live.item_data?.categories?.[0]?.id ?? null;
-    if (haveId === wantId) continue; // already correct
+    // Same reader the write uses to confirm itself, so "needs repair" and
+    // "repair stuck" can never disagree about where a category lives.
+    if (storedCategoryId(live.item_data) === wantId) continue; // already correct
     plan.push({
       id: r.square_catalog_id,
       name: r.name,
@@ -646,7 +722,6 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
   }
 
   let repaired = 0;
-  let preferLegacy = false;
   const strategy = { modern: 0, legacy: 0 };
   const failures: any[] = [];
   for (const p of target) {
@@ -655,50 +730,32 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
         config,
         `/catalog/object/${p.id}?include_related_objects=false`,
       );
-      const object = current.object;
+      let object = current.object;
       if (!object) continue;
       object.item_data ??= {};
 
-      // Set ONE category field, never both. Square folds the legacy category_id
-      // into the same internal list as `categories`, so writing both puts two
-      // entries at ordinal 0 and it rejects the object:
-      //   "duplicate int value 0 ... for attribute additional_category"
-      // That is what failed 381 of 392 items on the first repair run.
+      // Write, then CONFIRM Square stored it — a 2xx is not evidence of a write.
       //
-      // Modern shape first; if this catalog's API version doesn't accept it,
-      // fall back to the legacy field alone rather than failing the item.
-      const applyModern = () => {
-        delete object.item_data.category_id;
-        object.item_data.categories = [{ id: p.category_id, ordinal: 0 }];
-      };
-      const applyLegacy = () => {
-        delete object.item_data.categories;
-        delete object.item_data.reporting_category;
-        object.item_data.category_id = p.category_id;
-      };
-
-      // Try the shape that worked last time first. Whichever one this catalog
-      // accepts, it accepts for every item — so after the first success there is
-      // no reason to keep paying for a rejected attempt per item. That wasted
-      // call is what pushed a full run past the wall-clock limit.
-      const first = preferLegacy ? applyLegacy : applyModern;
-      const second = preferLegacy ? applyModern : applyLegacy;
-      first();
-      try {
-        await square(config, "/catalog/object", {
-          method: "POST",
-          body: { idempotency_key: crypto.randomUUID(), object },
+      // At SQUARE_API_VERSION 2024-01-18 `item_data.categories` is derived, not
+      // writable: sending it is accepted and ignored, while clearing
+      // `category_id` removes the only field that counts. The whole run then
+      // reports success and changes nothing, which is exactly what happened on
+      // the first two repair attempts. An error-triggered fallback cannot catch
+      // that, because there is no error. Reading the category back out of the
+      // response is the only thing that can.
+      const wrote = await writeCategoryVerified(config, object, p.category_id);
+      if (!wrote) {
+        failures.push({
+          id: p.id,
+          name: p.name,
+          error:
+            "Square accepted the write but did not store the category " +
+            "(no shape took effect)",
         });
-        if (preferLegacy) strategy.legacy++; else strategy.modern++;
-      } catch (_firstErr: any) {
-        second();
-        await square(config, "/catalog/object", {
-          method: "POST",
-          body: { idempotency_key: crypto.randomUUID(), object },
-        });
-        preferLegacy = !preferLegacy; // the other shape is the one this catalog takes
-        if (preferLegacy) strategy.legacy++; else strategy.modern++;
+        continue;
       }
+      object = wrote.object;
+      if (wrote.shape === "legacy") strategy.legacy++; else strategy.modern++;
       repaired++;
     } catch (e: any) {
       failures.push({ id: p.id, name: p.name, error: e.message ?? String(e) });
