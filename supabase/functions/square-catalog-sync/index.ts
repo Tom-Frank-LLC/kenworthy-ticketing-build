@@ -707,6 +707,44 @@ async function damageCensus(config: SquareConfig, admin: any) {
   const damaged = bucket(true);
   const untouched = bucket(false);
 
+  // Can the orphans be put back? Square stores no back-reference from an image
+  // to its item, so the only handle is the image's own name/caption. If those
+  // echo the item name the re-attachment is mechanical; if they are generic
+  // ("IMG_4821.jpg") it is a manual job and worth knowing before starting.
+  const normalise = (s: string) =>
+    s.toLowerCase()
+      .replace(/\.(jpe?g|png|gif|webp|heic)$/i, "")
+      .replace(/[^a-z0-9]+/g, "");
+
+  const byName = new Map<string, string[]>();
+  for (const [id, s] of snapshot) {
+    const k = normalise(s.name ?? "");
+    if (!k) continue;
+    (byName.get(k) ?? byName.set(k, []).get(k)!).push(id);
+  }
+
+  let unique = 0, ambiguous = 0, unmatched = 0;
+  const matchSample: any[] = [];
+  const unmatchedSample: any[] = [];
+  for (const im of orphanImages) {
+    const label = im.image_data?.name ?? im.image_data?.caption ?? "";
+    const hits = byName.get(normalise(label)) ?? [];
+    if (hits.length === 1) {
+      unique++;
+      if (matchSample.length < 10) {
+        matchSample.push({
+          image: label,
+          item: snapshot.get(hits[0])?.name ?? null,
+        });
+      }
+    } else if (hits.length > 1) {
+      ambiguous++;
+    } else {
+      unmatched++;
+      if (unmatchedSample.length < 10) unmatchedSample.push(label || "(no name)");
+    }
+  }
+
   const descriptionRate = untouched.items > 0
     ? untouched.withDescription / untouched.items
     : 0;
@@ -727,6 +765,14 @@ async function damageCensus(config: SquareConfig, admin: any) {
         caption: im.image_data?.caption ?? null,
         url: im.image_data?.url ?? null,
       })),
+      // Whether the orphans can be matched back to items by name alone.
+      reattachable: {
+        unique_match: unique,
+        ambiguous_match: ambiguous,
+        no_match: unmatched,
+        match_sample: matchSample,
+        unmatched_sample: unmatchedSample,
+      },
     },
 
     // Both groups as they stand now, so the base rates are visible rather than
