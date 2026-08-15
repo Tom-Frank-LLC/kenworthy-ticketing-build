@@ -67,6 +67,13 @@ interface DamageCensus {
     referenced_by_an_item: number;
     orphaned: number;
     orphan_sample?: { id: string; name: string | null; caption: string | null }[];
+    reattachable?: {
+      unique_match: number;
+      ambiguous_match: number;
+      no_match: number;
+      match_sample?: { image: string; item: string | null }[];
+      unmatched_sample?: string[];
+    };
   };
   damaged_items?: { items: number; withDescription: number; withImage: number };
   untouched_items?: { items: number; withDescription: number; withImage: number };
@@ -717,6 +724,57 @@ export default function ConcessionItemsTab() {
                 not the file. Orphans are still there and could be re-attached if
                 we knew which item each belonged to.
               </p>
+
+              <div className="mt-3 pt-3 border-t border-border/40 space-y-1">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                  Can they be matched back by name?
+                </p>
+                <div className="flex justify-between">
+                  <span className="text-accent">Matches exactly one item</span>
+                  <span className="tabular-nums">
+                    {census?.images?.reattachable?.unique_match ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Matches more than one</span>
+                  <span className="tabular-nums">
+                    {census?.images?.reattachable?.ambiguous_match ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>No name match</span>
+                  <span className="tabular-nums">
+                    {census?.images?.reattachable?.no_match ?? 0}
+                  </span>
+                </div>
+                {(census?.images?.reattachable?.match_sample ?? []).length > 0 && (
+                  <details className="pt-1">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                      Sample matches
+                    </summary>
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {census?.images?.reattachable?.match_sample?.map((m, i) => (
+                        <li key={i} className="flex justify-between gap-2">
+                          <span className="truncate">{m.image || '(no name)'}</span>
+                          <span className="text-muted-foreground truncate">→ {m.item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {(census?.images?.reattachable?.unmatched_sample ?? []).length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                      Sample unmatched names
+                    </summary>
+                    <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                      {census?.images?.reattachable?.unmatched_sample?.map((n, i) => (
+                        <li key={i} className="truncate">{n}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
             </div>
 
             <div className="rounded-md border border-border/40 p-3 space-y-1">
