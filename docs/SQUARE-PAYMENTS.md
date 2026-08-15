@@ -280,12 +280,57 @@ POST /v2/orders     line_items: [{ name: "A COMPLETE UNKNOWN",
 POST /v2/payments   order_id: <that order>, reference_id: <our order_token>
 ```
 
-**Ad-hoc, with no `catalog_object_id` anywhere.** Nothing here reads or writes
-`/catalog`; the only code in this project that touches the catalog is still
-`square-catalog-sync`. That is not incidental — it is the point. The 14 Aug
-incident was our code writing catalog objects, and an order line named for a film
-needs no catalog entry to exist. It also means a film added in the admin this
-morning is attributable immediately, which a catalog-linked line could never be.
+### The catalog is read, never written
+
+A purely ad-hoc line has one flaw: Item Sales aggregates by **name**, so our
+"A COMPLETE UNKNOWN" would appear *beside* the existing `6 Film Tickets` item of
+the same name rather than joining it — a second, uncategorised row for a film the
+register has been selling for years.
+
+So before building the line, attribution looks the name up:
+
+```
+POST /v2/catalog/search
+  object_types: ['ITEM']
+  query: { exact_query: { attribute_name: 'name', attribute_value: <film title> } }
+```
+
+A hit contributes its **variation id** as the line's `catalog_object_id`, and the
+sale accrues against the item the register already uses. A miss — every new film
+— falls back to the ad-hoc line, which is what shipped before the lookup existed.
+
+**It is a read. There is no write path here at all**, which is the whole safety
+argument: the 14 Aug incident was `UpsertCatalogObject` replacing 906 objects
+built from four of our columns. Searching cannot do that. `square-catalog-sync`
+remains the only code in the project that writes to `/catalog`.
+
+`exact_query`, not the fuzzy `text_filter`: measured in sandbox, the exact query
+answered on the first attempt while the text index lagged a round behind a newly
+written item, and an exact match is the only kind safe to act on unattended — a
+fuzzy hit on "Rear Window" could be "Rear Window (35mm)".
+
+**Anything ambiguous declines to link** and stays ad-hoc, logging why:
+
+| Situation | Why it matters here |
+|---|---|
+| Two items share the name | `SILENT FILM FESTIVAL PASS` exists three times — guessing is worse than not attributing |
+| The item has no variation | The 14 Aug push stripped variations past the first from ~906 objects |
+| Several variations, none matching our tier | A guess; we take the single variation only when there is exactly one |
+
+Results are cached for 10 minutes, so a four-ticket order is one lookup.
+
+**Our price wins over the catalog's.** Verified in sandbox: a line carrying both
+`catalog_object_id` and `base_price_money` records **our** tax-inclusive amount
+(1908) rather than the catalog's pre-tax price (1800). That is what lets a
+$9.54 charge ride on a $9.00 register item without the order total drifting from
+what the patron paid. Because that is measured behaviour rather than a documented
+guarantee, the created order's total is **read back and compared** to the amount
+about to be charged; a disagreement abandons the order and the payment goes bare.
+
+Only films and passes are looked up. A `Donation` or `Card processing fee` line
+never is — there is no catalog counterpart, and a false match would bind the
+theatre's revenue to whatever happened to be named that on the register.
+`SQUARE_CATALOG_LOOKUP=false` disables the lookup without disabling attribution.
 
 **Line prices are tax-inclusive, and that is forced, not lazy.** Square computes
 a percentage tax once over the line total; our pricing rounds tax per ticket row
@@ -469,9 +514,15 @@ Sandbox first, both paths, then flip and run one real card you refund.
   Tracked in `docs/briefs/BRIEF-square-in-person-card-server-path.md`.
 * **Item Sales has not been read since attribution shipped.** The line shape was
   verified against the Orders API (`item_type: ITEM`, named, `gross_sales_money`
-  populated); nobody has yet opened the dashboard report to confirm it aggregates
-  uncatalogued items by name. Until someone does, treat per-film rollup as
-  expected rather than proven.
+  populated, and binding to a real catalog variation when one exists); nobody has
+  yet opened the dashboard report. For a film that already has a Square item this
+  is now low-risk — the sale carries that item's own id. For a film that does
+  not, per-film rollup by name remains expected rather than proven.
+* **The tax rate is defined in three places** — `src/lib/booking.ts`,
+  `_shared/pricing.ts`, and `v_tax_rate` in the `enforce_ticket_pricing` trigger.
+  The trigger is authoritative (it overwrites the row on insert), so a drift
+  shows up as a price quoted ≠ price charged rather than as a wrong charge. A
+  rate change is a three-place edit plus a migration.
 * **Abandoned `pending` rows are ignored but not cleaned up.** They stop holding
   seats after 15 minutes; a periodic job to mark them `failed` would keep the
   table tidy.

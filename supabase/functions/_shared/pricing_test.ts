@@ -302,3 +302,19 @@ Deno.test('the buyer-paid surcharge is a line, not part of the ticket price', as
   );
   assertEquals(lineItemsTotalCents(lines), order.amountCents);
 });
+
+Deno.test('only the film line is offered to the catalog lookup', async () => {
+  const rows = fixture({
+    movies: [{ id: 'movie-1', title: 'Rear Window', pass_processing_fee: true }],
+  });
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}], 'in_person');
+  const lines = ticketLineItems(order, 2500);
+
+  // The film has a decade of history in Square's item library and should join
+  // it. A fee and a gift have no counterpart there, and letting them search
+  // would risk binding the theatre's revenue to whatever happened to be named
+  // "Donation" on the register.
+  assertEquals(lines.find((l) => l.name === 'Rear Window')?.lookupCatalog, true);
+  assertEquals(lines.find((l) => l.name === 'Card processing fee')?.lookupCatalog, undefined);
+  assertEquals(lines.find((l) => l.name === 'Donation')?.lookupCatalog, undefined);
+});

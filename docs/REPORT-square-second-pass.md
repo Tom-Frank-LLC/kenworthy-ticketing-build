@@ -360,9 +360,20 @@ a write that never happens, nor tell which code is actually in use.
      Square. So line prices are tax-inclusive; letting Square compute tax would
      break `charged == SUM(tickets.total_price)`, which the refund path re-reads.
 
+   Extended the same day, at Tom's request, with a **read-only catalog lookup**:
+   the film's name is searched with `exact_query` before the line is built, and a
+   hit contributes its variation id so the sale joins the item the register has
+   used for years instead of appearing beside it. There is no write path — the
+   incident was an upsert, and searching cannot replace anything. Anything
+   ambiguous (duplicate names, no variation, several variations and no tier
+   match) declines to link and stays ad-hoc. Also measured: a line carrying both
+   `catalog_object_id` and `base_price_money` records **our** price, not the
+   catalog's, so linking does not disturb the charged-amount invariant.
+
    Still unproven: whether the **dashboard's** Item Sales report groups
-   uncatalogued `ITEM` lines by name. The API shape is right; nobody has read the
-   report. See `docs/SQUARE-PAYMENTS.md`.
+   uncatalogued `ITEM` lines by name — which now only affects films with no
+   catalog item at all. The API shape is right; nobody has read the report. See
+   `docs/SQUARE-PAYMENTS.md`.
 2. **Disable the concessions Square push** — *done, see below*. Phase 2 until the
    admin-edits-reach-the-register architecture is settled.
 3. Obtain a Square item-library export, or open a Square Support ticket, for the

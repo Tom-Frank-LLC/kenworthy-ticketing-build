@@ -492,7 +492,7 @@ Deno.serve(async (req: Request) => {
         const attributionOrderId = await createAttributionOrder(square.config, {
           idempotencyKey: `ord-${cashKey}`.slice(0, 45),
           referenceId: qrCode.slice('PASS:'.length),
-          lineItems: [{ name: passType.name, quantity: 1, amountCents }],
+          lineItems: [{ name: passType.name, quantity: 1, amountCents, lookupCatalog: true }],
           expectedTotalCents: amountCents,
         });
 
@@ -935,7 +935,10 @@ Deno.serve(async (req: Request) => {
           name: passType.name,
           quantity,
           amountCents: Math.round(unitPrice * 100),
-          variationName: fulfillment === 'mail' ? 'By post' : 'Collect at box office',
+          // Fulfilment is a note, not a variation, now that the line may bind to
+          // a catalog item whose variations mean something else entirely.
+          note: fulfillment === 'mail' ? 'By post' : 'Collect at box office',
+          lookupCatalog: true,
         },
       ],
       expectedTotalCents: amountCents,

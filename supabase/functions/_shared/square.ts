@@ -288,6 +288,142 @@ export interface SquareLineItem {
   /** Tier or fulfilment detail — a variation under the item, not a new item. */
   variationName?: string | null;
   note?: string | null;
+  /**
+   * Try to attach this line to an existing Square catalog item of the same
+   * name. Set on film and pass lines; never on a fee or a donation, which have
+   * no counterpart in the item library and would only find a false match.
+   */
+  lookupCatalog?: boolean;
+}
+
+/** An existing catalog item a line can be attributed to. */
+export interface CatalogMatch {
+  itemId: string;
+  itemName: string;
+  /** Line items reference the *variation*, not the item. */
+  variationId: string;
+  variationName: string | null;
+}
+
+/**
+ * Cache of name → match, so a four-ticket order is one lookup rather than four.
+ *
+ * Short-lived by design: edge isolates are recycled constantly, so this mostly
+ * collapses the lookups within a single order and a burst of sales for the same
+ * film. A stale entry is harmless — the worst case is attributing to the item
+ * that existed ten minutes ago.
+ */
+const catalogCache = new Map<string, { match: CatalogMatch | null; expires: number }>();
+const CATALOG_CACHE_MS = 10 * 60 * 1000;
+
+/**
+ * Find an existing catalog item by exact name, and the variation to reference.
+ *
+ * **Read-only, and that is the entire safety argument.** The 14 Aug incident was
+ * a catalog *write* — `UpsertCatalogObject` replaces rather than merges, so a
+ * push built from our four columns destroyed 906 objects. Nothing here writes,
+ * creates or updates anything: it is a search and nothing else, so the failure
+ * mode that caused the incident is structurally unavailable.
+ *
+ * What it buys: the ~243 films that already have an item under `6 Film Tickets`
+ * keep accruing against that item, so our sales roll up with a decade of history
+ * and sit in the right category, instead of appearing as a second, uncategorised
+ * row of the same name. A film with no item — every new one — simply gets no
+ * match and falls back to an ad-hoc line.
+ *
+ * `exact_query` rather than the fuzzy `text_filter`: measured in sandbox, the
+ * exact query answered immediately while the text index lagged a round behind a
+ * freshly written item. An exact match is also the only kind safe to act on
+ * unattended — a fuzzy hit on "Rear Window" could be "Rear Window (35mm)".
+ *
+ * Returns null for anything ambiguous, and never throws.
+ */
+export async function findCatalogVariation(
+  config: SquareConfig,
+  name: string,
+  variationName?: string | null,
+): Promise<CatalogMatch | null> {
+  if (!squareCatalogLookupEnabled()) return null;
+
+  const wanted = name.trim();
+  if (!wanted) return null;
+
+  const key = `${wanted} ${(variationName ?? '').trim().toLowerCase()}`;
+  const cached = catalogCache.get(key);
+  if (cached && cached.expires > Date.now()) return cached.match;
+
+  const remember = (match: CatalogMatch | null) => {
+    catalogCache.set(key, { match, expires: Date.now() + CATALOG_CACHE_MS });
+    return match;
+  };
+
+  try {
+    const result = await squareFetch(config, '/catalog/search', {
+      method: 'POST',
+      body: {
+        object_types: ['ITEM'],
+        include_related_objects: false,
+        query: { exact_query: { attribute_name: 'name', attribute_value: wanted } },
+      },
+    });
+
+    if (!result.ok) {
+      console.error('[square] catalog lookup failed', JSON.stringify(result.data));
+      // Not cached: a transient API error should not blind the next sale for
+      // ten minutes.
+      return null;
+    }
+
+    const items = (result.data?.objects ?? []).filter((o: any) => !o.is_deleted);
+    if (items.length === 0) return remember(null);
+
+    // More than one item of the same name is a catalog hygiene problem, not
+    // something to guess at — `SILENT FILM FESTIVAL PASS` exists three times.
+    // Attributing to the wrong one is worse than not attributing at all.
+    if (items.length > 1) {
+      console.warn('[square] catalog lookup ambiguous, staying ad-hoc', {
+        name: wanted,
+        matches: items.length,
+      });
+      return remember(null);
+    }
+
+    const item = items[0];
+    const variations = (item.item_data?.variations ?? []).filter((v: any) => !v.is_deleted);
+    if (variations.length === 0) {
+      // Possible for real: the incident stripped variations beyond the first
+      // from ~906 objects, and some may have none left.
+      console.warn('[square] catalog item has no variation, staying ad-hoc', { name: wanted });
+      return remember(null);
+    }
+
+    // Our tier if the item names one; otherwise the only variation there is.
+    // Several variations and none matching is a guess, so it is declined.
+    const wantedVariation = (variationName ?? '').trim().toLowerCase();
+    let variation = wantedVariation
+      ? variations.find(
+        (v: any) => (v.item_variation_data?.name ?? '').trim().toLowerCase() === wantedVariation,
+      )
+      : undefined;
+    if (!variation && variations.length === 1) variation = variations[0];
+    if (!variation) {
+      console.warn('[square] no matching catalog variation, staying ad-hoc', {
+        name: wanted,
+        variationName,
+      });
+      return remember(null);
+    }
+
+    return remember({
+      itemId: item.id,
+      itemName: item.item_data?.name ?? wanted,
+      variationId: variation.id,
+      variationName: variation.item_variation_data?.name ?? null,
+    });
+  } catch (err) {
+    console.error('[square] catalog lookup threw', err);
+    return null;
+  }
 }
 
 export function lineItemsTotalCents(items: SquareLineItem[]): number {
@@ -344,6 +480,15 @@ export async function createAttributionOrder(
   }
 
   try {
+    // Attach the lines that already exist in Square's item library, so they
+    // accrue against the item a decade of register sales already used. Looked up
+    // in parallel, and a miss is simply an ad-hoc line.
+    const matches = await Promise.all(
+      lines.map((li) =>
+        li.lookupCatalog ? findCatalogVariation(config, li.name, li.variationName) : null
+      ),
+    );
+
     const result = await squareFetch(config, '/orders', {
       method: 'POST',
       body: {
@@ -351,13 +496,25 @@ export async function createAttributionOrder(
         order: {
           location_id: config.locationId,
           reference_id: params.referenceId?.slice(0, 40),
-          line_items: lines.map((li) => ({
-            name: li.name.slice(0, 512),
-            quantity: String(li.quantity),
-            base_price_money: { amount: li.amountCents, currency: 'USD' },
-            variation_name: li.variationName?.slice(0, 255) || undefined,
-            note: li.note?.slice(0, 500) || undefined,
-          })),
+          line_items: lines.map((li, i) => {
+            const match = matches[i];
+            return {
+              // Linked lines take their name and variation from the catalog, so
+              // they land on the same Item Sales row as the register's own
+              // history rather than beside it. Ours are sent only when there is
+              // no catalog object to speak for them.
+              name: match ? undefined : li.name.slice(0, 512),
+              variation_name: match ? undefined : li.variationName?.slice(0, 255) || undefined,
+              catalog_object_id: match?.variationId,
+              quantity: String(li.quantity),
+              // Sent either way. Verified in sandbox: when both are present this
+              // overrides the catalog's own price, which is what lets a
+              // tax-inclusive amount ride on a pre-tax catalog item without the
+              // order total drifting from what we charge.
+              base_price_money: { amount: li.amountCents, currency: 'USD' },
+              note: li.note?.slice(0, 500) || undefined,
+            };
+          }),
         },
       },
     });
@@ -366,6 +523,23 @@ export async function createAttributionOrder(
       console.error('[square] attribution order failed', JSON.stringify(result.data));
       return null;
     }
+
+    // Trust, then check. The price override above is measured behaviour, not a
+    // documented guarantee, and a catalogued item is the one case where Square
+    // holds a competing price. If it ever wins, the order would be larger or
+    // smaller than the payment about to be made against it — so the order is
+    // read back and abandoned unattached rather than half-paid. An orphan
+    // unpaid order is litter; a part-paid one is a reconciliation problem.
+    const total = result.data.order.total_money?.amount;
+    if (total !== params.expectedTotalCents) {
+      console.error('[square] attribution order total disagrees with the charge; going bare', {
+        orderTotal: total,
+        expected: params.expectedTotalCents,
+        orderId: result.data.order.id,
+      });
+      return null;
+    }
+
     return result.data.order.id as string;
   } catch (err) {
     console.error('[square] attribution order threw', err);
@@ -389,6 +563,21 @@ export async function createAttributionOrder(
  */
 export function squareOrderAttributionEnabled(): boolean {
   return (Deno.env.get('SQUARE_ORDER_ATTRIBUTION') ?? '').trim().toLowerCase() !== 'false';
+}
+
+/**
+ * Whether attribution may look an item up in the Square catalog first.
+ *
+ * Also default **on**, for the same reason and with a stronger one behind it:
+ * this is a *read*. The incident was a write, and there is no write here to
+ * disable. Turning it off does not disable attribution — it falls back to ad-hoc
+ * lines, which is exactly the behaviour that shipped before the lookup existed.
+ *
+ * `SQUARE_CATALOG_LOOKUP=false` is the escape hatch, worth reaching for if the
+ * catalog ever becomes slow enough to be felt at the counter.
+ */
+export function squareCatalogLookupEnabled(): boolean {
+  return (Deno.env.get('SQUARE_CATALOG_LOOKUP') ?? '').trim().toLowerCase() !== 'false';
 }
 
 /** Refund a previously captured payment, in whole or in part. */

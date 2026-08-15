@@ -14,6 +14,8 @@
 // order, which is what the refund path re-reads. Anything else would refund a
 // different number than it charged.
 
+import type { SquareLineItem } from './square.ts';
+
 export const TAX_RATE = 0.06;
 
 // Square's published rates. Mirrors SQUARE_RATES in src/lib/booking.ts.
@@ -298,10 +300,7 @@ export async function priceTicketOrder(
  * quantity is the count. Seat numbers are deliberately absent — Square is being
  * told what was sold, not where anyone sat.
  */
-export function ticketLineItems(
-  order: PricedOrder,
-  donationCents = 0,
-): { name: string; quantity: number; amountCents: number; variationName?: string | null }[] {
+export function ticketLineItems(order: PricedOrder, donationCents = 0): SquareLineItem[] {
   const groups = new Map<string, { tierName: string | null; cents: number; quantity: number }>();
 
   for (const ticket of order.tickets) {
@@ -312,15 +311,20 @@ export function ticketLineItems(
     else groups.set(key, { tierName: ticket.tier_name, cents, quantity: 1 });
   }
 
-  const lines = Array.from(groups.values()).map((g) => ({
+  const lines: SquareLineItem[] = Array.from(groups.values()).map((g) => ({
     name: order.productionTitle,
     quantity: g.quantity,
     amountCents: g.cents,
     variationName: g.tierName,
+    // Films are the one thing here with a decade of history in Square's item
+    // library. If this title already has an item, the sale should join it.
+    lookupCatalog: true,
   }));
 
   // The rental surcharge, when a production opted into it. Its own line because
-  // it is not ticket revenue and should not inflate a film's takings.
+  // it is not ticket revenue and should not inflate a film's takings. Never
+  // looked up: there is no catalog item for it, and a fuzzy neighbour would be
+  // worse than none.
   const feeCents = Math.round(order.processingFee * 100);
   if (feeCents > 0) {
     lines.push({
