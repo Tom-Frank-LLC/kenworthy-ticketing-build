@@ -74,6 +74,11 @@ interface DamageCensus {
       match_sample?: { image: string; item: string | null }[];
       unmatched_sample?: string[];
     };
+    metadata?: {
+      with_name: number;
+      with_caption: number;
+      raw_sample?: unknown[];
+    };
   };
   damaged_items?: { items: number; withDescription: number; withImage: number };
   untouched_items?: { items: number; withDescription: number; withImage: number };
@@ -772,6 +777,29 @@ export default function ConcessionItemsTab() {
                         <li key={i} className="truncate">{n}</li>
                       ))}
                     </ul>
+                  </details>
+                )}
+
+                <div className="flex justify-between pt-1">
+                  <span className="text-muted-foreground">Orphans carrying a name</span>
+                  <span className="tabular-nums">
+                    {census?.images?.metadata?.with_name ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Orphans carrying a caption</span>
+                  <span className="tabular-nums">
+                    {census?.images?.metadata?.with_caption ?? 0}
+                  </span>
+                </div>
+                {(census?.images?.metadata?.raw_sample ?? []).length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                      Raw metadata on 5 orphans
+                    </summary>
+                    <pre className="mt-1 max-h-56 overflow-auto rounded bg-muted/30 p-2 text-[10px] leading-relaxed">
+{JSON.stringify(census?.images?.metadata?.raw_sample, null, 2)}
+                    </pre>
                   </details>
                 )}
               </div>

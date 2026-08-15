@@ -773,6 +773,26 @@ async function damageCensus(config: SquareConfig, admin: any) {
         match_sample: matchSample,
         unmatched_sample: unmatchedSample,
       },
+
+      // What metadata the orphans actually carry. Name matching returning zero
+      // could mean the names are unhelpful or that there are no names at all —
+      // opposite conclusions, and only this distinguishes them. The raw sample
+      // exists so any remaining handle (a caption, a url pattern, a timestamp
+      // that clusters with item creation) can be seen rather than guessed at.
+      metadata: {
+        with_name: orphanImages.filter(
+          (im) => (im.image_data?.name ?? "").trim().length > 0,
+        ).length,
+        with_caption: orphanImages.filter(
+          (im) => (im.image_data?.caption ?? "").trim().length > 0,
+        ).length,
+        raw_sample: orphanImages.slice(0, 5).map((im) => ({
+          id: im.id,
+          updated_at: im.updated_at ?? null,
+          image_data_keys: Object.keys(im.image_data ?? {}),
+          image_data: im.image_data ?? {},
+        })),
+      },
     },
 
     // Both groups as they stand now, so the base rates are visible rather than
