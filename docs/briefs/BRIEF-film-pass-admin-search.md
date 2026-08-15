@@ -56,6 +56,26 @@ Add a search input above the list. Match against:
 
 **Verification:** both migrations were applied to a throwaway `postgres:15` with stub tables and 20 assertions run against real plpgsql — backfill ordering and gaplessness, the mint default continuing the run, the role gate refusing a non-staff caller, each contact source reachable, phone-format independence, every sort key, paging covering the set exactly once with no duplicates, and the delete cascade sparing the purchase record. Test files are in the session scratchpad (`stub.sql`, `assert.sql`).
 
+## Follow-up found during acceptance (PR #65)
+
+Deleting a pass **type** (not a pass — they are a click apart in this tab) showed
+`violates foreign key constraint "user_film_passes_pass_type_id_fkey"`. Pre-existing,
+not caused by this work: `deleteType` piped `error.message` straight into a toast.
+
+`pass_type_id` is `ON DELETE RESTRICT` and rightly so — deleting a type would orphan
+passes patrons are holding. The defect was that the UI did not know the rule existed,
+so it offered an action it could not perform and then explained the failure in SQL.
+Fixed by loading the per-type pass count, showing an **"N issued"** badge on the card,
+and refusing in advance with the two real options: switch the type to **Inactive** to
+retire it (passes already issued keep working), or clear those passes first under
+Issued Passes — which this brief's new pass delete makes possible for blanks,
+cancelled and used-up passes. `deleteType` also gained the `.select()` row-count
+check, since a delete blocked by RLS returns success with no rows.
+
+Verified in a browser on staging: both type cards show the badge, the tooltip reads
+"Cannot delete — N pass(es) issued…", and clicking produces the actionable toast with
+the type left intact.
+
 ## Known gap (not in this brief's scope)
 Every other service-role write in `film-pass-checkout` — `void`, `mark_posted`, `activate` — logs to `admin_audit_log` with a NULL actor, for the same reason `delete` did. Only `delete` is fixed here, because it is the irreversible one. Fixing it generally means threading the caller through every one of those paths.
 
