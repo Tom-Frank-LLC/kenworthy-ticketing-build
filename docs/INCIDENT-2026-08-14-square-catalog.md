@@ -104,15 +104,48 @@ Both dry-run by default and list every affected name; applying passes
 database has no hook back to Square, so this never contacted the API. 68 rows
 remain: 60 real Square concessions (inactive) and 8 hand-made (3 active).
 
+## Category restore — done (15 Aug)
+
+All 381 wiped categories are back on the live catalog. **Confirmed by
+re-measurement, not by the tool reporting success:** a fresh dry run reads the
+live catalog and compares it against the snapshot, and it now returns **0
+mismatches** — the same measurement that originally found 392.
+
+It took three failed attempts, each instructive:
+
+1. **381 of 392 rejected** — the write set `category_id` *and* `categories`,
+   which puts two entries at ordinal 0:
+   `duplicate int value 0 ... for attribute additional_category`.
+2. **The whole run died with no body** — supabase-js reported only
+   "Edge Function returned a non-2xx status code". Adding an error-triggered
+   fallback made it three sequential Square calls per item; ~1,200 round trips
+   exceeded the edge function's wall clock. Fixed by batching 40 at a time.
+3. **1,040 writes on a 381-item job** — the batch loop re-planned from
+   `/catalog/list`, which does not reflect a write made a second earlier, so
+   repaired items looked unrepaired and were written again. Not destructive
+   (read-modify-write, re-setting the same value) but pure churn. Fixed by
+   tracking the remaining set on the client instead of asking Square.
+4. **Reported success, changed nothing.** `item_data.categories` is *derived,
+   not writable* at `SQUARE_API_VERSION` 2024-01-18: sending it is accepted and
+   discarded, while clearing `category_id` removes the field that counts. A
+   well-formed no-op returning 200. An error-triggered fallback cannot catch a
+   failure that never errors — the write now reads the category back out of
+   Square's own response and only counts an item if it stuck.
+
 ## Still open
 
-- Descriptions, images and extra variations on the 906 items — needs a Square
+- **Variations.** Damaged items have *no variation at all* — confirmed in the
+  dashboard. An item with no priced variation generally cannot be rung up, so
+  this matters more than the categories did. It affects tickets and merch; the
+  concession stand was never touched. Restorable in principle: the snapshot holds
+  each item's real `square_variation_id` and price, though the variation *name*
+  is lost and would come back as `Regular`.
+- Descriptions and images on the 906 items — needs a Square
   export or Square Support; nothing on our side can reconstruct them.
 - `Poster Design` and `Poster Print` are proposed as merch but look like
   billable services.
 - `SILENT FILM FESTIVAL PASS` exists **three times** in Square — duplicate SKUs,
   unrelated to this incident.
-- The frontend changes are committed but not yet deployed.
 
 ## Rules this leaves behind
 

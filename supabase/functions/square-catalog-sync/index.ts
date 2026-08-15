@@ -244,6 +244,9 @@ Deno.serve(async (req) => {
       });
       return json(result);
     }
+    if (action === "repair_variations") {
+      return json(await repairVariations(config, admin, payload));
+    }
     if (action === "repair_categories") {
       const result = await repairCategories(config, admin, payload);
       // No suppression: this writes to Square only, never to concession_items.
@@ -562,6 +565,250 @@ function desiredCategory(
   return null;
 }
 
+/** Which field Square actually ended up storing the category in, if any. */
+function storedCategoryId(itemData: any): string | null {
+  return (
+    itemData?.category_id ??
+    itemData?.categories?.[0]?.id ??
+    itemData?.reporting_category?.id ??
+    null
+  );
+}
+
+/**
+ * Set an item's category and prove Square kept it.
+ *
+ * Square's catalog has two category representations and which one is writable
+ * depends on the pinned API version. On 2024-01-18 the legacy `category_id` is
+ * the one that takes; `categories` is derived, so writing it is accepted and
+ * silently discarded. Sending BOTH is rejected outright —
+ * "duplicate int value 0 ... for attribute additional_category".
+ *
+ * So: try one shape at a time, and after each attempt read the category back out
+ * of Square's own response. A 2xx only means the request was well-formed; it is
+ * not evidence that anything changed. Returns the shape that stuck and the
+ * object Square echoed (whose version is current), or null if none did.
+ */
+async function writeCategoryVerified(
+  config: SquareConfig,
+  object: any,
+  categoryId: string,
+): Promise<{ shape: "legacy" | "modern"; object: any } | null> {
+  const shapes: Array<{ name: "legacy" | "modern"; apply: (o: any) => void }> = [
+    {
+      // Legacy first: correct for the pinned API version.
+      name: "legacy",
+      apply: (o) => {
+        delete o.item_data.categories;
+        delete o.item_data.reporting_category;
+        o.item_data.category_id = categoryId;
+      },
+    },
+    {
+      name: "modern",
+      apply: (o) => {
+        delete o.item_data.category_id;
+        o.item_data.categories = [{ id: categoryId, ordinal: 0 }];
+        o.item_data.reporting_category = { id: categoryId };
+      },
+    },
+  ];
+
+  let base = object;
+  for (const shape of shapes) {
+    const candidate = JSON.parse(JSON.stringify(base));
+    candidate.item_data ??= {};
+    shape.apply(candidate);
+
+    let res: any;
+    try {
+      res = await square(config, "/catalog/object", {
+        method: "POST",
+        body: { idempotency_key: crypto.randomUUID(), object: candidate },
+      });
+    } catch {
+      continue; // rejected outright; try the other shape
+    }
+
+    const returned = res?.catalog_object;
+    if (storedCategoryId(returned?.item_data) === categoryId) {
+      return { shape: shape.name, object: returned };
+    }
+    // Accepted but not stored. The version moved anyway, so the next attempt
+    // must build on what Square just returned or it will 409 on a stale version.
+    if (returned) base = returned;
+  }
+  return null;
+}
+
+// --- VARIATION REPAIR ----------------------------------------------------
+// The 14 Aug push replaced each item's variations array with a single "Regular"
+// entry carrying `version: undefined`. An item with no priced variation cannot
+// be rung up, so this outranks the category loss.
+//
+// The dry run reports what is actually there before anything is written —
+// how many items have no variation at all, how many carry one named "Regular",
+// and whether the variation id still matches the one recorded pre-incident.
+// That distinction decides the repair: an item that kept its original variation
+// id only lost its *name*, while an item with none needs one created.
+//
+// Reusing the original variation id matters beyond tidiness: historical orders
+// reference it, so a variation restored under the same id relinks past
+// reporting, where a freshly minted one leaves it orphaned. It is attempted
+// first and only abandoned if Square refuses.
+async function repairVariations(config: SquareConfig, admin: any, payload: any) {
+  const dryRun = payload?.dry_run !== false;
+  const only: Set<string> | null = Array.isArray(payload?.only_names)
+    ? new Set(payload.only_names.map((n: unknown) => String(n)))
+    : null;
+
+  const objects = await listCatalog(config);
+  const liveItems = new Map<string, any>();
+  for (const o of objects) if (o.type === "ITEM") liveItems.set(o.id, o);
+
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin
+      .from("square_catalog_snapshot_20260814")
+      .select("square_catalog_id, square_variation_id, name, price, likely_overwritten")
+      .range(from, from + 999);
+    if (error) throw new Error(`Snapshot read failed: ${error.message}`);
+    rows.push(...(data ?? []));
+    if ((data?.length ?? 0) < 1000) break;
+  }
+
+  const census = {
+    no_variation: 0,
+    one_named_regular: 0,
+    original_id_intact: 0,
+    healthy: 0,
+    gone_from_square: 0,
+  };
+  const plan: any[] = [];
+
+  for (const r of rows) {
+    if (only && !only.has(r.name)) continue;
+    if (!r.likely_overwritten) continue;
+    const live = liveItems.get(r.square_catalog_id);
+    if (!live) { census.gone_from_square++; continue; }
+
+    const variations = live.item_data?.variations ?? [];
+    const first = variations[0];
+    const firstName = first?.item_variation_data?.name ?? null;
+    const hasPrice = first?.item_variation_data?.price_money?.amount != null;
+
+    if (variations.length === 0) {
+      census.no_variation++;
+      plan.push({
+        id: r.square_catalog_id, name: r.name,
+        variation_id: r.square_variation_id, price: Number(r.price ?? 0),
+        issue: "no variation",
+      });
+      continue;
+    }
+    if (first?.id === r.square_variation_id) census.original_id_intact++;
+    if (firstName === "Regular") {
+      census.one_named_regular++;
+      // Name is unrecoverable, so a "Regular" that is otherwise priced and
+      // correctly identified is not worth rewriting — flagged, not planned.
+    }
+    if (hasPrice) census.healthy++;
+  }
+
+  if (dryRun) {
+    return {
+      ok: true,
+      environment: config.environment,
+      dry_run: true,
+      census,
+      needs_repair: plan.length,
+      sample: plan.slice(0, 10),
+      note:
+        "Only items with NO variation are planned. A variation named 'Regular' " +
+        "kept its id and price — the original name is not recoverable from our " +
+        "side, so rewriting it would change nothing.",
+    };
+  }
+
+  let repaired = 0;
+  const failures: any[] = [];
+  for (const p of plan) {
+    try {
+      const current = await square(
+        config,
+        `/catalog/object/${p.id}?include_related_objects=false`,
+      );
+      const object = current.object;
+      if (!object) continue;
+      object.item_data ??= {};
+
+      const amount = Math.round(p.price * 100);
+      const build = (variationId: string) => ({
+        type: "ITEM_VARIATION",
+        id: variationId,
+        item_variation_data: {
+          item_id: object.id,
+          name: "Regular",
+          pricing_type: "FIXED_PRICING",
+          price_money: { amount, currency: "USD" },
+        },
+      });
+
+      // Original id first so historical orders relink; a fresh one only if
+      // Square will not take it back.
+      let landed: any = null;
+      for (const candidateId of [p.variation_id, `#${p.id}-var`].filter(Boolean)) {
+        const attempt = JSON.parse(JSON.stringify(object));
+        attempt.item_data.variations = [build(candidateId)];
+        let res: any;
+        try {
+          res = await square(config, "/catalog/object", {
+            method: "POST",
+            body: { idempotency_key: crypto.randomUUID(), object: attempt },
+          });
+        } catch { continue; }
+        // Same rule as the category repair: a 2xx proves nothing. Confirm the
+        // variation came back priced before counting it.
+        const back = res?.catalog_object?.item_data?.variations?.[0];
+        if (back?.item_variation_data?.price_money?.amount === amount) {
+          landed = back;
+          break;
+        }
+      }
+
+      if (!landed) {
+        failures.push({
+          id: p.id, name: p.name,
+          error: "Square accepted the write but no priced variation came back",
+        });
+        continue;
+      }
+      repaired++;
+    } catch (e: any) {
+      failures.push({ id: p.id, name: p.name, error: e.message ?? String(e) });
+    }
+  }
+
+  const counts = new Map<string, number>();
+  for (const f of failures) {
+    const key = String(f.error).replace(/[A-Z0-9]{20,}/g, "<id>").slice(0, 200);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return {
+    ok: true,
+    environment: config.environment,
+    dry_run: false,
+    repaired,
+    attempted: plan.length,
+    error_summary: [...counts.entries()]
+      .map(([error, count]) => ({ error, count }))
+      .sort((a, b) => b.count - a.count),
+    failures: failures.slice(0, 20),
+    failure_count: failures.length,
+  };
+}
+
 async function repairCategories(config: SquareConfig, admin: any, payload: any) {
   const dryRun = payload?.dry_run !== false; // default to dry run
   const limit = Number(payload?.limit ?? 0) || null;
@@ -608,9 +855,9 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
       unmatched.push({ name: r.name, category: want });
       continue;
     }
-    const haveId =
-      live.item_data?.category_id ?? live.item_data?.categories?.[0]?.id ?? null;
-    if (haveId === wantId) continue; // already correct
+    // Same reader the write uses to confirm itself, so "needs repair" and
+    // "repair stuck" can never disagree about where a category lives.
+    if (storedCategoryId(live.item_data) === wantId) continue; // already correct
     plan.push({
       id: r.square_catalog_id,
       name: r.name,
@@ -646,7 +893,6 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
   }
 
   let repaired = 0;
-  let preferLegacy = false;
   const strategy = { modern: 0, legacy: 0 };
   const failures: any[] = [];
   for (const p of target) {
@@ -655,50 +901,32 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
         config,
         `/catalog/object/${p.id}?include_related_objects=false`,
       );
-      const object = current.object;
+      let object = current.object;
       if (!object) continue;
       object.item_data ??= {};
 
-      // Set ONE category field, never both. Square folds the legacy category_id
-      // into the same internal list as `categories`, so writing both puts two
-      // entries at ordinal 0 and it rejects the object:
-      //   "duplicate int value 0 ... for attribute additional_category"
-      // That is what failed 381 of 392 items on the first repair run.
+      // Write, then CONFIRM Square stored it — a 2xx is not evidence of a write.
       //
-      // Modern shape first; if this catalog's API version doesn't accept it,
-      // fall back to the legacy field alone rather than failing the item.
-      const applyModern = () => {
-        delete object.item_data.category_id;
-        object.item_data.categories = [{ id: p.category_id, ordinal: 0 }];
-      };
-      const applyLegacy = () => {
-        delete object.item_data.categories;
-        delete object.item_data.reporting_category;
-        object.item_data.category_id = p.category_id;
-      };
-
-      // Try the shape that worked last time first. Whichever one this catalog
-      // accepts, it accepts for every item — so after the first success there is
-      // no reason to keep paying for a rejected attempt per item. That wasted
-      // call is what pushed a full run past the wall-clock limit.
-      const first = preferLegacy ? applyLegacy : applyModern;
-      const second = preferLegacy ? applyModern : applyLegacy;
-      first();
-      try {
-        await square(config, "/catalog/object", {
-          method: "POST",
-          body: { idempotency_key: crypto.randomUUID(), object },
+      // At SQUARE_API_VERSION 2024-01-18 `item_data.categories` is derived, not
+      // writable: sending it is accepted and ignored, while clearing
+      // `category_id` removes the only field that counts. The whole run then
+      // reports success and changes nothing, which is exactly what happened on
+      // the first two repair attempts. An error-triggered fallback cannot catch
+      // that, because there is no error. Reading the category back out of the
+      // response is the only thing that can.
+      const wrote = await writeCategoryVerified(config, object, p.category_id);
+      if (!wrote) {
+        failures.push({
+          id: p.id,
+          name: p.name,
+          error:
+            "Square accepted the write but did not store the category " +
+            "(no shape took effect)",
         });
-        if (preferLegacy) strategy.legacy++; else strategy.modern++;
-      } catch (_firstErr: any) {
-        second();
-        await square(config, "/catalog/object", {
-          method: "POST",
-          body: { idempotency_key: crypto.randomUUID(), object },
-        });
-        preferLegacy = !preferLegacy; // the other shape is the one this catalog takes
-        if (preferLegacy) strategy.legacy++; else strategy.modern++;
+        continue;
       }
+      object = wrote.object;
+      if (wrote.shape === "legacy") strategy.legacy++; else strategy.modern++;
       repaired++;
     } catch (e: any) {
       failures.push({ id: p.id, name: p.name, error: e.message ?? String(e) });
