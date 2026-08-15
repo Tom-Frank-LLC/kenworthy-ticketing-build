@@ -227,11 +227,13 @@ export default function ConcessionItemsTab() {
    * function's wall-clock limit: it dies without a body, and supabase-js can
    * only report the generic "returned a non-2xx status code".
    *
-   * Batching keeps each invocation short. It is naturally convergent too: every
-   * call re-reads the live catalog, so items already fixed drop out of the next
-   * plan. A batch that repairs nothing means the rest cannot be repaired, which
-   * is the stop condition — without it, permanently failing items would loop
-   * forever.
+   * Convergence is tracked HERE, not inferred from Square. Each call rebuilds
+   * its plan from `/catalog/list`, and that list does not necessarily show a
+   * write we made a second ago — so items we just fixed can look unfixed and be
+   * written again. That is what turned a 381-item job into 1,040 redundant
+   * writes. The remaining set is therefore narrowed on the client after every
+   * batch, which makes the loop terminate on our own arithmetic rather than on
+   * Square's read-your-writes behaviour.
    */
   const applyRepair = async () => {
     const BATCH = 40;
@@ -239,19 +241,25 @@ export default function ConcessionItemsTab() {
     let repaired = 0;
     const failures: RepairResult['failures'] = [];
     const errorCounts = new Map<string, number>();
+    // Names still to attempt. Shrinks every pass, so the loop cannot revisit.
+    let pending = repairSelection.map((i) => i.name);
     try {
-      for (let pass = 0; ; pass++) {
+      for (let pass = 0; pending.length > 0; pass++) {
+        const batch = pending.slice(0, BATCH);
         const result = await invokeFunction<RepairResult & { remaining?: number }>(
           'square-catalog-sync',
           {
             action: 'repair_categories',
             mode: repairMode,
             dry_run: false,
-            limit: BATCH,
-            // Only the names just reviewed on screen are ever eligible.
-            only_names: repairSelection.map((i) => i.name),
+            // Exactly this batch, and nothing else — no limit needed, and no
+            // chance of the server picking a different 40 than we think.
+            only_names: batch,
           },
         );
+        // Attempted is attempted: drop the whole batch either way, so a failing
+        // item is reported once rather than retried until the backstop trips.
+        pending = pending.slice(batch.length);
         repaired += result?.repaired ?? 0;
         for (const f of result?.failures ?? []) failures.push(f);
         for (const e of result?.error_summary ?? []) {
@@ -265,11 +273,10 @@ export default function ConcessionItemsTab() {
             .map(([error, count]) => ({ error, count }))
             .sort((a, b) => b.count - a.count),
         });
-        setRepairProgress(`Re-filed ${repaired} so far…`);
-
-        // Nothing left to do, or nothing left that can be done.
-        if (!result?.repaired) break;
-        if (pass > 40) break; // backstop; 40 × 40 covers any plausible plan
+        setRepairProgress(
+          `Re-filed ${repaired} of ${repairSelection.length}…`,
+        );
+        if (pass > 200) break; // backstop only; `pending` is the real bound
       }
 
       toast.success(`Re-filed ${repaired} item(s) in Square`);
