@@ -14,6 +14,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { json, preflight } from "../_shared/http.ts";
+import { logAudit, withBulkAudit } from "../_shared/audit.ts";
 import {
   loadSquareConfig,
   squareErrorMessage,
@@ -65,9 +66,56 @@ Deno.serve(async (req) => {
   const action = payload.action ?? "pull";
 
   try {
-    if (action === "pull") return json(await pullAll(config, admin));
-    if (action === "push_item") return json(await pushItem(config, admin, payload.itemId));
-    if (action === "delete_item") return json(await deleteItem(config, payload));
+    if (action === "pull") {
+      // The pull upserts one concession_items row per HTTP request, and Square's
+      // catalog is their whole sales history — the August over-pull moved ~998
+      // rows. Per-row audit entries would bury a month of real activity under
+      // one afternoon's sync, so the trigger is paused for the duration and the
+      // run is recorded as two rows: who started it, and what it did.
+      return json(await withBulkAudit(
+        {
+          tables: ["concession_items"],
+          action: "concession_items.bulk_sync",
+          startDetails: { source: "square", environment: config.environment },
+          actorId: user.id,
+        },
+        () => pullAll(config, admin),
+        (result) => ({
+          source: "square",
+          environment: config.environment,
+          pulled: result.pulled,
+        }),
+      ));
+    }
+    if (action === "push_item") {
+      const result = await pushItem(config, admin, payload.itemId);
+      // Single-item, so no suppression: the concession_items UPDATE this makes
+      // is logged by the trigger too, and the pair reads as "an admin pushed
+      // this item to Square, and here is the row it changed".
+      await logAudit({
+        action: "concession_items.square_push",
+        entityType: "concession_items",
+        entityId: payload.itemId ?? null,
+        actorId: user.id,
+        actorEmail: user.email ?? null,
+        details: { environment: config.environment, square_id: result.square_id ?? null },
+      });
+      return json(result);
+    }
+    if (action === "delete_item") {
+      const result = await deleteItem(config, payload);
+      await logAudit({
+        action: "concession_items.square_delete",
+        entityType: "concession_items",
+        actorId: user.id,
+        actorEmail: user.email ?? null,
+        details: {
+          environment: config.environment,
+          square_catalog_id: payload.square_catalog_id ?? null,
+        },
+      });
+      return json(result);
+    }
     if (action === "verify") return json({ ok: true, environment: config.environment });
     return json({ error: `Unknown action: ${action}` }, 400);
   } catch (e: any) {

@@ -13,6 +13,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/http.ts';
 import { syncDonationToLgl } from '../_shared/lgl.ts';
 import { deliverDonationEmails } from '../_shared/donations.ts';
+import { logAudit } from '../_shared/audit.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -51,13 +52,37 @@ Deno.serve(async (req: Request) => {
   const { data: isAdmin } = await admin.rpc('has_role', { _user_id: user.id, _role: 'admin' });
   if (!isAdmin) return json({ error: 'Admin only' }, 403);
 
+  // Every branch below reaches a system outside this database — LGL has no
+  // sandbox and shares one API key with production, so a sync writes a real
+  // donor record that nothing here can reverse. That makes "who pushed this
+  // gift, when" worth a log line of its own: the donations row diff the trigger
+  // records shows what changed locally, not that we touched LGL at all.
+
   // Resend the receipt / tribute notice for a gift whose email failed.
   if (body?.action === 'resend_emails') {
     const emails = await deliverDonationEmails(admin, donationId, { force: true });
+    await logAudit({
+      action: 'donations.resend_emails',
+      entityType: 'donations',
+      entityId: donationId,
+      actorId: user.id,
+      actorEmail: user.email ?? null,
+      details: { ok: emails.errors.length === 0, errors: emails.errors },
+    });
     return json({ ok: emails.errors.length === 0, emails });
   }
 
   const result = await syncDonationToLgl(admin, donationId, { force });
+  await logAudit({
+    action: result.ok ? 'donations.lgl_sync' : 'donations.lgl_sync.failed',
+    entityType: 'donations',
+    entityId: donationId,
+    actorId: user.id,
+    actorEmail: user.email ?? null,
+    details: result.ok
+      ? { forced: force }
+      : { forced: force, error: result.error, status: result.status },
+  });
   if (!result.ok) {
     return json({ error: result.error, detail: (result as any).detail }, result.status);
   }

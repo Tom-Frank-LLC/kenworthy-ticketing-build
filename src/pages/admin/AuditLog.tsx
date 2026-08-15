@@ -22,6 +22,8 @@ type Entry = {
   created_at: string;
 };
 
+// Anything logged but missing from this map falls back to its raw table name,
+// which is legible but ugly. Add a line here when a table gains a trigger.
 const ENTITY_LABEL: Record<string, string> = {
   sponsorship_opportunities: 'Sponsorship',
   showings: 'Showing',
@@ -33,10 +35,33 @@ const ENTITY_LABEL: Record<string, string> = {
   user_roles: 'User role',
   concession_items: 'Concession item',
   film_pass_types: 'Film pass',
+  // Covered before this map was extended, just never labelled.
+  dvds: 'DVD',
+  dvd_rentals: 'DVD rental',
+  user_film_passes: 'Issued film pass',
+  // Concessions
+  concession_menus: 'Concession menu',
+  concession_combo_items: 'Combo item',
+  concession_sales: 'Concession sale',
+  // Money and passes
+  donations: 'Donation',
+  film_pass_orders: 'Film pass order',
+  film_pass_redemptions: 'Pass redemption',
+  rental_requests: 'Rental request',
+  rental_invoice_lines: 'Rental invoice line',
+  // Configuration
+  app_config: 'Setting',
+  venues: 'Venue',
+  venue_seats: 'Venue seat',
+  showing_price_tiers: 'Price tier',
+  // Events with no table behind them, written by explicit logAudit calls.
+  auth: 'Sign-in',
+  notification: 'Message sent',
+  integration: 'Integration run',
 };
 
 export default function AuditLog() {
-  const { isAdmin, isStaff, loading: authLoading } = useAuth();
+  const { isAdmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,9 +73,12 @@ export default function AuditLog() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isAdmin && !isStaff) { navigate('/'); return; }
+    // Admin only. Staff write to this log through their own actions but cannot
+    // read it — the RLS SELECT policy agrees, so a staff user who guesses the
+    // URL would see an empty page rather than a denial. Redirect instead.
+    if (!isAdmin) { navigate('/'); return; }
     load();
-  }, [authLoading, isAdmin, isStaff]);
+  }, [authLoading, isAdmin]);
 
   async function load() {
     setLoading(true);
@@ -174,9 +202,14 @@ export default function AuditLog() {
                       <p className="text-sm mt-1 truncate">
                         <span className="text-muted-foreground">by </span>
                         {e.actor_email || <span className="italic text-muted-foreground">system / guest</span>}
-                        {e.entity_id && (
+                        {/* Tables keyed by something other than a uuid (app_config)
+                            put their key in details.entity_key instead, and that
+                            name is the only thing identifying the row. */}
+                        {e.entity_id ? (
                           <span className="text-muted-foreground"> · {e.entity_id.slice(0, 8)}</span>
-                        )}
+                        ) : e.details?.entity_key ? (
+                          <span className="text-muted-foreground"> · {String(e.details.entity_key)}</span>
+                        ) : null}
                       </p>
                     </div>
                   </button>

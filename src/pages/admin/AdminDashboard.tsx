@@ -411,9 +411,11 @@ export default function AdminDashboard() {
           <Button size="sm" variant="outline" asChild>
             <Link to="/admin/scanner"><ScanLine className="h-4 w-4 mr-1" /> Scanner</Link>
           </Button>
-          <Button size="sm" variant="outline" asChild>
-            <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
-          </Button>
+          {isAdmin && (
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
+            </Button>
+          )}
         </div>
       </div>
 

@@ -21,6 +21,7 @@
 import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
 import { verifyStandardWebhook } from '../_shared/webhook.ts';
 import { buildAuthEmailHtml, buildAuthEmailText, buildVerifyUrl, copyFor } from '../_shared/auth-email.ts';
+import { logAudit } from '../_shared/audit.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -123,7 +124,20 @@ Deno.serve(async (req: Request) => {
     return hookError(`Email provider rejected the send (${res.status})`, 502);
   }
 
-  console.log(`[send-auth-email] sent ${action} to ${email.replace(/(.).*(@.*)/, '$1***$2')}`);
+  const masked = email.replace(/(.).*(@.*)/, '$1***$2');
+  console.log(`[send-auth-email] sent ${action} to ${masked}`);
+
+  // Masked in the log for the same reason it is masked in the console line
+  // above: this fires for members and ticket buyers, not just staff, and the
+  // useful fact is that a recovery link went out at 14:02 — not the address it
+  // went to. The user id is there for anyone who genuinely needs to resolve it.
+  await logAudit({
+    action: `auth.email_sent.${action}`,
+    entityType: 'auth',
+    entityId: payload?.user?.id ?? null,
+    details: { email: masked, email_action_type: action },
+  });
+
   return new Response(JSON.stringify({}), {
     status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
