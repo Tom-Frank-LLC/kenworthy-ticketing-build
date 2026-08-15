@@ -361,7 +361,9 @@ a write that never happens, nor tell which code is actually in use.
 3. Obtain a Square item-library export, or open a Square Support ticket, for the
    descriptions/images/variations on ~906 items. Backups age. Nothing on our side
    can reconstruct these.
-4. Confirm whether damaged items are sellable (variation present or absent).
+4. **Restore variations.** Confirmed in the dashboard: damaged items have no
+   variation at all, so they likely cannot be rung up. The snapshot holds each
+   item's real square_variation_id and price; the name is lost.
 
 **Code**
 
@@ -370,9 +372,8 @@ a write that never happens, nor tell which code is actually in use.
    terminal card path on both flows is the working model.
 6. Fix `square-labor` `updateScheduledShift` and `deleteScheduledShift` —
    source the full record from the list endpoint before the PUT.
-7. Re-run `repair_categories` restore (the `additional_category` duplicate is
-   fixed; ~381 expected to succeed). Till-facing categories are individually
-   skippable.
+7. ~~Re-run `repair_categories` restore.~~ **Done 15 Aug** — all 381 categories
+   restored, confirmed by a fresh dry run returning 0 mismatches.
 8. `order_token` is `uuid` on `tickets` but `text` on `donations` — joins need a
    cast. Standalone donations carry no `order_token`.
 
