@@ -30,6 +30,7 @@ import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CONCESSION_POS_ENABLED } from '@/lib/flags';
 import { formatShowtime } from '@/lib/datetime';
 import TicketScanner from './TicketScanner';
 
@@ -617,9 +618,15 @@ export default function StaffPOS() {
       />
 
       <Tabs defaultValue="tickets" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 max-w-sm">
+        <TabsList
+          className={`grid w-full max-w-sm ${
+            CONCESSION_POS_ENABLED ? 'grid-cols-3' : 'grid-cols-2'
+          }`}
+        >
           <TabsTrigger value="tickets"><ShoppingCart className="h-4 w-4 mr-1" /> Tickets</TabsTrigger>
-          <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1" /> Concessions</TabsTrigger>
+          {CONCESSION_POS_ENABLED && (
+            <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1" /> Concessions</TabsTrigger>
+          )}
           <TabsTrigger value="film-passes"><Ticket className="h-4 w-4 mr-1" /> Film Passes</TabsTrigger>
         </TabsList>
 
@@ -929,9 +936,12 @@ export default function StaffPOS() {
       </div>
         </TabsContent>
 
-        <TabsContent value="concessions">
-          <ConcessionPOS onSaleComplete={loadDailyStats} />
-        </TabsContent>
+        {/* Hidden, not deleted — the tab takes no payment (see CONCESSION_POS_ENABLED). */}
+        {CONCESSION_POS_ENABLED && (
+          <TabsContent value="concessions">
+            <ConcessionPOS onSaleComplete={loadDailyStats} />
+          </TabsContent>
+        )}
 
         <TabsContent value="film-passes">
           <FilmPassPOS />
