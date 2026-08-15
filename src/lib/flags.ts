@@ -53,3 +53,25 @@ export const MEMBER_ACCOUNTS_ENABLED =
  */
 export const CONCESSION_SQUARE_PUSH_ENABLED =
   import.meta.env.VITE_CONCESSION_SQUARE_PUSH === 'true';
+
+/**
+ * Whether the Concessions tab appears in the staff POS.
+ *
+ * **Off.** Concessions are rung up on the theatre's own Square register, so this
+ * tab was never part of the workflow — but it looked exactly like one that was.
+ * `ConcessionPOS.handleSell` writes `concession_sales` and `concession_sale_items`
+ * and toasts "Concession sale — $12.50 (card)". It never contacts Square on any
+ * path, so a card sale reports success without charging a card.
+ *
+ * Nothing was lost to it: `concession_sales` has zero rows, so nobody ever used
+ * it. Hidden deliberately rather than left to be discovered by a staff member on
+ * a busy night.
+ *
+ * As with member accounts, the code stays — the component, its tab, and the
+ * tables behind it are untouched. Finishing it means taking payment through
+ * Square (a terminal charge for card, a cash tender for cash) and giving
+ * `concession_sales` somewhere to record the payment id, which it currently has
+ * no column for. Turn this on once that exists.
+ */
+export const CONCESSION_POS_ENABLED =
+  import.meta.env.VITE_CONCESSION_POS === 'true';
