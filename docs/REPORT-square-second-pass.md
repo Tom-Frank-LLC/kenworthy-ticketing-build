@@ -157,35 +157,69 @@ order_token d738ce8a…  2 tickets  $21.20  = Square $21.20
 order_token db046567…  3 tickets  $25.44  = Square $25.44
 ```
 
-### Square is not a complete register — verified
+### 🔴 Cash never reaches Square — a policy violation, not a design choice
 
-| Payment method | Status | Passes | In Square | Value |
-|---|---|---|---|---|
-| online | unassigned | 30 | — | unsold inventory |
-| **cash** | **active** | **8** | **0** | **$480.00** |
-| online/cash | void | 3 | — | — |
+**The policy** (stated by Tom, 15 Aug): *no money is collected that doesn't go
+through Square — cash transactions must be registered with Square to keep the
+books accurate.* Square is intended to be the **complete** register.
 
-**$480 of film passes were sold for cash and never touched Square.** Likewise 16
-of 27 tickets are comps with no payment, because $0 charges skip Square by
-design.
+**The code does not implement that.** Verified by reading every POS flow:
 
-So "Square is the only verifiable register" holds for **card** revenue. Square is
-a *subset* of revenue. Reconciling our system against Square and expecting a
-clean match would flag that $480 as a discrepancy when it is a category Square
-structurally cannot see.
+| Flow | Card | Cash |
+|---|---|---|
+| Online ticket checkout | ✅ Square payment | n/a |
+| `StaffPOS` tickets | ✅ Square terminal | 🔴 **DB only** |
+| `FilmPassPOS` | ✅ Square terminal | 🔴 **DB only** |
+| `ConcessionPOS` | 🔴 **DB only** | 🔴 **DB only** |
+| DVD rentals (`DvdLibraryTab`) | 🔴 **DB only** | 🔴 **DB only** |
+
+The gate is explicit — `FilmPassPOS.tsx:236`:
+
+```js
+if (!order && paymentMethod === 'card' && selectedType) {
+  squarePaymentId = await collectTerminalPayment(...)
+}
+```
+
+Cash falls straight through with `squarePaymentId = null`. `StaffPOS.handleCashSale`
+is the same shape: it calls `createTickets('cash')` and writes rows, and never
+contacts Square.
+
+**Verified: nothing in the codebase creates a Square cash tender.** No
+`cash_details`, no `source_id: 'CASH'`, no `buyer_supplied_money`. Square's
+Payments API supports cash tenders; we never use them.
+
+`ConcessionPOS` is the sharpest case: it contacts Square for **neither** cash nor
+card. It inserts `concession_sales` + `concession_sale_items` and shows a success
+toast. For a card sale it does not charge a card.
+
+**Unverified, and it decides the severity:** whether staff ring these on a
+**separate physical Square register** and use our POS only for inventory and
+records. If so this is a double-entry workflow — reconcilable but manual — rather
+than lost revenue. If not, cash and concession revenue never enters Square at
+all. *Settled by:* asking the box office how a cash concession sale is actually
+rung up today.
+
+### Correction to an earlier reading
+
+An earlier draft treated 8 cash film passes ($480) as evidence that "Square is
+structurally a subset of revenue, and that is by design." **That was wrong on
+both counts.** Those rows are test data, and the policy is the opposite: Square
+is meant to be complete. The correct reading is that they are **8 instances of
+the gap above**, not a category Square cannot see.
 
 ### Consequence
 
-- **Card revenue** — verifiable against Square one-to-one. Already aligned; no
-  change needed.
-- **Cash / comps** — our system is the *only* record. Trustworthiness comes from
-  internal controls: `sold_by_user_id` and `issued_by_user_id` name a staff
-  member on every cash sale and comp.
+- **Card revenue** — verifiable against Square one-to-one. Already aligned.
+- **Cash and concession revenue** — currently unverifiable against Square,
+  because it never gets there. This is the gap to close, not a reporting nuance
+  to work around.
 - **Per-film attribution** — our system only. Square holds a total plus the title
   as free text in `note`. Verifiable in aggregate, not independently attributable.
 
-A channel-segmented report is what makes the "unifier" model usable — it does not
-require a data-model change.
+Once cash is registered in Square, the "unifier" model works as intended: our
+system holds the itemised detail, Square holds the complete money record, and the
+two tie out through `square_payment_id` / `reference_id`.
 
 ### Reporting-shape gap at cutover
 
@@ -208,36 +242,44 @@ which would shrink this considerably.
 
 **Time-sensitive**
 
-1. Obtain a Square item-library export, or open a Square Support ticket, for the
+1. **Register cash in Square.** Every cash flow — POS tickets, film passes,
+   concessions, DVDs — records to our DB only, and `ConcessionPOS` never contacts
+   Square for card either. This breaks the stated policy that all money runs
+   through Square, and it breaks the books. First step is the unverified question
+   in §5: find out whether staff already double-enter on a physical register.
+   If not, this is the highest-priority item in this document.
+2. Obtain a Square item-library export, or open a Square Support ticket, for the
    descriptions/images/variations on ~906 items. Backups age. Nothing on our side
    can reconstruct these.
-2. Confirm whether damaged items are sellable (variation present or absent). This
-   is the only open question that could affect taking money.
+3. Confirm whether damaged items are sellable (variation present or absent).
 
 **Code**
 
-3. Fix `square-labor` `updateScheduledShift` and `deleteScheduledShift` —
+4. Add Square cash tenders (`source_id: 'CASH'` + `cash_details`) to every cash
+   path, and make `ConcessionPOS` take payment through Square rather than only
+   writing rows. Scope depends on item 1.
+5. Fix `square-labor` `updateScheduledShift` and `deleteScheduledShift` —
    source the full record from the list endpoint before the PUT.
-4. Re-run `repair_categories` restore (the `additional_category` duplicate is
+6. Re-run `repair_categories` restore (the `additional_category` duplicate is
    fixed; ~381 expected to succeed). Till-facing categories are individually
    skippable.
-5. `order_token` is `uuid` on `tickets` but `text` on `donations` — joins need a
+7. `order_token` is `uuid` on `tickets` but `text` on `donations` — joins need a
    cast. Standalone donations carry no `order_token`.
 
 **Decisions**
 
-6. Ticket itemisation in Square — leave as payments-only; add ad-hoc order line
+8. Ticket itemisation in Square — leave as payments-only; add ad-hoc order line
    items (itemised, no catalog coupling); or reference real `catalog_object_id`
    (best fidelity, reintroduces coupling). Recommend ad-hoc line items **if**
    per-film Square reporting is actually wanted.
-7. Catalog hygiene, pre-existing and unrelated to the incident: 535 items
+9. Catalog hygiene, pre-existing and unrelated to the incident: 535 items
    uncategorised in Square (verified pre-existing — recorded as `General` at
    19:41, hours before any push); `SILENT FILM FESTIVAL PASS` exists three times;
    `Poster Design` / `Poster Print` are proposed as merch but look like services.
 
 **Process**
 
-8. Re-run the cutover audit on axes 2 and 3 (write semantics, blast radius) for
+10. Re-run the cutover audit on axes 2 and 3 (write semantics, blast radius) for
    every integration, not only Square — LGL and Mailchimp have the same shape and
    both share credentials between staging and production.
 
