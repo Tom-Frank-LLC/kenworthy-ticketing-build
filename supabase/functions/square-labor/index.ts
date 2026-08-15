@@ -440,16 +440,36 @@ async function upsertScheduledShift(config: SquareConfig, params: Record<string,
     }, 400);
   }
 
+  const id = params.id as string | undefined;
+
+  // UpdateScheduledShift replaces draft_shift_details wholesale, so anything the
+  // caller does not resend is cleared — the same replace-not-merge trap that
+  // destroyed 906 catalog objects on 2026-08-14. Square offers no GET-one here,
+  // but /search returns the whole record, so read it and edit in place.
+  //
+  // Without this, editing a shift's time silently dropped whatever notes Square
+  // was holding, because the UI only sends the fields it happens to have.
+  let base: Record<string, unknown> = {};
+  if (id) {
+    const existing = await findScheduledShift(config, id, startAt, endAt);
+    if (!existing) {
+      return json({ error: "That scheduled shift no longer exists in Square." }, 404);
+    }
+    base = { ...(existing.draft_shift_details ?? existing.published_shift_details ?? {}) };
+  }
+
   const details = {
+    ...base,                       // keep every field we are not editing
     location_id: config.locationId,
     team_member_id: teamMemberId,
     job_id: jobId,
     start_at: startAt,
     end_at: endAt,
-    ...(params.notes ? { notes: params.notes } : {}),
+    // Only overwrite notes when the caller actually supplied them; an absent
+    // field means "unchanged", not "clear it".
+    ...(params.notes !== undefined ? { notes: params.notes } : {}),
   };
 
-  const id = params.id as string | undefined;
   const data = id
     ? await square(config, `/labor/scheduled-shifts/${id}`, {
       method: "PUT",
@@ -466,35 +486,72 @@ async function upsertScheduledShift(config: SquareConfig, params: Record<string,
   return json({ scheduled_shift: normalizeScheduledShift(data.scheduled_shift) });
 }
 
-/** Square has no DELETE and no GET-one for scheduled shifts. Removal is an
- *  update that sets is_deleted, which means the caller has to hand back the
- *  shift's own fields — the UI always has them, it is deleting a row it drew. */
+/**
+ * Find one scheduled shift by id.
+ *
+ * Square has no GET-one for scheduled shifts, so this searches the window the
+ * shift falls in and picks it out. The window is widened by a day at each end
+ * because the caller's start/end are the values being written, which may differ
+ * from the ones currently stored.
+ */
+async function findScheduledShift(
+  config: SquareConfig,
+  id: string,
+  startAt?: string,
+  endAt?: string,
+): Promise<any | null> {
+  const day = 24 * 60 * 60 * 1000;
+  const from = startAt ? new Date(new Date(startAt).getTime() - day) : new Date(Date.now() - 30 * day);
+  const to = endAt ? new Date(new Date(endAt).getTime() + day) : new Date(Date.now() + 90 * day);
+
+  const found = await searchAll(
+    config,
+    "/labor/scheduled-shifts/search",
+    {
+      filter: {
+        location_ids: [config.locationId],
+        start_at: { start_at: from.toISOString(), end_at: to.toISOString() },
+      },
+    },
+    SCHEDULED_PAGE,
+    "scheduled_shifts",
+  );
+  return found.find((s: any) => s.id === id) ?? null;
+}
+
+/**
+ * Remove a scheduled shift.
+ *
+ * Square has no DELETE — removal is an update setting is_deleted, and since
+ * UpdateScheduledShift replaces draft_shift_details wholesale, the record has to
+ * be read first. The old version rebuilt those details from whatever the caller
+ * passed, which meant a delete that omitted job_id or notes wrote a mangled
+ * record on its way out. Reading first also means the caller no longer has to
+ * hand back fields it should never have needed to know.
+ */
 async function deleteScheduledShift(config: SquareConfig, params: Record<string, unknown>) {
   const id = params.id as string | undefined;
-  const teamMemberId = params.team_member_id as string | undefined;
-  const startAt = params.start_at as string | undefined;
-  const endAt = params.end_at as string | undefined;
   if (!id) return json({ error: "id required" }, 400);
-  if (!teamMemberId || !startAt || !endAt) {
-    return json({
-      error: "team_member_id, start_at and end_at are required to remove a scheduled shift",
-    }, 400);
+
+  const existing = await findScheduledShift(
+    config, id,
+    params.start_at as string | undefined,
+    params.end_at as string | undefined,
+  );
+  if (!existing) {
+    // Already gone is the outcome the caller wanted.
+    return json({ ok: true, already_absent: true });
   }
+
+  const details = {
+    ...(existing.draft_shift_details ?? existing.published_shift_details ?? {}),
+    location_id: config.locationId,
+    is_deleted: true,
+  };
 
   await square(config, `/labor/scheduled-shifts/${id}`, {
     method: "PUT",
-    body: {
-      scheduled_shift: {
-        draft_shift_details: {
-          location_id: config.locationId,
-          team_member_id: teamMemberId,
-          ...(params.job_id ? { job_id: params.job_id } : {}),
-          start_at: startAt,
-          end_at: endAt,
-          is_deleted: true,
-        },
-      },
-    },
+    body: { scheduled_shift: { draft_shift_details: details } },
   });
   return json({ ok: true });
 }

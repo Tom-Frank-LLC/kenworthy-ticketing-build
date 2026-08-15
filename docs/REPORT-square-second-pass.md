@@ -311,14 +311,28 @@ Which means **the push direction has no purpose** — and the push is precisely 
 destroyed 906 catalog objects. A website menu never needs to write back to a point
 of sale.
 
-**Recommendation: make `square-catalog-sync` pull-only and delete `pushItem`
-entirely,** along with `pushToSquare` on add/edit and the Square arm of delete.
-The read-modify-write fix already shipped makes the existing push safe, but the
-safest write is the one that does not exist. This removes the entire bug class
-from this integration rather than defending against it, and it removes the
-possibility that editing a display price silently repriced the register.
+**Shipped: the push is disabled behind a flag, not deleted.** Admins editing an
+item so the register picks it up is a real feature the Kenworthy wants — it is
+phase 2, and the architecture is not settled. So this follows the existing
+`MEMBER_ACCOUNTS` pattern rather than removing code:
 
-This is the single highest-value change in this document relative to its size.
+- `CONCESSION_SQUARE_PUSH` (server) / `VITE_CONCESSION_SQUARE_PUSH` (client),
+  **default off**
+- Nothing removed — `pushItem`, the Square arm of delete, and both actions remain
+- Refused **server-side** as well as hidden in the UI, so a stale bundle cannot
+  write
+- Checked ahead of the audit calls, so a refusal is never logged as a write that
+  happened
+- Admin copy now reads: *"This is the website's display menu. Square is the
+  source of truth."*
+
+Until phase 2 lands, the pull is the whole job and no edit here can reach a
+register — which also removes the possibility that changing a display price
+silently repriced the till.
+
+**Phase 2 needs an architecture decision first:** what our four columns are
+allowed to mean to a register, and which system wins on a conflict. That is the
+question to answer before the flag goes on.
 
 ### Consequence
 
@@ -379,7 +393,9 @@ a write that never happens, nor tell which code is actually in use.
 3. Obtain a Square item-library export, or open a Square Support ticket, for the
    descriptions/images/variations on ~906 items. Backups age. Nothing on our side
    can reconstruct these.
-4. Confirm whether damaged items are sellable (variation present or absent).
+4. **Restore variations.** Confirmed in the dashboard: damaged items have no
+   variation at all, so they likely cannot be rung up. The snapshot holds each
+   item's real square_variation_id and price; the name is lost.
 
 **Code**
 
@@ -395,9 +411,8 @@ a write that never happens, nor tell which code is actually in use.
    `docs/briefs/BRIEF-square-in-person-card-server-path.md`.
 6. Fix `square-labor` `updateScheduledShift` and `deleteScheduledShift` —
    source the full record from the list endpoint before the PUT.
-7. Re-run `repair_categories` restore (the `additional_category` duplicate is
-   fixed; ~381 expected to succeed). Till-facing categories are individually
-   skippable.
+7. ~~Re-run `repair_categories` restore.~~ **Done 15 Aug** — all 381 categories
+   restored, confirmed by a fresh dry run returning 0 mismatches.
 8. `order_token` is `uuid` on `tickets` but `text` on `donations` — joins need a
    cast. Standalone donations carry no `order_token`.
 

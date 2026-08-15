@@ -59,6 +59,55 @@ interface RepairResult {
   error_summary?: { error: string; count: number }[];
 }
 
+/** How much description/image data the 14 Aug push actually cost. */
+interface DamageCensus {
+  environment?: string;
+  images?: {
+    total_in_catalog: number;
+    referenced_by_an_item: number;
+    orphaned: number;
+    orphan_sample?: { id: string; name: string | null; caption: string | null }[];
+    reattachable?: {
+      unique_match: number;
+      ambiguous_match: number;
+      no_match: number;
+      match_sample?: { image: string; item: string | null }[];
+      unmatched_sample?: string[];
+    };
+    metadata?: {
+      with_name: number;
+      with_caption: number;
+      raw_sample?: unknown[];
+    };
+  };
+  damaged_items?: { items: number; withDescription: number; withImage: number };
+  untouched_items?: { items: number; withDescription: number; withImage: number };
+  description_estimate?: {
+    untouched_base_rate: number;
+    estimated_descriptions_lost: number;
+    caveat: string;
+  };
+  verdict?: string;
+}
+
+/** The variation census, reported before anything is written. */
+interface VariationPlan {
+  environment?: string;
+  census?: {
+    no_variation: number;
+    one_named_regular: number;
+    original_id_intact: number;
+    healthy: number;
+    gone_from_square: number;
+  };
+  needs_repair?: number;
+  note?: string;
+  repaired?: number;
+  attempted?: number;
+  failure_count?: number;
+  error_summary?: { error: string; count: number }[];
+}
+
 interface ComboChild {
   id: string;
   combo_id: string;
@@ -85,6 +134,11 @@ export default function ConcessionItemsTab() {
   const [repairMode, setRepairMode] = useState<'restore' | 'organize'>('restore');
   const [repairing, setRepairing] = useState(false);
   const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
+  const [repairProgress, setRepairProgress] = useState<string | null>(null);
+  const [variationPlan, setVariationPlan] = useState<VariationPlan | null>(null);
+  const [variationOpen, setVariationOpen] = useState(false);
+  const [census, setCensus] = useState<DamageCensus | null>(null);
+  const [censusOpen, setCensusOpen] = useState(false);
   // Categories the operator has chosen NOT to restore this run.
   const [skipCategories, setSkipCategories] = useState<Set<string>>(new Set());
 
@@ -217,27 +271,131 @@ export default function ConcessionItemsTab() {
     (i) => !skipCategories.has(i.category),
   );
 
+  /**
+   * Apply in batches, because one call cannot finish the job.
+   *
+   * Each item costs up to three sequential Square calls — retrieve, then the
+   * modern category shape, then the legacy one if that is rejected. Across ~390
+   * items that is well over a thousand round trips, which exceeds the edge
+   * function's wall-clock limit: it dies without a body, and supabase-js can
+   * only report the generic "returned a non-2xx status code".
+   *
+   * Convergence is tracked HERE, not inferred from Square. Each call rebuilds
+   * its plan from `/catalog/list`, and that list does not necessarily show a
+   * write we made a second ago — so items we just fixed can look unfixed and be
+   * written again. That is what turned a 381-item job into 1,040 redundant
+   * writes. The remaining set is therefore narrowed on the client after every
+   * batch, which makes the loop terminate on our own arithmetic rather than on
+   * Square's read-your-writes behaviour.
+   */
   const applyRepair = async () => {
+    const BATCH = 40;
     setRepairing(true);
+    let repaired = 0;
+    const failures: RepairResult['failures'] = [];
+    const errorCounts = new Map<string, number>();
+    // Names still to attempt. Shrinks every pass, so the loop cannot revisit.
+    let pending = repairSelection.map((i) => i.name);
     try {
-      const result = await invokeFunction<RepairResult>('square-catalog-sync', {
-        action: 'repair_categories',
-        mode: repairMode,
-        dry_run: false,
-        // Only the names just reviewed on screen are eligible to change.
-        only_names: repairSelection.map((i) => i.name),
-      });
-      setRepairResult(result);
-      toast.success(`Re-filed ${result?.repaired ?? 0} item(s) in Square`);
-      // Failures stay on screen with Square's own message. A bare count sends
-      // you to logs you may not have; the reason is what decides what to do next.
-      if (result?.failure_count) {
-        toast.error(`${result.failure_count} item(s) failed — reasons shown below`);
+      for (let pass = 0; pending.length > 0; pass++) {
+        const batch = pending.slice(0, BATCH);
+        const result = await invokeFunction<RepairResult & { remaining?: number }>(
+          'square-catalog-sync',
+          {
+            action: 'repair_categories',
+            mode: repairMode,
+            dry_run: false,
+            // Exactly this batch, and nothing else — no limit needed, and no
+            // chance of the server picking a different 40 than we think.
+            only_names: batch,
+          },
+        );
+        // Attempted is attempted: drop the whole batch either way, so a failing
+        // item is reported once rather than retried until the backstop trips.
+        pending = pending.slice(batch.length);
+        repaired += result?.repaired ?? 0;
+        for (const f of result?.failures ?? []) failures.push(f);
+        for (const e of result?.error_summary ?? []) {
+          errorCounts.set(e.error, (errorCounts.get(e.error) ?? 0) + e.count);
+        }
+        setRepairResult({
+          repaired,
+          failure_count: failures.length,
+          failures: failures.slice(0, 20),
+          error_summary: [...errorCounts.entries()]
+            .map(([error, count]) => ({ error, count }))
+            .sort((a, b) => b.count - a.count),
+        });
+        setRepairProgress(
+          `Re-filed ${repaired} of ${repairSelection.length}…`,
+        );
+        if (pass > 200) break; // backstop only; `pending` is the real bound
+      }
+
+      toast.success(`Re-filed ${repaired} item(s) in Square`);
+      if (failures.length) {
+        toast.error(`${failures.length} item(s) failed — reasons shown below`);
       } else {
         setRepairOpen(false);
       }
     } catch (e) {
-      toast.error(`Repair failed: ${(e as Error).message}`);
+      toast.error(
+        `Repair stopped after ${repaired} item(s): ${(e as Error).message}`,
+      );
+    } finally {
+      setRepairProgress(null);
+      setRepairing(false);
+    }
+  };
+
+  // Variations: census first. An item with no priced variation cannot be rung
+  // up, so this is the repair that matters — but what needs doing depends on
+  // what survived, which is worth measuring rather than assuming.
+  const planVariations = async () => {
+    setRepairing(true);
+    try {
+      const result = await invokeFunction<VariationPlan>('square-catalog-sync', {
+        action: 'repair_variations',
+        dry_run: true,
+      });
+      setVariationPlan(result);
+      setVariationOpen(true);
+    } catch (e) {
+      toast.error(`Could not read the Square catalog: ${(e as Error).message}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const runDamageCensus = async () => {
+    setRepairing(true);
+    try {
+      const result = await invokeFunction<DamageCensus>('square-catalog-sync', {
+        action: 'damage_census',
+      });
+      setCensus(result);
+      setCensusOpen(true);
+    } catch (e) {
+      toast.error(`Could not read the Square catalog: ${(e as Error).message}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const applyVariations = async () => {
+    setRepairing(true);
+    try {
+      const result = await invokeFunction<VariationPlan>('square-catalog-sync', {
+        action: 'repair_variations',
+        dry_run: false,
+      });
+      setVariationPlan((prev) => ({ ...prev, ...result }));
+      toast.success(`Restored ${result?.repaired ?? 0} variation(s) in Square`);
+      if (result?.failure_count) {
+        toast.error(`${result.failure_count} failed — reasons shown below`);
+      }
+    } catch (e) {
+      toast.error(`Variation restore failed: ${(e as Error).message}`);
     } finally {
       setRepairing(false);
     }
@@ -464,6 +622,22 @@ export default function ConcessionItemsTab() {
             >
               File uncategorized items
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={planVariations}
+              disabled={repairing}
+            >
+              Check variations
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={runDamageCensus}
+              disabled={repairing}
+            >
+              What was lost?
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -527,6 +701,221 @@ export default function ConcessionItemsTab() {
       {items.length === 0 && (
         <p className="text-muted-foreground text-center py-8">No concession items yet. Add your first item!</p>
       )}
+
+      <Dialog open={censusOpen} onOpenChange={setCensusOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>What was lost — {census?.environment ?? 'unknown'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-sm">
+            <div className="rounded-md border border-border/40 p-3 space-y-1">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Images — measured, not estimated
+              </p>
+              <div className="flex justify-between">
+                <span>Image files in the catalog</span>
+                <span className="tabular-nums">{census?.images?.total_in_catalog ?? 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Still attached to an item</span>
+                <span className="tabular-nums">{census?.images?.referenced_by_an_item ?? 0}</span>
+              </div>
+              <div className="flex justify-between font-medium text-destructive">
+                <span>Orphaned (detached by the push)</span>
+                <span className="tabular-nums">{census?.images?.orphaned ?? 0}</span>
+              </div>
+              <p className="text-xs text-muted-foreground pt-1">
+                An image is its own object in Square — the push cleared the link,
+                not the file. Orphans are still there and could be re-attached if
+                we knew which item each belonged to.
+              </p>
+
+              <div className="mt-3 pt-3 border-t border-border/40 space-y-1">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                  Can they be matched back by name?
+                </p>
+                <div className="flex justify-between">
+                  <span className="text-accent">Matches exactly one item</span>
+                  <span className="tabular-nums">
+                    {census?.images?.reattachable?.unique_match ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Matches more than one</span>
+                  <span className="tabular-nums">
+                    {census?.images?.reattachable?.ambiguous_match ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>No name match</span>
+                  <span className="tabular-nums">
+                    {census?.images?.reattachable?.no_match ?? 0}
+                  </span>
+                </div>
+                {(census?.images?.reattachable?.match_sample ?? []).length > 0 && (
+                  <details className="pt-1">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                      Sample matches
+                    </summary>
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {census?.images?.reattachable?.match_sample?.map((m, i) => (
+                        <li key={i} className="flex justify-between gap-2">
+                          <span className="truncate">{m.image || '(no name)'}</span>
+                          <span className="text-muted-foreground truncate">→ {m.item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {(census?.images?.reattachable?.unmatched_sample ?? []).length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                      Sample unmatched names
+                    </summary>
+                    <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                      {census?.images?.reattachable?.unmatched_sample?.map((n, i) => (
+                        <li key={i} className="truncate">{n}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+
+                <div className="flex justify-between pt-1">
+                  <span className="text-muted-foreground">Orphans carrying a name</span>
+                  <span className="tabular-nums">
+                    {census?.images?.metadata?.with_name ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Orphans carrying a caption</span>
+                  <span className="tabular-nums">
+                    {census?.images?.metadata?.with_caption ?? 0}
+                  </span>
+                </div>
+                {(census?.images?.metadata?.raw_sample ?? []).length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                      Raw metadata on 5 orphans
+                    </summary>
+                    <pre className="mt-1 max-h-56 overflow-auto rounded bg-muted/30 p-2 text-[10px] leading-relaxed">
+{JSON.stringify(census?.images?.metadata?.raw_sample, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-md border border-border/40 p-3 space-y-1">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Descriptions — estimated
+              </p>
+              <div className="flex justify-between">
+                <span>Never-pushed items with a description</span>
+                <span className="tabular-nums">
+                  {census?.untouched_items?.withDescription ?? 0} / {census?.untouched_items?.items ?? 0}
+                  {' '}({census?.description_estimate?.untouched_base_rate ?? 0}%)
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Pushed items with a description now</span>
+                <span className="tabular-nums">
+                  {census?.damaged_items?.withDescription ?? 0} / {census?.damaged_items?.items ?? 0}
+                </span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>Estimated descriptions lost</span>
+                <span className="tabular-nums">
+                  ~{census?.description_estimate?.estimated_descriptions_lost ?? 0}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground pt-1">
+                {census?.description_estimate?.caveat}
+              </p>
+            </div>
+
+            {census?.verdict && (
+              <p className="rounded-md border border-accent/30 bg-accent/10 p-3">
+                {census.verdict}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCensusOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={variationOpen} onOpenChange={setVariationOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Variations — {variationPlan?.environment ?? 'unknown'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-sm">
+            <p className="text-muted-foreground">
+              An item with no priced variation cannot be rung up. This reads the
+              live catalog and reports what survived the 14 Aug push before
+              anything is written.
+            </p>
+
+            <div className="rounded-md border border-border/40 p-3 space-y-1">
+              <div className="flex justify-between">
+                <span className="text-destructive">No variation at all</span>
+                <span className="tabular-nums">{variationPlan?.census?.no_variation ?? 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Has a priced variation</span>
+                <span className="tabular-nums">{variationPlan?.census?.healthy ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>…of which named “Regular”</span>
+                <span className="tabular-nums">{variationPlan?.census?.one_named_regular ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Original variation id intact</span>
+                <span className="tabular-nums">{variationPlan?.census?.original_id_intact ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>No longer in Square</span>
+                <span className="tabular-nums">{variationPlan?.census?.gone_from_square ?? 0}</span>
+              </div>
+            </div>
+
+            {variationPlan?.note && (
+              <p className="text-xs text-muted-foreground">{variationPlan.note}</p>
+            )}
+
+            {(variationPlan?.failure_count ?? 0) > 0 && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3">
+                <p className="text-xs uppercase tracking-wide text-destructive mb-2">
+                  {variationPlan?.repaired ?? 0} restored,{' '}
+                  {variationPlan?.failure_count} failed
+                </p>
+                <ul className="space-y-1">
+                  {(variationPlan?.error_summary ?? []).map((e) => (
+                    <li key={e.error} className="flex justify-between gap-3">
+                      <span className="break-words">{e.error}</span>
+                      <span className="tabular-nums shrink-0">{e.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVariationOpen(false)}>Close</Button>
+            <Button
+              onClick={applyVariations}
+              disabled={repairing || !variationPlan?.needs_repair}
+            >
+              {repairing
+                ? 'Restoring…'
+                : `Restore ${variationPlan?.needs_repair ?? 0} variation(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={repairOpen} onOpenChange={setRepairOpen}>
         <DialogContent className="max-w-lg">
@@ -649,7 +1038,9 @@ export default function ConcessionItemsTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setRepairOpen(false)}>Cancel</Button>
             <Button onClick={applyRepair} disabled={repairing || !repairSelection.length}>
-              {repairing ? 'Writing…' : `Apply to ${repairSelection.length} item(s)`}
+              {repairing
+                ? (repairProgress ?? 'Writing…')
+                : `Apply to ${repairSelection.length} item(s)`}
             </Button>
           </DialogFooter>
         </DialogContent>
