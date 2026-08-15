@@ -36,6 +36,19 @@ interface PullPreview {
   sanity_limit?: number;
 }
 
+/** What repair_categories reports back from its dry run. */
+interface RepairPlan {
+  environment?: string;
+  mode?: string;
+  needs_repair?: number;
+  would_repair?: number;
+  restoring?: number;
+  organizing?: number;
+  no_longer_in_square?: number;
+  by_category?: { category: string; count: number }[];
+  items?: { name: string; category: string }[];
+}
+
 interface ComboChild {
   id: string;
   combo_id: string;
@@ -57,6 +70,10 @@ export default function ConcessionItemsTab() {
   const [syncing, setSyncing] = useState(false);
   const [preview, setPreview] = useState<PullPreview | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [repair, setRepair] = useState<RepairPlan | null>(null);
+  const [repairOpen, setRepairOpen] = useState(false);
+  const [repairMode, setRepairMode] = useState<'restore' | 'organize'>('restore');
+  const [repairing, setRepairing] = useState(false);
 
   // Combo management
   const [comboDialogOpen, setComboDialogOpen] = useState(false);
@@ -135,6 +152,51 @@ export default function ConcessionItemsTab() {
     }
   };
 
+  // Square catalog repair. Always dry-runs first and shows every affected name,
+  // because this writes to the live Square catalog rather than to our own table.
+  const planRepair = async (mode: 'restore' | 'organize') => {
+    setRepairMode(mode);
+    setRepairing(true);
+    try {
+      const result = await invokeFunction<RepairPlan>('square-catalog-sync', {
+        action: 'repair_categories',
+        mode,
+        dry_run: true,
+      });
+      setRepair(result);
+      setRepairOpen(true);
+    } catch (e) {
+      toast.error(`Could not read the Square catalog: ${(e as Error).message}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const applyRepair = async () => {
+    setRepairing(true);
+    try {
+      const result = await invokeFunction<{ repaired?: number; failure_count?: number }>(
+        'square-catalog-sync',
+        {
+          action: 'repair_categories',
+          mode: repairMode,
+          dry_run: false,
+          // Only the names just reviewed on screen are eligible to change.
+          only_names: (repair?.items ?? []).map((i) => i.name),
+        },
+      );
+      toast.success(`Re-filed ${result?.repaired ?? 0} item(s) in Square`);
+      if (result?.failure_count) {
+        toast.error(`${result.failure_count} item(s) failed — see function logs`);
+      }
+      setRepairOpen(false);
+    } catch (e) {
+      toast.error(`Repair failed: ${(e as Error).message}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   useEffect(() => { loadItems(); }, []);
 
   const openNew = () => {
@@ -192,25 +254,39 @@ export default function ConcessionItemsTab() {
     else loadItems();
   };
 
+  // Removing an item from this menu does NOT remove it from the Square catalog.
+  // It used to: any row with a square_catalog_id also fired a Square DELETE, so
+  // tidying the menu quietly destroyed catalog objects — and after the 2026-08-14
+  // over-pull that would have meant deleting hundreds of real items (films, MET
+  // broadcasts, passes) from the live catalog. Square is the system of record for
+  // the catalog; this table only decides what our site shows. Deleting there is a
+  // deliberate, separate act, so it asks a second time and says what it means.
   const deleteItem = async (id: string) => {
-    if (!confirm('Delete this concession item?')) return;
     const target = items.find(i => i.id === id);
+    if (!confirm('Remove this item from the site menu?')) return;
+
     const { error } = await supabase.from('concession_items').delete().eq('id', id);
     if (error) { toast.error(error.message); return; }
-    toast.success('Item deleted');
-    if (target?.square_catalog_id) {
-      try {
-        await invokeFunction('square-catalog-sync', {
-          action: 'delete_item',
-          square_catalog_id: target.square_catalog_id,
-        });
-      } catch (e) {
-        // The row is already gone locally; say so rather than leave a silent
-        // orphan sitting in the Square catalog.
-        toast.error(`Deleted here, but Square delete failed: ${(e as Error).message}`);
-      }
-    }
+    toast.success('Removed from the site menu');
     loadItems();
+
+    if (!target?.square_catalog_id) return;
+    if (
+      !confirm(
+        `Also DELETE "${target.name}" from the Square catalog?\n\n` +
+          'This removes it from Square itself — registers, reporting and item ' +
+          'history included. Cancel to leave Square untouched.',
+      )
+    ) return;
+    try {
+      await invokeFunction('square-catalog-sync', {
+        action: 'delete_item',
+        square_catalog_id: target.square_catalog_id,
+      });
+      toast.success('Deleted from the Square catalog');
+    } catch (e) {
+      toast.error(`Square delete failed: ${(e as Error).message}`);
+    }
   };
 
   const openComboManager = async (item: ConcessionItem) => {
@@ -309,6 +385,34 @@ export default function ConcessionItemsTab() {
         </div>
       </div>
 
+      <Card className="glass mb-6 border-accent/30">
+        <CardContent className="p-4">
+          <p className="font-medium text-sm mb-1">Square catalog categories</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Works on the Square catalog itself, not this menu. Both options show
+            you every affected item before anything is written.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => planRepair('restore')}
+              disabled={repairing}
+            >
+              Restore wiped categories
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => planRepair('organize')}
+              disabled={repairing}
+            >
+              File uncategorized items
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {Object.entries(grouped).map(([cat, catItems]) => (
         <div key={cat} className="mb-6">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">{cat}</h3>
@@ -368,6 +472,75 @@ export default function ConcessionItemsTab() {
       {items.length === 0 && (
         <p className="text-muted-foreground text-center py-8">No concession items yet. Add your first item!</p>
       )}
+
+      <Dialog open={repairOpen} onOpenChange={setRepairOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {repairMode === 'restore'
+                ? 'Restore wiped categories'
+                : 'File uncategorized items'}
+              {' — '}{repair?.environment ?? 'unknown'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-sm">
+            <p className="text-muted-foreground">
+              {repairMode === 'restore'
+                ? 'Re-files items under the category they had before 14 Aug, taken from the pre-incident snapshot. Descriptions, images and extra variations cannot be restored this way.'
+                : 'Files items Square never categorized, matching only clear name patterns. Anything ambiguous is left alone.'}
+              {' '}Nothing has been written yet.
+            </p>
+
+            <div className="rounded-md border border-border/40 p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                Will change — {repair?.would_repair ?? 0} item(s)
+              </p>
+              <ul className="space-y-1">
+                {(repair?.by_category ?? []).map((c) => (
+                  <li key={c.category} className="flex justify-between">
+                    <span>{c.category}</span>
+                    <span className="tabular-nums text-muted-foreground">{c.count}</span>
+                  </li>
+                ))}
+              </ul>
+              {(repair?.would_repair ?? 0) === 0 && (
+                <p className="italic text-muted-foreground">
+                  Nothing to change — Square already matches.
+                </p>
+              )}
+            </div>
+
+            {(repair?.items ?? []).length > 0 && (
+              <details className="rounded-md border border-border/40 p-3">
+                <summary className="cursor-pointer text-xs uppercase tracking-wide text-muted-foreground">
+                  Review all {repair?.items?.length} item(s)
+                </summary>
+                <ul className="mt-2 max-h-64 overflow-y-auto space-y-1">
+                  {(repair?.items ?? []).map((i) => (
+                    <li key={i.name} className="flex justify-between gap-3">
+                      <span className="truncate">{i.name}</span>
+                      <span className="text-muted-foreground shrink-0">{i.category}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            {(repair?.no_longer_in_square ?? 0) > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {repair?.no_longer_in_square} snapshot item(s) are no longer in the
+                Square catalog and were skipped.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRepairOpen(false)}>Cancel</Button>
+            <Button onClick={applyRepair} disabled={repairing || !repair?.would_repair}>
+              {repairing ? 'Writing…' : `Apply to ${repair?.would_repair ?? 0} item(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-w-lg">

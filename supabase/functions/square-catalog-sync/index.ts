@@ -421,17 +421,64 @@ async function pushItem(config: SquareConfig, admin: any, itemId: string) {
 }
 
 // --- REPAIR --------------------------------------------------------------
-// The 2026-08-14 push wiped each item's category assignment in Square. We still
-// hold the category NAME every item had, because the pull recorded it before the
-// damage — so this re-files each object under the category it belonged to.
+// Two jobs against the Square catalog's category field, both driven by
+// square_catalog_snapshot_20260814 — the record of every item as it stood before
+// the 2026-08-14 damage. It has to be the snapshot rather than concession_items,
+// because the out-of-scope rows have since been deleted from the live table.
 //
-// It cannot bring back descriptions, images, taxes, or variations past the
+//   restore  — the push wiped the category of items that HAD one. The snapshot
+//              still holds the name, so re-file each under the same category.
+//   organize — items Square never categorised at all (recorded as "General").
+//              Only clearly-patterned names are touched; see desiredCategory.
+//
+// Neither can bring back descriptions, images, taxes, or variations past the
 // first: those were never stored on our side. Only a Square-side backup can.
 //
-// dry_run: true reports what it would change and writes nothing.
+// dry_run: true (the default) reports what it would change and writes nothing.
+
+/**
+ * The category an item should sit in, or null to leave it alone.
+ *
+ * Anchored prefixes and word boundaries only — substring matching is what filed
+ * GUILLERMO DEL TORO'S PINOCCHIO as merch (it contains "pin"). "Redeemed" is
+ * tested before "pass" so redemption SKUs don't become passes.
+ */
+function desiredCategory(
+  snapshotCategory: string,
+  name: string,
+  mode: "restore" | "organize" | "both",
+): string | null {
+  const had = snapshotCategory !== "General";
+  if (had) return mode === "organize" ? null : snapshotCategory;
+  if (mode === "restore") return null;
+
+  const word = (re: RegExp) => re.test(name);
+  if (/redeemed\s*$/i.test(name)) return "6 Redeem";
+  if (/^met live in hd:/i.test(name) || /^artist talk with met/i.test(name)) {
+    return "6 METLive Tickets";
+  }
+  if (/^national theatre live:/i.test(name) || /^nt live:/i.test(name)) {
+    return "6 NT Live Tickets";
+  }
+  if (
+    word(/\bposters?\b/i) || word(/\bpin\b/i) || word(/\bmagnets?\b/i) ||
+    word(/\b(t-?shirts?|hoodie|sticker)\b/i)
+  ) {
+    return "7 Merch";
+  }
+  if (word(/\bpass\b/i)) return "9 Film Passes";
+  return null;
+}
+
 async function repairCategories(config: SquareConfig, admin: any, payload: any) {
   const dryRun = payload?.dry_run !== false; // default to dry run
   const limit = Number(payload?.limit ?? 0) || null;
+  const mode: "restore" | "organize" | "both" = payload?.mode ?? "restore";
+  // Names the caller has explicitly vetted. When present, only these are touched
+  // — so a reviewed "organize" list can drop entries staff disagreed with.
+  const only: Set<string> | null = Array.isArray(payload?.only_names)
+    ? new Set(payload.only_names.map((n: unknown) => String(n)))
+    : null;
 
   const objects = await listCatalog(config);
   const nameToCategoryId = new Map<string, string>();
@@ -443,27 +490,30 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
   const liveItems = new Map<string, any>();
   for (const o of objects) if (o.type === "ITEM") liveItems.set(o.id, o);
 
-  // Every row we ever pulled, with the category it had at pull time.
+  // The pre-damage record of every item we ever pulled.
   const rows: any[] = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await admin
-      .from("concession_items")
+      .from("square_catalog_snapshot_20260814")
       .select("square_catalog_id, category, name")
-      .not("square_catalog_id", "is", null)
       .range(from, from + 999);
-    if (error) throw new Error(`DB read failed: ${error.message}`);
+    if (error) throw new Error(`Snapshot read failed: ${error.message}`);
     rows.push(...(data ?? []));
     if ((data?.length ?? 0) < 1000) break;
   }
 
   const plan: any[] = [];
   const unmatched: any[] = [];
+  let gone = 0;
   for (const r of rows) {
+    if (only && !only.has(r.name)) continue;
     const live = liveItems.get(r.square_catalog_id);
-    if (!live) continue; // gone from Square entirely
-    const wantId = nameToCategoryId.get(r.category);
+    if (!live) { gone++; continue; } // no longer in Square
+    const want = desiredCategory(r.category, r.name, mode);
+    if (!want) continue;
+    const wantId = nameToCategoryId.get(want);
     if (!wantId) {
-      unmatched.push({ name: r.name, category: r.category });
+      unmatched.push({ name: r.name, category: want });
       continue;
     }
     const haveId =
@@ -472,21 +522,34 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
     plan.push({
       id: r.square_catalog_id,
       name: r.name,
-      category: r.category,
+      category: want,
       category_id: wantId,
+      was_uncategorized: r.category === "General",
     });
   }
 
   const target = limit ? plan.slice(0, limit) : plan;
   if (dryRun) {
+    const byCategory = new Map<string, number>();
+    for (const p of target) {
+      byCategory.set(p.category, (byCategory.get(p.category) ?? 0) + 1);
+    }
     return {
       ok: true,
       environment: config.environment,
       dry_run: true,
+      mode,
       needs_repair: plan.length,
       would_repair: target.length,
+      restoring: target.filter((p) => !p.was_uncategorized).length,
+      organizing: target.filter((p) => p.was_uncategorized).length,
+      no_longer_in_square: gone,
+      by_category: [...byCategory.entries()]
+        .map(([category, count]) => ({ category, count }))
+        .sort((a, b) => b.count - a.count),
       unmatched_categories: [...new Set(unmatched.map((u) => u.category))],
-      sample: target.slice(0, 10),
+      // The full list, so staff can review every name before anything writes.
+      items: target.map((p) => ({ name: p.name, category: p.category })),
     };
   }
 
