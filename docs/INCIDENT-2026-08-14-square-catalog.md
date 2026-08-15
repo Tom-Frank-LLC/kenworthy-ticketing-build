@@ -132,6 +132,48 @@ It took three failed attempts, each instructive:
    failure that never errors — the write now reads the category back out of
    Square's own response and only counts an item if it stuck.
 
+## Poster restore — done to 55% (15 Aug)
+
+**196 of 355 poster-bearing items have their artwork back**, at no cost: no
+TMDB, no API key, no vision model, and no licensing question at any step. Each
+attachment was confirmed by reading `image_ids` back off the item.
+
+| Source | Items |
+|---|---|
+| kenworthy.org event calendar | 117 |
+| Square's own orphaned images, re-attached | 79 |
+| **Attached** | **196** |
+| Left unsourced | 156 |
+
+Two sources, both free, both found by questioning the framing rather than by
+building:
+
+**The theatre's own website.** kenworthy.org runs Modern Events Calendar with a
+public REST API — 1,518 past events, 1,368 carrying a poster. That is
+title → poster, and the Square items know their titles, so the repair is a
+string join. Tom suggested this after a vision-model design had already been
+written; it was better on every axis and the vision tool went unused.
+
+**The orphaned images themselves.** 954 of the 1,039 orphans carry a filename.
+An earlier pass reported 0 of 1,040 matchable, which read as "they have no
+names" — that was a matcher bug, not missing data. Filenames carry production
+noise the catalog title never has (`square`, `web`, `scaled`, `-200x300`,
+`poster`, `final`), and they are *abbreviated*: `square butch.jpg` for
+BUTCH CASSIDY AND THE SUNDANCE KID. Stripping the noise and matching by
+containment rather than equality turned 0 into 79 — required unique in both
+directions, since an image matching two items is as unusable as the reverse.
+
+Re-attaching an orphan is also the cleanest possible source: the theatre's own
+image, already in their account, going back where it was. Nothing is acquired,
+so nothing needs licensing. (TMDB was ruled out separately — its licence does
+not cover commercial use, and a cinema selling tickets is commercial.)
+
+**The remaining 156 are accepted as collateral damage** (Tom, 15 Aug) — relinked
+by hand if and when a specific listing needs its art. They break down as ~60
+ambiguous filename matches (`square black.jpg` legitimately matches several
+titles), 85 orphans with no filename at all, and local live acts whose artwork
+may not survive anywhere.
+
 ## Still open
 
 - **Variations.** Damaged items have *no variation at all* — confirmed in the
