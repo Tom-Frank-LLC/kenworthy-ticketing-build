@@ -59,6 +59,24 @@ interface RepairResult {
   error_summary?: { error: string; count: number }[];
 }
 
+/** The variation census, reported before anything is written. */
+interface VariationPlan {
+  environment?: string;
+  census?: {
+    no_variation: number;
+    one_named_regular: number;
+    original_id_intact: number;
+    healthy: number;
+    gone_from_square: number;
+  };
+  needs_repair?: number;
+  note?: string;
+  repaired?: number;
+  attempted?: number;
+  failure_count?: number;
+  error_summary?: { error: string; count: number }[];
+}
+
 interface ComboChild {
   id: string;
   combo_id: string;
@@ -86,6 +104,8 @@ export default function ConcessionItemsTab() {
   const [repairing, setRepairing] = useState(false);
   const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
   const [repairProgress, setRepairProgress] = useState<string | null>(null);
+  const [variationPlan, setVariationPlan] = useState<VariationPlan | null>(null);
+  const [variationOpen, setVariationOpen] = useState(false);
   // Categories the operator has chosen NOT to restore this run.
   const [skipCategories, setSkipCategories] = useState<Set<string>>(new Set());
 
@@ -291,6 +311,44 @@ export default function ConcessionItemsTab() {
       );
     } finally {
       setRepairProgress(null);
+      setRepairing(false);
+    }
+  };
+
+  // Variations: census first. An item with no priced variation cannot be rung
+  // up, so this is the repair that matters — but what needs doing depends on
+  // what survived, which is worth measuring rather than assuming.
+  const planVariations = async () => {
+    setRepairing(true);
+    try {
+      const result = await invokeFunction<VariationPlan>('square-catalog-sync', {
+        action: 'repair_variations',
+        dry_run: true,
+      });
+      setVariationPlan(result);
+      setVariationOpen(true);
+    } catch (e) {
+      toast.error(`Could not read the Square catalog: ${(e as Error).message}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const applyVariations = async () => {
+    setRepairing(true);
+    try {
+      const result = await invokeFunction<VariationPlan>('square-catalog-sync', {
+        action: 'repair_variations',
+        dry_run: false,
+      });
+      setVariationPlan((prev) => ({ ...prev, ...result }));
+      toast.success(`Restored ${result?.repaired ?? 0} variation(s) in Square`);
+      if (result?.failure_count) {
+        toast.error(`${result.failure_count} failed — reasons shown below`);
+      }
+    } catch (e) {
+      toast.error(`Variation restore failed: ${(e as Error).message}`);
+    } finally {
       setRepairing(false);
     }
   };
@@ -516,6 +574,14 @@ export default function ConcessionItemsTab() {
             >
               File uncategorized items
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={planVariations}
+              disabled={repairing}
+            >
+              Check variations
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -579,6 +645,78 @@ export default function ConcessionItemsTab() {
       {items.length === 0 && (
         <p className="text-muted-foreground text-center py-8">No concession items yet. Add your first item!</p>
       )}
+
+      <Dialog open={variationOpen} onOpenChange={setVariationOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Variations — {variationPlan?.environment ?? 'unknown'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-sm">
+            <p className="text-muted-foreground">
+              An item with no priced variation cannot be rung up. This reads the
+              live catalog and reports what survived the 14 Aug push before
+              anything is written.
+            </p>
+
+            <div className="rounded-md border border-border/40 p-3 space-y-1">
+              <div className="flex justify-between">
+                <span className="text-destructive">No variation at all</span>
+                <span className="tabular-nums">{variationPlan?.census?.no_variation ?? 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Has a priced variation</span>
+                <span className="tabular-nums">{variationPlan?.census?.healthy ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>…of which named “Regular”</span>
+                <span className="tabular-nums">{variationPlan?.census?.one_named_regular ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Original variation id intact</span>
+                <span className="tabular-nums">{variationPlan?.census?.original_id_intact ?? 0}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>No longer in Square</span>
+                <span className="tabular-nums">{variationPlan?.census?.gone_from_square ?? 0}</span>
+              </div>
+            </div>
+
+            {variationPlan?.note && (
+              <p className="text-xs text-muted-foreground">{variationPlan.note}</p>
+            )}
+
+            {(variationPlan?.failure_count ?? 0) > 0 && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3">
+                <p className="text-xs uppercase tracking-wide text-destructive mb-2">
+                  {variationPlan?.repaired ?? 0} restored,{' '}
+                  {variationPlan?.failure_count} failed
+                </p>
+                <ul className="space-y-1">
+                  {(variationPlan?.error_summary ?? []).map((e) => (
+                    <li key={e.error} className="flex justify-between gap-3">
+                      <span className="break-words">{e.error}</span>
+                      <span className="tabular-nums shrink-0">{e.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVariationOpen(false)}>Close</Button>
+            <Button
+              onClick={applyVariations}
+              disabled={repairing || !variationPlan?.needs_repair}
+            >
+              {repairing
+                ? 'Restoring…'
+                : `Restore ${variationPlan?.needs_repair ?? 0} variation(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={repairOpen} onOpenChange={setRepairOpen}>
         <DialogContent className="max-w-lg">
