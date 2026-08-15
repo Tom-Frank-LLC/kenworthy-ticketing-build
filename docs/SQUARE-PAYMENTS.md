@@ -176,6 +176,17 @@ a seat permanently unsellable.
 was computing it once on the subtotal, which differs by a cent at some prices
 (e.g. 4 × $8.25 → $2.00, not $1.98).
 
+**Idaho's 6% applies to every ticket, wherever the buyer is.** There is no
+jurisdiction logic because there is no jurisdiction *input*: checkout collects a
+name, an email and a phone, and never a state, ZIP or billing address — the card
+goes straight to Square's iframe. A buyer in Pullman is charged Idaho tax, which
+is the right answer for an admission to a screening that happens in Moscow. The
+rate is defined in three places — `src/lib/booking.ts` and `_shared/pricing.ts`
+for display and charging, and `v_tax_rate` in the `enforce_ticket_pricing`
+trigger, which overwrites the row on insert and is therefore authoritative. A
+drift between them shows up as a price quoted ≠ price charged, not as a wrong
+charge, but a rate change is a three-place edit plus a migration.
+
 **All of it is computed in integer cents**, client and server alike. Postgres
 evaluates `price * 0.06` in exact numeric; JavaScript does not. At $4.25,
 `4.25 * 0.06 * 100` is 25.499999999999996 in doubles and rounds *down* to
@@ -273,10 +284,13 @@ Every ticket and film-pass payment now creates an order first, with a line named
 for the film or the pass, and pays against it:
 
 ```
-POST /v2/orders     line_items: [{ name: "A COMPLETE UNKNOWN",
-                                   variation_name: "Student",
-                                   quantity: "3",
-                                   base_price_money: { amount: 875 } }]
+POST /v2/orders
+  A COMPLETE UNKNOWN   x2   $24.00   <- pre-tax; binds to a catalog item if one exists
+  Sales tax            x1    $1.44   <- our figure, never Square's arithmetic
+  Donation             x1    $5.00   <- outside the tax line, by design
+                              ------
+                              $30.44 == the amount charged, exactly
+
 POST /v2/payments   order_id: <that order>, reference_id: <our order_token>
 ```
 
@@ -320,29 +334,80 @@ fuzzy hit on "Rear Window" could be "Rear Window (35mm)".
 Results are cached for 10 minutes, so a four-ticket order is one lookup.
 
 **Our price wins over the catalog's.** Verified in sandbox: a line carrying both
-`catalog_object_id` and `base_price_money` records **our** tax-inclusive amount
-(1908) rather than the catalog's pre-tax price (1800). That is what lets a
-$9.54 charge ride on a $9.00 register item without the order total drifting from
-what the patron paid. Because that is measured behaviour rather than a documented
-guarantee, the created order's total is **read back and compared** to the amount
-about to be charged; a disagreement abandons the order and the payment goes bare.
+`catalog_object_id` and `base_price_money` records **our** amount (1908) rather
+than the catalog variation's own price (1800). Our showing prices are the
+authority, not whatever the register item happens to be set to. Because that is
+measured behaviour rather than a documented guarantee, the created order's total
+is **read back and compared** to the amount about to be charged; a disagreement
+abandons the order and the payment goes bare.
+
+**A catalog item's own taxes are not auto-applied.** Tested with a real 6%
+`CatalogTax` attached to the item: the linked line came back with `tax: 0`, no
+`applied_taxes`, and a total equal to our charge. This matters because the real
+`6 Film Tickets` items very likely do have taxes configured — if Square applied
+them, our order would exceed the payment and attribution would silently switch
+off for exactly the films it was built for. It does not, and the total check
+above would catch it if that ever changed.
+
+Note what would give that control away: `pricing_options.auto_apply_taxes`. Turn
+it on and the rate comes from whatever is configured in the Square dashboard,
+so anyone editing a tax there changes what checkout charges. We never set it.
 
 Only films and passes are looked up. A `Donation` or `Card processing fee` line
 never is — there is no catalog counterpart, and a false match would bind the
 theatre's revenue to whatever happened to be named that on the register.
 `SQUARE_CATALOG_LOOKUP=false` disables the lookup without disabling attribution.
 
-**Line prices are tax-inclusive, and that is forced, not lazy.** Square computes
-a percentage tax once over the line total; our pricing rounds tax per ticket row
-to match the `enforce_ticket_pricing` trigger. Measured in sandbox on 3 × $8.25:
-we charge **2625**, Square's own arithmetic makes it **2623**. Letting Square
-compute the tax would break the invariant that the amount charged equals
-`SUM(tickets.total_price)` — the sum the refund path re-reads — to gain two cents
-in a tax report Square is not the source of truth for. So the charged price goes
-on the line whole.
+### Tax is a line we compute, never a percentage Square applies
 
-The card processing fee (rentals only) and any donation ride as their own lines,
-so neither inflates a film's takings.
+Square is never asked to work out the tax. That is not a preference — **its
+arithmetic cannot be made to agree with ours**, in two independent ways, both
+measured in sandbox:
+
+* **Square rounds half-to-even; we round half-up.** Postgres `ROUND()` and
+  `Math.round()` both round a half-cent up. Square rounds to the nearest *even*
+  cent. They agree on $8.25 (49.5 → 50, since 49 is odd) and disagree on **every
+  price ending in $.75**:
+
+  | Ticket price | Exact tax | Ours | Square |
+  |---|---|---|---|
+  | $3.75 | 22.5 | **23** | 22 |
+  | $6.75 | 40.5 | **41** | 40 |
+  | $9.75 | 58.5 | **59** | 58 |
+  | $12.75 | 76.5 | **77** | 76 |
+
+* **Square works top-down; we work bottom-up.** Square computes the tax on the
+  order and apportions it across lines; we compute per ticket row and sum, as the
+  `enforce_ticket_pricing` trigger does. Three *identical* $8.25 lines came back
+  with tax `[49, 50, 49]` — same input, three different answers, totalling 148
+  where ours totals 150. So quantity amplifies the gap even at prices where a
+  single ticket agrees.
+
+No line shape fixes this: quantity-1 lines, `LINE_ITEM` scope and `ORDER` scope
+were all tried and all produced 2623 against our 2625. Matching Square would mean
+rewriting the trigger to use banker's rounding and top-down apportionment — and
+with it how every ticket ever sold was priced. So the figure the trigger stores
+is sent as a fixed line, and the order total is ours by construction.
+
+**Why its own line rather than folded into the ticket price.** Two reasons, and
+the first only became true once lines began binding to catalog items:
+
+1. A film's gross in Square now means what the register's line has always meant
+   for the same item. A tax-inclusive $12.72 would have sat in the same Item
+   Sales row as a decade of pre-tax $12.00 register sales, running ~6% high on
+   our share of it.
+2. What is taxed is visibly separate from what is not. The donation sits outside
+   the tax line, where the `donations` table and the tax base both already put
+   it — previously that separation was real but invisible, implied by a combined
+   figure rather than shown.
+
+The card processing fee (rentals only) rides as its own line for the same reason:
+it is not ticket revenue and should not inflate a film's takings.
+
+Note the consequence: Square's **tax report** shows zero for our sales, because
+only Square-computed tax lands there. It always did, and it cannot be otherwise
+given the above. Tax figures live in `tickets.tax_amount` and reach the books
+through the QuickBooks export.
 
 **Attribution can never fail a sale.** `createAttributionOrder` returns `null`
 rather than throwing — on an API error, and on any mismatch between the lines and

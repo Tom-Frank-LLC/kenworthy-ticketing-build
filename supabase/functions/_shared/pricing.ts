@@ -299,12 +299,29 @@ export async function priceTicketOrder(
  * than one per seat: the film is the item, the tier is its variation, and the
  * quantity is the count. Seat numbers are deliberately absent — Square is being
  * told what was sold, not where anyone sat.
+ *
+ * The shape, for a two-ticket order with a gift:
+ *
+ *     A COMPLETE UNKNOWN   x2   $24.00   <- pre-tax, may bind to a catalog item
+ *     Sales tax            x1    $1.44   <- ours, never Square's arithmetic
+ *     Donation             x1    $5.00   <- outside the tax line, by design
+ *                                ------
+ *                                $30.44  == the amount charged, exactly
+ *
+ * Each of the three is a separate line for a separate reason: the film so its
+ * gross matches what the register recorded for the same title, the tax because
+ * Square cannot reproduce our figure (see below), and the gift because it is
+ * contribution income that has never been part of the tax base and should not
+ * look like it is.
  */
 export function ticketLineItems(order: PricedOrder, donationCents = 0): SquareLineItem[] {
   const groups = new Map<string, { tierName: string | null; cents: number; quantity: number }>();
 
   for (const ticket of order.tickets) {
-    const cents = Math.round(ticket.total_price * 100);
+    // The **pre-tax** price. A film's line has to mean what the register's line
+    // has always meant, or joining them under one catalog item mixes two
+    // different quantities in one Item Sales row — see the tax line below.
+    const cents = Math.round(ticket.price * 100);
     const key = `${ticket.tier_id ?? ''}|${cents}`;
     const existing = groups.get(key);
     if (existing) existing.quantity += 1;
@@ -320,6 +337,35 @@ export function ticketLineItems(order: PricedOrder, donationCents = 0): SquareLi
     // library. If this title already has an item, the sale should join it.
     lookupCatalog: true,
   }));
+
+  // -------------------------------------------------------------------------
+  // Tax, as a line of its own, computed by us
+  // -------------------------------------------------------------------------
+  //
+  // Square is never asked to work the tax out, and that is not a preference —
+  // its arithmetic cannot be made to agree with ours. Measured in sandbox:
+  //
+  //   * Square rounds half-to-even, Postgres ROUND() and Math.round() round
+  //     half-up. They differ on every price ending in $.75 ($6.75 -> we say 41c,
+  //     Square says 40c).
+  //   * Square computes the tax on the order and apportions it across lines,
+  //     where we compute per ticket row and sum. Three identical $8.25 lines
+  //     came back [49, 50, 49]; ours is 50 three times. So quantity amplifies
+  //     the gap even at prices where one ticket agrees.
+  //
+  // Matching Square would mean rewriting the enforce_ticket_pricing trigger, and
+  // with it how every ticket ever sold was priced. So the amount the trigger
+  // stores is sent as a fixed line, and the order total is ours by construction.
+  //
+  // It rides as its own line rather than inside the ticket price so that a
+  // film's gross in Square is the pre-tax figure the register recorded for the
+  // same catalog item, and so that what is taxed is visibly separate from what
+  // is not — the donation below sits outside this line, where the donations
+  // table and the tax base both already put it.
+  const taxCents = Math.round(order.tax * 100);
+  if (taxCents > 0) {
+    lines.push({ name: 'Sales tax', quantity: 1, amountCents: taxCents, variationName: null });
+  }
 
   // The rental surcharge, when a production opted into it. Its own line because
   // it is not ticket revenue and should not inflate a film's takings. Never

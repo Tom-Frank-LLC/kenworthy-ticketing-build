@@ -242,9 +242,10 @@ Deno.test('readDonationCents refuses what the donations table would refuse', () 
 
 Deno.test('line items sum to the charged amount, including the odd-cent case', async () => {
   // 3 × $8.25. Tax rounds to 50c per row here, which is not what Square's own
-  // percentage arithmetic does over the line total: measured in sandbox, Square
-  // makes the same three tickets 2623 and would leave the order two cents
-  // adrift. See docs/SQUARE-PAYMENTS.md.
+  // arithmetic produces: measured in sandbox it rounds half-to-even and
+  // apportions from the order total, making the same three tickets 2623. That
+  // is why the tax is a line we compute rather than a percentage Square
+  // applies. See docs/SQUARE-PAYMENTS.md.
   const order = await priceTicketOrder(
     stubAdmin(fixture()),
     SHOWING_ID,
@@ -253,6 +254,10 @@ Deno.test('line items sum to the charged amount, including the odd-cent case', a
   const lines = ticketLineItems(order);
   assertEquals(lineItemsTotalCents(lines), order.amountCents);
   assertEquals(lineItemsTotalCents(lines), 2625);
+
+  // Split, not rolled together: 2475 of film and 150 of tax.
+  assertEquals(lines.find((l) => l.name === 'Rear Window')?.amountCents, 825);
+  assertEquals(lines.find((l) => l.name === 'Sales tax')?.amountCents, 150);
 });
 
 Deno.test('tickets group by price point, with the film as the item', async () => {
@@ -262,18 +267,23 @@ Deno.test('tickets group by price point, with the film as the item', async () =>
     { tier_id: 'tier-student' },
   ]);
   const lines = ticketLineItems(order);
+  const films = lines.filter((l) => l.name === 'Rear Window');
 
-  // Two lines, not three: Item Sales wants a quantity, not a row per seat. The
-  // film is the item so revenue aggregates by film, and the tier rides
+  // Two film lines, not three: Item Sales wants a quantity, not a row per seat.
+  // The film is the item so revenue aggregates by film, and the tier rides
   // underneath it as a variation.
-  assertEquals(lines.length, 2);
-  assertEquals(lines.every((l) => l.name === 'Rear Window'), true);
-  assertEquals(lines.map((l) => l.variationName).sort(), ['Adult', 'Student']);
-  assertEquals(lines.find((l) => l.variationName === 'Student')?.quantity, 2);
+  assertEquals(films.length, 2);
+  assertEquals(films.map((l) => l.variationName).sort(), ['Adult', 'Student']);
+  assertEquals(films.find((l) => l.variationName === 'Student')?.quantity, 2);
+
+  // Pre-tax, so a film's gross in Square means what the register's line has
+  // always meant for the same catalog item.
+  assertEquals(films.find((l) => l.variationName === 'Adult')?.amountCents, 2000);
+  assertEquals(films.find((l) => l.variationName === 'Student')?.amountCents, 825);
   assertEquals(lineItemsTotalCents(lines), order.amountCents);
 });
 
-Deno.test('a gift is its own line and never inflates the film takings', async () => {
+Deno.test('a gift sits outside both the film takings and the tax line', async () => {
   const order = await priceTicketOrder(stubAdmin(fixture()), SHOWING_ID, [{}]);
   const lines = ticketLineItems(order, 2500);
 
@@ -281,12 +291,38 @@ Deno.test('a gift is its own line and never inflates the film takings', async ()
   assertEquals(donation?.amountCents, 2500);
   assertEquals(donation?.quantity, 1);
 
-  // The film's own line is untouched by the gift — the same separation the
-  // donations table enforces, carried into Square.
-  assertEquals(lines.find((l) => l.name === 'Rear Window')?.amountCents, 1060);
+  // A $10 ticket: $10.00 of film, 60c of tax, and a $25 gift that is part of
+  // neither. Splitting the tax out is what makes that visible in Square — with
+  // a combined $10.60 ticket line, "what was taxed" was only ever implied.
+  assertEquals(lines.find((l) => l.name === 'Rear Window')?.amountCents, 1000);
+  assertEquals(lines.find((l) => l.name === 'Sales tax')?.amountCents, 60);
 
-  // And the set still equals what the patron actually hands over.
+  // The tax is 6% of the ticket alone; the gift never enters the base.
   assertEquals(lineItemsTotalCents(lines), order.amountCents + 2500);
+});
+
+Deno.test('a free showing carries no tax line at all', async () => {
+  const rows = fixture({
+    showings: [{
+      id: SHOWING_ID,
+      ticket_price: 0,
+      is_active: true,
+      requires_seat_selection: false,
+      total_seats: 200,
+      start_time: '2026-09-01T02:00:00Z',
+      movie_id: 'movie-1',
+      event_id: null,
+      live_performance_id: null,
+    }],
+    showing_price_tiers: [],
+  });
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
+  const lines = ticketLineItems(order);
+
+  // No money moves, so there is no order to attribute — but the builder must
+  // not emit a $0 tax line on the way to finding that out.
+  assertEquals(lines.find((l) => l.name === 'Sales tax'), undefined);
+  assertEquals(lineItemsTotalCents(lines), 0);
 });
 
 Deno.test('the buyer-paid surcharge is a line, not part of the ticket price', async () => {
@@ -317,4 +353,5 @@ Deno.test('only the film line is offered to the catalog lookup', async () => {
   assertEquals(lines.find((l) => l.name === 'Rear Window')?.lookupCatalog, true);
   assertEquals(lines.find((l) => l.name === 'Card processing fee')?.lookupCatalog, undefined);
   assertEquals(lines.find((l) => l.name === 'Donation')?.lookupCatalog, undefined);
+  assertEquals(lines.find((l) => l.name === 'Sales tax')?.lookupCatalog, undefined);
 });
