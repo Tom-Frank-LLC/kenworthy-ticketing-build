@@ -49,6 +49,15 @@ interface RepairPlan {
   items?: { name: string; category: string }[];
 }
 
+/** What an applied repair reports back, including why items failed. */
+interface RepairResult {
+  repaired?: number;
+  attempted?: number;
+  failure_count?: number;
+  failures?: { id: string; name: string; error: string }[];
+  error_summary?: { error: string; count: number }[];
+}
+
 interface ComboChild {
   id: string;
   combo_id: string;
@@ -74,6 +83,7 @@ export default function ConcessionItemsTab() {
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairMode, setRepairMode] = useState<'restore' | 'organize'>('restore');
   const [repairing, setRepairing] = useState(false);
+  const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
 
   // Combo management
   const [comboDialogOpen, setComboDialogOpen] = useState(false);
@@ -175,21 +185,22 @@ export default function ConcessionItemsTab() {
   const applyRepair = async () => {
     setRepairing(true);
     try {
-      const result = await invokeFunction<{ repaired?: number; failure_count?: number }>(
-        'square-catalog-sync',
-        {
-          action: 'repair_categories',
-          mode: repairMode,
-          dry_run: false,
-          // Only the names just reviewed on screen are eligible to change.
-          only_names: (repair?.items ?? []).map((i) => i.name),
-        },
-      );
+      const result = await invokeFunction<RepairResult>('square-catalog-sync', {
+        action: 'repair_categories',
+        mode: repairMode,
+        dry_run: false,
+        // Only the names just reviewed on screen are eligible to change.
+        only_names: (repair?.items ?? []).map((i) => i.name),
+      });
+      setRepairResult(result);
       toast.success(`Re-filed ${result?.repaired ?? 0} item(s) in Square`);
+      // Failures stay on screen with Square's own message. A bare count sends
+      // you to logs you may not have; the reason is what decides what to do next.
       if (result?.failure_count) {
-        toast.error(`${result.failure_count} item(s) failed — see function logs`);
+        toast.error(`${result.failure_count} item(s) failed — reasons shown below`);
+      } else {
+        setRepairOpen(false);
       }
-      setRepairOpen(false);
     } catch (e) {
       toast.error(`Repair failed: ${(e as Error).message}`);
     } finally {
@@ -524,6 +535,36 @@ export default function ConcessionItemsTab() {
                   ))}
                 </ul>
               </details>
+            )}
+
+            {(repairResult?.failure_count ?? 0) > 0 && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-2">
+                <p className="text-xs uppercase tracking-wide text-destructive">
+                  {repairResult?.repaired ?? 0} succeeded,{' '}
+                  {repairResult?.failure_count} failed — Square's reasons
+                </p>
+                <ul className="space-y-1">
+                  {(repairResult?.error_summary ?? []).map((e) => (
+                    <li key={e.error} className="flex justify-between gap-3">
+                      <span className="break-words">{e.error}</span>
+                      <span className="tabular-nums shrink-0">{e.count}</span>
+                    </li>
+                  ))}
+                </ul>
+                <details>
+                  <summary className="cursor-pointer text-xs text-muted-foreground">
+                    Show affected items
+                  </summary>
+                  <ul className="mt-2 max-h-48 overflow-y-auto space-y-1 text-xs">
+                    {(repairResult?.failures ?? []).map((f) => (
+                      <li key={f.id} className="flex justify-between gap-3">
+                        <span className="truncate">{f.name}</span>
+                        <span className="text-muted-foreground shrink-0">{f.error}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
             )}
 
             {(repair?.no_longer_in_square ?? 0) > 0 && (

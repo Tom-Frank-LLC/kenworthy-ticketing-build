@@ -576,6 +576,16 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
     }
   }
 
+  // Group the messages. 381 individual failures are unreadable one by one, but
+  // they usually collapse to one or two distinct causes, and the cause is what
+  // decides whether this needs a retry, a throttle, or a different payload.
+  const counts = new Map<string, number>();
+  for (const f of failures) {
+    // Strip the per-object noise so like errors group together.
+    const key = String(f.error).replace(/[A-Z0-9]{20,}/g, "<id>").slice(0, 200);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
   return {
     ok: true,
     environment: config.environment,
@@ -583,6 +593,9 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
     repaired,
     attempted: target.length,
     remaining: plan.length - target.length,
+    error_summary: [...counts.entries()]
+      .map(([error, count]) => ({ error, count }))
+      .sort((a, b) => b.count - a.count),
     failures: failures.slice(0, 20),
     failure_count: failures.length,
   };
