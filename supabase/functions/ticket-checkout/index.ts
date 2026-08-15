@@ -53,7 +53,6 @@ declare const Deno: any;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 const MAX_TICKETS_PER_SHOWING = 4;
 
@@ -556,11 +555,16 @@ function syncMailchimp(
       // call so `mailchimp-subscribe` honours `status: 'subscribed'` instead of
       // forcing the anonymous double opt-in. Sending the anon key here is what
       // made a ticked box mean "we emailed you a confirmation to click".
+      //
+      // Authorization only, with no `apikey` header. The service role key is now
+      // an `sb_secret_…` key rather than a JWT, and the gateway rejects a legacy
+      // anon key in `apikey` next to an sb_ key in `Authorization` outright:
+      // 401 "Conflicting API keys". This call is fire-and-forget, so that 401
+      // would have been swallowed and the buyer silently never subscribed.
       void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          apikey: ANON_KEY,
           Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
         },
         body: JSON.stringify({
@@ -578,11 +582,12 @@ function syncMailchimp(
       }).catch(() => {});
     }
 
+    // Same header shape as above, and for the same reason — this call had the
+    // conflicting pair too.
     void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-ecommerce`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: ANON_KEY,
         Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
       },
       body: JSON.stringify({

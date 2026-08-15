@@ -68,7 +68,6 @@ declare const Deno: any;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 /** A single order is a gift, a stack of them is a mistake or an attack. */
 const MAX_PASSES_PER_ORDER = 10;
@@ -1046,10 +1045,11 @@ function syncMailchimp(contact: BuyerContact) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: ANON_KEY,
         // As in ticket-checkout: the service role key marks this a trusted
         // server call so the buyer is subscribed outright rather than being
-        // sent a confirmation email to click.
+        // sent a confirmation email to click. Authorization only — an `apikey`
+        // header holding the legacy anon key alongside an `sb_secret_…` bearer
+        // is rejected by the gateway as "Conflicting API keys".
         Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
       },
       body: JSON.stringify({

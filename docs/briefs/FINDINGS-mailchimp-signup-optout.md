@@ -130,6 +130,47 @@ read back — only their digests. Both values must come from Tom:
 (Tom, Aug 14). Only the audience ID is outstanding; nothing can be
 deployed or end-to-end tested until it is set on both.
 
+## The service role key is not a JWT any more, and headers conflict
+
+Found by testing the trusted path on staging, not by reading the code.
+
+`SUPABASE_SERVICE_ROLE_KEY` on both projects is an **`sb_secret_…` key**, not
+the legacy `eyJ…` JWT. Proof: `sha256` of the revealed secret key equals the
+`SUPABASE_SERVICE_ROLE_KEY` secret digest (`502e1415…`), while the legacy
+`service_role` JWT hashes to something else entirely.
+
+The functions compare two reads of that same env var, so they agree with each
+other whatever its format. The gateway does not:
+
+```
+apikey: <legacy anon JWT>  +  Authorization: Bearer sb_secret_…
+  -> 401 {"message":"Conflicting API keys",
+          "hint":"Send the intended sb_ key only in the `apikey` header."}
+```
+
+Both checkout functions sent exactly that pair, and both calls are
+fire-and-forget with `.catch(() => {})` — so the 401 would have been
+swallowed and every consenting buyer silently never subscribed. The same
+pair was already on the older `mailchimp-ecommerce` call.
+
+Fix: send **`Authorization` only, no `apikey` header**. Verified working;
+`apikey`-only also passes the gateway but the function reads `Authorization`,
+so it would land on the anonymous branch and quietly downgrade to `pending`.
+
+### How the two paths were told apart
+
+Both return `200 {"ok":true,...}`, so the response cannot distinguish them.
+The observable difference is the confirmation email:
+
+| Test | Key sent | Path taken | Email to buyer |
+|---|---|---|---|
+| A | legacy `service_role` JWT (wrong) | anonymous → `pending` | **received** |
+| C | real `sb_secret_…`, Authorization only | trusted → `subscribed` | **none** |
+
+Test A's arrival and Test C's silence is the proof that the trusted branch
+works. If a future change breaks it, the symptom is buyers receiving
+"please confirm subscription" — that email is the canary.
+
 ## ⚠️ Deploy order — read before deploying any mailchimp function
 
 **Do not deploy `mailchimp-subscribe` on its own.** Staging and prod are
