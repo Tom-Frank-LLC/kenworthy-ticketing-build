@@ -75,10 +75,19 @@ bug, and it had to be fixed in the same commit.
 - The client-side guest subscribe in `Showing.tsx` is removed — it would
   now double up, and a browser is always an anonymous caller, so it could
   only ever have produced a `pending` contact.
-- `film-pass-checkout` is gated too. Its form has no checkbox, so pass
-  buyers are now **not** subscribed. That is deliberate and is the safe
-  end of the change; adding a checkbox to that form is follow-up work and
-  needs no change to the function.
+- `film-pass-checkout` is gated too, and `FilmPasses.tsx` now carries the
+  same ticked-by-default checkbox and the same wording as the ticket form,
+  so pass buyers are subscribed on the same terms (Tom, Aug 14).
+
+### Staff POS sells passes without asking, on purpose
+
+`StaffPOS` / `FilmPassPOS` also call `film-pass-checkout`, and they send no
+`marketing_opt_in`. Under the absent-means-no rule that resolves to false,
+so an in-person counter sale subscribes nobody. That is the right default —
+staff should not be silently signing up walk-ups on someone's behalf — but
+it means the counter is a deliberate gap, not an oversight. If pass sales at
+the desk should be able to opt a buyer in, that needs a prompt in the POS
+UI, not a change to the function.
 
 ### Why the server may subscribe outright (Tom's call, Aug 14)
 
@@ -109,5 +118,6 @@ read back — only their digests. Both values must come from Tom:
 - **Audience ID** — Mailchimp → Audience → Settings → *Audience name and
   defaults* → Audience ID.
 
-Nothing can be deployed or end-to-end tested until those are set on both
-projects.
+**`MAILCHIMP_SERVER_PREFIX` is now set to `us10` on both projects**
+(Tom, Aug 14). Only the audience ID is outstanding; nothing can be
+deployed or end-to-end tested until it is set on both.

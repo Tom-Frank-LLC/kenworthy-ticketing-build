@@ -1034,12 +1034,9 @@ async function findExistingOrder(admin: any, idempotencyKey: string, userId: str
 /**
  * Marketing sync. Fire-and-forget: an outage must not affect a paid order.
  *
- * Gated on consent like the ticket path. The film-pass form does not carry a
- * marketing checkbox yet, so `marketingOptIn` is false there and no pass buyer
- * is subscribed — deliberate. Buying a pass is not permission to email someone,
- * and this function had been sending every pass buyer to Mailchimp without ever
- * asking. Add the checkbox to the pass form and the consent rides through
- * `readContact` with no change needed here.
+ * Gated on the pass form's marketing checkbox, which ships ticked. This
+ * function used to send every pass buyer to Mailchimp without ever asking;
+ * buying a pass is not permission to email someone.
  */
 function syncMailchimp(contact: BuyerContact) {
   if (!contact.email || !contact.marketingOptIn) return;
@@ -1047,12 +1044,20 @@ function syncMailchimp(contact: BuyerContact) {
     const [first, ...rest] = (contact.name || '').split(/\s+/);
     void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: ANON_KEY,
+        // As in ticket-checkout: the service role key marks this a trusted
+        // server call so the buyer is subscribed outright rather than being
+        // sent a confirmation email to click.
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      },
       body: JSON.stringify({
         email: contact.email,
         first_name: first ?? '',
         last_name: rest.join(' '),
-        tags: ['film-pass'],
+        status: 'subscribed',
+        tags: ['film-pass', 'newsletter'],
         source: 'film-pass-checkout',
       }),
     }).catch(() => {});
