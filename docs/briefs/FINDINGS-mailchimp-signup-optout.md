@@ -126,9 +126,39 @@ read back — only their digests. Both values must come from Tom:
 - **Audience ID** — Mailchimp → Audience → Settings → *Audience name and
   defaults* → Audience ID.
 
-**`MAILCHIMP_SERVER_PREFIX` is now set to `us10` on both projects**
-(Tom, Aug 14). Only the audience ID is outstanding; nothing can be
-deployed or end-to-end tested until it is set on both.
+Resolved (Tom, Aug 14). Audience **"This Week at the Kenworthy"**,
+`MAILCHIMP_SERVER_PREFIX=us10` and `MAILCHIMP_AUDIENCE_ID=96ce96dd19` are
+set on staging and prod, digests matching on both.
+
+## Deployed — Aug 14
+
+Edge functions are live on **both** projects, deployed in the safe order
+below: `ticket-checkout`, `film-pass-checkout`, then `mailchimp-subscribe`,
+then `mailchimp-ecommerce`.
+
+Verified on prod: the footer path returns **200** where it returned 404
+before, which was the entire reported bug. The QA contact was then
+unsubscribed — and that cleanup is itself the proof the trusted path works
+on prod, because an anonymous caller has `unsubscribe` forced to false and
+could not have done it.
+
+### The frontend is not deployed, and that is the safe order
+
+The checkbox lives in the client bundle, which still has to ship. Until it
+does, the old bundle sends no `marketing_opt_in`, that reads as no, and
+**checkout subscribes nobody**. Inert, not broken — the consent gate is
+live on the server ahead of the UI that feeds it, which is the right way
+round. Shipping the client first would have meant a UI collecting consent
+that the server ignored.
+
+The footer form needs no frontend deploy; it calls the function directly
+and is fixed in production now.
+
+QA contacts used, all unsubscribed afterwards:
+`mrtomfrank+kpac-trusted@`, `+kpac-trusted2@`, `+kpac-prodfooter@`. They
+remain in the audience as `unsubscribed` rather than deleted — the function
+has no delete path. Archive them from the Mailchimp UI if you want them
+gone entirely.
 
 ## The service role key is not a JWT any more, and headers conflict
 
