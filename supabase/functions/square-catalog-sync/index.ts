@@ -244,6 +244,9 @@ Deno.serve(async (req) => {
       });
       return json(result);
     }
+    if (action === "damage_census") {
+      return json(await damageCensus(config, admin));
+    }
     if (action === "repair_variations") {
       return json(await repairVariations(config, admin, payload));
     }
@@ -639,6 +642,112 @@ async function writeCategoryVerified(
     if (returned) base = returned;
   }
   return null;
+}
+
+// --- DAMAGE CENSUS -------------------------------------------------------
+// "How much was actually lost?" — asked before spending time hunting for a
+// pre-incident export. Read-only.
+//
+// IMAGES can be measured properly. A CatalogImage is its own catalog object;
+// the push cleared each item's *reference* to it, not the image itself. So the
+// images are still in the catalog, orphaned. Counting images that no item
+// points at is a direct measurement of how many pictures were detached.
+//
+// DESCRIPTIONS cannot. They live inline on the item, so a cleared one leaves no
+// trace anywhere. The best available estimate is the 92 items that were never
+// pushed: what fraction of *those* carry a description today. State the estimate
+// as an estimate — the untouched group is mostly the concession stand, which may
+// well be described more (or less) diligently than film tickets, so this is a
+// weak extrapolation and is reported with its own base rate so it can be judged.
+async function damageCensus(config: SquareConfig, admin: any) {
+  // IMAGE is not in the usual list call, so ask for it explicitly.
+  let cursor: string | undefined = undefined;
+  const objects: any[] = [];
+  do {
+    const q = new URLSearchParams({ types: "ITEM,IMAGE" });
+    if (cursor) q.set("cursor", cursor);
+    const res = await square(config, `/catalog/list?${q}`);
+    for (const o of res.objects ?? []) objects.push(o);
+    cursor = res.cursor;
+  } while (cursor);
+
+  const images = objects.filter((o) => o.type === "IMAGE");
+  const items = objects.filter((o) => o.type === "ITEM");
+
+  const referenced = new Set<string>();
+  for (const it of items) {
+    for (const id of it.item_data?.image_ids ?? []) referenced.add(id);
+  }
+  const orphanImages = images.filter((im) => !referenced.has(im.id));
+
+  // Split the live items by whether we pushed to them.
+  const snapshot = new Map<string, any>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin
+      .from("square_catalog_snapshot_20260814")
+      .select("square_catalog_id, name, likely_overwritten")
+      .range(from, from + 999);
+    if (error) throw new Error(`Snapshot read failed: ${error.message}`);
+    for (const r of data ?? []) snapshot.set(r.square_catalog_id, r);
+    if ((data?.length ?? 0) < 1000) break;
+  }
+
+  const bucket = (pushed: boolean) => {
+    const set = items.filter((it) => {
+      const s = snapshot.get(it.id);
+      return s ? Boolean(s.likely_overwritten) === pushed : false;
+    });
+    const withDescription = set.filter(
+      (it) => (it.item_data?.description ?? "").trim().length > 0,
+    ).length;
+    const withImage = set.filter((it) => (it.item_data?.image_ids ?? []).length > 0).length;
+    return { items: set.length, withDescription, withImage };
+  };
+
+  const damaged = bucket(true);
+  const untouched = bucket(false);
+
+  const descriptionRate = untouched.items > 0
+    ? untouched.withDescription / untouched.items
+    : 0;
+
+  return {
+    ok: true,
+    environment: config.environment,
+
+    images: {
+      total_in_catalog: images.length,
+      referenced_by_an_item: referenced.size,
+      // The measurement that matters: pictures still in the catalog that nothing
+      // points at any more.
+      orphaned: orphanImages.length,
+      orphan_sample: orphanImages.slice(0, 10).map((im) => ({
+        id: im.id,
+        name: im.image_data?.name ?? null,
+        caption: im.image_data?.caption ?? null,
+        url: im.image_data?.url ?? null,
+      })),
+    },
+
+    // Both groups as they stand now, so the base rates are visible rather than
+    // buried in a single extrapolated number.
+    damaged_items: damaged,
+    untouched_items: untouched,
+
+    description_estimate: {
+      untouched_base_rate: Number((descriptionRate * 100).toFixed(1)),
+      estimated_descriptions_lost: Math.round(descriptionRate * damaged.items),
+      caveat:
+        "Extrapolated from the items we never pushed, which are mostly the " +
+        "concession stand. Film and event tickets may carry descriptions at a " +
+        "quite different rate, so treat this as an order of magnitude only.",
+    },
+
+    verdict:
+      orphanImages.length === 0 && descriptionRate === 0
+        ? "No evidence of description or image loss — an export hunt is probably not worth it."
+        : "There is measurable loss; see the orphaned image count, which is exact.",
+  };
 }
 
 // --- VARIATION REPAIR ----------------------------------------------------
