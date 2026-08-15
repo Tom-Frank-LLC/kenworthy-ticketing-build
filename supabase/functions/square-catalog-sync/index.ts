@@ -646,6 +646,7 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
   }
 
   let repaired = 0;
+  let preferLegacy = false;
   const strategy = { modern: 0, legacy: 0 };
   const failures: any[] = [];
   for (const p of target) {
@@ -676,20 +677,27 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
         object.item_data.category_id = p.category_id;
       };
 
-      applyModern();
+      // Try the shape that worked last time first. Whichever one this catalog
+      // accepts, it accepts for every item — so after the first success there is
+      // no reason to keep paying for a rejected attempt per item. That wasted
+      // call is what pushed a full run past the wall-clock limit.
+      const first = preferLegacy ? applyLegacy : applyModern;
+      const second = preferLegacy ? applyModern : applyLegacy;
+      first();
       try {
         await square(config, "/catalog/object", {
           method: "POST",
           body: { idempotency_key: crypto.randomUUID(), object },
         });
-        strategy.modern++;
-      } catch (modernErr: any) {
-        applyLegacy();
+        if (preferLegacy) strategy.legacy++; else strategy.modern++;
+      } catch (_firstErr: any) {
+        second();
         await square(config, "/catalog/object", {
           method: "POST",
           body: { idempotency_key: crypto.randomUUID(), object },
         });
-        strategy.legacy++;
+        preferLegacy = !preferLegacy; // the other shape is the one this catalog takes
+        if (preferLegacy) strategy.legacy++; else strategy.modern++;
       }
       repaired++;
     } catch (e: any) {

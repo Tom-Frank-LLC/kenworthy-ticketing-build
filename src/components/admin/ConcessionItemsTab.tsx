@@ -85,6 +85,7 @@ export default function ConcessionItemsTab() {
   const [repairMode, setRepairMode] = useState<'restore' | 'organize'>('restore');
   const [repairing, setRepairing] = useState(false);
   const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
+  const [repairProgress, setRepairProgress] = useState<string | null>(null);
   // Categories the operator has chosen NOT to restore this run.
   const [skipCategories, setSkipCategories] = useState<Set<string>>(new Set());
 
@@ -217,28 +218,72 @@ export default function ConcessionItemsTab() {
     (i) => !skipCategories.has(i.category),
   );
 
+  /**
+   * Apply in batches, because one call cannot finish the job.
+   *
+   * Each item costs up to three sequential Square calls — retrieve, then the
+   * modern category shape, then the legacy one if that is rejected. Across ~390
+   * items that is well over a thousand round trips, which exceeds the edge
+   * function's wall-clock limit: it dies without a body, and supabase-js can
+   * only report the generic "returned a non-2xx status code".
+   *
+   * Batching keeps each invocation short. It is naturally convergent too: every
+   * call re-reads the live catalog, so items already fixed drop out of the next
+   * plan. A batch that repairs nothing means the rest cannot be repaired, which
+   * is the stop condition — without it, permanently failing items would loop
+   * forever.
+   */
   const applyRepair = async () => {
+    const BATCH = 40;
     setRepairing(true);
+    let repaired = 0;
+    const failures: RepairResult['failures'] = [];
+    const errorCounts = new Map<string, number>();
     try {
-      const result = await invokeFunction<RepairResult>('square-catalog-sync', {
-        action: 'repair_categories',
-        mode: repairMode,
-        dry_run: false,
-        // Only the names just reviewed on screen are eligible to change.
-        only_names: repairSelection.map((i) => i.name),
-      });
-      setRepairResult(result);
-      toast.success(`Re-filed ${result?.repaired ?? 0} item(s) in Square`);
-      // Failures stay on screen with Square's own message. A bare count sends
-      // you to logs you may not have; the reason is what decides what to do next.
-      if (result?.failure_count) {
-        toast.error(`${result.failure_count} item(s) failed — reasons shown below`);
+      for (let pass = 0; ; pass++) {
+        const result = await invokeFunction<RepairResult & { remaining?: number }>(
+          'square-catalog-sync',
+          {
+            action: 'repair_categories',
+            mode: repairMode,
+            dry_run: false,
+            limit: BATCH,
+            // Only the names just reviewed on screen are ever eligible.
+            only_names: repairSelection.map((i) => i.name),
+          },
+        );
+        repaired += result?.repaired ?? 0;
+        for (const f of result?.failures ?? []) failures.push(f);
+        for (const e of result?.error_summary ?? []) {
+          errorCounts.set(e.error, (errorCounts.get(e.error) ?? 0) + e.count);
+        }
+        setRepairResult({
+          repaired,
+          failure_count: failures.length,
+          failures: failures.slice(0, 20),
+          error_summary: [...errorCounts.entries()]
+            .map(([error, count]) => ({ error, count }))
+            .sort((a, b) => b.count - a.count),
+        });
+        setRepairProgress(`Re-filed ${repaired} so far…`);
+
+        // Nothing left to do, or nothing left that can be done.
+        if (!result?.repaired) break;
+        if (pass > 40) break; // backstop; 40 × 40 covers any plausible plan
+      }
+
+      toast.success(`Re-filed ${repaired} item(s) in Square`);
+      if (failures.length) {
+        toast.error(`${failures.length} item(s) failed — reasons shown below`);
       } else {
         setRepairOpen(false);
       }
     } catch (e) {
-      toast.error(`Repair failed: ${(e as Error).message}`);
+      toast.error(
+        `Repair stopped after ${repaired} item(s): ${(e as Error).message}`,
+      );
     } finally {
+      setRepairProgress(null);
       setRepairing(false);
     }
   };
@@ -649,7 +694,9 @@ export default function ConcessionItemsTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setRepairOpen(false)}>Cancel</Button>
             <Button onClick={applyRepair} disabled={repairing || !repairSelection.length}>
-              {repairing ? 'Writing…' : `Apply to ${repairSelection.length} item(s)`}
+              {repairing
+                ? (repairProgress ?? 'Writing…')
+                : `Apply to ${repairSelection.length} item(s)`}
             </Button>
           </DialogFooter>
         </DialogContent>
