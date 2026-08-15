@@ -18,6 +18,12 @@ export interface BuyerContact {
   name: string;
   email: string | null;
   phone: string | null;
+  /**
+   * Whether the buyer left the marketing box ticked at checkout. Opt-out: the
+   * box is ticked by default, so this is normally true. Absent means the caller
+   * never asked, which is not the same as consent — see `readContact`.
+   */
+  marketingOptIn: boolean;
 }
 
 export interface ResolvedBuyer {
@@ -126,10 +132,16 @@ export function readContact(body: Record<string, any>): BuyerContact {
   const name = String(body.name ?? body.guest_name ?? '').trim();
   const emailRaw = String(body.email ?? body.guest_email ?? '').trim();
   const phoneRaw = String(body.phone ?? body.guest_phone ?? '').trim();
+  // Consent has to be stated, not assumed. The checkbox ships ticked, so a
+  // client that asked sends `true` explicitly; a body with no field at all is a
+  // caller that never put the question to the buyer, and inferring "yes" from
+  // silence is the one reading that subscribes people who were never asked.
+  const marketingOptIn = body.marketing_opt_in === true || body.newsletter === true;
   return {
     name,
     email: emailRaw || null,
     phone: phoneRaw || null,
+    marketingOptIn,
   };
 }
 
@@ -150,5 +162,8 @@ export async function contactForUser(
     name: provided.name || profile?.display_name || 'Kenworthy patron',
     email: provided.email || authUser?.user?.email || null,
     phone: provided.phone || profile?.phone || null,
+    // Backfilled from records, but consent is not a record to backfill — it is
+    // whatever the buyer just said on the form.
+    marketingOptIn: provided.marketingOptIn,
   };
 }

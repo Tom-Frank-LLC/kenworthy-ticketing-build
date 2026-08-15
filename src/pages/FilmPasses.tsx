@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import {
   Check, CreditCard, Loader2, Mail, Minus, Plus, Store, Ticket,
@@ -58,6 +59,9 @@ export default function FilmPasses() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  // Opt-out, ticked by default, same as the ticket checkout form. It only ever
+  // means yes because the buyer left it ticked — never because they bought a pass.
+  const [newsletter, setNewsletter] = useState(true);
   const [address, setAddress] = useState({
     line1: '', line2: '', city: '', state: 'ID', postal_code: '',
   });
@@ -142,6 +146,7 @@ export default function FilmPasses() {
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
+        marketing_opt_in: newsletter,
         idempotency_key: idempotencyKeyRef.current,
       });
 
@@ -448,6 +453,14 @@ export default function FilmPasses() {
               We use your name to find your pass at the counter, and your email to confirm the
               order.
             </p>
+            <label className="flex items-start gap-2 pt-1 text-xs text-muted-foreground cursor-pointer">
+              <Checkbox
+                checked={newsletter}
+                onCheckedChange={v => setNewsletter(v === true)}
+                className="mt-0.5"
+              />
+              <span>Email me about upcoming films, performances, and Kenworthy news.</span>
+            </label>
           </div>
         </div>
 

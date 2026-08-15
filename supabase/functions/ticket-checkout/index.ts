@@ -53,7 +53,6 @@ declare const Deno: any;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 const MAX_TICKETS_PER_SHOWING = 4;
 
@@ -526,6 +525,15 @@ async function findExistingOrder(admin: any, idempotencyKey: string, userId: str
 }
 
 /**
+ * 'Live Performances' -> 'live-performances'. `productionCategory` already
+ * carries the same three names as the Mailchimp interest groups, so the tag is
+ * just its slug — no mapping table to drift out of sync.
+ */
+function categoryTag(category: string): string {
+  return String(category || '').trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+/**
  * Marketing sync. Fire-and-forget by design: a Mailchimp outage must never
  * affect a completed purchase.
  */
@@ -538,23 +546,48 @@ function syncMailchimp(
   if (!contact.email) return;
   try {
     const [first, ...rest] = contact.name.split(/\s+/);
-    void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
-      body: JSON.stringify({
-        email: contact.email,
-        first_name: first ?? '',
-        last_name: rest.join(' '),
-        tags: ['ticket-buyer'],
-        source: 'ticket-checkout',
-      }),
-    }).catch(() => {});
 
+    // The e-commerce order below is recorded for every buyer — it is purchase
+    // history, not marketing. Joining the mailing list is the part that needs
+    // consent, so only that call is gated.
+    if (contact.marketingOptIn) {
+      // Service role key, not the anon key: it marks this as a trusted server
+      // call so `mailchimp-subscribe` honours `status: 'subscribed'` instead of
+      // forcing the anonymous double opt-in. Sending the anon key here is what
+      // made a ticked box mean "we emailed you a confirmation to click".
+      //
+      // Authorization only, with no `apikey` header. The service role key is now
+      // an `sb_secret_…` key rather than a JWT, and the gateway rejects a legacy
+      // anon key in `apikey` next to an sb_ key in `Authorization` outright:
+      // 401 "Conflicting API keys". This call is fire-and-forget, so that 401
+      // would have been swallowed and the buyer silently never subscribed.
+      void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({
+          email: contact.email,
+          first_name: first ?? '',
+          last_name: rest.join(' '),
+          status: 'subscribed',
+          // The production type rides along as a tag. Interest groups would be
+          // better segmentation but need IDs from `app_config`, which is a read
+          // this fire-and-forget path should not take on.
+          tags: ['ticket-buyer', 'newsletter', categoryTag(order.productionCategory)]
+            .filter(Boolean),
+          source: 'ticket-checkout',
+        }),
+      }).catch(() => {});
+    }
+
+    // Same header shape as above, and for the same reason — this call had the
+    // conflicting pair too.
     void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-ecommerce`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: ANON_KEY,
         Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
       },
       body: JSON.stringify({

@@ -65,7 +65,19 @@ Deno.serve(async (req) => {
   // Mailchimp sends a confirmation email the recipient must click.
   const authHeader = req.headers.get("Authorization") || "";
   let isAuthenticated = false;
-  if (authHeader.startsWith("Bearer ")) {
+
+  // Trusted server-to-server path. Another edge function bearing the service
+  // role key has already established the relationship itself — `ticket-checkout`
+  // only calls here after a payment cleared and the buyer left the marketing box
+  // ticked — so it is allowed to say `status: 'subscribed'` outright. The
+  // confirmation-email step exists to stop a stranger subscribing a third party
+  // from the public form; a verified purchase is not that, and making a paying
+  // customer re-confirm by email is where "subscribed unless you opt out"
+  // quietly turns back into opt-in.
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`) {
+    isAuthenticated = true;
+  } else if (authHeader.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
     try {
       const userClient = createClient(
