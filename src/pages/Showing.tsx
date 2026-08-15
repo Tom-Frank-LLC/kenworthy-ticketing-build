@@ -18,7 +18,7 @@ import { type Seat, type PriceTier, computeSeatTotals, computeOrderTotals, compu
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
-import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
+import { syncMailchimpProfile } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
@@ -347,6 +347,10 @@ export default function Showing() {
         name: opts.guest?.name,
         email: opts.guest?.email || undefined,
         phone: opts.guest?.phone || undefined,
+        // Consent travels with the purchase so the server can act on it. A
+        // signed-in buyer never sees the guest form, and their consent lives on
+        // their profile, which `syncMailchimpProfile` reads below.
+        marketing_opt_in: opts.guest ? opts.guest.newsletter : undefined,
       });
 
       if (!data?.success) throw new Error('Checkout failed');
@@ -369,12 +373,12 @@ export default function Showing() {
       // have is the address they just typed and an explicit answer about
       // whether they want email, so they get a plain tagged subscribe.
       //
-      // This branch is why the checkbox exists. Before, tagging rode on the
-      // signed-in buyer's `marketing_opt_in`; with no patron logins that
-      // condition is never true and ticket buyers stopped reaching Mailchimp at
-      // all. Consent lives in Mailchimp rather than `profiles.marketing_opt_in`
-      // — the same place the footer NewsletterSignup form puts an anonymous
-      // visitor's, since neither has a session to write a profile row with.
+      // The guest subscribe now happens server-side in `ticket-checkout`, off
+      // the `marketing_opt_in` sent above. Doing it here as well would double
+      // up, and the browser cannot do it properly anyway: an anonymous caller
+      // is forced to double opt-in, so a ticked box would only ever earn the
+      // buyer a confirmation email to click. The server holds the service role
+      // key and can subscribe them outright.
       const kind =
         productionType === 'movie' ? 'Films'
         : productionType === 'event' ? 'Special Events'
@@ -385,17 +389,6 @@ export default function Showing() {
             extraTags: ['ticket-buyer'],
             source: 'showing-checkout',
             addInterests: [kind as any],
-          });
-        } else if (opts.guest?.newsletter && opts.guest.email) {
-          const [first, ...rest] = opts.guest.name.trim().split(/\s+/);
-          void subscribeToMailchimp({
-            email: opts.guest.email,
-            first_name: first ?? '',
-            last_name: rest.join(' '),
-            // Interests need IDs a guest cannot read, so the production type
-            // rides along as a tag instead — same signal, anonymous-safe.
-            tags: ['ticket-buyer', kind.toLowerCase().replace(/\s+/g, '-')],
-            source: 'showing-checkout',
           });
         }
       } catch { /* noop — marketing must never fail a purchase */ }

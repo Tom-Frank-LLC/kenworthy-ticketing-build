@@ -1031,9 +1031,18 @@ async function findExistingOrder(admin: any, idempotencyKey: string, userId: str
   };
 }
 
-/** Marketing sync. Fire-and-forget: an outage must not affect a paid order. */
+/**
+ * Marketing sync. Fire-and-forget: an outage must not affect a paid order.
+ *
+ * Gated on consent like the ticket path. The film-pass form does not carry a
+ * marketing checkbox yet, so `marketingOptIn` is false there and no pass buyer
+ * is subscribed — deliberate. Buying a pass is not permission to email someone,
+ * and this function had been sending every pass buyer to Mailchimp without ever
+ * asking. Add the checkbox to the pass form and the consent rides through
+ * `readContact` with no change needed here.
+ */
 function syncMailchimp(contact: BuyerContact) {
-  if (!contact.email) return;
+  if (!contact.email || !contact.marketingOptIn) return;
   try {
     const [first, ...rest] = (contact.name || '').split(/\s+/);
     void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {

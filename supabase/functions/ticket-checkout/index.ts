@@ -526,6 +526,15 @@ async function findExistingOrder(admin: any, idempotencyKey: string, userId: str
 }
 
 /**
+ * 'Live Performances' -> 'live-performances'. `productionCategory` already
+ * carries the same three names as the Mailchimp interest groups, so the tag is
+ * just its slug — no mapping table to drift out of sync.
+ */
+function categoryTag(category: string): string {
+  return String(category || '').trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+/**
  * Marketing sync. Fire-and-forget by design: a Mailchimp outage must never
  * affect a completed purchase.
  */
@@ -538,17 +547,36 @@ function syncMailchimp(
   if (!contact.email) return;
   try {
     const [first, ...rest] = contact.name.split(/\s+/);
-    void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
-      body: JSON.stringify({
-        email: contact.email,
-        first_name: first ?? '',
-        last_name: rest.join(' '),
-        tags: ['ticket-buyer'],
-        source: 'ticket-checkout',
-      }),
-    }).catch(() => {});
+
+    // The e-commerce order below is recorded for every buyer — it is purchase
+    // history, not marketing. Joining the mailing list is the part that needs
+    // consent, so only that call is gated.
+    if (contact.marketingOptIn) {
+      // Service role key, not the anon key: it marks this as a trusted server
+      // call so `mailchimp-subscribe` honours `status: 'subscribed'` instead of
+      // forcing the anonymous double opt-in. Sending the anon key here is what
+      // made a ticked box mean "we emailed you a confirmation to click".
+      void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({
+          email: contact.email,
+          first_name: first ?? '',
+          last_name: rest.join(' '),
+          status: 'subscribed',
+          // The production type rides along as a tag. Interest groups would be
+          // better segmentation but need IDs from `app_config`, which is a read
+          // this fire-and-forget path should not take on.
+          tags: ['ticket-buyer', 'newsletter', categoryTag(order.productionCategory)]
+            .filter(Boolean),
+          source: 'ticket-checkout',
+        }),
+      }).catch(() => {});
+    }
 
     void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-ecommerce`, {
       method: 'POST',

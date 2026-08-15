@@ -20,7 +20,11 @@ export function NewsletterSignup({ className = '' }: { className?: string }) {
     });
     setLoading(false);
     if (ok) {
-      toast.success("You're on the list. Welcome to the Kenworthy.");
+      // Not "you're on the list" — an anonymous signup is created as `pending`,
+      // so the address is not subscribed until the confirmation link is
+      // clicked. Saying otherwise means a visitor who never opens that email
+      // believes they signed up and quietly hears nothing again.
+      toast.success('Almost there — check your email to confirm your subscription.');
       setEmail('');
     } else {
       toast.error("We couldn't add you just now. Please try again in a moment.");
