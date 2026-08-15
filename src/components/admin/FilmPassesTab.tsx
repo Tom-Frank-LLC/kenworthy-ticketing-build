@@ -178,6 +178,8 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function FilmPassesTab() {
   const [passTypes, setPassTypes] = useState<FilmPassType[]>([]);
+  /** Passes issued per type — what makes a type undeletable. Keyed by type id. */
+  const [typePassCounts, setTypePassCounts] = useState<Record<string, number>>({});
   const [showForm, setShowForm] = useState(false);
   // The same form creates and edits. Pass types gained two fields that decide
   // real behaviour at the door, and there was no edit path at all — a type
@@ -222,6 +224,28 @@ export default function FilmPassesTab() {
     const types = (data || []) as FilmPassType[];
     setPassTypes(types);
     if (types.length > 0 && !batchTypeId) setBatchTypeId(types[0].id);
+
+    // How many passes each type has issued.
+    //
+    // `pass_type_id` is ON DELETE RESTRICT, so a type with even one pass —
+    // including a blank sticker nobody has sold — cannot be deleted. That rule
+    // is right: deleting the type would orphan passes people are holding. But
+    // it was invisible until you clicked Delete and got a foreign-key error
+    // naming a constraint, which tells an admin nothing they can act on.
+    //
+    // Counted per type rather than in one grouped query because PostgREST has
+    // no GROUP BY, and there are a handful of types, not hundreds. `head: true`
+    // means these fetch a count and no rows.
+    const counts = await Promise.all(
+      types.map(async t => {
+        const { count } = await supabase
+          .from('user_film_passes')
+          .select('id', { count: 'exact', head: true })
+          .eq('pass_type_id', t.id);
+        return [t.id, count ?? 0] as const;
+      }),
+    );
+    setTypePassCounts(Object.fromEntries(counts));
   }, [batchTypeId]);
 
   // Typing is not a query. Without this, every keystroke is a round trip and
@@ -406,11 +430,66 @@ export default function FilmPassesTab() {
     else loadData();
   }
 
-  async function deleteType(id: string) {
-    if (!confirm('Delete this pass type?')) return;
-    const { error } = await supabase.from('film_pass_types').delete().eq('id', id);
-    if (error) toast.error(error.message);
-    else { toast.success('Deleted'); loadData(); }
+  /**
+   * Delete a pass *type* — not a pass. The two are a click apart in this tab
+   * and mean very different things, so the refusals below say which is which.
+   *
+   * A type that has issued passes cannot be deleted, and should not be: the
+   * database refuses it (ON DELETE RESTRICT) because deleting the type would
+   * orphan passes patrons are holding in their wallets. Retiring a type is
+   * what the Active switch is for — an inactive type stops being offered and
+   * stops accepting new print runs, while the passes already out there keep
+   * working until they expire.
+   *
+   * This used to hand Postgres's own words to the admin: "violates foreign key
+   * constraint user_film_passes_pass_type_id_fkey". True, and useless — it
+   * names an internal constraint rather than the thing to do about it.
+   */
+  async function deleteType(pt: FilmPassType) {
+    const issued = typePassCounts[pt.id] ?? 0;
+
+    if (issued > 0) {
+      toast.error(
+        `"${pt.name}" has ${issued} pass${issued === 1 ? '' : 'es'} issued against it, ` +
+          'so it cannot be deleted. Switch it to Inactive to retire it — passes already ' +
+          'out there keep working. To delete it outright, clear those passes first under ' +
+          'Issued Passes.',
+        { duration: 10000 },
+      );
+      return;
+    }
+
+    if (!confirm(
+      `Delete the pass type "${pt.name}"?\n\nThis removes the type itself, not any pass. ` +
+      'No passes have been issued against it.',
+    )) return;
+
+    // .select() because a delete blocked by RLS comes back as a success with
+    // no rows — the row count is the only thing that says anything happened.
+    const { data, error } = await supabase
+      .from('film_pass_types')
+      .delete()
+      .eq('id', pt.id)
+      .select('id');
+
+    if (error) {
+      // Almost always the same foreign key, lost to a race: somebody minted a
+      // batch against this type between the count above and this click.
+      console.error('[FilmPassesTab] deleteType failed', error);
+      toast.error(
+        error.code === '23503'
+          ? `"${pt.name}" has passes issued against it now — reload and check Issued Passes.`
+          : `Could not delete "${pt.name}".`,
+      );
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error('That did not delete — check your permissions.');
+      return;
+    }
+
+    toast.success(`Deleted the "${pt.name}" pass type`);
+    loadData();
   }
 
   async function handleMint() {
@@ -438,6 +517,9 @@ export default function FilmPassesTab() {
       });
       toast.success(`${data.quantity} blank stickers ready to print`);
       loadBatches();
+      // A fresh batch is the usual way a type stops being deletable.
+      loadData();
+      loadPasses(0);
     } catch (err: any) {
       toast.error(err.message || 'Could not create the batch');
     } finally {
@@ -533,6 +615,9 @@ export default function FilmPassesTab() {
           : 'Pass deleted',
       );
       loadPasses(0);
+      // Deleting the last pass on a type is what makes that type deletable, so
+      // the "N issued" badge has to move with it or Delete stays wrongly barred.
+      loadData();
     } catch (err: any) {
       toast.error(err.message || 'Could not delete that pass');
     }
@@ -778,6 +863,13 @@ export default function FilmPassesTab() {
                     <Badge variant={pt.is_active ? 'default' : 'secondary'} className="text-xs">
                       {pt.is_active ? 'Active' : 'Inactive'}
                     </Badge>
+                    {/* Shown because it is the reason Delete will refuse. A
+                        constraint you only meet by tripping over it is a trap. */}
+                    {(typePassCounts[pt.id] ?? 0) > 0 && (
+                      <Badge variant="outline" className="text-xs">
+                        {typePassCounts[pt.id]} issued
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>
@@ -786,7 +878,16 @@ export default function FilmPassesTab() {
                 <Button variant="ghost" size="sm" onClick={() => startEdit(pt)} title="Edit this pass type">
                   <Pencil className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => deleteType(pt.id)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => deleteType(pt)}
+                  title={
+                    (typePassCounts[pt.id] ?? 0) > 0
+                      ? `Cannot delete — ${typePassCounts[pt.id]} pass(es) issued. Switch to Inactive to retire it.`
+                      : 'Delete this pass type'
+                  }
+                >
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
               </div>
