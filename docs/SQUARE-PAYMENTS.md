@@ -211,18 +211,131 @@ else's order.
 
 ---
 
+## Cash goes through Square too
+
+**The policy:** no money is collected that does not go through Square, cash
+included, so the books stay accurate.
+
+Until 15 Aug 2026 the code did not implement that for cash. A cash ticket or
+film pass rung up at the counter wrote database rows and never contacted Square
+at all — no `cash_details`, no `source_id: 'CASH'`, nothing. The theatre's books
+were short by exactly the in-person cash take. Square's Payments API had
+supported cash tenders the whole time; we simply never called it.
+
+Cash now takes the same route as the card:
+
+```
+StaffPOS  ──► ticket-checkout      (payment_method: 'cash', staff-only)
+FilmPassPOS ─► film-pass-checkout  (action: 'activate', payment_method: 'cash')
+                     │
+                     ├─ price the order from the database
+                     ├─ POST /v2/payments  source_id: 'CASH'
+                     │                     cash_details.buyer_supplied_money
+                     └─ only then are the tickets / the pass real
+```
+
+`buyer_supplied_money` is what the patron handed over; Square derives
+`change_back_money` from it. Pass it as `cash_tendered_cents` and the drawer
+arithmetic is recorded on Square's side too; omit it and the tender is recorded
+as the exact amount, which is the honest answer when nobody typed it in.
+
+Three things this changed beyond registering the money, all of them deliberate:
+
+* **The patron owns the tickets now.** The browser-side insert attributed
+  box-office sales to the *staff account* that rang them up. Routing through the
+  server resolves the patron from the email or phone the counter already asks
+  for, exactly as guest checkout does.
+* **The patron gets their ticket.** The POS has always demanded contact details
+  "for digital ticket delivery" and never delivered anything. It does now.
+* **The server prices it.** A box-office sale is no longer priced by the browser.
+
+**A failed Square call fails the sale**, and says so in those words — *"Do not
+take the cash"*. That is the policy working: money the theatre cannot record is
+money it does not take.
+
+**Idempotency, per path.** A ticket sale reuses the POS's per-attempt key until
+that sale succeeds, so a double-tap replays rather than double-posts. A film
+pass derives its key from the sticker code itself (`pass-cash-<uuid>`), because a
+sticker can only ever be sold once — a re-scan returns Square's original payment
+instead of taking the money twice. Both verified against sandbox.
+
+---
+
+## What Square sees: attribution
+
+A bare `POST /v2/payments` still produces a Square order — but its only line is
+`item_type: CUSTOM_AMOUNT` with **no name** (measured, 15 Aug). That is the whole
+of Finding A: totals tie out, and nothing says which film earned the money, so
+Item Sales showed ticket revenue apparently declining as sales moved onto this
+system.
+
+Every ticket and film-pass payment now creates an order first, with a line named
+for the film or the pass, and pays against it:
+
+```
+POST /v2/orders     line_items: [{ name: "A COMPLETE UNKNOWN",
+                                   variation_name: "Student",
+                                   quantity: "3",
+                                   base_price_money: { amount: 875 } }]
+POST /v2/payments   order_id: <that order>, reference_id: <our order_token>
+```
+
+**Ad-hoc, with no `catalog_object_id` anywhere.** Nothing here reads or writes
+`/catalog`; the only code in this project that touches the catalog is still
+`square-catalog-sync`. That is not incidental — it is the point. The 14 Aug
+incident was our code writing catalog objects, and an order line named for a film
+needs no catalog entry to exist. It also means a film added in the admin this
+morning is attributable immediately, which a catalog-linked line could never be.
+
+**Line prices are tax-inclusive, and that is forced, not lazy.** Square computes
+a percentage tax once over the line total; our pricing rounds tax per ticket row
+to match the `enforce_ticket_pricing` trigger. Measured in sandbox on 3 × $8.25:
+we charge **2625**, Square's own arithmetic makes it **2623**. Letting Square
+compute the tax would break the invariant that the amount charged equals
+`SUM(tickets.total_price)` — the sum the refund path re-reads — to gain two cents
+in a tax report Square is not the source of truth for. So the charged price goes
+on the line whole.
+
+The card processing fee (rentals only) and any donation ride as their own lines,
+so neither inflates a film's takings.
+
+**Attribution can never fail a sale.** `createAttributionOrder` returns `null`
+rather than throwing — on an API error, and on any mismatch between the lines and
+the amount about to be charged. The caller then creates a bare payment: the money
+still moves and `reference_id` still reconciles. `SQUARE_ORDER_ATTRIBUTION=false`
+turns it off without a redeploy.
+
+### Redemptions stay in our database — a decision, not an oversight
+
+Square's catalog holds a `6 Redeem` category of ten $0.00 items, used to ring a
+zero-dollar line each time a pass was redeemed. Our redemption path decrements
+the balance and issues a ticket without touching Square, so **those counts stopped
+accruing** as usage moved onto this system.
+
+That is left as it is, on purpose (Tom, 15 Aug 2026). No money moves in a
+redemption, so no payment is owed, and ringing a $0 line would mean coupling the
+door scanner to the Square catalog for the sake of a counter. **Redemption volume
+lives in `film_pass_redemptions`.** Anyone reading Square's reports for redemption
+numbers needs to know they stopped there.
+
+---
+
 ## Refunds
 
-`square-refund` (staff/admin) handles three cases:
+`square-refund` (staff/admin) sorts tickets by whether they carry a Square
+payment, not by how they were paid for:
 
 * **Card** — refunds `total_price + processing_fee` against the stored
   `square_payment_id` through Square's Refunds API, then marks the tickets
   refunded. If Square refuses, the tickets stay `confirmed`: a ticket marked
   refunded without the money going back is the failure this exists to prevent.
+* **Cash** — carries a `square_payment_id` now, so it takes the same route.
+  Square accepts refunds against a cash tender (verified in sandbox) and records
+  the reversal, which keeps the books straight in both directions — but no money
+  actually moves, so the response says *"now hand $X back from the till"*.
 * **Film pass** — returns the deducted balance to the pass it came from and
   removes the redemption row.
-* **Cash / comp** — marked refunded, with a warning surfaced to the operator
-  that the till has to be opened.
+* **Comp** — nothing was taken; the row is marked refunded.
 
 Box-office card sales record `payment_id` from the Terminal checkout, so they
 are refundable too.
@@ -350,9 +463,15 @@ Sandbox first, both paths, then flip and run one real card you refund.
   refused when the production credentials are in use — a reader that cannot be
   reached is a failed sale, not an approved one — but it means POS card sales
   cannot be end-to-end tested until a real reader is paired.
-* **Box-office ticket sales still insert client-side** under the staff policy.
-  They are staff-attested, money-in-the-room sales; moving them server-side was
-  out of this brief's scope.
+* **Box-office _card_ sales still insert client-side.** Cash moved to the server
+  on 15 Aug (above); the Terminal path did not, so in-person card sales are still
+  priced by the browser, owned by the staff account, and send no ticket email.
+  Tracked in `docs/briefs/BRIEF-square-in-person-card-server-path.md`.
+* **Item Sales has not been read since attribution shipped.** The line shape was
+  verified against the Orders API (`item_type: ITEM`, named, `gross_sales_money`
+  populated); nobody has yet opened the dashboard report to confirm it aggregates
+  uncatalogued items by name. Until someone does, treat per-film rollup as
+  expected rather than proven.
 * **Abandoned `pending` rows are ignored but not cleaned up.** They stop holding
   seats after 15 minutes; a periodic job to mark them `failed` would keep the
   table tidy.

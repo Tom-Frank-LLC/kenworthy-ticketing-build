@@ -1,4 +1,4 @@
-// Online ticket checkout — the one place a ticket can be sold on the web.
+// Ticket checkout — the one place a ticket is sold and the money recorded.
 //
 // What this replaces: both online paths created confirmed, scannable tickets
 // without taking any money. The guest path inserted rows from an edge function
@@ -19,6 +19,21 @@
 // any more; the RLS policy that allowed a customer to insert their own ticket
 // is dropped in the accompanying migration, so this is the only route left.
 //
+// The box office joins them for cash (`payment_method: 'cash'`, staff-only).
+// It used to write ticket rows straight from the browser and never contact
+// Square at all, which meant the books were short by the entire in-person cash
+// take — the whole reason that path moved here. The order of operations is the
+// same one the card path uses, with the tender swapped: a Square cash payment
+// is created, and only then do the tickets become real. Two consequences of
+// routing it through the server are worth knowing about, because they are
+// changes, not side effects: the tickets belong to the *patron* now rather than
+// to the staff account that rang them up, and the patron gets the confirmation
+// the counter has always asked for an address to send.
+//
+// The in-person **card** path still runs from the browser through
+// `square-terminal`; moving it here is a follow-up
+// (docs/briefs/BRIEF-square-in-person-card-server-path.md).
+//
 // Card data never touches this function or this server. The browser hands the
 // card to Square's own iframe and sends us a single-use token, which is all
 // `source_id` below ever is. (PCI SAQ A-EP.)
@@ -26,6 +41,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/http.ts';
 import {
+  createAttributionOrder,
+  createCashPayment,
   createPayment,
   loadSquareConfig,
   publishableConfig,
@@ -35,6 +52,7 @@ import {
   PricingError,
   priceTicketOrder,
   readDonationCents,
+  ticketLineItems,
   type TicketDescriptor,
 } from '../_shared/pricing.ts';
 import { deliverConfirmation } from '../_shared/deliver.ts';
@@ -56,6 +74,16 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 const MAX_TICKETS_PER_SHOWING = 4;
+
+/**
+ * The same limit does not apply at the counter.
+ *
+ * Four is a fairness rule for a web form nobody is watching. A staff member
+ * selling to a family of six is not that, and refusing them would send the sale
+ * off Square entirely — the exact outcome this change exists to stop. The cap
+ * stays only as a guard against a stuck finger on a quantity button.
+ */
+const MAX_TICKETS_IN_PERSON = 40;
 
 /**
  * How long a pending order holds its seats.
@@ -129,10 +157,24 @@ Deno.serve(async (req: Request) => {
   if (!donation.ok) return json({ error: donation.error }, 400);
   const donationCents = donation.cents;
 
+  // -------------------------------------------------------------------------
+  // Cash at the counter
+  // -------------------------------------------------------------------------
+  //
+  // The box office used to write ticket rows straight from the browser and never
+  // contact Square, so the books were short by the whole in-person cash take.
+  // The money is now recorded where the card money already is: here.
+  //
+  // This is the one path where the server is *told* money arrived rather than
+  // taking it itself, which is why it is staff-only. Without that gate, any
+  // browser could mint confirmed tickets by claiming to have paid cash.
+  const inPerson = body.payment_method === 'cash';
+  const maxTickets = inPerson ? MAX_TICKETS_IN_PERSON : MAX_TICKETS_PER_SHOWING;
+
   if (!showingId) return json({ error: 'Showing is required' }, 400);
   if (descriptors.length === 0) return json({ error: 'Select at least one ticket' }, 400);
-  if (descriptors.length > MAX_TICKETS_PER_SHOWING) {
-    return json({ error: `Maximum ${MAX_TICKETS_PER_SHOWING} tickets per purchase` }, 400);
+  if (descriptors.length > maxTickets) {
+    return json({ error: `Maximum ${maxTickets} tickets per purchase` }, 400);
   }
   // A card source is required only once we know there is money to charge. A
   // free ($0) showing has no card step at all, so it is validated after pricing
@@ -152,7 +194,37 @@ Deno.serve(async (req: Request) => {
   // customer is not told an account was made for them.
   let accountCreated = false;
 
-  if (signedIn) {
+  if (inPerson) {
+    // Staff gate, checked against user_roles rather than the caller's word.
+    if (!signedIn) return json({ error: 'Staff sign-in required' }, 401);
+    const { data: isStaff } = await admin.rpc('has_role', {
+      _user_id: signedIn.id,
+      _role: 'staff',
+    });
+    if (!isStaff) return json({ error: 'Staff access required' }, 403);
+
+    // The signed-in user here is the staff member working the till, not the
+    // buyer. Attributing the tickets to them — which is what the browser-side
+    // insert did — put every walk-in sale in a staff account's ticket list and
+    // left the patron with no record. The patron owns the tickets.
+    if (!contact.email && !contact.phone) {
+      return json({ error: 'Enter the patron\'s email or phone so the tickets can be sent' }, 400);
+    }
+    if (contact.email && !EMAIL_RE.test(contact.email)) {
+      return json({ error: 'Invalid email format' }, 400);
+    }
+    // A name is not asked for at the counter and a walk-in is under no
+    // obligation to give one, so it is derived rather than demanded.
+    if (!contact.name) contact.name = contact.email || contact.phone || 'Kenworthy patron';
+    try {
+      const buyer = await findOrCreateBuyer(admin, contact);
+      userId = buyer.userId;
+      accountCreated = buyer.created;
+    } catch (err) {
+      console.error('[ticket-checkout] box office buyer resolution failed', err);
+      return json({ error: err instanceof Error ? err.message : 'Could not create account' }, 500);
+    }
+  } else if (signedIn) {
     userId = signedIn.id;
     contact = await contactForUser(admin, userId, contact);
   } else {
@@ -183,7 +255,10 @@ Deno.serve(async (req: Request) => {
   // -------------------------------------------------------------------------
   let order;
   try {
-    order = await priceTicketOrder(admin, showingId, descriptors, 'online');
+    // Cash carries no card surcharge — no card was processed. That matches what
+    // the POS shows the patron, and 'none' is the same channel a film-pass
+    // redemption uses for the same reason.
+    order = await priceTicketOrder(admin, showingId, descriptors, inPerson ? 'none' : 'online');
   } catch (err) {
     if (err instanceof PricingError) return json({ error: err.message }, 400);
     console.error('[ticket-checkout] pricing failed', err);
@@ -200,7 +275,9 @@ Deno.serve(async (req: Request) => {
   // (Square rejects a $0 charge outright — "below the minimum" — which is why
   // free tickets skip Square entirely, below.) A free showing with a donation
   // attached has a real amount to charge, so it needs a card like any other.
-  if (chargeCents > 0 && !sourceId) {
+  // Cash has no token to present — the tender *is* the source. Everything else
+  // still has to bring one.
+  if (chargeCents > 0 && !sourceId && !inPerson) {
     return json({ error: 'Missing payment source' }, 400);
   }
 
@@ -244,7 +321,7 @@ Deno.serve(async (req: Request) => {
     .in('status', HELD_STATUSES);
 
   const alreadyHeld = (ownRows || []).filter(isHeld).length;
-  if (alreadyHeld + order.tickets.length > MAX_TICKETS_PER_SHOWING) {
+  if (alreadyHeld + order.tickets.length > maxTickets) {
     return json(
       {
         error: `Ticket limit reached. You already have ${alreadyHeld} ticket(s) for this showing.`,
@@ -272,7 +349,7 @@ Deno.serve(async (req: Request) => {
     qr_code: crypto.randomUUID(),
     order_token: orderToken,
     status: 'pending',
-    payment_method: 'online',
+    payment_method: inPerson ? 'cash' : 'online',
     checkout_idempotency_key: idempotencyKey,
   }));
 
@@ -334,19 +411,52 @@ Deno.serve(async (req: Request) => {
     }
 
     try {
-      const result = await createPayment(square.config, {
-        sourceId,
-        amountCents: chargeCents,
-        idempotencyKey,
+      // Name the sale before taking the money.
+      //
+      // A payment on its own reaches Square as an unnamed CUSTOM_AMOUNT line, so
+      // per-film revenue never appears in Item Sales. An order with a line named
+      // for the film fixes that without a single catalog reference — the
+      // coupling that caused the 14 Aug incident is not reintroduced, and a film
+      // added in our admin this morning needs no Square counterpart to be
+      // attributed. Failure here returns null and the sale proceeds unattributed.
+      const squareOrderId = await createAttributionOrder(square.config, {
+        idempotencyKey: `order-${idempotencyKey}`.slice(0, 45),
         referenceId: orderToken,
-        note: donationCents > 0
-          ? `${order.productionTitle} — ${created.length} ticket(s) + $${(donationCents / 100).toFixed(2)} donation`
-          : `${order.productionTitle} — ${created.length} ticket(s)`,
-        buyerEmail: contact.email,
+        lineItems: ticketLineItems(order, donationCents),
+        expectedTotalCents: chargeCents,
       });
 
+      const note = donationCents > 0
+        ? `${order.productionTitle} — ${created.length} ticket(s) + $${(donationCents / 100).toFixed(2)} donation`
+        : `${order.productionTitle} — ${created.length} ticket(s)`;
+
+      const result = inPerson
+        ? await createCashPayment(square.config, {
+          amountCents: chargeCents,
+          idempotencyKey,
+          // What the patron handed over, when the till bothered to record it.
+          // Square works out the change from it.
+          buyerSuppliedCents: Number(body.cash_tendered_cents) || null,
+          referenceId: orderToken,
+          note,
+          buyerEmail: contact.email,
+          orderId: squareOrderId,
+        })
+        : await createPayment(square.config, {
+          sourceId,
+          amountCents: chargeCents,
+          idempotencyKey,
+          referenceId: orderToken,
+          note,
+          buyerEmail: contact.email,
+          orderId: squareOrderId,
+        });
+
       if (!result.ok || !result.data?.payment) {
-        const message = squareErrorMessage(result.data);
+        const message = squareErrorMessage(
+          result.data,
+          inPerson ? 'Square would not register that cash sale' : 'Card was declined',
+        );
         console.error('[ticket-checkout] Square declined', JSON.stringify(result.data));
         await failOrder(message);
         return json({ error: message }, 400);
@@ -366,7 +476,16 @@ Deno.serve(async (req: Request) => {
       const reason = err instanceof Error ? err.message : 'Payment failed';
       console.error('[ticket-checkout] payment threw', err);
       await failOrder(reason);
-      return json({ error: 'Payment could not be processed. Your card was not charged.' }, 500);
+      return json(
+        {
+          error: inPerson
+            // Said plainly, because the staff member is holding the money: the
+            // sale did not happen, so do not put it in the drawer.
+            ? 'Square could not be reached, so this sale was not recorded. Do not take the cash — try again.'
+            : 'Payment could not be processed. Your card was not charged.',
+        },
+        500,
+      );
     }
   }
 
@@ -407,8 +526,15 @@ Deno.serve(async (req: Request) => {
   // gift, and its failure can never fail a purchase — the card has already been
   // charged for it, so the money is ours either way and the row is recoverable
   // from the Square payment id in the log line below.
+  //
+  // Not on the counter path. A box-office gift is already written by
+  // `square-donation record_in_person`, which files it as `staff_pos` /
+  // `payment_channel: 'cash'` and sends the receipt — writing it here as well
+  // would book the same gift twice. What changes is that the POS now has a real
+  // `square_payment_id` to hand that action, because the cash payment above
+  // covered the tickets and the gift together, exactly as the terminal does.
   let donationId: string | null = null;
-  if (donationCents > 0) {
+  if (donationCents > 0 && !inPerson) {
     const { data: donationRow, error: donationErr } = await admin
       .from('donations')
       .insert({
@@ -477,7 +603,7 @@ Deno.serve(async (req: Request) => {
     user_id: userId,
     tickets: created,
     ticket_count: created.length,
-    payment_method: 'card',
+    payment_method: inPerson ? 'cash' : 'card',
     // What the card was charged: tickets + their tax + the untaxed gift.
     amount_cents: chargeCents,
     subtotal: order.subtotal,

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -272,6 +272,35 @@ export default function StaffPOS() {
     });
   };
 
+  /**
+   * The order as the server wants to hear it: what was asked for, never what it
+   * costs. Prices are re-derived from the database in `ticket-checkout`, so a
+   * tampered-with or merely stale POS cannot decide what a ticket is worth.
+   */
+  const buildDescriptors = useCallback((): { seat_id?: string; tier_id?: string }[] => {
+    if (hasTiers) {
+      return lineItems.flatMap(li =>
+        li.seatIds && li.seatIds.length > 0
+          ? li.seatIds.map(seatId => ({ seat_id: seatId, tier_id: li.tierId }))
+          : Array.from({ length: li.quantity }, () => ({ tier_id: li.tierId })),
+      );
+    }
+    if (isAssignedSeating) {
+      return Array.from(selectedSeats).map(seatId => ({ seat_id: seatId }));
+    }
+    return Array.from({ length: gaQuantity }, () => ({}));
+  }, [hasTiers, lineItems, isAssignedSeating, selectedSeats, gaQuantity]);
+
+  /**
+   * One key per cash sale attempt, held until that sale succeeds.
+   *
+   * A staff member who taps "Sell" twice because the first tap seemed slow must
+   * not put two cash payments into Square. The key survives the retry; the
+   * server replays the order it already made, and Square returns the payment it
+   * already took.
+   */
+  const cashSaleKey = useRef<string | null>(null);
+
   const createTickets = useCallback(async (
     method: PaymentMethod,
     squarePaymentId: string | null = null,
@@ -401,10 +430,37 @@ export default function StaffPOS() {
     setIsSimulated(false);
   }, []);
 
+  /**
+   * Cash, rung through the server.
+   *
+   * This used to insert ticket rows from the browser and stop there — no Square
+   * call of any kind — so the theatre's books were short by every cash ticket
+   * ever sold at the counter. The policy is that no money is collected outside
+   * Square, and the fix is to take the same route the card already takes: the
+   * server prices the order, registers a Square cash tender, and only then are
+   * the tickets real. Nothing scannable exists until the money is recorded.
+   */
   const handleCashSale = async () => {
     setSelling(true);
     try {
-      const { ticketIds, orderToken } = await createTickets('cash');
+      if (!cashSaleKey.current) cashSaleKey.current = crypto.randomUUID();
+
+      const result = await invokeFunction<{
+        order_token: string;
+        tickets: { id: string }[];
+        square_payment_id: string | null;
+        amount_cents: number;
+      }>('ticket-checkout', {
+        showing_id: selectedShowingId,
+        tickets: buildDescriptors(),
+        payment_method: 'cash',
+        donation_cents: donationCents,
+        email: patronEmail.trim() || undefined,
+        phone: patronPhone.trim() || undefined,
+        idempotency_key: cashSaleKey.current,
+      });
+
+      const ticketIds = (result.tickets || []).map(t => t.id);
       addTransaction(ticketIds, 'cash');
       toast.success(
         donationCents > 0
@@ -412,11 +468,17 @@ export default function StaffPOS() {
           : `${ticketCount} ticket(s) sold (cash)!`,
         { duration: 5000 },
       );
-      await recordDonation('cash', null, orderToken);
+      // The gift rode in on the same handful of cash, so it carries the same
+      // Square payment — which is the whole difference from before, when this
+      // was passed null and the donation was in the books but not in Square.
+      await recordDonation('cash', result.square_payment_id, result.order_token);
+      cashSaleKey.current = null;
       resetForm();
       await refreshAfterSale();
       loadDailyStats();
     } catch (err: any) {
+      // The key is deliberately kept, so pressing Sell again retries *this*
+      // sale rather than starting a second one.
       toast.error(err.message || 'Failed to process sale');
     } finally {
       setSelling(false);

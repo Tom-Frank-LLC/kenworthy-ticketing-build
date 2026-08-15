@@ -49,6 +49,8 @@ export interface PricedTicket {
   seat_id: string | null;
   /** Resolved tier — a seat's own tier mapping overrides whatever was asked for. */
   tier_id: string | null;
+  /** The resolved tier's label ("Adult", "Student"), for Square line items. */
+  tier_name: string | null;
   price: number;
   tax_amount: number;
   total_price: number;
@@ -165,9 +167,13 @@ export async function priceTicketOrder(
       .eq('showing_id', showingId),
   ]);
 
-  const tierById = new Map<string, { price: number; is_active: boolean }>();
+  const tierById = new Map<string, { name: string | null; price: number; is_active: boolean }>();
   for (const t of tierRows || []) {
-    tierById.set(t.id, { price: Number(t.price), is_active: t.is_active !== false });
+    tierById.set(t.id, {
+      name: t.tier_name ?? null,
+      price: Number(t.price),
+      is_active: t.is_active !== false,
+    });
   }
 
   // Seat → tier resolution needs the seat's row/section/number, because the
@@ -208,11 +214,13 @@ export async function priceTicketOrder(
     if (!tierId && d.tier_id) tierId = d.tier_id;
 
     let price: number;
+    let tierName: string | null = null;
     if (tierId) {
       const tier = tierById.get(tierId);
       if (!tier) throw new PricingError('Invalid ticket tier for this showing');
       if (!tier.is_active) throw new PricingError('That ticket tier is no longer on sale');
       price = tier.price;
+      tierName = tier.name;
     } else {
       price = Number(showing.ticket_price);
     }
@@ -232,6 +240,7 @@ export async function priceTicketOrder(
     return {
       seat_id: seatId,
       tier_id: tierId,
+      tier_name: tierName,
       price,
       tax_amount: taxCents / 100,
       total_price: (priceCents + taxCents) / 100,
@@ -274,6 +283,61 @@ export async function priceTicketOrder(
       start_time: showing.start_time,
     },
   };
+}
+
+/**
+ * The Square order lines for a priced ticket order.
+ *
+ * Lives here, next to the arithmetic that produced the numbers, because the one
+ * rule these lines must obey is arithmetic: they have to sum to exactly the
+ * amount charged, or Square leaves the order part-paid. Building them anywhere
+ * else means building them from a different set of roundings.
+ *
+ * Tickets are grouped so that Item Sales sees one line per price point rather
+ * than one per seat: the film is the item, the tier is its variation, and the
+ * quantity is the count. Seat numbers are deliberately absent — Square is being
+ * told what was sold, not where anyone sat.
+ */
+export function ticketLineItems(
+  order: PricedOrder,
+  donationCents = 0,
+): { name: string; quantity: number; amountCents: number; variationName?: string | null }[] {
+  const groups = new Map<string, { tierName: string | null; cents: number; quantity: number }>();
+
+  for (const ticket of order.tickets) {
+    const cents = Math.round(ticket.total_price * 100);
+    const key = `${ticket.tier_id ?? ''}|${cents}`;
+    const existing = groups.get(key);
+    if (existing) existing.quantity += 1;
+    else groups.set(key, { tierName: ticket.tier_name, cents, quantity: 1 });
+  }
+
+  const lines = Array.from(groups.values()).map((g) => ({
+    name: order.productionTitle,
+    quantity: g.quantity,
+    amountCents: g.cents,
+    variationName: g.tierName,
+  }));
+
+  // The rental surcharge, when a production opted into it. Its own line because
+  // it is not ticket revenue and should not inflate a film's takings.
+  const feeCents = Math.round(order.processingFee * 100);
+  if (feeCents > 0) {
+    lines.push({
+      name: 'Card processing fee',
+      quantity: 1,
+      amountCents: feeCents,
+      variationName: null,
+    });
+  }
+
+  // Contribution income, never taxed, never part of the film's revenue — the
+  // same separation the donations table enforces, carried into Square.
+  if (donationCents > 0) {
+    lines.push({ name: 'Donation', quantity: 1, amountCents: donationCents, variationName: null });
+  }
+
+  return lines;
 }
 
 function seatKey(row: string, section: string | null, number: number) {

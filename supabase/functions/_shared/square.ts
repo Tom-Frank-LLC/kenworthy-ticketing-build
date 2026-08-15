@@ -163,6 +163,37 @@ export function squareErrorMessage(data: any, fallback = 'Card was declined'): s
   return data?.errors?.[0]?.detail || data?.errors?.[0]?.code || fallback;
 }
 
+/** Shared payment body. The tender is the only thing that differs. */
+function paymentBody(
+  config: SquareConfig,
+  params: {
+    amountCents: number;
+    idempotencyKey: string;
+    referenceId?: string;
+    note?: string;
+    buyerEmail?: string | null;
+    orderId?: string | null;
+  },
+) {
+  return {
+    idempotency_key: params.idempotencyKey,
+    amount_money: { amount: params.amountCents, currency: 'USD' },
+    location_id: config.locationId,
+    autocomplete: true,
+    // The reconciliation hook. Every paid row in our database carries the same
+    // token, so a Square payment can be matched back to its order without
+    // guessing. Never drop this.
+    reference_id: params.referenceId?.slice(0, 40),
+    note: params.note?.slice(0, 500),
+    buyer_email_address: params.buyerEmail || undefined,
+    // Attribution (see createAttributionOrder). Absent, Square still creates an
+    // order behind the payment — but its single line is CUSTOM_AMOUNT with no
+    // name, which is why per-film revenue never reached Item Sales.
+    order_id: params.orderId || undefined,
+    statement_description_identifier: 'KENWORTHY',
+  };
+}
+
 /**
  * Charge a card token.
  *
@@ -178,22 +209,186 @@ export async function createPayment(
     referenceId?: string;
     note?: string;
     buyerEmail?: string | null;
+    orderId?: string | null;
   },
 ) {
   return await squareFetch(config, '/payments', {
     method: 'POST',
+    body: { ...paymentBody(config, params), source_id: params.sourceId },
+  });
+}
+
+/**
+ * Register cash taken at the counter.
+ *
+ * The policy is that no money is collected that does not go through Square, and
+ * until this existed the code did not implement it: an in-person cash ticket or
+ * film pass wrote database rows and never contacted Square at all, so the books
+ * were short by exactly the cash take. Square's Payments API has supported cash
+ * tenders all along.
+ *
+ * `buyerSuppliedCents` is what the patron actually handed over. Square derives
+ * `change_back_money` from it, so passing the note tendered gets the drawer
+ * arithmetic recorded on Square's side too. Defaults to the exact amount, which
+ * is the honest answer when the till took the exact money or nobody typed it in.
+ */
+export async function createCashPayment(
+  config: SquareConfig,
+  params: {
+    amountCents: number;
+    idempotencyKey: string;
+    buyerSuppliedCents?: number | null;
+    referenceId?: string;
+    note?: string;
+    buyerEmail?: string | null;
+    orderId?: string | null;
+  },
+) {
+  // Square rejects a buyer-supplied amount below the price, which would turn a
+  // mistyped tender into a failed sale with the cash already in the drawer.
+  const supplied = Number(params.buyerSuppliedCents);
+  const buyerSupplied = Number.isFinite(supplied) && supplied >= params.amountCents
+    ? Math.round(supplied)
+    : params.amountCents;
+
+  return await squareFetch(config, '/payments', {
+    method: 'POST',
     body: {
-      idempotency_key: params.idempotencyKey,
-      source_id: params.sourceId,
-      amount_money: { amount: params.amountCents, currency: 'USD' },
-      location_id: config.locationId,
-      autocomplete: true,
-      reference_id: params.referenceId?.slice(0, 40),
-      note: params.note?.slice(0, 500),
-      buyer_email_address: params.buyerEmail || undefined,
-      statement_description_identifier: 'KENWORTHY',
+      ...paymentBody(config, params),
+      source_id: 'CASH',
+      cash_details: {
+        buyer_supplied_money: { amount: buyerSupplied, currency: 'USD' },
+      },
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Attribution
+// ---------------------------------------------------------------------------
+
+/**
+ * One ad-hoc line on a Square order.
+ *
+ * `amountCents` is **tax-inclusive**, and that is not a shortcut — it is forced.
+ * Square computes a percentage tax once over the line total; our pricing rounds
+ * tax per ticket row, mirroring the `enforce_ticket_pricing` trigger. Measured
+ * in sandbox on 3 × $8.25: we charge 2625, Square's own tax arithmetic makes it
+ * 2623. Letting Square compute the tax would mean the amount charged no longer
+ * equals SUM(tickets.total_price) — the sum the refund path re-reads — for a
+ * two-cent gain in Square's tax report. So the price we charge goes on the line
+ * whole, and Square's tax reporting is not fed from here.
+ */
+export interface SquareLineItem {
+  /** What Item Sales groups by. The film or pass name, nothing else. */
+  name: string;
+  quantity: number;
+  /** Tax-inclusive, per unit. */
+  amountCents: number;
+  /** Tier or fulfilment detail — a variation under the item, not a new item. */
+  variationName?: string | null;
+  note?: string | null;
+}
+
+export function lineItemsTotalCents(items: SquareLineItem[]): number {
+  return items.reduce((sum, li) => sum + li.amountCents * li.quantity, 0);
+}
+
+/**
+ * Create the Square order a payment is attributed to, and return its id.
+ *
+ * Why this exists: a bare `/payments` call still produces a Square order, but
+ * its only line is `item_type: CUSTOM_AMOUNT` with no name (verified in
+ * sandbox). Totals tie out; nothing says which film earned the money, so Item
+ * Sales shows ticket revenue apparently declining as sales move to our system.
+ * Naming the line fixes that.
+ *
+ * Deliberately **ad-hoc**: no `catalog_object_id`, and nothing here reads or
+ * writes `/catalog`. That is the whole point. The 14 Aug incident was our code
+ * writing catalog objects; an order line named for a film needs no catalog entry
+ * to exist, which also means it works for a film created this morning.
+ *
+ * **Returns null rather than throwing, always.** Attribution is a reporting
+ * nicety and a sale is money. If the order call fails, or the lines do not add
+ * up to the amount about to be charged, the caller carries on and creates a bare
+ * payment: the money still moves and `reference_id` still reconciles. The one
+ * thing that must never happen is a patron refused at the counter because a
+ * reporting call had a bad day.
+ */
+export async function createAttributionOrder(
+  config: SquareConfig,
+  params: {
+    idempotencyKey: string;
+    referenceId?: string;
+    lineItems: SquareLineItem[];
+    /** The amount about to be charged. Must equal the lines exactly. */
+    expectedTotalCents: number;
+  },
+): Promise<string | null> {
+  if (!squareOrderAttributionEnabled()) return null;
+
+  const lines = params.lineItems.filter((li) => li.quantity > 0 && li.amountCents > 0);
+  if (lines.length === 0) return null;
+
+  // A payment may not exceed its order's total, and an order left larger than
+  // its payment sits partly paid in Square's books forever. Either way the
+  // mismatch is a bug in the caller's line building, so it is caught here —
+  // before any money moves — and the sale proceeds unattributed.
+  const total = lineItemsTotalCents(lines);
+  if (total !== params.expectedTotalCents) {
+    console.error('[square] attribution lines do not match the charge; skipping order', {
+      lineTotal: total,
+      expected: params.expectedTotalCents,
+    });
+    return null;
+  }
+
+  try {
+    const result = await squareFetch(config, '/orders', {
+      method: 'POST',
+      body: {
+        idempotency_key: params.idempotencyKey,
+        order: {
+          location_id: config.locationId,
+          reference_id: params.referenceId?.slice(0, 40),
+          line_items: lines.map((li) => ({
+            name: li.name.slice(0, 512),
+            quantity: String(li.quantity),
+            base_price_money: { amount: li.amountCents, currency: 'USD' },
+            variation_name: li.variationName?.slice(0, 255) || undefined,
+            note: li.note?.slice(0, 500) || undefined,
+          })),
+        },
+      },
+    });
+
+    if (!result.ok || !result.data?.order?.id) {
+      console.error('[square] attribution order failed', JSON.stringify(result.data));
+      return null;
+    }
+    return result.data.order.id as string;
+  } catch (err) {
+    console.error('[square] attribution order threw', err);
+    return null;
+  }
+}
+
+/**
+ * Whether ticket and film-pass payments carry a named Square order.
+ *
+ * Default **on**, which breaks the convention of the other flags in this
+ * project — and the difference is the point. Those gate writes that can destroy
+ * vendor data, so an unset secret must mean "do nothing". This write creates a
+ * new order object and never touches an existing one, so the worst an unwanted
+ * "on" can do is name a line item. Defaulting off would instead ship a feature
+ * that silently does nothing until somebody remembers to set a secret on both
+ * projects, which is a failure this codebase has already had.
+ *
+ * Set `SQUARE_ORDER_ATTRIBUTION=false` to fall back to bare payments without a
+ * redeploy. Reconciliation does not depend on it either way.
+ */
+export function squareOrderAttributionEnabled(): boolean {
+  return (Deno.env.get('SQUARE_ORDER_ATTRIBUTION') ?? '').trim().toLowerCase() !== 'false';
 }
 
 /** Refund a previously captured payment, in whole or in part. */

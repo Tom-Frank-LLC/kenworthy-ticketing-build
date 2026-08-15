@@ -15,7 +15,9 @@ import {
   computeProcessingFee,
   priceTicketOrder,
   readDonationCents,
+  ticketLineItems,
 } from './pricing.ts';
+import { lineItemsTotalCents } from './square.ts';
 
 // ---------------------------------------------------------------------------
 // A stub standing in for the PostgREST query builder, holding fixed rows.
@@ -226,4 +228,77 @@ Deno.test('readDonationCents refuses what the donations table would refuse', () 
   // A tampered request cannot turn a $9 ticket into a five-figure charge.
   assertEquals(readDonationCents(MAX_BUNDLED_DONATION_CENTS).ok, true);
   assertEquals(readDonationCents(MAX_BUNDLED_DONATION_CENTS + 1).ok, false);
+});
+
+// ---------------------------------------------------------------------------
+// Square attribution lines
+// ---------------------------------------------------------------------------
+//
+// One property matters above all the rest: the lines must sum to exactly the
+// amount charged. Square refuses a payment larger than its order, and leaves the
+// order part-paid if it is smaller, so a drift here is not a cosmetic reporting
+// bug. `createAttributionOrder` refuses to send a mismatched set — these tests
+// are what keep that refusal from being reached in normal use.
+
+Deno.test('line items sum to the charged amount, including the odd-cent case', async () => {
+  // 3 × $8.25. Tax rounds to 50c per row here, which is not what Square's own
+  // percentage arithmetic does over the line total: measured in sandbox, Square
+  // makes the same three tickets 2623 and would leave the order two cents
+  // adrift. See docs/SQUARE-PAYMENTS.md.
+  const order = await priceTicketOrder(
+    stubAdmin(fixture()),
+    SHOWING_ID,
+    Array.from({ length: 3 }, () => ({ tier_id: 'tier-student' })),
+  );
+  const lines = ticketLineItems(order);
+  assertEquals(lineItemsTotalCents(lines), order.amountCents);
+  assertEquals(lineItemsTotalCents(lines), 2625);
+});
+
+Deno.test('tickets group by price point, with the film as the item', async () => {
+  const order = await priceTicketOrder(stubAdmin(fixture()), SHOWING_ID, [
+    { tier_id: 'tier-adult' },
+    { tier_id: 'tier-student' },
+    { tier_id: 'tier-student' },
+  ]);
+  const lines = ticketLineItems(order);
+
+  // Two lines, not three: Item Sales wants a quantity, not a row per seat. The
+  // film is the item so revenue aggregates by film, and the tier rides
+  // underneath it as a variation.
+  assertEquals(lines.length, 2);
+  assertEquals(lines.every((l) => l.name === 'Rear Window'), true);
+  assertEquals(lines.map((l) => l.variationName).sort(), ['Adult', 'Student']);
+  assertEquals(lines.find((l) => l.variationName === 'Student')?.quantity, 2);
+  assertEquals(lineItemsTotalCents(lines), order.amountCents);
+});
+
+Deno.test('a gift is its own line and never inflates the film takings', async () => {
+  const order = await priceTicketOrder(stubAdmin(fixture()), SHOWING_ID, [{}]);
+  const lines = ticketLineItems(order, 2500);
+
+  const donation = lines.find((l) => l.name === 'Donation');
+  assertEquals(donation?.amountCents, 2500);
+  assertEquals(donation?.quantity, 1);
+
+  // The film's own line is untouched by the gift — the same separation the
+  // donations table enforces, carried into Square.
+  assertEquals(lines.find((l) => l.name === 'Rear Window')?.amountCents, 1060);
+
+  // And the set still equals what the patron actually hands over.
+  assertEquals(lineItemsTotalCents(lines), order.amountCents + 2500);
+});
+
+Deno.test('the buyer-paid surcharge is a line, not part of the ticket price', async () => {
+  const rows = fixture({
+    movies: [{ id: 'movie-1', title: 'Rear Window', pass_processing_fee: true }],
+  });
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}], 'in_person');
+  const lines = ticketLineItems(order);
+
+  assertEquals(
+    lines.find((l) => l.name === 'Card processing fee')?.amountCents,
+    Math.round(order.processingFee * 100),
+  );
+  assertEquals(lineItemsTotalCents(lines), order.amountCents);
 });
