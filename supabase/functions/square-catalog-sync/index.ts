@@ -554,6 +554,7 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
   }
 
   let repaired = 0;
+  const strategy = { modern: 0, legacy: 0 };
   const failures: any[] = [];
   for (const p of target) {
     try {
@@ -564,12 +565,40 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
       const object = current.object;
       if (!object) continue;
       object.item_data ??= {};
-      object.item_data.category_id = p.category_id;
-      object.item_data.categories = [{ id: p.category_id, ordinal: 0 }];
-      await square(config, "/catalog/object", {
-        method: "POST",
-        body: { idempotency_key: crypto.randomUUID(), object },
-      });
+
+      // Set ONE category field, never both. Square folds the legacy category_id
+      // into the same internal list as `categories`, so writing both puts two
+      // entries at ordinal 0 and it rejects the object:
+      //   "duplicate int value 0 ... for attribute additional_category"
+      // That is what failed 381 of 392 items on the first repair run.
+      //
+      // Modern shape first; if this catalog's API version doesn't accept it,
+      // fall back to the legacy field alone rather than failing the item.
+      const applyModern = () => {
+        delete object.item_data.category_id;
+        object.item_data.categories = [{ id: p.category_id, ordinal: 0 }];
+      };
+      const applyLegacy = () => {
+        delete object.item_data.categories;
+        delete object.item_data.reporting_category;
+        object.item_data.category_id = p.category_id;
+      };
+
+      applyModern();
+      try {
+        await square(config, "/catalog/object", {
+          method: "POST",
+          body: { idempotency_key: crypto.randomUUID(), object },
+        });
+        strategy.modern++;
+      } catch (modernErr: any) {
+        applyLegacy();
+        await square(config, "/catalog/object", {
+          method: "POST",
+          body: { idempotency_key: crypto.randomUUID(), object },
+        });
+        strategy.legacy++;
+      }
       repaired++;
     } catch (e: any) {
       failures.push({ id: p.id, name: p.name, error: e.message ?? String(e) });
@@ -593,6 +622,7 @@ async function repairCategories(config: SquareConfig, admin: any, payload: any) 
     repaired,
     attempted: target.length,
     remaining: plan.length - target.length,
+    strategy,
     error_summary: [...counts.entries()]
       .map(([error, count]) => ({ error, count }))
       .sort((a, b) => b.count - a.count),

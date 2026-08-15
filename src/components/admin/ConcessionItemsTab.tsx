@@ -84,6 +84,8 @@ export default function ConcessionItemsTab() {
   const [repairMode, setRepairMode] = useState<'restore' | 'organize'>('restore');
   const [repairing, setRepairing] = useState(false);
   const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
+  // Categories the operator has chosen NOT to restore this run.
+  const [skipCategories, setSkipCategories] = useState<Set<string>>(new Set());
 
   // Combo management
   const [comboDialogOpen, setComboDialogOpen] = useState(false);
@@ -174,6 +176,8 @@ export default function ConcessionItemsTab() {
         dry_run: true,
       });
       setRepair(result);
+      setRepairResult(null);
+      setSkipCategories(new Set());
       setRepairOpen(true);
     } catch (e) {
       toast.error(`Could not read the Square catalog: ${(e as Error).message}`);
@@ -181,6 +185,31 @@ export default function ConcessionItemsTab() {
       setRepairing(false);
     }
   };
+
+  /**
+   * Categories whose items can show up on a register screen at the stand.
+   * Restoring these puts items back where they were, but that still changes what
+   * staff see on the till — so they are called out and can be skipped.
+   */
+  const STAND_FACING = new Set([
+    'Concessions', 'Cocktails', 'Cafe', 'Drinks', 'Beer & Wine', 'Candy',
+    '7 Merch', '1 Combos', '2 Candy', '3 Bottles', '3 Soda', '4 Beer',
+    '4 Wine', '5 Popcorn',
+  ]);
+
+  const toggleSkip = (category: string) => {
+    setSkipCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
+
+  /** Items actually eligible after the operator's category choices. */
+  const repairSelection = (repair?.items ?? []).filter(
+    (i) => !skipCategories.has(i.category),
+  );
 
   const applyRepair = async () => {
     setRepairing(true);
@@ -190,7 +219,7 @@ export default function ConcessionItemsTab() {
         mode: repairMode,
         dry_run: false,
         // Only the names just reviewed on screen are eligible to change.
-        only_names: (repair?.items ?? []).map((i) => i.name),
+        only_names: repairSelection.map((i) => i.name),
       });
       setRepairResult(result);
       toast.success(`Re-filed ${result?.repaired ?? 0} item(s) in Square`);
@@ -507,18 +536,46 @@ export default function ConcessionItemsTab() {
                 Will change — {repair?.would_repair ?? 0} item(s)
               </p>
               <ul className="space-y-1">
-                {(repair?.by_category ?? []).map((c) => (
-                  <li key={c.category} className="flex justify-between">
-                    <span>{c.category}</span>
-                    <span className="tabular-nums text-muted-foreground">{c.count}</span>
-                  </li>
-                ))}
+                {(repair?.by_category ?? []).map((c) => {
+                  const skipped = skipCategories.has(c.category);
+                  const stand = STAND_FACING.has(c.category);
+                  return (
+                    <li key={c.category} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`cat-${c.category}`}
+                        checked={!skipped}
+                        onChange={() => toggleSkip(c.category)}
+                        className="shrink-0"
+                      />
+                      <label
+                        htmlFor={`cat-${c.category}`}
+                        className={`flex-1 cursor-pointer ${skipped ? 'line-through opacity-50' : ''}`}
+                      >
+                        {c.category}
+                        {stand && (
+                          <span className="ml-2 text-[10px] uppercase tracking-wide text-accent">
+                            on the till
+                          </span>
+                        )}
+                      </label>
+                      <span className="tabular-nums text-muted-foreground">{c.count}</span>
+                    </li>
+                  );
+                })}
               </ul>
               {(repair?.would_repair ?? 0) === 0 && (
                 <p className="italic text-muted-foreground">
                   Nothing to change — Square already matches.
                 </p>
               )}
+              <p className="mt-3 text-xs text-muted-foreground">
+                Items marked <span className="text-accent">on the till</span> sit in
+                categories a register at the stand may display. Restoring them puts
+                them back where they were before 14 Aug — it never adds an item that
+                did not already exist — but untick any you would rather leave until
+                you can see a register.
+              </p>
             </div>
 
             {(repair?.items ?? []).length > 0 && (
@@ -576,8 +633,8 @@ export default function ConcessionItemsTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRepairOpen(false)}>Cancel</Button>
-            <Button onClick={applyRepair} disabled={repairing || !repair?.would_repair}>
-              {repairing ? 'Writing…' : `Apply to ${repair?.would_repair ?? 0} item(s)`}
+            <Button onClick={applyRepair} disabled={repairing || !repairSelection.length}>
+              {repairing ? 'Writing…' : `Apply to ${repairSelection.length} item(s)`}
             </Button>
           </DialogFooter>
         </DialogContent>
