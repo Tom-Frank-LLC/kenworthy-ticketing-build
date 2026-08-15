@@ -79,15 +79,23 @@ bug, and it had to be fixed in the same commit.
   same ticked-by-default checkbox and the same wording as the ticket form,
   so pass buyers are subscribed on the same terms (Tom, Aug 14).
 
-### Staff POS sells passes without asking, on purpose
+### Staff POS subscribes nobody — decided, not overlooked
 
 `StaffPOS` / `FilmPassPOS` also call `film-pass-checkout`, and they send no
 `marketing_opt_in`. Under the absent-means-no rule that resolves to false,
-so an in-person counter sale subscribes nobody. That is the right default —
-staff should not be silently signing up walk-ups on someone's behalf — but
-it means the counter is a deliberate gap, not an oversight. If pass sales at
-the desk should be able to opt a buyer in, that needs a prompt in the POS
-UI, not a change to the function.
+so an in-person counter sale subscribes nobody.
+
+**Tom's call, Aug 14: leave it that way for now.** Not a gap to close later
+by default — a counter sale is a different consent situation from someone
+ticking a box themselves, and staff should not be signing up walk-ups on
+their behalf.
+
+If it is ever revisited, the work is a prompt in the POS UI so the buyer is
+actually asked, plus sending `marketing_opt_in` on the existing call. **No
+change to `film-pass-checkout` is needed** — the consent already rides
+through `readContact`, so the function is ready for it. Do not "fix" this by
+defaulting the flag to true server-side; that is the same unasked subscribe
+this whole change removed.
 
 ### Why the server may subscribe outright (Tom's call, Aug 14)
 
@@ -121,3 +129,28 @@ read back — only their digests. Both values must come from Tom:
 **`MAILCHIMP_SERVER_PREFIX` is now set to `us10` on both projects**
 (Tom, Aug 14). Only the audience ID is outstanding; nothing can be
 deployed or end-to-end tested until it is set on both.
+
+## ⚠️ Deploy order — read before deploying any mailchimp function
+
+**Do not deploy `mailchimp-subscribe` on its own.** Staging and prod are
+both running a `ticket-checkout` built before this branch, which calls
+`mailchimp-subscribe` for every buyer with an email and never reads the
+consent checkbox. That call is harmless only because the function 404s.
+Deploying `mailchimp-subscribe` by itself un-404s it and starts subscribing
+people who unticked the box — into the **live shared audience**, since
+staging and prod share one.
+
+Correct order, per environment:
+
+1. `ticket-checkout` and `film-pass-checkout` (the consent gate)
+2. `mailchimp-subscribe` (the trusted-server path)
+3. `mailchimp-ecommerce` — `ticket-checkout` also calls this one into the
+   void today; not required for consent, but it is the other half of the
+   sync and is equally undeployed.
+
+Set `MAILCHIMP_AUDIENCE_ID` before step 2, or the function answers
+`500 "Mailchimp is not configured"` and the subscribe is silently lost.
+
+This branch is unmerged and undeployed on purpose. Nothing about the
+current live behaviour changes until someone deploys, and the live bug is
+dormant only as long as `mailchimp-subscribe` stays absent.
