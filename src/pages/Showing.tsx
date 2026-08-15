@@ -15,7 +15,6 @@ import { SeatMap } from '@/components/SeatMap';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
 import { DonationPrompt } from '@/components/DonationPrompt';
 import { type Seat, type PriceTier, computeSeatTotals, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
-import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
@@ -592,9 +591,6 @@ export default function Showing() {
                 </span>
               )}
             </div>
-            {productionType === 'movie' && showing?.movie_id && (
-              <PreviouslyScreened movieId={showing.movie_id} />
-            )}
           </div>
         </div>
       </div>

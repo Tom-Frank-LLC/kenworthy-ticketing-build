@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
-import { Search, Bookmark } from 'lucide-react';
+import { Search, Film, Calendar, Bookmark } from 'lucide-react';
 
 export type SearchMilestone = {
   id: string;
@@ -9,21 +9,27 @@ export type SearchMilestone = {
   description: string | null;
 };
 
-/** What the page should do when a result is chosen. */
-export type HistorySearchResult = {
-  kind: 'milestone';
-  id: string;
-  year: number;
-  label: string;
+export type SearchFilm = {
+  title: string;
+  filmYear: number | null;
+  years: number[];
 };
+
+/** What the page should do when a result is chosen. */
+export type HistorySearchResult =
+  | { kind: 'milestone'; id: string; year: number; label: string }
+  | { kind: 'film'; title: string; label: string }
+  | { kind: 'year'; year: number; label: string };
 
 const MAX_PER_GROUP = 5;
 
 export function HistorySearch({
   milestones,
+  films,
   onSelect,
 }: {
   milestones: SearchMilestone[];
+  films: SearchFilm[];
   onSelect: (result: HistorySearchResult) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -34,25 +40,48 @@ export function HistorySearch({
   const results = useMemo<HistorySearchResult[]>(() => {
     const q = query.trim().toLowerCase();
     if (q.length < 2) return [];
-    // Milestones: match the title or the story text, so "marquee" or "fire" find the
-    // moment — and a bare year finds the milestones on it.
-    const out: HistorySearchResult[] = milestones
+    const out: HistorySearchResult[] = [];
+
+    // A bare year jumps straight to that point in the century.
+    const yearMatch = /^\d{4}$/.test(q) ? parseInt(q, 10) : null;
+    if (yearMatch) {
+      const onYear = milestones.filter((m) => m.year === yearMatch);
+      for (const m of onYear) {
+        out.push({ kind: 'milestone', id: m.id, year: m.year, label: `${m.year} — ${m.title}` });
+      }
+      out.push({ kind: 'year', year: yearMatch, label: `All films from ${yearMatch}` });
+    }
+
+    // Milestones: match the title or the story text, so "marquee" or "fire" find the moment.
+    const milestoneHits = milestones
       .filter(
         (m) =>
-          m.title.toLowerCase().includes(q) ||
-          (m.description ?? '').toLowerCase().includes(q) ||
-          String(m.year).includes(q),
+          !(yearMatch && m.year === yearMatch) &&
+          (m.title.toLowerCase().includes(q) ||
+            (m.description ?? '').toLowerCase().includes(q) ||
+            String(m.year).includes(q)),
       )
-      .slice(0, MAX_PER_GROUP)
-      .map((m) => ({
-        kind: 'milestone' as const,
-        id: m.id,
-        year: m.year,
-        label: `${m.year} — ${m.title}`,
-      }));
+      .slice(0, MAX_PER_GROUP);
+    for (const m of milestoneHits) {
+      out.push({ kind: 'milestone', id: m.id, year: m.year, label: `${m.year} — ${m.title}` });
+    }
+
+    if (!yearMatch) {
+      const filmHits = films
+        .filter((f) => f.title.toLowerCase().includes(q))
+        .slice(0, MAX_PER_GROUP);
+      for (const f of filmHits) {
+        const yrs = f.years.length > 1 ? `${f.years[0]}–${f.years[f.years.length - 1]}` : `${f.years[0]}`;
+        out.push({
+          kind: 'film',
+          title: f.title,
+          label: `${f.title}${f.filmYear ? ` (${f.filmYear})` : ''} · played ${yrs}`,
+        });
+      }
+    }
 
     return out.slice(0, 12);
-  }, [query, milestones]);
+  }, [query, milestones, films]);
 
   useEffect(() => setActive(0), [query]);
 
@@ -87,6 +116,9 @@ export function HistorySearch({
     }
   };
 
+  const icon = (kind: HistorySearchResult['kind']) =>
+    kind === 'film' ? Film : kind === 'year' ? Calendar : Bookmark;
+
   return (
     <div ref={boxRef} className="relative max-w-xl mx-auto mt-8 text-left">
       <div className="relative">
@@ -99,9 +131,9 @@ export function HistorySearch({
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Search a year or a moment&hellip;"
+          placeholder="Search a year, a film, or a moment&hellip;"
           className="pl-9 h-12 text-base"
-          aria-label="Search the Kenworthy's history by year or milestone"
+          aria-label="Search the Kenworthy's history by year, film, or milestone"
           aria-expanded={open && results.length > 0}
           role="combobox"
           aria-controls="history-search-results"
@@ -120,9 +152,10 @@ export function HistorySearch({
             </p>
           )}
           {results.map((r, i) => {
+            const Icon = icon(r.kind);
             return (
               <button
-                key={`${r.kind}-${r.id}-${i}`}
+                key={`${r.kind}-${'id' in r ? r.id : r.label}-${i}`}
                 type="button"
                 role="option"
                 aria-selected={i === active}
@@ -132,10 +165,10 @@ export function HistorySearch({
                   i === active ? 'bg-secondary/70' : 'hover:bg-secondary/40'
                 }`}
               >
-                <Bookmark className="h-4 w-4 shrink-0 text-accent" />
+                <Icon className="h-4 w-4 shrink-0 text-accent" />
                 <span className="truncate">{r.label}</span>
                 <span className="ml-auto text-[11px] uppercase tracking-wide text-muted-foreground shrink-0">
-                  Milestone
+                  {r.kind === 'milestone' ? 'Milestone' : r.kind === 'film' ? 'Film' : 'Year'}
                 </span>
               </button>
             );

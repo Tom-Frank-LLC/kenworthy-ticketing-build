@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Archive, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper } from 'lucide-react';
+import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
@@ -16,7 +16,6 @@ import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
 import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
 import FilmPassesTab from '@/components/admin/FilmPassesTab';
 import HostManagementTab from '@/components/admin/HostManagementTab';
-import ArchiveTab from '@/components/admin/ArchiveTab';
 import AccountingTab from '@/components/admin/AccountingTab';
 import ChartOfAccountsTab from '@/components/admin/accounting/ChartOfAccountsTab';
 import AccountMappingsTab from '@/components/admin/accounting/AccountMappingsTab';
@@ -477,7 +476,6 @@ export default function AdminDashboard() {
             { value: 'mailchimp', label: 'Mailchimp', icon: Mail, show: isAdmin },
             { value: 'lgl', label: 'LGL', icon: Heart, show: isAdmin },
             { value: 'bor', label: 'BOR', icon: FileText, show: true },
-            { value: 'archive', label: 'Archive', icon: Archive, show: isSuperadmin },
           ].filter(t => t.show);
           const currentIdx = Math.max(0, topTabs.findIndex(t => t.value === activeTopTab));
           const current = topTabs[currentIdx] ?? topTabs[0];
@@ -953,13 +951,6 @@ export default function AdminDashboard() {
             <TabsContent value="qbo-export"><QboExportTab /></TabsContent>
           </Tabs>
         </TabsContent>
-        )}
-
-        {/* Archive Tab — superadmin only */}
-        {isSuperadmin && (
-          <TabsContent value="archive">
-            <ArchiveTab />
-          </TabsContent>
         )}
 
         <TabsContent value="bor">
