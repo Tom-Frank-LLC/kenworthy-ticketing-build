@@ -390,6 +390,33 @@ export function ticketLineItems(order: PricedOrder, donationCents = 0): SquareLi
   return lines;
 }
 
+/**
+ * What the database actually stored for an order, in integer cents.
+ *
+ * The counterpart to `priceTicketOrder`: that function decides what to charge,
+ * this reads back what the rows ended up holding after `enforce_ticket_pricing`
+ * had its say. The trigger *overwrites* price, tax and total on insert, so these
+ * are not the numbers that were sent — they are the database's own answer to the
+ * same question, computed independently in `numeric` where ours was computed in
+ * JavaScript doubles.
+ *
+ * Those two have diverged before. At $4.25, `4.25 * 0.06 * 100` is
+ * 25.499999999999996 in doubles and rounds *down* to $0.25 while Postgres stores
+ * $0.26 — quoting one number and charging another. Integer-cent arithmetic fixed
+ * that, and two test suites pin the rule on each side, but nothing has ever
+ * checked the two implementations against each other at runtime. Comparing this
+ * against `PricedOrder.amountCents` is that check.
+ */
+export function storedOrderCents(
+  rows: { total_price?: unknown; processing_fee?: unknown }[],
+): number {
+  const cents = (value: unknown) => {
+    const n = Number(value ?? 0);
+    return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  };
+  return rows.reduce((sum, row) => sum + cents(row.total_price) + cents(row.processing_fee), 0);
+}
+
 function seatKey(row: string, section: string | null, number: number) {
   return `${row}|${(section || '').toLowerCase()}|${number}`;
 }

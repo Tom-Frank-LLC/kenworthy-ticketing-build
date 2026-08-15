@@ -15,6 +15,7 @@ import {
   computeProcessingFee,
   priceTicketOrder,
   readDonationCents,
+  storedOrderCents,
   ticketLineItems,
 } from './pricing.ts';
 import { lineItemsTotalCents } from './square.ts';
@@ -337,6 +338,63 @@ Deno.test('the buyer-paid surcharge is a line, not part of the ticket price', as
     Math.round(order.processingFee * 100),
   );
   assertEquals(lineItemsTotalCents(lines), order.amountCents);
+});
+
+// ---------------------------------------------------------------------------
+// Priced vs stored
+// ---------------------------------------------------------------------------
+//
+// `enforce_ticket_pricing` re-derives price, tax and total in Postgres numeric
+// after we derived them in JavaScript. The two are meant to agree exactly,
+// because `charged == SUM(tickets.total_price)` is what the refund path
+// re-reads. These pin the comparison itself.
+
+Deno.test('stored cents reads back what the trigger left on the rows', () => {
+  // Two $8.25 tickets: 875 each after per-row tax, plus a surcharge riding on
+  // the first row the way the schema puts it.
+  assertEquals(
+    storedOrderCents([
+      { total_price: 8.75, processing_fee: 0.55 },
+      { total_price: 8.75, processing_fee: 0 },
+    ]),
+    1805,
+  );
+
+  // PostgREST hands numerics back as strings often enough to matter.
+  assertEquals(storedOrderCents([{ total_price: '10.60', processing_fee: '0' }]), 1060);
+
+  // A missing surcharge column is zero, not NaN — the select does not always
+  // ask for it.
+  assertEquals(storedOrderCents([{ total_price: 12.72 }]), 1272);
+  assertEquals(storedOrderCents([]), 0);
+});
+
+Deno.test('priced and stored agree on the case that once did not', async () => {
+  // $4.25 is the price that broke this before: `4.25 * 0.06 * 100` is
+  // 25.499999999999996 in doubles and rounds down to 25c, while Postgres numeric
+  // stores 26c. The server now works in integer cents and lands on 26 — so the
+  // charge equals what the trigger will store, which is exactly what the check
+  // in ticket-checkout asserts on every real order.
+  const rows = fixture({
+    showings: [{
+      id: SHOWING_ID,
+      ticket_price: 4.25,
+      is_active: true,
+      requires_seat_selection: false,
+      total_seats: 200,
+      start_time: '2026-09-01T02:00:00Z',
+      movie_id: 'movie-1',
+      event_id: null,
+      live_performance_id: null,
+    }],
+    showing_price_tiers: [],
+  });
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
+  assertEquals(order.tax, 0.26);
+  assertEquals(order.amountCents, 451);
+
+  // What the trigger would leave behind for that same ticket.
+  assertEquals(storedOrderCents([{ total_price: 4.51, processing_fee: 0 }]), order.amountCents);
 });
 
 Deno.test('only the film line is offered to the catalog lookup', async () => {

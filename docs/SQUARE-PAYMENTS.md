@@ -328,24 +328,22 @@ fuzzy hit on "Rear Window" could be "Rear Window (35mm)".
 | Situation | Why it matters here |
 |---|---|
 | Two items share the name | `SILENT FILM FESTIVAL PASS` exists three times — guessing is worse than not attributing |
-| The item has no variation | See below — currently the common case, not the rare one |
+| The item has no variation | The 14 Aug push stripped them; most are restored, the rest are outliers |
 | Several variations, none matching our tier | A guess; we take the single variation only when there is exactly one |
 
 Results are cached for 10 minutes, so a four-ticket order is one lookup.
 
-> **Sequencing: this feature is mostly inert until the variation restore runs.**
-> The 14 Aug push stripped variations from the damaged objects, and open item 4
-> of `REPORT-square-second-pass.md` confirms in the dashboard that they have
-> **no variation at all** — so a film-ticket item is found by name and then
-> declined, because there is nothing to reference. Sales fall back to ad-hoc
-> lines, exactly as they would for a film with no item.
+> **One dependency worth knowing about.** A line references a *variation*, not an
+> item, and the 14 Aug push stripped variations from the damaged objects — so
+> until one is restored, a film-ticket item is found by name and then declined,
+> and the sale stays ad-hoc.
 >
-> That is the correct behaviour and needs no change here. It resolves itself:
 > `square-catalog-sync` `repair_variations` restores a single `Regular` variation
-> per item from the pre-damage snapshot, and the lookup starts binding to those
-> items on its own as it does — a single variation is the case the matcher takes
-> unconditionally. **Nothing to redeploy; expect attribution coverage to improve
-> as the repair progresses.**
+> per item from the pre-damage snapshot, and **the bulk of that has been done**;
+> what remains are outliers. Those bind automatically once repaired — a single
+> variation is the case the matcher takes unconditionally, so there is nothing to
+> redeploy here. If a specific film shows up unattributed in Item Sales, an
+> unrepaired variation is the first thing to check, not a bug in checkout.
 
 **Our price wins over the catalog's.** Verified in sandbox: a line carrying both
 `catalog_object_id` and `base_price_money` records **our** amount (1908) rather

@@ -397,12 +397,12 @@ a write that never happens, nor tell which code is actually in use.
    variation at all, so they likely cannot be rung up. The snapshot holds each
    item's real square_variation_id and price; the name is lost.
 
-   **Now also blocks attribution (open item 1).** A ticket sale looks its film up
-   by name and references the item's *variation*; with no variation there is
-   nothing to bind to, so those sales stay ad-hoc. Nothing to change in the
-   checkout — `repair_variations` restores a single `Regular` variation per item,
-   which is the case the matcher takes unconditionally, so attribution coverage
-   improves on its own as the repair runs.
+   **Also gates attribution (open item 1).** A ticket sale looks its film up by
+   name and references the item's *variation*; with none there is nothing to bind
+   to and the sale stays ad-hoc. The bulk of the restore is done and the
+   remainder are outliers, so this is largely closed — and it needs no checkout
+   change either way: a restored item carries a single `Regular` variation, which
+   is the case the matcher takes unconditionally.
 
 **Code**
 

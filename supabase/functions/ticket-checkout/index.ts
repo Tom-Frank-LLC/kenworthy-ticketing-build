@@ -52,6 +52,7 @@ import {
   PricingError,
   priceTicketOrder,
   readDonationCents,
+  storedOrderCents,
   ticketLineItems,
   type TicketDescriptor,
 } from '../_shared/pricing.ts';
@@ -356,7 +357,7 @@ Deno.serve(async (req: Request) => {
   const { data: created, error: insertErr } = await admin
     .from('tickets')
     .insert(ticketRows)
-    .select('id, qr_code, price, total_price, seat_id, tier_id');
+    .select('id, qr_code, price, total_price, processing_fee, seat_id, tier_id');
 
   if (insertErr || !created || created.length === 0) {
     console.error('[ticket-checkout] pending insert failed', insertErr);
@@ -392,6 +393,44 @@ Deno.serve(async (req: Request) => {
       .update({ status: 'failed', payment_error: reason.slice(0, 500) })
       .in('id', ticketIds);
   };
+
+  // -------------------------------------------------------------------------
+  // Agree on the price before taking any of it
+  // -------------------------------------------------------------------------
+  //
+  // The same order has now been priced twice by two different pieces of code:
+  // `priceTicketOrder` in JavaScript, and the `enforce_ticket_pricing` trigger
+  // in Postgres, which overwrote every row on the way in. They are meant to
+  // agree exactly — `charged == SUM(tickets.total_price)` is the invariant the
+  // refund path re-reads — and until now nothing checked that they did.
+  //
+  // They have diverged before: doubles round $4.25's tax down where `numeric`
+  // rounds it up. Integer cents fixed that instance and tests pin the rule on
+  // both sides, but a test pins each implementation against the spec, not
+  // against the other. This pins them against each other, on every real order.
+  //
+  // Deliberately placed here — after the rows exist, before the money moves. A
+  // disagreement fails the order with nothing charged, which is the cheap
+  // outcome; discovering it later means a payment that does not reconcile
+  // against the rows it paid for.
+  const storedCents = storedOrderCents(created);
+  if (storedCents !== order.amountCents) {
+    console.error('[ticket-checkout] priced and stored totals disagree — refusing to charge', {
+      priced: order.amountCents,
+      stored: storedCents,
+      orderToken,
+      showingId,
+    });
+    await failOrder(`Price mismatch: priced ${order.amountCents}, stored ${storedCents}`);
+    return json(
+      {
+        error: inPerson
+          ? 'The price of this order could not be confirmed, so nothing was charged and no cash should be taken. Tell a manager.'
+          : 'We could not confirm the price of this order, so your card was not charged. Please try again.',
+      },
+      500,
+    );
+  }
 
   // -------------------------------------------------------------------------
   // Take the money
