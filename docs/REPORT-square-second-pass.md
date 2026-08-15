@@ -168,7 +168,63 @@ order_token d738ce8a…  2 tickets  $21.20  = Square $21.20
 order_token db046567…  3 tickets  $25.44  = Square $25.44
 ```
 
-### 🔴 Finding A — in-person cash never registers in Square
+### 🔴 Finding A — ticket revenue has no Square-side attribution
+
+**The most pressing alignment gap.** Tickets are the primary revenue, this is
+live now, and every sale through our system is invisible to Square's item-level
+accounting.
+
+A ticket sale sends a bare payment. There is no order, no line item, no catalog
+reference — the film title survives only as free text:
+
+```js
+POST /v2/payments
+  amount_money: { amount: <total>, currency: 'USD' }
+  reference_id: <our order token>
+  note:         "A COMPLETE UNKNOWN — 2 ticket(s)"
+```
+
+Meanwhile Square's catalog holds **243 items under `6 Film Tickets`**, one per
+film, because tickets have historically been rung against them — which is what
+made Square's Item Sales report show per-film revenue.
+
+**And a movie created in our admin never gets a Square counterpart at all**
+(§4: nothing outside `square-catalog-sync` touches `/catalog`). So a new film has
+no Square item, and its ticket revenue can never be attributed there.
+
+Consequences, both live today:
+
+- Square's Item Sales reports show film revenue **apparently declining** as sales
+  move to our system. Totals stay correct; attribution silently stops.
+- Per-film revenue exists **only** in our database. It can be verified against
+  Square in aggregate (the payment ties out) but not attributed — Square cannot
+  independently corroborate which film earned what.
+
+**Options**
+
+1. **Ad-hoc order line items** *(recommended starting point)* — create a Square
+   Order with a line item named for the film, then attach the payment. Gets
+   per-film names into Square with **no catalog coupling**, so our app never
+   reads or writes catalog objects and the 14 Aug failure mode cannot recur.
+   Works for films that have no Square item, which is all new ones.
+   **Unverified:** exactly how Square's Item Sales reporting treats ad-hoc line
+   items versus catalogued ones. *Settled by:* one test order in sandbox, then
+   reading the Item Sales report. This decides whether option 1 delivers the
+   reporting or only the receipt detail.
+2. **Catalog-linked line items** — reference a real `catalog_object_id` so sales
+   roll up under `6 Film Tickets` exactly as before. Best fidelity, and the only
+   option that makes new films appear alongside historical ones. But it means
+   creating a catalog item per film from our admin — the coupling that just
+   caused an incident. Would have to be create-only, never a rewrite.
+3. **Leave as payments-only** — accept that per-film attribution lives in our
+   system, and move that reporting off Square deliberately rather than by
+   accident. Legitimate, but it should be a decision someone makes, not a
+   side-effect nobody noticed.
+
+Whichever is chosen, the reconciliation hooks already work (below), so this is
+about *attribution*, not about whether the money ties out.
+
+### 🔴 Finding B — in-person cash never registers in Square
 
 **The policy** (Tom): no money is collected that doesn't go through Square; cash
 included, so the books stay accurate. **The code does not implement it for cash.**
@@ -196,7 +252,7 @@ on tickets and film passes.
 **Fix:** a Square cash-tender payment on both cash paths. The terminal card path
 already in place on both flows is the working model.
 
-### 🟡 Finding B — redemptions lose their Square record
+### 🟡 Finding C — redemptions lose their Square record
 
 Redeeming a pass moves no money, so no *payment* is owed. But Square's catalog
 holds a `6 Redeem` category of ten $0.00 items:
@@ -215,7 +271,7 @@ Not a money gap; a **reporting continuity** gap. Worth a decision rather than an
 automatic fix — our system may simply be the better home for redemption counts,
 provided whoever reads Square's reports knows they have stopped.
 
-### 🟡 Finding C — an unfinished till is reachable in the staff POS
+### 🟡 Finding D — an unfinished till is reachable in the staff POS
 
 `ConcessionPOS` is not part of the live workflow, but it is a **visible, ungated
 tab** in `StaffPOS`:
@@ -233,7 +289,7 @@ Its only callback refreshes a stats panel; the parent takes no payment. So
 staff member who opens the tab. **Hide the tab until the flow is finished**, or
 finish it.
 
-### ⭐ Finding D — the catalog sync should be one-way
+### ⭐ Finding E — the concessions catalog sync should be pull-only for now
 
 Concessions on the platform are **display only** (Tom, 15 Aug): `concession_items`
 backs the public menu on the website, and selling happens on the theatre's Square
@@ -279,11 +335,15 @@ a write that never happens, nor tell which code is actually in use.
 
 **Time-sensitive**
 
-1. **Make `square-catalog-sync` pull-only; delete `pushItem`.** Concessions are
-   display-only, so the push has no purpose — and it is what caused the incident.
-   Removes the bug class rather than defending against it.
-2. **Hide the Concessions tab in `StaffPOS`.** An unfinished till that reports a
-   sale without charging a card. Zero rows so far; hide it until it is real.
+1. **Align ticket sales with Square's accounting (Finding A).** Movie listings
+   have no Square counterpart and ticket sales carry no line items, so per-film
+   revenue is invisible to Square. Decide between ad-hoc order line items
+   (recommended; no catalog coupling), catalog-linked line items (best fidelity,
+   reintroduces coupling), or deliberately moving that reporting off Square.
+   First step is cheap: one sandbox test order to confirm how Square's Item Sales
+   treats an ad-hoc line item.
+2. **Disable the concessions Square push** — *done, see below*. Phase 2 until the
+   admin-edits-reach-the-register architecture is settled.
 3. Obtain a Square item-library export, or open a Square Support ticket, for the
    descriptions/images/variations on ~906 items. Backups age. Nothing on our side
    can reconstruct these.
@@ -304,18 +364,14 @@ a write that never happens, nor tell which code is actually in use.
 
 **Decisions**
 
-9. Ticket itemisation in Square — leave as payments-only; add ad-hoc order line
-   items (itemised, no catalog coupling); or reference real `catalog_object_id`
-   (best fidelity, reintroduces coupling). Recommend ad-hoc line items **if**
-   per-film Square reporting is actually wanted.
-10. Catalog hygiene, pre-existing and unrelated to the incident: 535 items
+9. Catalog hygiene, pre-existing and unrelated to the incident: 535 items
    uncategorised in Square (verified pre-existing — recorded as `General` at
    19:41, hours before any push); `SILENT FILM FESTIVAL PASS` exists three times;
    `Poster Design` / `Poster Print` are proposed as merch but look like services.
 
 **Process**
 
-11. Re-run the cutover audit on axes 2 and 3 (write semantics, blast radius) for
+10. Re-run the cutover audit on axes 2 and 3 (write semantics, blast radius) for
    every integration, not only Square — LGL and Mailchimp have the same shape and
    both share credentials between staging and production.
 

@@ -48,6 +48,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { json, preflight } from "../_shared/http.ts";
 import { logAudit, withBulkAudit } from "../_shared/audit.ts";
+import { concessionSquarePushEnabled } from "../_shared/flags.ts";
 import {
   loadSquareConfig,
   squareErrorMessage,
@@ -172,6 +173,23 @@ Deno.serve(async (req) => {
     // `preview` is deliberately not logged: it writes nothing, to Square or to
     // us, and an entry per dry run would be noise in front of the real ones.
     if (action === "preview") return json(await previewPull(config, admin));
+    // Both write directions are gated together: they are the only actions that
+    // can alter the live catalog, and both are phase-2 until the architecture
+    // for admin-edits-reach-the-register is settled. Refused server-side rather
+    // than only hidden in the UI, so a stale client cannot reach them either.
+    // Checked ahead of the audit calls below, so a refusal is never recorded as
+    // a write that happened.
+    if (
+      (action === "push_item" || action === "delete_item") &&
+      !concessionSquarePushEnabled()
+    ) {
+      return json({
+        error:
+          "Writing to the Square catalog is disabled. Concession items here " +
+          "are the website's display menu; Square is the source of truth. " +
+          "Set CONCESSION_SQUARE_PUSH=true to re-enable.",
+      }, 403);
+    }
     if (action === "pull") {
       // Even scoped to the allowlist, the pull upserts one concession_items row
       // per HTTP request. Per-row audit entries would put a sync's worth of
