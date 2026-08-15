@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { brand, emailLockup, sans, VENUE_NAME, VENUE_SHORT, BOX_OFFICE_ADDRESS } from "../_shared/brand.ts";
+import { logAudit } from "../_shared/audit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -126,6 +127,19 @@ Deno.serve(async (req) => {
     const detail = await contentRes.json().catch(() => ({}));
     return json({ error: "Content set failed", detail, campaign_id: created.id }, 502);
   }
+
+  // Mailchimp shares one key and one audience between staging and production,
+  // so a campaign drafted from either environment is a real campaign against
+  // the real list. Nothing in this database changes when that happens, which
+  // means the activity log is the only place the act is recorded at all.
+  await logAudit({
+    action: "mailchimp.campaign_created",
+    entityType: "showings",
+    entityId: showingId,
+    actorId: userData.user.id,
+    actorEmail: userData.user.email ?? null,
+    details: { campaign_id: created.id, web_id: created.web_id, title },
+  });
 
   return json({
     ok: true,

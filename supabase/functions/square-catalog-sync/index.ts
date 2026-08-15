@@ -47,6 +47,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { json, preflight } from "../_shared/http.ts";
+import { logAudit, withBulkAudit } from "../_shared/audit.ts";
 import {
   loadSquareConfig,
   squareErrorMessage,
@@ -168,12 +169,85 @@ Deno.serve(async (req) => {
   const action = payload.action ?? "preview";
 
   try {
+    // `preview` is deliberately not logged: it writes nothing, to Square or to
+    // us, and an entry per dry run would be noise in front of the real ones.
     if (action === "preview") return json(await previewPull(config, admin));
-    if (action === "pull") return json(await pullAll(config, admin, payload));
-    if (action === "push_item") return json(await pushItem(config, admin, payload.itemId));
-    if (action === "delete_item") return json(await deleteItem(config, payload));
+    if (action === "pull") {
+      // Even scoped to the allowlist, the pull upserts one concession_items row
+      // per HTTP request. Per-row audit entries would put a sync's worth of
+      // near-identical rows in front of a month of real activity, so the
+      // trigger is paused for the duration and the run is recorded as two rows:
+      // who started it, and what it did.
+      return json(await withBulkAudit(
+        {
+          tables: ["concession_items"],
+          action: "concession_items.bulk_sync",
+          startDetails: { source: "square", environment: config.environment },
+          actorId: user.id,
+        },
+        () => pullAll(config, admin, payload),
+        (result) => ({
+          source: "square",
+          environment: config.environment,
+          pulled: result.pulled,
+          created: result.created,
+          updated: result.updated,
+          skipped: result.skipped,
+          allowlist: result.allowlist,
+        }),
+      ));
+    }
+    if (action === "push_item") {
+      const result = await pushItem(config, admin, payload.itemId);
+      // Single item, so no suppression: the concession_items UPDATE this makes
+      // is logged by the trigger too, and the pair reads as "an admin pushed
+      // this item to Square, and here is the row it changed".
+      await logAudit({
+        action: "concession_items.square_push",
+        entityType: "concession_items",
+        entityId: payload.itemId ?? null,
+        actorId: user.id,
+        actorEmail: user.email ?? null,
+        details: { environment: config.environment, square_id: result.square_id ?? null },
+      });
+      return json(result);
+    }
+    if (action === "delete_item") {
+      const result = await deleteItem(config, payload);
+      await logAudit({
+        action: "concession_items.square_delete",
+        entityType: "concession_items",
+        actorId: user.id,
+        actorEmail: user.email ?? null,
+        details: {
+          environment: config.environment,
+          square_catalog_id: payload.square_catalog_id ?? null,
+        },
+      });
+      return json(result);
+    }
     if (action === "repair_categories") {
-      return json(await repairCategories(config, admin, payload));
+      const result = await repairCategories(config, admin, payload);
+      // No suppression: this writes to Square only, never to concession_items.
+      // That is exactly why it needs a line of its own — a repair rewrites live
+      // catalog objects and leaves no trace in this database at all. Dry runs
+      // are skipped for the same reason `preview` is.
+      if (!result.dry_run) {
+        await logAudit({
+          action: "concession_items.square_repair",
+          entityType: "concession_items",
+          actorId: user.id,
+          actorEmail: user.email ?? null,
+          details: {
+            environment: config.environment,
+            repaired: result.repaired,
+            attempted: result.attempted,
+            remaining: result.remaining,
+            failure_count: result.failure_count,
+          },
+        });
+      }
+      return json(result);
     }
     if (action === "verify") return json({ ok: true, environment: config.environment });
     return json({ error: `Unknown action: ${action}` }, 400);

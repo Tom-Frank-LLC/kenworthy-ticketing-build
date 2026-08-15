@@ -32,6 +32,7 @@ import { ticketCalendarUrl, googleCalendarUrl } from './calendar.ts';
 import { toE164, buildSubject, buildEmailHtml, buildEmailText, buildSmsBody } from './notify.ts';
 import { memberAccountsEnabled } from './flags.ts';
 import { SITE_URL } from './brand.ts';
+import { logAudit } from './audit.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -89,9 +90,44 @@ export async function sendTransactionalEmail(
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    return { ok: false, error: `Resend ${res.status}: ${detail.slice(0, 400)}` };
+    const error = `Resend ${res.status}: ${detail.slice(0, 400)}`;
+    await logEmailAttempt(to, subject, 'email', error);
+    return { ok: false, error };
   }
+  await logEmailAttempt(to, subject, 'email', null);
   return { ok: true };
+}
+
+/**
+ * Record one outbound message in the activity log.
+ *
+ * This is the choke point every transactional email passes through — ticket
+ * confirmations, donation receipts, film-pass deliveries — so one call here
+ * covers all of them rather than one per caller.
+ *
+ * The address is masked, matching what send-auth-email already writes to the
+ * console: these go to ticket buyers and donors, and what an admin needs from
+ * the log is that a receipt went out at 14:02 and whether it succeeded, not a
+ * readable list of every customer's email address.
+ *
+ * Never awaited for its result and never allowed to throw — delivery is
+ * dispatched fire-and-forget precisely so it cannot fail a purchase, and an
+ * audit write must not reintroduce that risk.
+ */
+async function logEmailAttempt(
+  to: string,
+  subject: string,
+  channel: 'email' | 'sms',
+  error: string | null,
+): Promise<void> {
+  const masked = channel === 'email'
+    ? to.replace(/(.).*(@.*)/, '$1***$2')
+    : to.replace(/.(?=.{4})/g, '*');
+  await logAudit({
+    action: error ? `${channel}.send_failed` : `${channel}.sent`,
+    entityType: 'notification',
+    details: { to: masked, subject, channel, ...(error ? { error } : {}) },
+  });
 }
 
 /**
@@ -167,8 +203,11 @@ async function sendViaTwilio(to: string, body: string): Promise<SendResult> {
   );
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    return { ok: false, error: `Twilio ${res.status} (${auth.mode}): ${detail.slice(0, 400)}` };
+    const error = `Twilio ${res.status} (${auth.mode}): ${detail.slice(0, 400)}`;
+    await logEmailAttempt(to, 'Ticket confirmation', 'sms', error);
+    return { ok: false, error };
   }
+  await logEmailAttempt(to, 'Ticket confirmation', 'sms', null);
   return { ok: true };
 }
 
