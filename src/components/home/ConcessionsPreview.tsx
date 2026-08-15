@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 interface ConcessionItem {
   id: string;
@@ -34,12 +35,17 @@ export function ConcessionsPreview() {
     let cancelled = false;
     (async () => {
       const [{ data: itemData }, { data: childData }, { data: menuData }] = await Promise.all([
-        supabase
-          .from('concession_items')
-          .select('id, name, price, category, is_combo')
-          .eq('is_active', true)
-          .order('category')
-          .order('price'),
+        // Paged: PostgREST truncates at 1,000 rows without erroring, so an
+        // unpaged select here would quietly drop the tail of the menu.
+        fetchAllRows<ConcessionItem>((from, to) =>
+          supabase
+            .from('concession_items')
+            .select('id, name, price, category, is_combo')
+            .eq('is_active', true)
+            .order('category')
+            .order('price')
+            .range(from, to) as never,
+        ),
         supabase
           .from('concession_combo_items')
           .select('combo_id, quantity, child:concession_items!concession_combo_items_child_item_id_fkey(id, name, price)')
