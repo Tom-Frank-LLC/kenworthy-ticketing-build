@@ -186,7 +186,14 @@ export function MonthCalendar({
                       </div>
                     )}
 
-                    {/* md+: title + time + description snippet per listing. */}
+                    {/* md+: title only. The cell already says which day this is,
+                        so both of the lines that used to sit here just restated
+                        it — the showtime, and the description, which is written
+                        starting "Tuesday, August 18 at 1 PM..." and so spent the
+                        grid's two scarcest lines repeating the day number above
+                        it. Titles get that room instead. Time and description
+                        both still show in the selected-day panel and the detail
+                        drawer, one tap away. */}
                     {hasItems && (
                       <div className="mt-1 hidden md:flex flex-col gap-1 overflow-hidden">
                         {sorted.slice(0, 2).map((it) => (
@@ -204,20 +211,9 @@ export function MonthCalendar({
                               it.type === 'concert' && 'border-foreground',
                             )}
                           >
-                            <div className={cn(
-                              'text-[10px] uppercase tracking-wide font-semibold leading-none',
-                              it.type === 'concert' ? 'text-foreground' : 'text-accent',
-                            )}>
-                              {formatShowtime(it.startTime, 'h:mm a')}
-                            </div>
-                            <div className="font-serif text-xs leading-tight line-clamp-1 group-hover/ev:text-primary transition-colors">
+                            <div className="font-serif text-xs leading-tight line-clamp-3 group-hover/ev:text-primary transition-colors">
                               {it.title}
                             </div>
-                            {it.curatorNote && (
-                              <div className="text-[10px] text-muted-foreground leading-tight line-clamp-2">
-                                {it.curatorNote}
-                              </div>
-                            )}
                           </button>
                         ))}
                         {dayItems.length > 2 && (
