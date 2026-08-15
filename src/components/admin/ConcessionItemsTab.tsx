@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeFunction } from '@/lib/functions';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { CONCESSION_SQUARE_PUSH_ENABLED } from '@/lib/flags';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -114,6 +115,11 @@ export default function ConcessionItemsTab() {
   // supabase.functions.invoke reports every 500 as "non-2xx status code", which
   // is how a missing Square secret reached staff as an unreadable toast.
   const pushToSquare = async (itemId: string, isCombo: boolean) => {
+    // Phase 2. These items are the website's display menu and Square is the
+    // source of truth, so edits here stay here until admin-edits-reach-the-
+    // register has an architecture. The server refuses this too — see
+    // CONCESSION_SQUARE_PUSH — so a stale bundle cannot write either.
+    if (!CONCESSION_SQUARE_PUSH_ENABLED) return;
     if (isCombo) return; // combos not synced
     try {
       await invokeFunction('square-catalog-sync', { action: 'push_item', itemId });
@@ -310,6 +316,7 @@ export default function ConcessionItemsTab() {
     toast.success('Removed from the site menu');
     loadItems();
 
+    if (!CONCESSION_SQUARE_PUSH_ENABLED) return; // phase 2; Square is untouched
     if (!target?.square_catalog_id) return;
     if (
       !confirm(
@@ -410,8 +417,16 @@ export default function ConcessionItemsTab() {
         <div>
           <h2 className="font-display text-xl font-bold">Concession Menu</h2>
           <p className="text-xs text-muted-foreground">
-            Name and price sync with Square. Active/inactive is site-only and never
-            touches Square. “Pull from Square” shows what it would import first.
+            {CONCESSION_SQUARE_PUSH_ENABLED ? (
+              <>Name and price sync with Square. Active/inactive is site-only.</>
+            ) : (
+              <>
+                This is the <span className="font-medium">website’s display menu</span>.
+                Square is the source of truth — “Pull from Square” brings prices in,
+                and nothing here is written back to the register.
+              </>
+            )}{' '}
+            “Pull from Square” shows what it would import first.
           </p>
         </div>
         <div className="flex gap-2">
