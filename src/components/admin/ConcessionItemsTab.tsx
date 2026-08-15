@@ -59,6 +59,25 @@ interface RepairResult {
   error_summary?: { error: string; count: number }[];
 }
 
+/** How much description/image data the 14 Aug push actually cost. */
+interface DamageCensus {
+  environment?: string;
+  images?: {
+    total_in_catalog: number;
+    referenced_by_an_item: number;
+    orphaned: number;
+    orphan_sample?: { id: string; name: string | null; caption: string | null }[];
+  };
+  damaged_items?: { items: number; withDescription: number; withImage: number };
+  untouched_items?: { items: number; withDescription: number; withImage: number };
+  description_estimate?: {
+    untouched_base_rate: number;
+    estimated_descriptions_lost: number;
+    caveat: string;
+  };
+  verdict?: string;
+}
+
 /** The variation census, reported before anything is written. */
 interface VariationPlan {
   environment?: string;
@@ -106,6 +125,8 @@ export default function ConcessionItemsTab() {
   const [repairProgress, setRepairProgress] = useState<string | null>(null);
   const [variationPlan, setVariationPlan] = useState<VariationPlan | null>(null);
   const [variationOpen, setVariationOpen] = useState(false);
+  const [census, setCensus] = useState<DamageCensus | null>(null);
+  const [censusOpen, setCensusOpen] = useState(false);
   // Categories the operator has chosen NOT to restore this run.
   const [skipCategories, setSkipCategories] = useState<Set<string>>(new Set());
 
@@ -327,6 +348,21 @@ export default function ConcessionItemsTab() {
       });
       setVariationPlan(result);
       setVariationOpen(true);
+    } catch (e) {
+      toast.error(`Could not read the Square catalog: ${(e as Error).message}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const runDamageCensus = async () => {
+    setRepairing(true);
+    try {
+      const result = await invokeFunction<DamageCensus>('square-catalog-sync', {
+        action: 'damage_census',
+      });
+      setCensus(result);
+      setCensusOpen(true);
     } catch (e) {
       toast.error(`Could not read the Square catalog: ${(e as Error).message}`);
     } finally {
@@ -582,6 +618,14 @@ export default function ConcessionItemsTab() {
             >
               Check variations
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={runDamageCensus}
+              disabled={repairing}
+            >
+              What was lost?
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -645,6 +689,75 @@ export default function ConcessionItemsTab() {
       {items.length === 0 && (
         <p className="text-muted-foreground text-center py-8">No concession items yet. Add your first item!</p>
       )}
+
+      <Dialog open={censusOpen} onOpenChange={setCensusOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>What was lost — {census?.environment ?? 'unknown'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-sm">
+            <div className="rounded-md border border-border/40 p-3 space-y-1">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Images — measured, not estimated
+              </p>
+              <div className="flex justify-between">
+                <span>Image files in the catalog</span>
+                <span className="tabular-nums">{census?.images?.total_in_catalog ?? 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Still attached to an item</span>
+                <span className="tabular-nums">{census?.images?.referenced_by_an_item ?? 0}</span>
+              </div>
+              <div className="flex justify-between font-medium text-destructive">
+                <span>Orphaned (detached by the push)</span>
+                <span className="tabular-nums">{census?.images?.orphaned ?? 0}</span>
+              </div>
+              <p className="text-xs text-muted-foreground pt-1">
+                An image is its own object in Square — the push cleared the link,
+                not the file. Orphans are still there and could be re-attached if
+                we knew which item each belonged to.
+              </p>
+            </div>
+
+            <div className="rounded-md border border-border/40 p-3 space-y-1">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Descriptions — estimated
+              </p>
+              <div className="flex justify-between">
+                <span>Never-pushed items with a description</span>
+                <span className="tabular-nums">
+                  {census?.untouched_items?.withDescription ?? 0} / {census?.untouched_items?.items ?? 0}
+                  {' '}({census?.description_estimate?.untouched_base_rate ?? 0}%)
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Pushed items with a description now</span>
+                <span className="tabular-nums">
+                  {census?.damaged_items?.withDescription ?? 0} / {census?.damaged_items?.items ?? 0}
+                </span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>Estimated descriptions lost</span>
+                <span className="tabular-nums">
+                  ~{census?.description_estimate?.estimated_descriptions_lost ?? 0}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground pt-1">
+                {census?.description_estimate?.caveat}
+              </p>
+            </div>
+
+            {census?.verdict && (
+              <p className="rounded-md border border-accent/30 bg-accent/10 p-3">
+                {census.verdict}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCensusOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={variationOpen} onOpenChange={setVariationOpen}>
         <DialogContent className="max-w-lg">
