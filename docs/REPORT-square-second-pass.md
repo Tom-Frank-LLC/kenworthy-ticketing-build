@@ -193,12 +193,43 @@ Payments API supports cash tenders; we never use them.
 card. It inserts `concession_sales` + `concession_sale_items` and shows a success
 toast. For a card sale it does not charge a card.
 
-**Unverified, and it decides the severity:** whether staff ring these on a
-**separate physical Square register** and use our POS only for inventory and
-records. If so this is a double-entry workflow — reconcilable but manual — rather
-than lost revenue. If not, cash and concession revenue never enters Square at
-all. *Settled by:* asking the box office how a cash concession sale is actually
-rung up today.
+**Now verified — there is no second register.** Tom, 15 Aug: staff ring sales on
+*our* POS, which is *meant* to interact with Square to account for them. So there
+is no double-entry safety net; what our POS fails to send to Square is simply not
+in Square.
+
+### 🔴 `ConcessionPOS` takes no payment at all
+
+The most serious finding in this document, and the reason it is not a disaster is
+timing.
+
+`ConcessionPOS` is rendered by `StaffPOS.tsx:933` with exactly one callback:
+
+```jsx
+<ConcessionPOS onSaleComplete={loadDailyStats} />
+```
+
+`loadDailyStats` refreshes a stats panel. **The parent does not take payment.**
+So `handleSell` is the entire sale: insert `concession_sales`, insert
+`concession_sale_items`, toast success. No card is charged and no cash tender is
+recorded, for **either** payment method.
+
+For a **card** concession sale, staff tap "Card", the app reports
+`Concession sale — $12.50 (card)`, and **no card is ever charged.** That is
+uncollected revenue, not merely an accounting gap. For **cash** the money reaches
+the drawer but never reaches Square.
+
+The schema confirms this was structural rather than a missed call —
+`concession_sales` has no Square column whatsoever:
+
+```
+id, showing_id, staff_user_id, payment_method,
+subtotal, tax_rate, tax_amount, total, created_at
+```
+
+**Nothing has been lost.** `concession_sales` contains **zero rows** on
+production — the flow has not been used in anger yet. This is caught before
+go-live, which is the only reason it is a design fix rather than a recovery job.
 
 ### Correction to an earlier reading
 
@@ -242,44 +273,46 @@ which would shrink this considerably.
 
 **Time-sensitive**
 
-1. **Register cash in Square.** Every cash flow — POS tickets, film passes,
-   concessions, DVDs — records to our DB only, and `ConcessionPOS` never contacts
-   Square for card either. This breaks the stated policy that all money runs
-   through Square, and it breaks the books. First step is the unverified question
-   in §5: find out whether staff already double-enter on a physical register.
-   If not, this is the highest-priority item in this document.
-2. Obtain a Square item-library export, or open a Square Support ticket, for the
+1. **`ConcessionPOS` must take payment before it goes live.** It currently
+   charges nothing for either method and has no Square column to record one. A
+   card sale reports success without charging the card. Zero rows so far, so this
+   is a design fix — but it is a **launch blocker**, not a backlog item.
+2. **Register cash in Square** on every other flow — POS tickets, film passes,
+   DVD rentals. Money reaches the drawer but never reaches Square, so the books
+   are incomplete by exactly the cash take. Confirmed with Tom that no second
+   register compensates for this.
+3. Obtain a Square item-library export, or open a Square Support ticket, for the
    descriptions/images/variations on ~906 items. Backups age. Nothing on our side
    can reconstruct these.
-3. Confirm whether damaged items are sellable (variation present or absent).
+4. Confirm whether damaged items are sellable (variation present or absent).
 
 **Code**
 
-4. Add Square cash tenders (`source_id: 'CASH'` + `cash_details`) to every cash
+5. Add Square cash tenders (`source_id: 'CASH'` + `cash_details`) to every cash
    path, and make `ConcessionPOS` take payment through Square rather than only
    writing rows. Scope depends on item 1.
-5. Fix `square-labor` `updateScheduledShift` and `deleteScheduledShift` —
+6. Fix `square-labor` `updateScheduledShift` and `deleteScheduledShift` —
    source the full record from the list endpoint before the PUT.
-6. Re-run `repair_categories` restore (the `additional_category` duplicate is
+7. Re-run `repair_categories` restore (the `additional_category` duplicate is
    fixed; ~381 expected to succeed). Till-facing categories are individually
    skippable.
-7. `order_token` is `uuid` on `tickets` but `text` on `donations` — joins need a
+8. `order_token` is `uuid` on `tickets` but `text` on `donations` — joins need a
    cast. Standalone donations carry no `order_token`.
 
 **Decisions**
 
-8. Ticket itemisation in Square — leave as payments-only; add ad-hoc order line
+9. Ticket itemisation in Square — leave as payments-only; add ad-hoc order line
    items (itemised, no catalog coupling); or reference real `catalog_object_id`
    (best fidelity, reintroduces coupling). Recommend ad-hoc line items **if**
    per-film Square reporting is actually wanted.
-9. Catalog hygiene, pre-existing and unrelated to the incident: 535 items
+10. Catalog hygiene, pre-existing and unrelated to the incident: 535 items
    uncategorised in Square (verified pre-existing — recorded as `General` at
    19:41, hours before any push); `SILENT FILM FESTIVAL PASS` exists three times;
    `Poster Design` / `Poster Print` are proposed as merch but look like services.
 
 **Process**
 
-10. Re-run the cutover audit on axes 2 and 3 (write semantics, blast radius) for
+11. Re-run the cutover audit on axes 2 and 3 (write semantics, blast radius) for
    every integration, not only Square — LGL and Mailchimp have the same shape and
    both share credentials between staging and production.
 
