@@ -207,10 +207,14 @@ Consequences, both live today:
    per-film names into Square with **no catalog coupling**, so our app never
    reads or writes catalog objects and the 14 Aug failure mode cannot recur.
    Works for films that have no Square item, which is all new ones.
-   **Unverified:** exactly how Square's Item Sales reporting treats ad-hoc line
-   items versus catalogued ones. *Settled by:* one test order in sandbox, then
-   reading the Item Sales report. This decides whether option 1 delivers the
-   reporting or only the receipt detail.
+   **Now measured (15 Aug, sandbox).** Two orders were created and read back:
+   an ad-hoc line item keeps its **name** (`"A COMPLETE UNKNOWN — Adult"`) but
+   comes back with `catalog_object_id: null` and no variation; a catalogued one
+   carries `catalog_object_id`, `catalog_version` and `variation_name`. Neither
+   carries a category field on the order itself — Square resolves the category
+   by following the catalog reference, which the ad-hoc item does not have.
+   So: **ad-hoc gives per-film attribution by name; only a catalogued line item
+   can roll up under `6 Film Tickets`.**
 2. **Catalog-linked line items** — reference a real `catalog_object_id` so sales
    roll up under `6 Film Tickets` exactly as before. Best fidelity, and the only
    option that makes new films appear alongside historical ones. But it means
