@@ -403,10 +403,17 @@ a write that never happens, nor tell which code is actually in use.
 
    **Also gates attribution (open item 1).** A ticket sale looks its film up by
    name and references the item's *variation*; with none there is nothing to bind
-   to and the sale stays ad-hoc. The bulk of the restore is done and the
-   remainder are outliers, so this is largely closed — and it needs no checkout
-   change either way: a restored item carries a single `Regular` variation, which
-   is the case the matcher takes unconditionally.
+   to and the sale stays ad-hoc. No checkout change is needed either way — a
+   repaired item carries a single `Regular` variation, which is the case the
+   matcher takes unconditionally.
+
+   ⚠️ **This item's premise is now in doubt.** Tom reports (16 Aug) that running
+   the restore revealed the variations had **never been lost**, which contradicts
+   the dashboard observation recorded here and in the incident note. Nothing in
+   the repo records that outcome yet. Whoever owns this workstream should settle
+   it and correct both documents — a `damage_census` run would answer it
+   directly. Flagged rather than edited, because the evidence for the current
+   wording is written down and the evidence against it is not.
 
 **Code**
 

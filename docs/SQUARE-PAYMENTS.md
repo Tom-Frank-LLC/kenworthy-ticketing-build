@@ -334,16 +334,22 @@ fuzzy hit on "Rear Window" could be "Rear Window (35mm)".
 Results are cached for 10 minutes, so a four-ticket order is one lookup.
 
 > **One dependency worth knowing about.** A line references a *variation*, not an
-> item, and the 14 Aug push stripped variations from the damaged objects — so
-> until one is restored, a film-ticket item is found by name and then declined,
-> and the sale stays ad-hoc.
+> item. So a film whose catalog item carries no variation is found by name and
+> then declined, and the sale stays ad-hoc — correct behaviour, and invisible
+> unless you are looking for it.
 >
-> `square-catalog-sync` `repair_variations` restores a single `Regular` variation
-> per item from the pre-damage snapshot, and **the bulk of that has been done**;
-> what remains are outliers. Those bind automatically once repaired — a single
-> variation is the case the matcher takes unconditionally, so there is nothing to
-> redeploy here. If a specific film shows up unattributed in Item Sales, an
-> unrepaired variation is the first thing to check, not a bug in checkout.
+> An item with a single variation is the case the matcher takes unconditionally,
+> which is also the shape `square-catalog-sync` `repair_variations` produces. So
+> nothing here needs redeploying as the catalog is tidied; coverage follows the
+> catalog's state on its own.
+>
+> **How much of the catalog is currently in that state is not settled** — the
+> incident notes and open item 4 of `REPORT-square-second-pass.md` record damaged
+> items as having no variation, while the restore is reported to have found them
+> intact. That question belongs to the catalog-repair workstream, not to
+> checkout. What matters here is only that a missing variation degrades to an
+> ad-hoc line rather than failing a sale. If a specific film shows up
+> unattributed in Item Sales, check its catalog item before suspecting checkout.
 
 **Our price wins over the catalog's.** Verified in sandbox: a line carrying both
 `catalog_object_id` and `base_price_money` records **our** amount (1908) rather
