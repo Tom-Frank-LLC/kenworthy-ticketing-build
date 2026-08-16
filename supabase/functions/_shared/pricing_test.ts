@@ -15,7 +15,10 @@ import {
   computeProcessingFee,
   priceTicketOrder,
   readDonationCents,
+  storedOrderCents,
+  ticketLineItems,
 } from './pricing.ts';
+import { lineItemsTotalCents } from './square.ts';
 
 // ---------------------------------------------------------------------------
 // A stub standing in for the PostgREST query builder, holding fixed rows.
@@ -226,4 +229,187 @@ Deno.test('readDonationCents refuses what the donations table would refuse', () 
   // A tampered request cannot turn a $9 ticket into a five-figure charge.
   assertEquals(readDonationCents(MAX_BUNDLED_DONATION_CENTS).ok, true);
   assertEquals(readDonationCents(MAX_BUNDLED_DONATION_CENTS + 1).ok, false);
+});
+
+// ---------------------------------------------------------------------------
+// Square attribution lines
+// ---------------------------------------------------------------------------
+//
+// One property matters above all the rest: the lines must sum to exactly the
+// amount charged. Square refuses a payment larger than its order, and leaves the
+// order part-paid if it is smaller, so a drift here is not a cosmetic reporting
+// bug. `createAttributionOrder` refuses to send a mismatched set — these tests
+// are what keep that refusal from being reached in normal use.
+
+Deno.test('line items sum to the charged amount, including the odd-cent case', async () => {
+  // 3 × $8.25. Tax rounds to 50c per row here, which is not what Square's own
+  // arithmetic produces: measured in sandbox it rounds half-to-even and
+  // apportions from the order total, making the same three tickets 2623. That
+  // is why the tax is a line we compute rather than a percentage Square
+  // applies. See docs/SQUARE-PAYMENTS.md.
+  const order = await priceTicketOrder(
+    stubAdmin(fixture()),
+    SHOWING_ID,
+    Array.from({ length: 3 }, () => ({ tier_id: 'tier-student' })),
+  );
+  const lines = ticketLineItems(order);
+  assertEquals(lineItemsTotalCents(lines), order.amountCents);
+  assertEquals(lineItemsTotalCents(lines), 2625);
+
+  // Split, not rolled together: 2475 of film and 150 of tax.
+  assertEquals(lines.find((l) => l.name === 'Rear Window')?.amountCents, 825);
+  assertEquals(lines.find((l) => l.name === 'Sales tax')?.amountCents, 150);
+});
+
+Deno.test('tickets group by price point, with the film as the item', async () => {
+  const order = await priceTicketOrder(stubAdmin(fixture()), SHOWING_ID, [
+    { tier_id: 'tier-adult' },
+    { tier_id: 'tier-student' },
+    { tier_id: 'tier-student' },
+  ]);
+  const lines = ticketLineItems(order);
+  const films = lines.filter((l) => l.name === 'Rear Window');
+
+  // Two film lines, not three: Item Sales wants a quantity, not a row per seat.
+  // The film is the item so revenue aggregates by film, and the tier rides
+  // underneath it as a variation.
+  assertEquals(films.length, 2);
+  assertEquals(films.map((l) => l.variationName).sort(), ['Adult', 'Student']);
+  assertEquals(films.find((l) => l.variationName === 'Student')?.quantity, 2);
+
+  // Pre-tax, so a film's gross in Square means what the register's line has
+  // always meant for the same catalog item.
+  assertEquals(films.find((l) => l.variationName === 'Adult')?.amountCents, 2000);
+  assertEquals(films.find((l) => l.variationName === 'Student')?.amountCents, 825);
+  assertEquals(lineItemsTotalCents(lines), order.amountCents);
+});
+
+Deno.test('a gift sits outside both the film takings and the tax line', async () => {
+  const order = await priceTicketOrder(stubAdmin(fixture()), SHOWING_ID, [{}]);
+  const lines = ticketLineItems(order, 2500);
+
+  const donation = lines.find((l) => l.name === 'Donation');
+  assertEquals(donation?.amountCents, 2500);
+  assertEquals(donation?.quantity, 1);
+
+  // A $10 ticket: $10.00 of film, 60c of tax, and a $25 gift that is part of
+  // neither. Splitting the tax out is what makes that visible in Square — with
+  // a combined $10.60 ticket line, "what was taxed" was only ever implied.
+  assertEquals(lines.find((l) => l.name === 'Rear Window')?.amountCents, 1000);
+  assertEquals(lines.find((l) => l.name === 'Sales tax')?.amountCents, 60);
+
+  // The tax is 6% of the ticket alone; the gift never enters the base.
+  assertEquals(lineItemsTotalCents(lines), order.amountCents + 2500);
+});
+
+Deno.test('a free showing carries no tax line at all', async () => {
+  const rows = fixture({
+    showings: [{
+      id: SHOWING_ID,
+      ticket_price: 0,
+      is_active: true,
+      requires_seat_selection: false,
+      total_seats: 200,
+      start_time: '2026-09-01T02:00:00Z',
+      movie_id: 'movie-1',
+      event_id: null,
+      live_performance_id: null,
+    }],
+    showing_price_tiers: [],
+  });
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
+  const lines = ticketLineItems(order);
+
+  // No money moves, so there is no order to attribute — but the builder must
+  // not emit a $0 tax line on the way to finding that out.
+  assertEquals(lines.find((l) => l.name === 'Sales tax'), undefined);
+  assertEquals(lineItemsTotalCents(lines), 0);
+});
+
+Deno.test('the buyer-paid surcharge is a line, not part of the ticket price', async () => {
+  const rows = fixture({
+    movies: [{ id: 'movie-1', title: 'Rear Window', pass_processing_fee: true }],
+  });
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}], 'in_person');
+  const lines = ticketLineItems(order);
+
+  assertEquals(
+    lines.find((l) => l.name === 'Card processing fee')?.amountCents,
+    Math.round(order.processingFee * 100),
+  );
+  assertEquals(lineItemsTotalCents(lines), order.amountCents);
+});
+
+// ---------------------------------------------------------------------------
+// Priced vs stored
+// ---------------------------------------------------------------------------
+//
+// `enforce_ticket_pricing` re-derives price, tax and total in Postgres numeric
+// after we derived them in JavaScript. The two are meant to agree exactly,
+// because `charged == SUM(tickets.total_price)` is what the refund path
+// re-reads. These pin the comparison itself.
+
+Deno.test('stored cents reads back what the trigger left on the rows', () => {
+  // Two $8.25 tickets: 875 each after per-row tax, plus a surcharge riding on
+  // the first row the way the schema puts it.
+  assertEquals(
+    storedOrderCents([
+      { total_price: 8.75, processing_fee: 0.55 },
+      { total_price: 8.75, processing_fee: 0 },
+    ]),
+    1805,
+  );
+
+  // PostgREST hands numerics back as strings often enough to matter.
+  assertEquals(storedOrderCents([{ total_price: '10.60', processing_fee: '0' }]), 1060);
+
+  // A missing surcharge column is zero, not NaN — the select does not always
+  // ask for it.
+  assertEquals(storedOrderCents([{ total_price: 12.72 }]), 1272);
+  assertEquals(storedOrderCents([]), 0);
+});
+
+Deno.test('priced and stored agree on the case that once did not', async () => {
+  // $4.25 is the price that broke this before: `4.25 * 0.06 * 100` is
+  // 25.499999999999996 in doubles and rounds down to 25c, while Postgres numeric
+  // stores 26c. The server now works in integer cents and lands on 26 — so the
+  // charge equals what the trigger will store, which is exactly what the check
+  // in ticket-checkout asserts on every real order.
+  const rows = fixture({
+    showings: [{
+      id: SHOWING_ID,
+      ticket_price: 4.25,
+      is_active: true,
+      requires_seat_selection: false,
+      total_seats: 200,
+      start_time: '2026-09-01T02:00:00Z',
+      movie_id: 'movie-1',
+      event_id: null,
+      live_performance_id: null,
+    }],
+    showing_price_tiers: [],
+  });
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
+  assertEquals(order.tax, 0.26);
+  assertEquals(order.amountCents, 451);
+
+  // What the trigger would leave behind for that same ticket.
+  assertEquals(storedOrderCents([{ total_price: 4.51, processing_fee: 0 }]), order.amountCents);
+});
+
+Deno.test('only the film line is offered to the catalog lookup', async () => {
+  const rows = fixture({
+    movies: [{ id: 'movie-1', title: 'Rear Window', pass_processing_fee: true }],
+  });
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}], 'in_person');
+  const lines = ticketLineItems(order, 2500);
+
+  // The film has a decade of history in Square's item library and should join
+  // it. A fee and a gift have no counterpart there, and letting them search
+  // would risk binding the theatre's revenue to whatever happened to be named
+  // "Donation" on the register.
+  assertEquals(lines.find((l) => l.name === 'Rear Window')?.lookupCatalog, true);
+  assertEquals(lines.find((l) => l.name === 'Card processing fee')?.lookupCatalog, undefined);
+  assertEquals(lines.find((l) => l.name === 'Donation')?.lookupCatalog, undefined);
+  assertEquals(lines.find((l) => l.name === 'Sales tax')?.lookupCatalog, undefined);
 });

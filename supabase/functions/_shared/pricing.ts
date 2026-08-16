@@ -14,6 +14,8 @@
 // order, which is what the refund path re-reads. Anything else would refund a
 // different number than it charged.
 
+import type { SquareLineItem } from './square.ts';
+
 export const TAX_RATE = 0.06;
 
 // Square's published rates. Mirrors SQUARE_RATES in src/lib/booking.ts.
@@ -49,6 +51,8 @@ export interface PricedTicket {
   seat_id: string | null;
   /** Resolved tier — a seat's own tier mapping overrides whatever was asked for. */
   tier_id: string | null;
+  /** The resolved tier's label ("Adult", "Student"), for Square line items. */
+  tier_name: string | null;
   price: number;
   tax_amount: number;
   total_price: number;
@@ -165,9 +169,13 @@ export async function priceTicketOrder(
       .eq('showing_id', showingId),
   ]);
 
-  const tierById = new Map<string, { price: number; is_active: boolean }>();
+  const tierById = new Map<string, { name: string | null; price: number; is_active: boolean }>();
   for (const t of tierRows || []) {
-    tierById.set(t.id, { price: Number(t.price), is_active: t.is_active !== false });
+    tierById.set(t.id, {
+      name: t.tier_name ?? null,
+      price: Number(t.price),
+      is_active: t.is_active !== false,
+    });
   }
 
   // Seat → tier resolution needs the seat's row/section/number, because the
@@ -208,11 +216,13 @@ export async function priceTicketOrder(
     if (!tierId && d.tier_id) tierId = d.tier_id;
 
     let price: number;
+    let tierName: string | null = null;
     if (tierId) {
       const tier = tierById.get(tierId);
       if (!tier) throw new PricingError('Invalid ticket tier for this showing');
       if (!tier.is_active) throw new PricingError('That ticket tier is no longer on sale');
       price = tier.price;
+      tierName = tier.name;
     } else {
       price = Number(showing.ticket_price);
     }
@@ -232,6 +242,7 @@ export async function priceTicketOrder(
     return {
       seat_id: seatId,
       tier_id: tierId,
+      tier_name: tierName,
       price,
       tax_amount: taxCents / 100,
       total_price: (priceCents + taxCents) / 100,
@@ -274,6 +285,136 @@ export async function priceTicketOrder(
       start_time: showing.start_time,
     },
   };
+}
+
+/**
+ * The Square order lines for a priced ticket order.
+ *
+ * Lives here, next to the arithmetic that produced the numbers, because the one
+ * rule these lines must obey is arithmetic: they have to sum to exactly the
+ * amount charged, or Square leaves the order part-paid. Building them anywhere
+ * else means building them from a different set of roundings.
+ *
+ * Tickets are grouped so that Item Sales sees one line per price point rather
+ * than one per seat: the film is the item, the tier is its variation, and the
+ * quantity is the count. Seat numbers are deliberately absent — Square is being
+ * told what was sold, not where anyone sat.
+ *
+ * The shape, for a two-ticket order with a gift:
+ *
+ *     A COMPLETE UNKNOWN   x2   $24.00   <- pre-tax, may bind to a catalog item
+ *     Sales tax            x1    $1.44   <- ours, never Square's arithmetic
+ *     Donation             x1    $5.00   <- outside the tax line, by design
+ *                                ------
+ *                                $30.44  == the amount charged, exactly
+ *
+ * Each of the three is a separate line for a separate reason: the film so its
+ * gross matches what the register recorded for the same title, the tax because
+ * Square cannot reproduce our figure (see below), and the gift because it is
+ * contribution income that has never been part of the tax base and should not
+ * look like it is.
+ */
+export function ticketLineItems(order: PricedOrder, donationCents = 0): SquareLineItem[] {
+  const groups = new Map<string, { tierName: string | null; cents: number; quantity: number }>();
+
+  for (const ticket of order.tickets) {
+    // The **pre-tax** price. A film's line has to mean what the register's line
+    // has always meant, or joining them under one catalog item mixes two
+    // different quantities in one Item Sales row — see the tax line below.
+    const cents = Math.round(ticket.price * 100);
+    const key = `${ticket.tier_id ?? ''}|${cents}`;
+    const existing = groups.get(key);
+    if (existing) existing.quantity += 1;
+    else groups.set(key, { tierName: ticket.tier_name, cents, quantity: 1 });
+  }
+
+  const lines: SquareLineItem[] = Array.from(groups.values()).map((g) => ({
+    name: order.productionTitle,
+    quantity: g.quantity,
+    amountCents: g.cents,
+    variationName: g.tierName,
+    // Films are the one thing here with a decade of history in Square's item
+    // library. If this title already has an item, the sale should join it.
+    lookupCatalog: true,
+  }));
+
+  // -------------------------------------------------------------------------
+  // Tax, as a line of its own, computed by us
+  // -------------------------------------------------------------------------
+  //
+  // Square is never asked to work the tax out, and that is not a preference —
+  // its arithmetic cannot be made to agree with ours. Measured in sandbox:
+  //
+  //   * Square rounds half-to-even, Postgres ROUND() and Math.round() round
+  //     half-up. They differ on every price ending in $.75 ($6.75 -> we say 41c,
+  //     Square says 40c).
+  //   * Square computes the tax on the order and apportions it across lines,
+  //     where we compute per ticket row and sum. Three identical $8.25 lines
+  //     came back [49, 50, 49]; ours is 50 three times. So quantity amplifies
+  //     the gap even at prices where one ticket agrees.
+  //
+  // Matching Square would mean rewriting the enforce_ticket_pricing trigger, and
+  // with it how every ticket ever sold was priced. So the amount the trigger
+  // stores is sent as a fixed line, and the order total is ours by construction.
+  //
+  // It rides as its own line rather than inside the ticket price so that a
+  // film's gross in Square is the pre-tax figure the register recorded for the
+  // same catalog item, and so that what is taxed is visibly separate from what
+  // is not — the donation below sits outside this line, where the donations
+  // table and the tax base both already put it.
+  const taxCents = Math.round(order.tax * 100);
+  if (taxCents > 0) {
+    lines.push({ name: 'Sales tax', quantity: 1, amountCents: taxCents, variationName: null });
+  }
+
+  // The rental surcharge, when a production opted into it. Its own line because
+  // it is not ticket revenue and should not inflate a film's takings. Never
+  // looked up: there is no catalog item for it, and a fuzzy neighbour would be
+  // worse than none.
+  const feeCents = Math.round(order.processingFee * 100);
+  if (feeCents > 0) {
+    lines.push({
+      name: 'Card processing fee',
+      quantity: 1,
+      amountCents: feeCents,
+      variationName: null,
+    });
+  }
+
+  // Contribution income, never taxed, never part of the film's revenue — the
+  // same separation the donations table enforces, carried into Square.
+  if (donationCents > 0) {
+    lines.push({ name: 'Donation', quantity: 1, amountCents: donationCents, variationName: null });
+  }
+
+  return lines;
+}
+
+/**
+ * What the database actually stored for an order, in integer cents.
+ *
+ * The counterpart to `priceTicketOrder`: that function decides what to charge,
+ * this reads back what the rows ended up holding after `enforce_ticket_pricing`
+ * had its say. The trigger *overwrites* price, tax and total on insert, so these
+ * are not the numbers that were sent — they are the database's own answer to the
+ * same question, computed independently in `numeric` where ours was computed in
+ * JavaScript doubles.
+ *
+ * Those two have diverged before. At $4.25, `4.25 * 0.06 * 100` is
+ * 25.499999999999996 in doubles and rounds *down* to $0.25 while Postgres stores
+ * $0.26 — quoting one number and charging another. Integer-cent arithmetic fixed
+ * that, and two test suites pin the rule on each side, but nothing has ever
+ * checked the two implementations against each other at runtime. Comparing this
+ * against `PricedOrder.amountCents` is that check.
+ */
+export function storedOrderCents(
+  rows: { total_price?: unknown; processing_fee?: unknown }[],
+): number {
+  const cents = (value: unknown) => {
+    const n = Number(value ?? 0);
+    return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  };
+  return rows.reduce((sum, row) => sum + cents(row.total_price) + cents(row.processing_fee), 0);
 }
 
 function seatKey(row: string, section: string | null, number: number) {

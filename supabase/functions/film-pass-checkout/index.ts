@@ -36,6 +36,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/http.ts';
 import {
+  createAttributionOrder,
+  createCashPayment,
   createPayment,
   loadSquareConfig,
   publishableConfig,
@@ -420,6 +422,9 @@ Deno.serve(async (req: Request) => {
     let paymentMethod: string | null = null;
     let pricePaid: number | null = null;
     let squarePaymentId: string | null = null;
+    /** Set only when *this* request registered the cash, so a failed
+     *  activation afterwards can name the payment that is now outstanding. */
+    let cashRegisteredId: string | null = null;
 
     if (!orderId) {
       // Walk-in. The price comes from the pass type, never from the browser.
@@ -427,7 +432,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: passType } = await admin
         .from('film_pass_types')
-        .select('id, price, is_active')
+        .select('id, name, price, is_active')
         .eq('id', passTypeId)
         .maybeSingle();
       if (!passType) return json({ error: 'Pass type not found' }, 404);
@@ -439,8 +444,84 @@ Deno.serve(async (req: Request) => {
         ? body.payment_method
         : 'cash';
       pricePaid = paymentMethod === 'comp' ? 0 : Number(passType.price);
+      // A card walk-in has already been through the terminal in the browser, so
+      // it arrives carrying its payment id. Cash arrived carrying nothing.
       squarePaymentId =
         typeof body.square_payment_id === 'string' ? body.square_payment_id : null;
+
+      // -----------------------------------------------------------------
+      // Cash: register it before the sticker is worth anything
+      // -----------------------------------------------------------------
+      //
+      // This is the film-pass half of the cash gap. A walk-in paying cash used
+      // to leave `square_payment_id` null and never touch Square, so the takings
+      // simply were not in the books. Same rule as every other path here: the
+      // money is recorded first, and only a completed payment produces value.
+      const amountCents = Math.round(Number(pricePaid) * 100);
+      if (paymentMethod === 'cash' && amountCents > 0) {
+        if (!square.ok) {
+          return json({ error: 'Payments are not configured. Please contact the box office.' }, 500);
+        }
+
+        // Look before charging. `activate_film_pass` refuses a sticker that is
+        // already a pass, and refusing it *after* taking the money would put
+        // cash in Square against nothing handed over. This read does not close
+        // the race — the idempotency key below is what actually makes a retry
+        // safe — it just stops the ordinary double-scan from ringing twice.
+        const { data: sticker } = await admin
+          .from('user_film_passes')
+          .select('status')
+          .eq('qr_code', qrCode)
+          .maybeSingle();
+        if (sticker && sticker.status !== 'unassigned') {
+          return json(
+            {
+              result: 'already_activated',
+              status: sticker.status,
+              error: 'That sticker has already been used — nothing was charged.',
+            },
+            400,
+          );
+        }
+
+        // Derived from the sticker, not generated per attempt. The sticker can
+        // only ever be sold once, so a retried scan reuses the key and Square
+        // returns the original payment instead of taking the money twice.
+        const cashKey = `pass-cash-${qrCode.slice('PASS:'.length)}`.slice(0, 45);
+
+        const attributionOrderId = await createAttributionOrder(square.config, {
+          idempotencyKey: `ord-${cashKey}`.slice(0, 45),
+          referenceId: qrCode.slice('PASS:'.length),
+          lineItems: [{ name: passType.name, quantity: 1, amountCents, lookupCatalog: true }],
+          expectedTotalCents: amountCents,
+        });
+
+        const result = await createCashPayment(square.config, {
+          amountCents,
+          idempotencyKey: cashKey,
+          buyerSuppliedCents: Number(body.cash_tendered_cents) || null,
+          referenceId: qrCode.slice('PASS:'.length),
+          note: `${passType.name} — box office cash`,
+          buyerEmail: readContact(body).email,
+          orderId: attributionOrderId,
+        });
+
+        if (!result.ok || result.data?.payment?.status !== 'COMPLETED') {
+          console.error('[film-pass-checkout] cash tender failed', JSON.stringify(result.data));
+          return json(
+            {
+              error: squareErrorMessage(
+                result.data,
+                'Square could not register that cash sale, so nothing was activated. Do not take the cash — try again.',
+              ),
+            },
+            400,
+          );
+        }
+
+        squarePaymentId = result.data.payment.id ?? null;
+        cashRegisteredId = squarePaymentId;
+      }
 
       // Contact is optional. A walk-in who gives one gets a pass attached to an
       // account, and a lost pass can then be voided and reissued. One who gives
@@ -474,16 +555,33 @@ Deno.serve(async (req: Request) => {
       p_square_payment_id: squarePaymentId,
     });
 
+    // Cash taken, sticker not activated: the one outcome that leaves money in
+    // Square with nothing handed over. Rare — the pre-flight read above catches
+    // the ordinary causes — so it is reported rather than swallowed, with the
+    // payment id in both the log and the message. Re-scanning the same sticker
+    // is safe: the idempotency key is derived from it, so the retry reuses the
+    // payment rather than taking the money again.
+    const stranded = (why: string) => {
+      console.error('[film-pass-checkout] cash registered but activation failed', {
+        squarePaymentId: cashRegisteredId,
+        qrCode,
+        why,
+      });
+      return `${why} The $${Number(pricePaid ?? 0).toFixed(2)} is already recorded in Square (payment ${cashRegisteredId}) — scan the same sticker again rather than ringing it twice, and tell a manager if it still will not activate.`;
+    };
+
     if (error) {
       console.error('[film-pass-checkout] activation failed', error);
-      return json({ error: 'Could not activate that sticker. Please try again.' }, 500);
+      const message = 'Could not activate that sticker. Please try again.';
+      return json({ error: cashRegisteredId ? stranded(message) : message }, 500);
     }
 
     // The RPC returns a verdict rather than raising, so the counter can be told
     // what actually happened. Anything but success is a 400 carrying the reason.
     const verdict = result as Record<string, any>;
     if (verdict.result !== 'activated') {
-      return json({ ...verdict, error: activationMessage(verdict) }, 400);
+      const message = activationMessage(verdict);
+      return json({ ...verdict, error: cashRegisteredId ? stranded(message) : message }, 400);
     }
 
     return json({ success: true, ...verdict });
@@ -827,6 +925,25 @@ Deno.serve(async (req: Request) => {
   let receiptUrl: string | null = null;
 
   try {
+    // Named for the pass, so Item Sales attributes it instead of filing it as an
+    // unnamed custom amount. Ad-hoc: no catalog object is read or written.
+    const attributionOrderId = await createAttributionOrder(square.config, {
+      idempotencyKey: `order-${idempotencyKey}`.slice(0, 45),
+      referenceId: pending.id,
+      lineItems: [
+        {
+          name: passType.name,
+          quantity,
+          amountCents: Math.round(unitPrice * 100),
+          // Fulfilment is a note, not a variation, now that the line may bind to
+          // a catalog item whose variations mean something else entirely.
+          note: fulfillment === 'mail' ? 'By post' : 'Collect at box office',
+          lookupCatalog: true,
+        },
+      ],
+      expectedTotalCents: amountCents,
+    });
+
     const result = await createPayment(square.config, {
       sourceId: body.source_id,
       amountCents,
@@ -834,6 +951,7 @@ Deno.serve(async (req: Request) => {
       referenceId: pending.id,
       note: `${quantity} × ${passType.name}`,
       buyerEmail: contact.email,
+      orderId: attributionOrderId,
     });
 
     if (!result.ok || !result.data?.payment) {

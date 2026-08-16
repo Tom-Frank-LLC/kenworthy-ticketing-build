@@ -10,11 +10,15 @@
 // refunded if Square accepted it. Same discipline as checkout, in reverse:
 // the money moves, then the record changes.
 //
-// Three kinds of ticket arrive here:
+// Three kinds of ticket arrive here, sorted by whether they carry a Square
+// payment rather than by how they were paid for:
 //   card      — has square_payment_id: refunded through the Square Refunds API
+//   cash      — also has one now that the box office registers cash tenders, so
+//               it takes the same route. Square records the reversal; the money
+//               still has to come out of the drawer by hand, which is why the
+//               response says so in as many words.
 //   film pass — the deducted balance is returned to the pass it came from
-//   cash/comp — nothing to refund electronically; marked refunded and reported
-//               back as such, so staff know to open the till
+//   comp      — nothing was ever taken; the row is simply marked refunded
 //
 // Staff or admin only, checked server-side against user_roles.
 
@@ -158,6 +162,16 @@ Deno.serve(async (req: Request) => {
           `Payment ${paymentId} was refunded at Square but the tickets could not be marked refunded. Do not retry — correct it in the admin.`,
         );
         continue;
+      }
+
+      // A cash sale now carries a Square payment id like any other, so it lands
+      // in this branch and the refund is registered in Square — which keeps the
+      // books straight but moves no actual money. Somebody has to open the till,
+      // and the only person who can is the one reading this screen.
+      if (rows.some((r) => r.payment_method === 'cash')) {
+        warnings.push(
+          `Refund recorded in Square — now hand $${amount.toFixed(2)} back from the till.`,
+        );
       }
 
       squareRefunds.push({ payment_id: paymentId, refund_id: refund.id, amount_cents: amountCents });

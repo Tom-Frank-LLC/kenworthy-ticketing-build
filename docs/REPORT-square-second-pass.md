@@ -146,10 +146,15 @@ to nothing, by design.**
 | Path | Card | Cash |
 |---|---|---|
 | Online tickets (`ticket-checkout`) | ✅ Square payment | n/a |
-| In-person tickets (`StaffPOS`) | ✅ Square terminal | 🔴 **DB only** |
+| In-person tickets (`StaffPOS`) | ✅ Square terminal | 🔴 **DB only** → ✅ fixed 15 Aug |
 | Online film pass (`film-pass-checkout`) | ✅ Square payment | n/a |
-| In-person film pass (`FilmPassPOS`) | ✅ Square terminal | 🔴 **DB only** |
+| In-person film pass (`FilmPassPOS`) | ✅ Square terminal | 🔴 **DB only** → ✅ fixed 15 Aug |
 | Film-pass redemption | no money moves — but see below | |
+
+> **Status, 15 Aug:** the cash column is closed (open item 5) and every path now
+> carries a named Square order (open item 1). Redemptions stay in our database by
+> decision (Finding C, option b). The rows below are kept as the original
+> findings; `docs/SQUARE-PAYMENTS.md` describes what the code does now.
 
 ### What works — verified
 
@@ -275,6 +280,12 @@ Not a money gap; a **reporting continuity** gap. Worth a decision rather than an
 automatic fix — our system may simply be the better home for redemption counts,
 provided whoever reads Square's reports knows they have stopped.
 
+**Decided, 15 Aug (Tom): keep the counts in our database.** No money moves in a
+redemption, and ringing a $0 line would couple the door scanner to the Square
+catalog for the sake of a counter. `film_pass_redemptions` is the source of
+truth; anyone reading Square's `6 Redeem` numbers needs to know they stopped
+accruing. Recorded in `docs/SQUARE-PAYMENTS.md`.
+
 ### 🟡 Finding D — an unfinished till is reachable in the staff POS
 
 `ConcessionPOS` is not part of the live workflow, but it is a **visible, ungated
@@ -353,13 +364,34 @@ a write that never happens, nor tell which code is actually in use.
 
 **Time-sensitive**
 
-1. **Align ticket sales with Square's accounting (Finding A).** Movie listings
-   have no Square counterpart and ticket sales carry no line items, so per-film
-   revenue is invisible to Square. Decide between ad-hoc order line items
-   (recommended; no catalog coupling), catalog-linked line items (best fidelity,
-   reintroduces coupling), or deliberately moving that reporting off Square.
-   First step is cheap: one sandbox test order to confirm how Square's Item Sales
-   treats an ad-hoc line item.
+1. ~~**Align ticket sales with Square's accounting (Finding A).**~~ **Done,
+   15 Aug** — ad-hoc order line items, per Tom's decision. The sandbox spike
+   settled the open question and turned up one the report had not thought to ask:
+
+   * A bare payment's auto-created order carries a single **`CUSTOM_AMOUNT`**
+     line with **no name**. That is the mechanism behind this finding.
+   * An ad-hoc line arrives as **`item_type: ITEM`**, named, with
+     `gross_sales_money` populated and **no `catalog_object_id`** — the shape
+     Item Sales aggregates, with no catalog coupling.
+   * **New:** Square's percentage tax does not agree with ours. 3 × $8.25 is
+     2625 to us (tax rounded per row, matching the trigger) and **2623** to
+     Square. So line prices are tax-inclusive; letting Square compute tax would
+     break `charged == SUM(tickets.total_price)`, which the refund path re-reads.
+
+   Extended the same day, at Tom's request, with a **read-only catalog lookup**:
+   the film's name is searched with `exact_query` before the line is built, and a
+   hit contributes its variation id so the sale joins the item the register has
+   used for years instead of appearing beside it. There is no write path — the
+   incident was an upsert, and searching cannot replace anything. Anything
+   ambiguous (duplicate names, no variation, several variations and no tier
+   match) declines to link and stays ad-hoc. Also measured: a line carrying both
+   `catalog_object_id` and `base_price_money` records **our** price, not the
+   catalog's, so linking does not disturb the charged-amount invariant.
+
+   Still unproven: whether the **dashboard's** Item Sales report groups
+   uncatalogued `ITEM` lines by name — which now only affects films with no
+   catalog item at all. The API shape is right; nobody has read the report. See
+   `docs/SQUARE-PAYMENTS.md`.
 2. **Disable the concessions Square push** — *done, see below*. Phase 2 until the
    admin-edits-reach-the-register architecture is settled.
 3. Obtain a Square item-library export, or open a Square Support ticket, for the
@@ -369,11 +401,32 @@ a write that never happens, nor tell which code is actually in use.
    variation at all, so they likely cannot be rung up. The snapshot holds each
    item's real square_variation_id and price; the name is lost.
 
+   **Also gates attribution (open item 1).** A ticket sale looks its film up by
+   name and references the item's *variation*; with none there is nothing to bind
+   to and the sale stays ad-hoc. No checkout change is needed either way — a
+   repaired item carries a single `Regular` variation, which is the case the
+   matcher takes unconditionally.
+
+   ⚠️ **This item's premise is now in doubt.** Tom reports (16 Aug) that running
+   the restore revealed the variations had **never been lost**, which contradicts
+   the dashboard observation recorded here and in the incident note. Nothing in
+   the repo records that outcome yet. Whoever owns this workstream should settle
+   it and correct both documents — a `damage_census` run would answer it
+   directly. Flagged rather than edited, because the evidence for the current
+   wording is written down and the evidence against it is not.
+
 **Code**
 
-5. Add Square cash tenders (`source_id: 'CASH'` + `cash_details`) to the two
-   in-person cash paths — `StaffPOS.handleCashSale` and `FilmPassPOS`. The
-   terminal card path on both flows is the working model.
+5. ~~Add Square cash tenders to the two in-person cash paths.~~ **Done, 15 Aug.**
+   Both now route through the server — `StaffPOS.handleCashSale` calls
+   `ticket-checkout` with `payment_method: 'cash'`, and the `activate` action in
+   `film-pass-checkout` registers the walk-in tender itself. Verified end to end
+   against sandbox: cash payment `COMPLETED`, change back computed, named order
+   line, `square_payment_id` on the rows, `reference_id` = `order_token`, and a
+   retry replaying rather than double-posting. Square also accepts refunds
+   against a cash tender, so the refund path needed no branch — only a warning
+   telling staff to open the till. **In-person _card_ is still client-side**:
+   `docs/briefs/BRIEF-square-in-person-card-server-path.md`.
 6. Fix `square-labor` `updateScheduledShift` and `deleteScheduledShift` —
    source the full record from the list endpoint before the PUT.
 7. ~~Re-run `repair_categories` restore.~~ **Done 15 Aug** — all 381 categories

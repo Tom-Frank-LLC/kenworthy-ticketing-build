@@ -176,6 +176,17 @@ a seat permanently unsellable.
 was computing it once on the subtotal, which differs by a cent at some prices
 (e.g. 4 × $8.25 → $2.00, not $1.98).
 
+**Idaho's 6% applies to every ticket, wherever the buyer is.** There is no
+jurisdiction logic because there is no jurisdiction *input*: checkout collects a
+name, an email and a phone, and never a state, ZIP or billing address — the card
+goes straight to Square's iframe. A buyer in Pullman is charged Idaho tax, which
+is the right answer for an admission to a screening that happens in Moscow. The
+rate is defined in three places — `src/lib/booking.ts` and `_shared/pricing.ts`
+for display and charging, and `v_tax_rate` in the `enforce_ticket_pricing`
+trigger, which overwrites the row on insert and is therefore authoritative. A
+drift between them shows up as a price quoted ≠ price charged, not as a wrong
+charge, but a rate change is a three-place edit plus a migration.
+
 **All of it is computed in integer cents**, client and server alike. Postgres
 evaluates `price * 0.06` in exact numeric; JavaScript does not. At $4.25,
 `4.25 * 0.06 * 100` is 25.499999999999996 in doubles and rounds *down* to
@@ -211,18 +222,248 @@ else's order.
 
 ---
 
+## Cash goes through Square too
+
+**The policy:** no money is collected that does not go through Square, cash
+included, so the books stay accurate.
+
+Until 15 Aug 2026 the code did not implement that for cash. A cash ticket or
+film pass rung up at the counter wrote database rows and never contacted Square
+at all — no `cash_details`, no `source_id: 'CASH'`, nothing. The theatre's books
+were short by exactly the in-person cash take. Square's Payments API had
+supported cash tenders the whole time; we simply never called it.
+
+Cash now takes the same route as the card:
+
+```
+StaffPOS  ──► ticket-checkout      (payment_method: 'cash', staff-only)
+FilmPassPOS ─► film-pass-checkout  (action: 'activate', payment_method: 'cash')
+                     │
+                     ├─ price the order from the database
+                     ├─ POST /v2/payments  source_id: 'CASH'
+                     │                     cash_details.buyer_supplied_money
+                     └─ only then are the tickets / the pass real
+```
+
+`buyer_supplied_money` is what the patron handed over; Square derives
+`change_back_money` from it. Pass it as `cash_tendered_cents` and the drawer
+arithmetic is recorded on Square's side too; omit it and the tender is recorded
+as the exact amount, which is the honest answer when nobody typed it in.
+
+Three things this changed beyond registering the money, all of them deliberate:
+
+* **The patron owns the tickets now.** The browser-side insert attributed
+  box-office sales to the *staff account* that rang them up. Routing through the
+  server resolves the patron from the email or phone the counter already asks
+  for, exactly as guest checkout does.
+* **The patron gets their ticket.** The POS has always demanded contact details
+  "for digital ticket delivery" and never delivered anything. It does now.
+* **The server prices it.** A box-office sale is no longer priced by the browser.
+
+**A failed Square call fails the sale**, and says so in those words — *"Do not
+take the cash"*. That is the policy working: money the theatre cannot record is
+money it does not take.
+
+**Idempotency, per path.** A ticket sale reuses the POS's per-attempt key until
+that sale succeeds, so a double-tap replays rather than double-posts. A film
+pass derives its key from the sticker code itself (`pass-cash-<uuid>`), because a
+sticker can only ever be sold once — a re-scan returns Square's original payment
+instead of taking the money twice. Both verified against sandbox.
+
+---
+
+## What Square sees: attribution
+
+A bare `POST /v2/payments` still produces a Square order — but its only line is
+`item_type: CUSTOM_AMOUNT` with **no name** (measured, 15 Aug). That is the whole
+of Finding A: totals tie out, and nothing says which film earned the money, so
+Item Sales showed ticket revenue apparently declining as sales moved onto this
+system.
+
+Every ticket and film-pass payment now creates an order first, with a line named
+for the film or the pass, and pays against it:
+
+```
+POST /v2/orders
+  A COMPLETE UNKNOWN   x2   $24.00   <- pre-tax; binds to a catalog item if one exists
+  Sales tax            x1    $1.44   <- our figure, never Square's arithmetic
+  Donation             x1    $5.00   <- outside the tax line, by design
+                              ------
+                              $30.44 == the amount charged, exactly
+
+POST /v2/payments   order_id: <that order>, reference_id: <our order_token>
+```
+
+### The catalog is read, never written
+
+A purely ad-hoc line has one flaw: Item Sales aggregates by **name**, so our
+"A COMPLETE UNKNOWN" would appear *beside* the existing `6 Film Tickets` item of
+the same name rather than joining it — a second, uncategorised row for a film the
+register has been selling for years.
+
+So before building the line, attribution looks the name up:
+
+```
+POST /v2/catalog/search
+  object_types: ['ITEM']
+  query: { exact_query: { attribute_name: 'name', attribute_value: <film title> } }
+```
+
+A hit contributes its **variation id** as the line's `catalog_object_id`, and the
+sale accrues against the item the register already uses. A miss — every new film
+— falls back to the ad-hoc line, which is what shipped before the lookup existed.
+
+**It is a read. There is no write path here at all**, which is the whole safety
+argument: the 14 Aug incident was `UpsertCatalogObject` replacing 906 objects
+built from four of our columns. Searching cannot do that. `square-catalog-sync`
+remains the only code in the project that writes to `/catalog`.
+
+`exact_query`, not the fuzzy `text_filter`: measured in sandbox, the exact query
+answered on the first attempt while the text index lagged a round behind a newly
+written item, and an exact match is the only kind safe to act on unattended — a
+fuzzy hit on "Rear Window" could be "Rear Window (35mm)".
+
+**Anything ambiguous declines to link** and stays ad-hoc, logging why:
+
+| Situation | Why it matters here |
+|---|---|
+| Two items share the name | `SILENT FILM FESTIVAL PASS` exists three times — guessing is worse than not attributing |
+| The item has no variation | The 14 Aug push stripped them; most are restored, the rest are outliers |
+| Several variations, none matching our tier | A guess; we take the single variation only when there is exactly one |
+
+Results are cached for 10 minutes, so a four-ticket order is one lookup.
+
+> **One dependency worth knowing about.** A line references a *variation*, not an
+> item. So a film whose catalog item carries no variation is found by name and
+> then declined, and the sale stays ad-hoc — correct behaviour, and invisible
+> unless you are looking for it.
+>
+> An item with a single variation is the case the matcher takes unconditionally,
+> which is also the shape `square-catalog-sync` `repair_variations` produces. So
+> nothing here needs redeploying as the catalog is tidied; coverage follows the
+> catalog's state on its own.
+>
+> **How much of the catalog is currently in that state is not settled** — the
+> incident notes and open item 4 of `REPORT-square-second-pass.md` record damaged
+> items as having no variation, while the restore is reported to have found them
+> intact. That question belongs to the catalog-repair workstream, not to
+> checkout. What matters here is only that a missing variation degrades to an
+> ad-hoc line rather than failing a sale. If a specific film shows up
+> unattributed in Item Sales, check its catalog item before suspecting checkout.
+
+**Our price wins over the catalog's.** Verified in sandbox: a line carrying both
+`catalog_object_id` and `base_price_money` records **our** amount (1908) rather
+than the catalog variation's own price (1800). Our showing prices are the
+authority, not whatever the register item happens to be set to. Because that is
+measured behaviour rather than a documented guarantee, the created order's total
+is **read back and compared** to the amount about to be charged; a disagreement
+abandons the order and the payment goes bare.
+
+**A catalog item's own taxes are not auto-applied.** Tested with a real 6%
+`CatalogTax` attached to the item: the linked line came back with `tax: 0`, no
+`applied_taxes`, and a total equal to our charge. This matters because the real
+`6 Film Tickets` items very likely do have taxes configured — if Square applied
+them, our order would exceed the payment and attribution would silently switch
+off for exactly the films it was built for. It does not, and the total check
+above would catch it if that ever changed.
+
+Note what would give that control away: `pricing_options.auto_apply_taxes`. Turn
+it on and the rate comes from whatever is configured in the Square dashboard,
+so anyone editing a tax there changes what checkout charges. We never set it.
+
+Only films and passes are looked up. A `Donation` or `Card processing fee` line
+never is — there is no catalog counterpart, and a false match would bind the
+theatre's revenue to whatever happened to be named that on the register.
+`SQUARE_CATALOG_LOOKUP=false` disables the lookup without disabling attribution.
+
+### Tax is a line we compute, never a percentage Square applies
+
+Square is never asked to work out the tax. That is not a preference — **its
+arithmetic cannot be made to agree with ours**, in two independent ways, both
+measured in sandbox:
+
+* **Square rounds half-to-even; we round half-up.** Postgres `ROUND()` and
+  `Math.round()` both round a half-cent up. Square rounds to the nearest *even*
+  cent. They agree on $8.25 (49.5 → 50, since 49 is odd) and disagree on **every
+  price ending in $.75**:
+
+  | Ticket price | Exact tax | Ours | Square |
+  |---|---|---|---|
+  | $3.75 | 22.5 | **23** | 22 |
+  | $6.75 | 40.5 | **41** | 40 |
+  | $9.75 | 58.5 | **59** | 58 |
+  | $12.75 | 76.5 | **77** | 76 |
+
+* **Square works top-down; we work bottom-up.** Square computes the tax on the
+  order and apportions it across lines; we compute per ticket row and sum, as the
+  `enforce_ticket_pricing` trigger does. Three *identical* $8.25 lines came back
+  with tax `[49, 50, 49]` — same input, three different answers, totalling 148
+  where ours totals 150. So quantity amplifies the gap even at prices where a
+  single ticket agrees.
+
+No line shape fixes this: quantity-1 lines, `LINE_ITEM` scope and `ORDER` scope
+were all tried and all produced 2623 against our 2625. Matching Square would mean
+rewriting the trigger to use banker's rounding and top-down apportionment — and
+with it how every ticket ever sold was priced. So the figure the trigger stores
+is sent as a fixed line, and the order total is ours by construction.
+
+**Why its own line rather than folded into the ticket price.** Two reasons, and
+the first only became true once lines began binding to catalog items:
+
+1. A film's gross in Square now means what the register's line has always meant
+   for the same item. A tax-inclusive $12.72 would have sat in the same Item
+   Sales row as a decade of pre-tax $12.00 register sales, running ~6% high on
+   our share of it.
+2. What is taxed is visibly separate from what is not. The donation sits outside
+   the tax line, where the `donations` table and the tax base both already put
+   it — previously that separation was real but invisible, implied by a combined
+   figure rather than shown.
+
+The card processing fee (rentals only) rides as its own line for the same reason:
+it is not ticket revenue and should not inflate a film's takings.
+
+Note the consequence: Square's **tax report** shows zero for our sales, because
+only Square-computed tax lands there. It always did, and it cannot be otherwise
+given the above. Tax figures live in `tickets.tax_amount` and reach the books
+through the QuickBooks export.
+
+**Attribution can never fail a sale.** `createAttributionOrder` returns `null`
+rather than throwing — on an API error, and on any mismatch between the lines and
+the amount about to be charged. The caller then creates a bare payment: the money
+still moves and `reference_id` still reconciles. `SQUARE_ORDER_ATTRIBUTION=false`
+turns it off without a redeploy.
+
+### Redemptions stay in our database — a decision, not an oversight
+
+Square's catalog holds a `6 Redeem` category of ten $0.00 items, used to ring a
+zero-dollar line each time a pass was redeemed. Our redemption path decrements
+the balance and issues a ticket without touching Square, so **those counts stopped
+accruing** as usage moved onto this system.
+
+That is left as it is, on purpose (Tom, 15 Aug 2026). No money moves in a
+redemption, so no payment is owed, and ringing a $0 line would mean coupling the
+door scanner to the Square catalog for the sake of a counter. **Redemption volume
+lives in `film_pass_redemptions`.** Anyone reading Square's reports for redemption
+numbers needs to know they stopped there.
+
+---
+
 ## Refunds
 
-`square-refund` (staff/admin) handles three cases:
+`square-refund` (staff/admin) sorts tickets by whether they carry a Square
+payment, not by how they were paid for:
 
 * **Card** — refunds `total_price + processing_fee` against the stored
   `square_payment_id` through Square's Refunds API, then marks the tickets
   refunded. If Square refuses, the tickets stay `confirmed`: a ticket marked
   refunded without the money going back is the failure this exists to prevent.
+* **Cash** — carries a `square_payment_id` now, so it takes the same route.
+  Square accepts refunds against a cash tender (verified in sandbox) and records
+  the reversal, which keeps the books straight in both directions — but no money
+  actually moves, so the response says *"now hand $X back from the till"*.
 * **Film pass** — returns the deducted balance to the pass it came from and
   removes the redemption row.
-* **Cash / comp** — marked refunded, with a warning surfaced to the operator
-  that the till has to be opened.
+* **Comp** — nothing was taken; the row is marked refunded.
 
 Box-office card sales record `payment_id` from the Terminal checkout, so they
 are refundable too.
@@ -350,9 +591,21 @@ Sandbox first, both paths, then flip and run one real card you refund.
   refused when the production credentials are in use — a reader that cannot be
   reached is a failed sale, not an approved one — but it means POS card sales
   cannot be end-to-end tested until a real reader is paired.
-* **Box-office ticket sales still insert client-side** under the staff policy.
-  They are staff-attested, money-in-the-room sales; moving them server-side was
-  out of this brief's scope.
+* **Box-office _card_ sales still insert client-side.** Cash moved to the server
+  on 15 Aug (above); the Terminal path did not, so in-person card sales are still
+  priced by the browser, owned by the staff account, and send no ticket email.
+  Tracked in `docs/briefs/BRIEF-square-in-person-card-server-path.md`.
+* **Item Sales has not been read since attribution shipped.** The line shape was
+  verified against the Orders API (`item_type: ITEM`, named, `gross_sales_money`
+  populated, and binding to a real catalog variation when one exists); nobody has
+  yet opened the dashboard report. For a film that already has a Square item this
+  is now low-risk — the sale carries that item's own id. For a film that does
+  not, per-film rollup by name remains expected rather than proven.
+* **The tax rate is defined in three places** — `src/lib/booking.ts`,
+  `_shared/pricing.ts`, and `v_tax_rate` in the `enforce_ticket_pricing` trigger.
+  The trigger is authoritative (it overwrites the row on insert), so a drift
+  shows up as a price quoted ≠ price charged rather than as a wrong charge. A
+  rate change is a three-place edit plus a migration.
 * **Abandoned `pending` rows are ignored but not cleaned up.** They stop holding
   seats after 15 minutes; a periodic job to mark them `failed` would keep the
   table tidy.
