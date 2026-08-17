@@ -73,11 +73,29 @@ function writeCache(theme: PublishedTheme): void {
  * Resolve the two layers and paint. Session override wins per colour, not
  * wholesale — auditioning a green while keeping the published purple is a
  * normal thing to want.
+ *
+ * The session layer is a **parameter, not something this function goes and
+ * reads.** It used to call `readLabState()` itself, which made it silently
+ * dependent on `sessionStorage` already being up to date — and in the provider
+ * it wasn't, because the write happened after the paint. Every swatch click
+ * therefore painted the *previous* click's colour: the whole panel ran exactly
+ * one selection behind, forever. The resolver's own tests never caught it,
+ * because they wrote to storage first and so happened to satisfy the hidden
+ * ordering requirement.
+ *
+ * Taking it as an argument is what makes that class of bug impossible rather
+ * than merely fixed: there is no longer an order to get wrong.
  */
-export function applyEffectiveTheme(published: PublishedTheme): void {
-  const lab = readLabState();
-  const session = lab.on ? lab : NO_THEME;
+export function applyEffectiveTheme(
+  published: PublishedTheme,
+  session: PublishedTheme = NO_THEME,
+): void {
   applyTokens(session.purple ?? published.purple, session.green ?? published.green);
+}
+
+/** The live session override, or nothing when the Lab is shut. */
+export function sessionOverride(lab: { on: boolean; purple: string | null; green: string | null }): PublishedTheme {
+  return lab.on ? { purple: lab.purple, green: lab.green } : NO_THEME;
 }
 
 /**
@@ -91,7 +109,9 @@ export function applyEffectiveTheme(published: PublishedTheme): void {
  */
 export function applyBootTheme(): void {
   try {
-    applyEffectiveTheme(readCache());
+    // Storage *is* the authority here: React has not mounted, so there is no
+    // in-memory state to prefer over it.
+    applyEffectiveTheme(readCache(), sessionOverride(readLabState()));
   } catch {
     /* never let theming break boot */
   }

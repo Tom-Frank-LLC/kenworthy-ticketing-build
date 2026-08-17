@@ -29,11 +29,13 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 import {
+  applyBootTheme,
   applyEffectiveTheme,
   isEmpty,
   NO_THEME,
   publishSiteTheme,
   revertSiteTheme,
+  sessionOverride,
 } from './siteTheme';
 import { hexToHslCss, writeLabState, OFF } from './colorLab';
 
@@ -51,40 +53,68 @@ beforeEach(() => {
 });
 
 describe('precedence', () => {
+  // The session layer is passed in, never read from storage by the resolver.
+  // These used to prime sessionStorage instead, which is what let the
+  // one-selection-behind bug hide: the tests happened to write before applying,
+  // and the provider did the opposite. See oneBehind.test.tsx.
+  const session = (purple: string | null, green: string | null) => ({ purple, green });
+
   it('uses the published theme when this tab has no override', () => {
-    writeLabState(OFF);
-    applyEffectiveTheme({ purple: '#B262DA', green: '#73A94C' });
+    applyEffectiveTheme({ purple: '#B262DA', green: '#73A94C' }, NO_THEME);
     expect(root().getPropertyValue('--primary')).toBe(hexToHslCss('#B262DA'));
     expect(root().getPropertyValue('--success')).toBe(hexToHslCss('#73A94C'));
   });
 
   it("lets this tab's override win, so a colleague publishing cannot yank the page away mid-audition", () => {
-    writeLabState({ on: true, purple: '#8443B1', green: null });
-    applyEffectiveTheme({ purple: '#B262DA', green: '#73A94C' });
+    applyEffectiveTheme({ purple: '#B262DA', green: '#73A94C' }, session('#8443B1', null));
     expect(root().getPropertyValue('--primary')).toBe(hexToHslCss('#8443B1'));
   });
 
   it('resolves precedence per colour, not wholesale', () => {
     // Auditioning a green against the published purple is a normal thing to
     // want, so a session green must not drag the session's null purple with it.
-    writeLabState({ on: true, purple: null, green: '#125A51' });
-    applyEffectiveTheme({ purple: '#B262DA', green: '#73A94C' });
+    applyEffectiveTheme({ purple: '#B262DA', green: '#73A94C' }, session(null, '#125A51'));
     expect(root().getPropertyValue('--primary')).toBe(hexToHslCss('#B262DA'));
     expect(root().getPropertyValue('--success')).toBe(hexToHslCss('#125A51'));
   });
 
   it('falls through to index.css when neither layer has an opinion', () => {
-    writeLabState(OFF);
-    applyEffectiveTheme(NO_THEME);
+    applyEffectiveTheme(NO_THEME, NO_THEME);
     // null when nothing was ever set, '' once something was set and removed.
     expect(document.documentElement.getAttribute('style') || '').toBe('');
   });
 
-  it('ignores a closed Lab session even if it still carries colours', () => {
-    writeLabState({ on: false, purple: '#8443B1', green: '#125A51' });
+  it('treats a missing session argument as no override', () => {
     applyEffectiveTheme({ purple: '#B262DA', green: null });
     expect(root().getPropertyValue('--primary')).toBe(hexToHslCss('#B262DA'));
-    expect(root().getPropertyValue('--success')).toBe('');
+  });
+});
+
+describe('sessionOverride', () => {
+  it('yields the colours only while the Lab is open', () => {
+    expect(sessionOverride({ on: true, purple: '#8443B1', green: null })).toEqual({
+      purple: '#8443B1',
+      green: null,
+    });
+    // A closed Lab must contribute nothing even though it still holds colours —
+    // that is what makes closing the panel restore the published theme.
+    expect(sessionOverride({ on: false, purple: '#8443B1', green: '#125A51' })).toEqual(NO_THEME);
+  });
+});
+
+describe('boot paint', () => {
+  it('reads the session from storage, because React has not mounted yet', () => {
+    // The one place storage is genuinely the authority: there is no in-memory
+    // state to prefer over it before the app renders.
+    writeLabState({ on: true, purple: '#8443B1', green: null });
+    applyBootTheme();
+    expect(root().getPropertyValue('--primary')).toBe(hexToHslCss('#8443B1'));
+  });
+
+  it('paints nothing when the Lab is shut and no theme is cached', () => {
+    writeLabState(OFF);
+    applyBootTheme();
+    expect(document.documentElement.getAttribute('style') || '').toBe('');
   });
 });
 
