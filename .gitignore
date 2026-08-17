@@ -28,8 +28,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env.staging
-.env.production
+# .env.staging / .env.production are deliberately NOT ignored.
+#
+# Every value in them is either VITE_-prefixed — which Vite bakes into the
+# client bundle and therefore serves to every visitor — or the publishable
+# Supabase anon key under a second name. None of it is secret, and keeping it
+# out of the repo cost more than it protected: Cloudflare's Workers Builds
+# could never build (both PR checks failed on every PR, so a red check stopped
+# meaning anything), and every fresh clone or git worktree silently produced a
+# bundle with an empty Supabase URL.
+#
+# NEVER put a service-role key, a Square access token, or any other real secret
+# in these files. Server-side secrets belong in Supabase function secrets
+# (`supabase secrets set`), which is also the only place they work.
 
 
 # Supabase CLI local state (linked project ref, version caches)

@@ -206,6 +206,10 @@ export const GREENS: Swatch[] = [
   { name: 'Viridian', hex: '#39AC8F', note: 'deep teal, curtain-like' },
   { name: 'Emerald Marquee', hex: '#39C68B', note: 'richer emerald, not neon' },
   { name: 'Deep Fir', hex: '#388A6E', note: 'dark, for large fills' },
+  // Carries cream text at 7.2:1, but is itself only 2.4:1 against the page —
+  // as a CTA fill it reads as a dark shape rather than something that pops.
+  // Offered, not shipped; the panel's two ratios show exactly this split.
+  { name: 'Deep Pine', hex: '#125A51', note: 'very dark teal — quiet against black' },
   { name: 'Forest', hex: '#24604A', note: 'dark — needs white text' },
   { name: 'Bottle', hex: '#195738', note: 'darkest — needs white text' },
 ].map(withMetrics);
@@ -288,13 +292,20 @@ export function writeLabState(state: LabState): void {
 }
 
 /**
- * Push the state onto the document, or take it off again.
+ * Push a purple and a green onto the document, or take them off again.
  *
- * Clearing removes the inline property rather than writing the shipped value
- * back, so `index.css` stays the single source of truth — Reset cannot drift
- * away from what the stylesheet says, because it never records what it said.
+ * Deliberately knows nothing about *where* the colours came from. There are two
+ * sources now — the per-tab Lab override and the superadmin-published site
+ * theme (`src/lib/siteTheme.ts`) — and the precedence between them is resolved
+ * by the caller before it gets here. Keeping that decision out of this function
+ * is what stops the two layers from having to know about each other.
+ *
+ * Either argument may be null, meaning "no override for that colour". Clearing
+ * removes the inline property rather than writing the shipped value back, so
+ * `index.css` stays the single source of truth — reverting cannot drift away
+ * from what the stylesheet says, because it never records what it said.
  */
-export function applyLabState(state: LabState): void {
+export function applyTokens(purple: string | null, green: string | null): void {
   const s = document.documentElement.style;
   const paint = (tokens: string[], inks: string[], hex: string | null) => {
     if (hex && isHex(hex)) {
@@ -306,6 +317,67 @@ export function applyLabState(state: LabState): void {
       [...tokens, ...inks].forEach(t => s.removeProperty(t));
     }
   };
-  paint(PURPLE_TOKENS, PURPLE_INK_TOKENS, state.on ? state.purple : null);
-  paint(GREEN_TOKENS, GREEN_INK_TOKENS, state.on ? state.green : null);
+  paint(PURPLE_TOKENS, PURPLE_INK_TOKENS, purple);
+  paint(GREEN_TOKENS, GREEN_INK_TOKENS, green);
+}
+
+// ---- saved custom swatches -------------------------------------------------
+
+/**
+ * Custom picks the team wants to keep.
+ *
+ * `localStorage`, not `sessionStorage` — and the distinction is the point. The
+ * *theme override* is per-tab and disposable on purpose; a saved swatch is a
+ * scratchpad of candidate colours, and losing it every time a tab closes would
+ * make it useless for a decision that takes days. It is still purely local:
+ * nothing here is sent anywhere, and it changes no one else's site.
+ */
+const SAVED_KEY = 'kenworthy.colorlab.saved';
+export type Channel = 'purple' | 'green';
+
+type SavedMap = Record<Channel, string[]>;
+const EMPTY_SAVED: SavedMap = { purple: [], green: [] };
+
+export function readSaved(): SavedMap {
+  if (typeof window === 'undefined') return EMPTY_SAVED;
+  try {
+    const raw = window.localStorage.getItem(SAVED_KEY);
+    if (!raw) return EMPTY_SAVED;
+    const parsed = JSON.parse(raw) as Partial<Record<Channel, unknown>>;
+    const clean = (v: unknown) =>
+      Array.isArray(v) ? v.filter((h): h is string => typeof h === 'string' && isHex(h)) : [];
+    return { purple: clean(parsed.purple), green: clean(parsed.green) };
+  } catch {
+    return EMPTY_SAVED;
+  }
+}
+
+function writeSaved(next: SavedMap): void {
+  try {
+    window.localStorage.setItem(SAVED_KEY, JSON.stringify(next));
+  } catch {
+    /* private-mode Safari; saving is a nicety, not a requirement */
+  }
+}
+
+/** Add a hex to a channel's saved list. Idempotent, newest last. */
+export function saveSwatch(channel: Channel, hex: string): SavedMap {
+  const current = readSaved();
+  const up = hex.toUpperCase();
+  if (!isHex(up) || current[channel].includes(up)) return current;
+  const next = { ...current, [channel]: [...current[channel], up] };
+  writeSaved(next);
+  return next;
+}
+
+export function forgetSwatch(channel: Channel, hex: string): SavedMap {
+  const current = readSaved();
+  const next = { ...current, [channel]: current[channel].filter(h => h !== hex.toUpperCase()) };
+  writeSaved(next);
+  return next;
+}
+
+/** A saved hex rendered as a full Swatch, so it carries the same metrics. */
+export function savedSwatch(hex: string): Swatch {
+  return withMetrics({ name: 'Saved', hex: hex.toUpperCase(), note: 'saved custom pick' });
 }

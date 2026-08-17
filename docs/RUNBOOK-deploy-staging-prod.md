@@ -76,6 +76,58 @@ npx supabase functions deploy ticket-checkout --project-ref vlmslygnimfbamrtwvyo
 
 ---
 
+## The PR checks (Cloudflare Workers Builds)
+
+Both `Workers Builds: …` checks failed on **every** PR for months, which trained
+everyone to ignore a red check. Two causes, both now fixed in the repo:
+
+1. **No env at build time.** `.env.staging` / `.env.production` were gitignored,
+   so the remote build had no `VITE_SUPABASE_URL`. They are committed now — every
+   value in them is `VITE_`-prefixed (baked into the bundle and served to every
+   visitor) or the publishable anon key under a second name. Both keys were
+   decoded to confirm `role: anon` before committing. **Never put a service-role
+   key or a Square token in them**; those belong in `supabase secrets set`.
+
+2. **A stale bun lockfile hijacked the install.** Cloudflare detects the package
+   manager from the lockfile and prefers bun, so it ran
+   `bun install --frozen-lockfile` and died with *"lockfile had changes, but
+   lockfile is frozen"* — before the build command ever ran. `bun.lock` was one
+   commit behind `package.json` and `bun.lockb` had not been touched since June,
+   while `package-lock.json` moves in the same commit as `package.json`. Nobody
+   was maintaining the bun lockfiles, so both were deleted and CI now installs
+   with `npm ci`, exactly like this runbook and every developer.
+
+   **Do not commit a `bun.lock` / `bun.lockb` / `pnpm-lock.yaml` / `yarn.lock`.**
+   Any of them silently takes CI off npm and onto a lockfile nobody updates.
+
+**Deploy-on-push:** Workers & Pages → the worker → *Settings* → *Build*. Branch
+control governs automatic production-branch deployments, and Build configuration
+holds the build command, the deploy command (defaults to `npx wrangler deploy`)
+and build variables. Deploys are meant to be manual and verified — the whole
+point of the checks above — so the deploy command should be neutered on both
+workers. Verified 2026-08-17: a green build on a **PR branch** deploys nothing;
+a push to the **production branch** is the case this setting governs.
+
+### What actually decides which environment gets baked in
+
+The **script name**, not the runner. `bun run build:staging` and
+`npm run build:staging` both produce a correct staging bundle — verified on a
+clean clone, including under `NODE_ENV=production`. Bun auto-loads
+`.env.production` into its own environment (you can see it in the build log as
+`[0.13ms] ".env.production"`) but that does **not** leak into the build; Vite's
+`.env.staging` wins for a `--mode staging` build.
+
+What is dangerous is either of these:
+
+- **A bare `build`.** `bun run build` / `npm run build` default to production
+  mode and bake **prod** Supabase credentials — into whichever worker ran them.
+- **A `VITE_*` Cloudflare build variable.** An exported env var *overrides* the
+  `.env` file. Setting `VITE_SUPABASE_URL` to prod while running `build:staging`
+  produced a bundle pointing at the **production database** while still showing
+  the staging site URL — a mixed state that looks entirely normal from the
+  outside. Keep the build-variables list empty; the committed `.env.*` files are
+  the source of truth now.
+
 ## Housekeeping (optional, prevents this recurring)
 - **Fast-forward the `staging` branch to `main`** so "deploy staging branch" and "deploy staging worker" stop diverging: `git checkout staging && git merge --ff-only main && git push origin staging` (resolve if it won't fast-forward).
 - The gitignored `.env.staging` / `.env.production` must exist in **every** clone/worktree you build from — a fresh checkout won't have them, and that silently produces the empty-URL build.

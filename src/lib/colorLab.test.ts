@@ -4,8 +4,9 @@ import {
   PURPLES,
   SHIPPED_GREEN,
   SHIPPED_PURPLE,
-  applyLabState,
+  applyTokens,
   contrastVsBg,
+  forgetSwatch,
   hexToHslCss,
   hexToHslToken,
   isHex,
@@ -13,6 +14,9 @@ import {
   pickForeground,
   pickForegroundHex,
   readLabState,
+  readSaved,
+  saveSwatch,
+  savedSwatch,
   tierFromC,
   writeLabState,
   OFF,
@@ -139,7 +143,7 @@ describe('applying and clearing overrides', () => {
   });
 
   it('drives every purple and green token from one pick', () => {
-    applyLabState({ on: true, purple: '#B262DA', green: '#73A94C' });
+    applyTokens('#B262DA', '#73A94C');
     // Full precision, not the rounded token — so the pixels match the hex the
     // contrast readout measured.
     for (const t of ['--primary', '--ring', '--sidebar-primary', '--sidebar-ring', '--chart-1']) {
@@ -159,8 +163,8 @@ describe('applying and clearing overrides', () => {
 
   it('removes the inline properties on reset rather than writing defaults back', () => {
     // Restoring by removal is what keeps index.css the single source of truth.
-    applyLabState({ on: true, purple: '#B262DA', green: '#73A94C' });
-    applyLabState(OFF);
+    applyTokens('#B262DA', '#73A94C');
+    applyTokens(null, null);
     for (const t of ['--primary', '--ring', '--success', '--chart-1', '--chart-3']) {
       expect(root().getPropertyValue(t)).toBe('');
     }
@@ -168,16 +172,64 @@ describe('applying and clearing overrides', () => {
   });
 
   it('clears one channel without disturbing the other', () => {
-    applyLabState({ on: true, purple: '#B262DA', green: '#73A94C' });
-    applyLabState({ on: true, purple: null, green: '#73A94C' });
+    applyTokens('#B262DA', '#73A94C');
+    applyTokens(null, '#73A94C');
     expect(root().getPropertyValue('--primary')).toBe('');
     expect(root().getPropertyValue('--success')).toBe(hexToHslCss('#73A94C'));
   });
 
-  it('applies nothing at all while the Lab is shut', () => {
-    applyLabState({ on: false, purple: '#B262DA', green: '#73A94C' });
-    expect(root().getPropertyValue('--primary')).toBe('');
-    expect(root().getPropertyValue('--success')).toBe('');
+  it('knows nothing about where the colours came from', () => {
+    // applyTokens is deliberately layer-agnostic: the session-override /
+    // published-theme precedence is resolved before anything reaches it, which
+    // is what keeps the two layers from having to know about each other.
+    // Passing nulls is how "no override" is expressed, whatever the reason.
+    applyTokens(null, null);
+    // No attribute at all when nothing was ever set — `getAttribute` gives null
+    // here and '' once a property has been set and removed. Both mean "clean".
+    expect(document.documentElement.getAttribute('style') || '').toBe('');
+  });
+});
+
+describe('saved custom swatches', () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it('keeps saved picks in localStorage, not sessionStorage', () => {
+    // The theme override is per-tab and disposable on purpose; a saved swatch
+    // is a scratchpad for a decision that takes days, so it must outlive a tab.
+    saveSwatch('green', '#125a51');
+    expect(window.sessionStorage.getItem('kenworthy.colorlab.saved')).toBeNull();
+    expect(readSaved().green).toEqual(['#125A51']);
+  });
+
+  it('normalises case and refuses duplicates and junk', () => {
+    saveSwatch('purple', '#b262da');
+    saveSwatch('purple', '#B262DA');
+    saveSwatch('purple', 'not-a-colour');
+    expect(readSaved().purple).toEqual(['#B262DA']);
+  });
+
+  it('keeps the two channels apart', () => {
+    saveSwatch('purple', '#B262DA');
+    saveSwatch('green', '#125A51');
+    expect(readSaved()).toEqual({ purple: ['#B262DA'], green: ['#125A51'] });
+  });
+
+  it('forgets one without disturbing the rest', () => {
+    saveSwatch('green', '#125A51');
+    saveSwatch('green', '#73A94C');
+    forgetSwatch('green', '#125a51');
+    expect(readSaved().green).toEqual(['#73A94C']);
+  });
+
+  it('survives tampered storage instead of throwing', () => {
+    window.localStorage.setItem('kenworthy.colorlab.saved', '{"green":[1,2,"#ZZZZZZ"]}');
+    expect(readSaved()).toEqual({ purple: [], green: [] });
+  });
+
+  it('gives a saved hex the same metrics as a preset', () => {
+    const s = savedSwatch('#125A51');
+    expect(s.hsl).toBe(hexToHslToken('#125A51'));
+    expect(s.tierInk).toBe(tierFromC(s.cInk));
   });
 });
 
