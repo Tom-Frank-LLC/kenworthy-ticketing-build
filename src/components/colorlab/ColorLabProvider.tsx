@@ -16,6 +16,7 @@ import {
   applyEffectiveTheme,
   loadSiteTheme,
   NO_THEME,
+  sessionOverride,
   subscribeSiteTheme,
   type PublishedTheme,
 } from '@/lib/siteTheme';
@@ -101,7 +102,11 @@ export function ColorLabProvider({ children }: { children: React.ReactNode }) {
   // useLayoutEffect, not useEffect: it runs before the browser paints, so the
   // custom properties are in place for the frame rather than one frame late.
   useLayoutEffect(() => {
-    applyEffectiveTheme(published);
+    // React state is the authority for the session layer, not sessionStorage —
+    // storage is only where it survives a reload, and it is written below.
+    // Reading it back here is what made every swatch click paint the previous
+    // click's colour.
+    applyEffectiveTheme(published, sessionOverride(state));
     if (COLOR_LAB_ENABLED) writeLabState(state);
   }, [state, published]);
 

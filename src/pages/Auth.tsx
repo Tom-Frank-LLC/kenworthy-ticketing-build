@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
-import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
+import { KenworthyMark } from '@/components/brand/KenworthyLogo';
+import { cn } from '@/lib/utils';
 import { useColorLab } from '@/components/colorlab/ColorLabProvider';
 import { subscribeToMailchimp } from '@/lib/mailchimp';
 import { COLOR_LAB_ENABLED, MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
@@ -150,9 +151,8 @@ export default function Auth() {
                 patron could find is an affordance a patron would click, and
                 there is nothing here for them. Staff are told where it is.
                 Clicking it neither requires nor performs a sign-in. */}
-            <KenworthyLogo
-              size="inline"
-              className={COLOR_LAB_ENABLED ? 'cursor-default' : undefined}
+            <KenworthyMark
+              className={cn('h-12 sm:h-14', COLOR_LAB_ENABLED && 'cursor-default')}
               onClick={COLOR_LAB_ENABLED ? colorLab.open : undefined}
             />
           </div>

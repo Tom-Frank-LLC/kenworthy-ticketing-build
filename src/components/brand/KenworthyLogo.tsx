@@ -1,4 +1,5 @@
 import kenworthyStandardLogo from '@/assets/kenworthy-logo.svg';
+import kenworthyMark from '@/assets/kenworthy-k.svg';
 import kenworthyCentenaryLogo from '@/assets/KPAC-100-logo-white.svg';
 import { isCentenary } from '@/lib/centenary';
 import { cn } from '@/lib/utils';
@@ -107,6 +108,49 @@ export function KenworthyLogo({
         'w-auto object-contain',
         SIZE_CLASS[lockup][size],
         TONE_CLASS[lockup][tone],
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
+/**
+ * The "K" mark on its own — the letter inside its sunburst, without the
+ * wordmark.
+ *
+ * A separate export rather than another `size` on the lockup, because it is a
+ * different piece of artwork with different rules: there is no centenary
+ * variant of it (the "Celebrating 100 Years" line only exists in the lockup),
+ * and it is square-ish rather than a wide banner, so none of `SIZE_CLASS`
+ * applies. What it *does* share is the inversion problem, which is why it lives
+ * in this file and reuses `INVERT` rather than restating the filter somewhere
+ * else and drifting.
+ *
+ * The artwork is dark grey (#414042) on transparent, so it follows the same
+ * rule as the standard wordmark: invert it on dark surfaces, leave it alone on
+ * light ones.
+ *
+ * `alt` defaults to empty because every placement so far sits next to the name
+ * in text. Pass one where it is the only identification.
+ */
+export function KenworthyMark({
+  tone = 'on-dark',
+  className,
+  alt = '',
+  ...rest
+}: Omit<KenworthyLogoProps, 'size'>) {
+  return (
+    <img
+      src={kenworthyMark}
+      alt={alt}
+      width={212}
+      height={190}
+      loading="lazy"
+      decoding="async"
+      className={cn(
+        'w-auto object-contain',
+        tone === 'on-dark' ? INVERT : tone === 'on-light' ? '' : `dark:${INVERT}`,
         className,
       )}
       {...rest}
