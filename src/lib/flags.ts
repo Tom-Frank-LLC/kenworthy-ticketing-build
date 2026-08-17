@@ -75,3 +75,22 @@ export const CONCESSION_SQUARE_PUSH_ENABLED =
  */
 export const CONCESSION_POS_ENABLED =
   import.meta.env.VITE_CONCESSION_POS === 'true';
+
+/**
+ * Whether the Color Lab — the live, session-only theme override — is reachable.
+ *
+ * **On**, and it is the one flag here that defaults on rather than off. That is
+ * deliberate: it is a temporary tool for a decision in flight (which purple,
+ * which green), the `.env.*` files are gitignored so a default of `=== 'true'`
+ * would silently switch it off in whichever environment forgot the line, and its
+ * blast radius is a single tab's `sessionStorage`. Set `VITE_COLOR_LAB=false` to
+ * shut it; the code stays for the next round of colour work.
+ *
+ * There is no server-side counterpart, and there should never be one. The Lab
+ * never writes to the DB, never sends a request, and cannot be seen by another
+ * visitor — see `src/lib/colorLab.ts`.
+ *
+ * When it is off the footer shows only the ordinary "Staff login" link to
+ * logged-out viewers, and the trigger on the sign-in card is inert.
+ */
+export const COLOR_LAB_ENABLED = import.meta.env.VITE_COLOR_LAB !== 'false';

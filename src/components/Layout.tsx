@@ -15,7 +15,9 @@ import { NewsletterSignup } from '@/components/NewsletterSignup';
 import { useHiringEnabled } from '@/hooks/useHiringEnabled';
 import { isCentenary } from '@/lib/centenary';
 import { cn } from '@/lib/utils';
-import { MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
+import { COLOR_LAB_ENABLED, MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
+import { GREEN_CTA } from '@/lib/greenCta';
+import { useColorLab } from '@/components/colorlab/ColorLabProvider';
 
 const navLinkClass =
   'font-display uppercase text-sm tracking-[0.25em] text-accent hover:text-primary transition-colors';
@@ -37,6 +39,7 @@ const supportLinks: Array<[string, string]> = [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, isStaff, isHost, isSuperadmin, signOut } = useAuth();
+  const colorLab = useColorLab();
   const navigate = useNavigate();
   const location = useLocation();
   // Hiring is admin-toggled; when it is off the page redirects away, so the
@@ -223,7 +226,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Link to={authHref}>Sign In</Link>
                   </Button>
                 )}
-                <Button size="sm" asChild className="h-10 px-4 sm:px-5">
+                {/* The one green thing in the header. Donate sits beside it as
+                    a purple outline; green is what separates "buy a ticket"
+                    from every other call on the page. See lib/greenCta.ts. */}
+                <Button size="sm" asChild className={cn('h-10 px-4 sm:px-5', GREEN_CTA)}>
                   <Link to="/calendar">Tickets</Link>
                 </Button>
                 <Button size="sm" variant="outline" asChild className="h-10 px-4 sm:px-5">
@@ -262,6 +268,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Link to={authHref} className="text-muted-foreground/70 hover:text-primary transition-colors">
                   Staff login
                 </Link>
+              </p>
+            )}
+            {/* The Color Lab's entry point for someone already signed in.
+                "Staff login" is the only route to the Lab for a logged-out
+                viewer — they reach it by clicking the logo on the sign-in card —
+                and that link is hidden from anyone with a session, which would
+                otherwise leave staff with no way in at all. Same footer slot,
+                same quietness; temporary, and gated on VITE_COLOR_LAB. */}
+            {COLOR_LAB_ENABLED && user && !colorLab.enabled && (
+              <p className="mt-2 text-xs">
+                <button
+                  type="button"
+                  onClick={colorLab.open}
+                  className="text-muted-foreground/70 hover:text-primary transition-colors"
+                >
+                  Color Lab
+                </button>
               </p>
             )}
           </div>

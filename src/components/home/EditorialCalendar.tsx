@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Film, Sparkles, Music, Calendar as CalendarIcon, ArrowRight } from 'lucide-react';
 import { addDays, isThisWeek } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
 import type { FeedItem } from './TrailerFeed';
 
@@ -118,7 +119,7 @@ export function EditorialCalendar({
             </button>
             {featured.showingId && (
               <div className="mt-4">
-                <Button asChild className="h-11">
+                <Button asChild className={cn('h-11', GREEN_CTA)}>
                   <Link to={`/showing/${featured.showingId}`}>
                     Get Tickets <ArrowRight className="h-4 w-4 ml-1" />
                   </Link>

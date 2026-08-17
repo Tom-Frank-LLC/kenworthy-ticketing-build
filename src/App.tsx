@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import { Layout } from "@/components/Layout";
+import { ColorLabProvider } from "@/components/colorlab/ColorLabProvider";
 
 // The home page is the overwhelming majority of first loads, so it ships in
 // the entry chunk. Everything else is split per route: this is what keeps
@@ -74,59 +75,65 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Layout>
-            <Suspense fallback={<RouteFallback />}>
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/calendar" element={<CalendarPage />} />
-                <Route path="/auth" element={<Auth />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/showing/:id" element={<Showing />} />
-                <Route path="/my-tickets" element={<MyTickets />} />
-                {/* Public ticket link from confirmation email/SMS — no auth. */}
-                <Route path="/t/:token" element={<PublicTicket />} />
-                {/* Buying a film pass — public, no sign-in. Distinct from
-                    /my-passes, which only shows a signed-in patron what they
-                    already hold. */}
-                <Route path="/film-passes" element={<FilmPassesPage />} />
-                <Route path="/my-passes" element={<MyPasses />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="/admin/movies/:id" element={<MovieForm />} />
-                <Route path="/admin/movies/new" element={<MovieForm />} />
-                <Route path="/admin/events/:id" element={<EventForm />} />
-                <Route path="/admin/events/new" element={<EventForm />} />
-                <Route path="/admin/concerts/:id" element={<ConcertForm />} />
-                <Route path="/admin/concerts/new" element={<ConcertForm />} />
-                <Route path="/admin/venues/:id" element={<VenueForm />} />
-                <Route path="/admin/venues/new" element={<VenueForm />} />
-                <Route path="/admin/showings/new" element={<ShowingForm />} />
-                <Route path="/admin/showings/:id" element={<ShowingForm />} />
-                <Route path="/admin/sponsorships/new" element={<SponsorshipForm />} />
-                <Route path="/admin/sponsorships/:id" element={<SponsorshipForm />} />
-                <Route path="/admin/audit-log" element={<AuditLog />} />
-                <Route path="/admin/pos" element={<StaffPOS />} />
-                <Route path="/admin/scanner" element={<TicketScanner />} />
-                <Route path="/host" element={<HostDashboard />} />
-                <Route path="/sponsors" element={<Sponsors />} />
-                <Route path="/history" element={<HistoryPage />} />
-                <Route path="/rental-request" element={<RentalRequest />} />
-                <Route path="/rentals" element={<Rentals />} />
-                <Route path="/donate" element={<Donate />} />
-                <Route path="/dvds" element={<Dvds />} />
-                <Route path="/about" element={<AboutPage />} />
-                <Route path="/silent-film-festival" element={<SilentFilmFestivalPage />} />
-                <Route path="/press" element={<PressPage />} />
-                <Route path="/hiring" element={<HiringPage />} />
-                <Route path="/accessibility" element={<AccessibilityPage />} />
-                <Route path="/volunteer" element={<VolunteerPage />} />
-                <Route path="/superadmin" element={<Superadmin />} />
-                <Route path="/contract/:token" element={<RentalContract />} />
-                <Route path="/verify/:id" element={<VerifyContract />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-          </Layout>
+          {/* Above Layout so the footer link and the sign-in card can both
+              reach it, and so its overrides land on <html> before first paint.
+              Inside AuthProvider because the footer entry point depends on
+              whether anyone is signed in. */}
+          <ColorLabProvider>
+            <Layout>
+              <Suspense fallback={<RouteFallback />}>
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/showing/:id" element={<Showing />} />
+                  <Route path="/my-tickets" element={<MyTickets />} />
+                  {/* Public ticket link from confirmation email/SMS — no auth. */}
+                  <Route path="/t/:token" element={<PublicTicket />} />
+                  {/* Buying a film pass — public, no sign-in. Distinct from
+                      /my-passes, which only shows a signed-in patron what they
+                      already hold. */}
+                  <Route path="/film-passes" element={<FilmPassesPage />} />
+                  <Route path="/my-passes" element={<MyPasses />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/admin/movies/:id" element={<MovieForm />} />
+                  <Route path="/admin/movies/new" element={<MovieForm />} />
+                  <Route path="/admin/events/:id" element={<EventForm />} />
+                  <Route path="/admin/events/new" element={<EventForm />} />
+                  <Route path="/admin/concerts/:id" element={<ConcertForm />} />
+                  <Route path="/admin/concerts/new" element={<ConcertForm />} />
+                  <Route path="/admin/venues/:id" element={<VenueForm />} />
+                  <Route path="/admin/venues/new" element={<VenueForm />} />
+                  <Route path="/admin/showings/new" element={<ShowingForm />} />
+                  <Route path="/admin/showings/:id" element={<ShowingForm />} />
+                  <Route path="/admin/sponsorships/new" element={<SponsorshipForm />} />
+                  <Route path="/admin/sponsorships/:id" element={<SponsorshipForm />} />
+                  <Route path="/admin/audit-log" element={<AuditLog />} />
+                  <Route path="/admin/pos" element={<StaffPOS />} />
+                  <Route path="/admin/scanner" element={<TicketScanner />} />
+                  <Route path="/host" element={<HostDashboard />} />
+                  <Route path="/sponsors" element={<Sponsors />} />
+                  <Route path="/history" element={<HistoryPage />} />
+                  <Route path="/rental-request" element={<RentalRequest />} />
+                  <Route path="/rentals" element={<Rentals />} />
+                  <Route path="/donate" element={<Donate />} />
+                  <Route path="/dvds" element={<Dvds />} />
+                  <Route path="/about" element={<AboutPage />} />
+                  <Route path="/silent-film-festival" element={<SilentFilmFestivalPage />} />
+                  <Route path="/press" element={<PressPage />} />
+                  <Route path="/hiring" element={<HiringPage />} />
+                  <Route path="/accessibility" element={<AccessibilityPage />} />
+                  <Route path="/volunteer" element={<VolunteerPage />} />
+                  <Route path="/superadmin" element={<Superadmin />} />
+                  <Route path="/contract/:token" element={<RentalContract />} />
+                  <Route path="/verify/:id" element={<VerifyContract />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+            </Layout>
+          </ColorLabProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
