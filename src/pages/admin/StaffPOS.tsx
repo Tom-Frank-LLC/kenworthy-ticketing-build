@@ -30,7 +30,7 @@ import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CONCESSION_POS_ENABLED } from '@/lib/flags';
+import { COLLECT_PHONE, CONCESSION_POS_ENABLED } from '@/lib/flags';
 import { formatShowtime } from '@/lib/datetime';
 import TicketScanner from './TicketScanner';
 
@@ -531,8 +531,14 @@ export default function StaffPOS() {
       toast.error('Select a showing and at least one ticket');
       return;
     }
-    if (!patronEmail && !patronPhone) {
-      toast.error('Enter patron email or phone for digital ticket delivery');
+    // The counter is not exempt from the delivery problem: a phone-only sale
+    // here takes the money and sends nothing, because there is no SMS to send.
+    if (COLLECT_PHONE ? (!patronEmail && !patronPhone) : !patronEmail) {
+      toast.error(
+        COLLECT_PHONE
+          ? 'Enter patron email or phone for digital ticket delivery'
+          : 'Enter a patron email — it is the only way the ticket can reach them',
+      );
       return;
     }
 
@@ -767,7 +773,7 @@ export default function StaffPOS() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="patron-email">Email</Label>
+                <Label htmlFor="patron-email">Email{COLLECT_PHONE ? '' : ' *'}</Label>
                 <Input
                   id="patron-email"
                   type="email"
@@ -776,16 +782,19 @@ export default function StaffPOS() {
                   onChange={e => setPatronEmail(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="patron-phone">Phone (optional)</Label>
-                <Input
-                  id="patron-phone"
-                  type="tel"
-                  placeholder="(208) 555-1234"
-                  value={patronPhone}
-                  onChange={e => setPatronPhone(e.target.value)}
-                />
-              </div>
+              {/* Hidden until Twilio is wired — see COLLECT_PHONE in @/lib/flags. */}
+              {COLLECT_PHONE && (
+                <div className="space-y-2">
+                  <Label htmlFor="patron-phone">Phone (optional)</Label>
+                  <Input
+                    id="patron-phone"
+                    type="tel"
+                    placeholder="(208) 555-1234"
+                    value={patronPhone}
+                    onChange={e => setPatronPhone(e.target.value)}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
 

@@ -12,6 +12,7 @@ import {
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 import { SEO } from '@/components/SEO';
 import { invokeFunction } from '@/lib/functions';
+import { COLLECT_PHONE } from '@/lib/flags';
 
 /**
  * Buying a film pass online.
@@ -141,7 +142,7 @@ export default function FilmPasses() {
         source_id: sourceId,
         name: name.trim(),
         email: email.trim(),
-        phone: phone.trim() || undefined,
+        phone: COLLECT_PHONE ? (phone.trim() || undefined) : undefined,
         idempotency_key: idempotencyKeyRef.current,
       });
 
@@ -433,16 +434,19 @@ export default function FilmPasses() {
                 />
                 {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
               </div>
-              <div className="sm:col-span-2">
-                <Label htmlFor="pass-phone" className="text-xs">Phone (optional)</Label>
-                <Input
-                  id="pass-phone"
-                  type="tel"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  maxLength={20}
-                />
-              </div>
+              {/* Hidden until Twilio is wired — see COLLECT_PHONE in @/lib/flags. */}
+              {COLLECT_PHONE && (
+                <div className="sm:col-span-2">
+                  <Label htmlFor="pass-phone" className="text-xs">Phone (optional)</Label>
+                  <Input
+                    id="pass-phone"
+                    type="tel"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    maxLength={20}
+                  />
+                </div>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
               We use your name to find your pass at the counter, and your email to confirm the

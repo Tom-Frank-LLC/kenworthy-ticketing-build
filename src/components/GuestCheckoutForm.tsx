@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Check, User, Mail, Phone, CreditCard, Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
+import { COLLECT_PHONE } from '@/lib/flags';
 
 interface GuestCheckoutFormProps {
   ticketCount: number;
@@ -45,10 +46,17 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   const [cardReady, setCardReady] = useState(false);
   const cardRef = useRef<SquareCardFormHandle>(null);
 
+  // With no phone field on the form there is nothing for "email or phone" to
+  // fall back to, so email stops being optional. The old rule is kept intact
+  // for the day COLLECT_PHONE goes back on, rather than rewritten from memory.
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!name.trim()) newErrors.name = 'Name is required';
-    if (!email.trim() && !phone.trim()) newErrors.contact = 'Email or phone is required';
+    if (COLLECT_PHONE) {
+      if (!email.trim() && !phone.trim()) newErrors.contact = 'Email or phone is required';
+    } else if (!email.trim()) {
+      newErrors.email = 'Email is required so we can send your tickets';
+    }
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       newErrors.email = 'Invalid email format';
     }
@@ -57,13 +65,16 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   };
 
   const isFree = total <= 0;
+  // With the field hidden `phone` can only ever be '', but send it explicitly
+  // rather than by accident: the server contract carries the key either way.
+  const contactPhone = COLLECT_PHONE ? phone.trim() : '';
 
   const handleSubmit = async () => {
     if (!validate()) return;
     // Free ($0) showing — no card step. The server skips Square for $0 orders,
     // so there is no token to collect; hand back an empty source.
     if (isFree) {
-      onPurchase({ name: name.trim(), email: email.trim(), phone: phone.trim(), newsletter }, '');
+      onPurchase({ name: name.trim(), email: email.trim(), phone: contactPhone, newsletter }, '');
       return;
     }
     if (!cardRef.current) {
@@ -77,7 +88,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
     setTokenizing(true);
     try {
       const sourceId = await cardRef.current.tokenize();
-      onPurchase({ name: name.trim(), email: email.trim(), phone: phone.trim(), newsletter }, sourceId);
+      onPurchase({ name: name.trim(), email: email.trim(), phone: contactPhone, newsletter }, sourceId);
     } catch (err) {
       setErrors({ card: err instanceof Error ? err.message : 'Please check your card details.' });
     } finally {
@@ -107,7 +118,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
           </div>
           <div>
             <Label htmlFor="guest-email" className="text-xs flex items-center gap-1">
-              <Mail className="h-3 w-3" /> Email
+              <Mail className="h-3 w-3" /> Email{COLLECT_PHONE ? '' : ' *'}
             </Label>
             <Input
               id="guest-email"
@@ -119,22 +130,27 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
             />
             {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
           </div>
-          <div>
-            <Label htmlFor="guest-phone" className="text-xs flex items-center gap-1">
-              <Phone className="h-3 w-3" /> Phone
-            </Label>
-            <Input
-              id="guest-phone"
-              type="tel"
-              placeholder="(208) 555-1234"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              maxLength={20}
-            />
-          </div>
+          {/* Hidden until Twilio is wired — see COLLECT_PHONE in @/lib/flags. */}
+          {COLLECT_PHONE && (
+            <div>
+              <Label htmlFor="guest-phone" className="text-xs flex items-center gap-1">
+                <Phone className="h-3 w-3" /> Phone
+              </Label>
+              <Input
+                id="guest-phone"
+                type="tel"
+                placeholder="(208) 555-1234"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                maxLength={20}
+              />
+            </div>
+          )}
           {errors.contact && <p className="text-xs text-destructive mt-1">{errors.contact}</p>}
           <p className="text-xs text-muted-foreground">
-            Provide email or phone so we can send your tickets and QR codes.
+            {COLLECT_PHONE
+              ? 'Provide email or phone so we can send your tickets and QR codes.'
+              : 'Enter your email so we can send your tickets and QR codes.'}
           </p>
           {/* The one place a ticket buyer can opt into email. The signup form
               used to carry this and fed Mailchimp off the new account; there is
