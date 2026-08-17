@@ -47,17 +47,25 @@
 
     --sidebar-background: 0 0% 7%;
     --sidebar-foreground: 38 30% 90%;
-    --sidebar-primary: 333 78% 52%;
-    --sidebar-primary-foreground: 38 30% 96%;
+    --sidebar-primary: 278 58% 64%;
+    --sidebar-primary-foreground: 0 0% 6%;
     --sidebar-accent: 0 0% 12%;
     --sidebar-accent-foreground: 38 30% 90%;
     --sidebar-border: 0 0% 14%;
-    --sidebar-ring: 333 78% 52%;
+    --sidebar-ring: 278 58% 64%;
 
+    /* Green — the scarce CTA colour. See src/lib/greenCta.ts for the four
+       places it is allowed to appear.
+
+       The foreground is off-black, not cream. Cream on this emerald is 2.75:1,
+       below even the 3:1 large-text floor; off-black is 6.46:1. The mismatch
+       was invisible until green became a solid fill — every earlier use of
+       --success was a 15% tint or a text colour, so nothing ever laid
+       --success-foreground on top of it. */
     --success: 142 60% 42%;
-    --success-foreground: 38 30% 96%;
+    --success-foreground: 0 0% 6%;
 
-    --chart-1: 333 78% 52%;
+    --chart-1: 278 58% 64%;
     --chart-2: 41 65% 56%;
     --chart-3: 142 60% 42%;
     --chart-4: 200 70% 55%;
@@ -115,8 +123,13 @@
     @apply bg-card/80 backdrop-blur-xl border border-border/50;
   }
 
+  /* Follows --primary rather than restating it. It used to hardcode the old
+     neon magenta (333 78% 52%), which survived the amethyst switch unnoticed —
+     the sign-in card and the seat map have been glowing the previous brand
+     colour ever since. A literal here also can't be re-themed, which the Color
+     Lab needs it to be. */
   .glow-primary {
-    box-shadow: 0 0 40px -8px hsl(333 78% 52% / 0.45);
+    box-shadow: 0 0 40px -8px hsl(var(--primary) / 0.45);
   }
 
   .glow-accent {

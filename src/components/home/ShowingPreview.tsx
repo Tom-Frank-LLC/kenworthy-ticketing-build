@@ -3,6 +3,8 @@ import { addDays } from 'date-fns';
 import { PlayCircle, Ticket, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime, venueDayKey } from '@/lib/datetime';
 import type { FeedItem } from './TrailerFeed';
 
@@ -106,7 +108,7 @@ export function ShowingPreview({
                   showing a second time — for a preview of one specific showing
                   that is a step with nothing in it. */}
               {item.showingId && (
-                <Button asChild className="gap-2">
+                <Button asChild className={cn('gap-2', GREEN_CTA)}>
                   <Link to={`/showing/${item.showingId}`}>
                     <Ticket className="h-4 w-4" />
                     Get Tickets

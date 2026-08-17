@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Volume2, VolumeX, Film, Sparkles, Music, Ticket } from 'lucide-react';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
+import { GREEN_CTA } from '@/lib/greenCta';
 import { resolveTrailer } from '@/lib/trailer';
 import { formatShowtime } from '@/lib/datetime';
 
@@ -215,7 +217,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                       Learn More
                     </Button>
                   ) : item.showingId ? (
-                    <Button asChild size="lg" className="h-12">
+                    <Button asChild size="lg" className={cn('h-12', GREEN_CTA)}>
                       <Link to={`/showing/${item.showingId}`}>
                         <Ticket className="h-4 w-4 mr-1" /> Get Tickets
                       </Link>

@@ -10,10 +10,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Film } from 'lucide-react';
 import { SEO } from '@/components/SEO';
+import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
+import { useColorLab } from '@/components/colorlab/ColorLabProvider';
 import { subscribeToMailchimp } from '@/lib/mailchimp';
-import { MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
+import { COLOR_LAB_ENABLED, MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
 
 /**
  * The sign-in door.
@@ -36,6 +37,7 @@ export default function Auth() {
   const redirectTo = searchParams.get('redirect') || '/';
   const navigate = useNavigate();
   const { signIn, signUp } = useAuth();
+  const colorLab = useColorLab();
 
   const [signinEmail, setSigninEmail] = useState('');
   const [signinPassword, setSigninPassword] = useState('');
@@ -142,7 +144,17 @@ export default function Auth() {
       <Card className="w-full max-w-md glass glow-primary">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-2">
-            <Film className="h-10 w-10 text-primary" />
+            {/* The Color Lab's only entry point for someone who is not signed
+                in — the reviewers auditioning the palette mostly aren't. It is
+                deliberately not a button and carries no label: an affordance a
+                patron could find is an affordance a patron would click, and
+                there is nothing here for them. Staff are told where it is.
+                Clicking it neither requires nor performs a sign-in. */}
+            <KenworthyLogo
+              size="inline"
+              className={COLOR_LAB_ENABLED ? 'cursor-default' : undefined}
+              onClick={COLOR_LAB_ENABLED ? colorLab.open : undefined}
+            />
           </div>
           <CardTitle className="font-display text-2xl">The Kenworthy</CardTitle>
           <CardDescription>
