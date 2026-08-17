@@ -94,3 +94,31 @@ export const CONCESSION_POS_ENABLED =
  * logged-out viewers, and the trigger on the sign-in card is inert.
  */
 export const COLOR_LAB_ENABLED = import.meta.env.VITE_COLOR_LAB !== 'false';
+
+/**
+ * Whether any purchase form asks the buyer for a phone number.
+ *
+ * **Off**, and this one is not a product decision — it is a delivery fact.
+ * Tickets and passes go out by email (Resend) and SMS (Twilio), and Twilio is
+ * not wired up. So a buyer who gave us only a phone number paid and received
+ * nothing at all: the ticket-checkout server rule is "email or phone", the
+ * phone satisfied it, and the SMS that was supposed to follow does not exist.
+ * Silent, and invisible from our side, because nothing errored.
+ *
+ * Hiding the field is what makes email mandatory in practice. Where a form
+ * already required email (film passes) the field is hidden anyway, because
+ * asking for a number we cannot use and will not call is a small lie.
+ *
+ * Deliberately a literal rather than a `VITE_` env var: flipping it back is one
+ * line in one file, reviewed like any other change, rather than a variable to
+ * remember to set in `.env.staging`, `.env.production` and the Worker. It goes
+ * `true` in the same pull request that finishes the Twilio wiring, and the
+ * phone fields, the email-or-phone rule on ticket checkout, and the old helper
+ * copy all come back together.
+ *
+ * What it does NOT gate is the plumbing. Both checkout forms still send a
+ * `phone` key, both edge functions still accept it, and the server rule stays
+ * lenient at "email or phone" — so nothing downstream has to change in either
+ * direction.
+ */
+export const COLLECT_PHONE = false;

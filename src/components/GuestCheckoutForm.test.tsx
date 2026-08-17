@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { GuestCheckoutForm } from './GuestCheckoutForm';
+import { COLLECT_PHONE } from '@/lib/flags';
 
 /**
  * Guards the wiring between the checkout button and Square's card form.
@@ -36,12 +37,14 @@ vi.mock('@/lib/square', () => ({
 }));
 
 // Exact labels, not /Email/i — the marketing opt-in below the contact fields is
-// also labelled "Email me about…", and a loose match now finds both.
+// also labelled "Email me about…", and a loose match now finds both. The
+// optional " *" is there because COLLECT_PHONE decides whether email is
+// required, and the label says so; the anchor still excludes the opt-in.
+const emailField = () => screen.getByLabelText(/^Email( \*)?$/);
+
 function fillContactDetails() {
   fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Tom Staging' } });
-  fireEvent.change(screen.getByLabelText(/^Email$/), {
-    target: { value: 'tom@example.com' },
-  });
+  fireEvent.change(emailField(), { target: { value: 'tom@example.com' } });
 }
 
 const optIn = () => screen.getByRole('checkbox', { name: /Email me about/i });
@@ -133,5 +136,43 @@ describe('GuestCheckoutForm', () => {
     expect(await screen.findByText(/Name is required/)).toBeInTheDocument();
     expect(tokenizeCard).not.toHaveBeenCalled();
     expect(onPurchase).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The reason email is mandatory while COLLECT_PHONE is off.
+   *
+   * Delivery is Resend or Twilio, and Twilio is not wired up. The old rule was
+   * "email or phone", so a buyer who typed only a phone number was charged and
+   * then sent nothing at all — no email, and an SMS that does not exist. There
+   * was no error anywhere to notice. These two tests are what stops the lenient
+   * rule from creeping back in before the SMS side is real.
+   */
+  describe.skipIf(COLLECT_PHONE)('with phone collection off', () => {
+    it('does not ask for a phone number it cannot deliver to', async () => {
+      render(
+        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={vi.fn()} />,
+      );
+
+      await screen.findByRole('button', { name: /Pay/ });
+      expect(screen.queryByLabelText(/phone/i)).not.toBeInTheDocument();
+    });
+
+    it('refuses a purchase with no email, rather than taking money and sending nothing', async () => {
+      const onPurchase = vi.fn();
+      render(
+        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+      );
+
+      const payButton = await screen.findByRole('button', { name: /Pay/ });
+      await waitFor(() => expect(payButton).toBeEnabled());
+
+      fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Tom Staging' } });
+      fireEvent.click(payButton);
+
+      expect(await screen.findByText(/Email is required so we can send your tickets/))
+        .toBeInTheDocument();
+      expect(tokenizeCard).not.toHaveBeenCalled();
+      expect(onPurchase).not.toHaveBeenCalled();
+    });
   });
 });
