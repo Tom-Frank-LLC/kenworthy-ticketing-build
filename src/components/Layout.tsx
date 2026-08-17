@@ -260,6 +260,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <p className="font-serif">Performing Arts Centre</p>
             <p className="font-serif">Celebrating 100 Years · Est. 1926</p>
             <p className="mt-3 text-xs">© {new Date().getFullYear()} Kenworthy</p>
+            <p className="mt-2 text-xs">
+              <Link to="/privacy" className="hover:text-primary transition-colors">
+                Privacy Policy
+              </Link>
+              <span aria-hidden className="mx-1.5 text-muted-foreground/50">·</span>
+              <Link to="/terms" className="hover:text-primary transition-colors">
+                Terms of Use
+              </Link>
+            </p>
             {/* Reachable, unadvertised. Staff know it is here; a patron who
                 finds it has nothing to gain by it. Dropped from sitemap.xml
                 for the same reason. */}

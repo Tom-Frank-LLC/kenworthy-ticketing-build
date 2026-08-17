@@ -41,6 +41,8 @@ const AboutPage = lazyWithRecovery(() => import("./pages/About"));
 const HiringPage = lazyWithRecovery(() => import("./pages/Hiring"));
 const VolunteerPage = lazyWithRecovery(() => import("./pages/Volunteer"));
 const PressPage = lazyWithRecovery(() => import("./pages/Press"));
+const Privacy = lazyWithRecovery(() => import("./pages/Privacy"));
+const Terms = lazyWithRecovery(() => import("./pages/Terms"));
 
 const AdminDashboard = lazyWithRecovery(() => import("./pages/admin/AdminDashboard"));
 const MovieForm = lazyWithRecovery(() => import("./pages/admin/MovieForm"));
@@ -126,6 +128,8 @@ const App = () => (
                   <Route path="/hiring" element={<HiringPage />} />
                   <Route path="/accessibility" element={<AccessibilityPage />} />
                   <Route path="/volunteer" element={<VolunteerPage />} />
+                  <Route path="/privacy" element={<Privacy />} />
+                  <Route path="/terms" element={<Terms />} />
                   <Route path="/superadmin" element={<Superadmin />} />
                   <Route path="/contract/:token" element={<RentalContract />} />
                   <Route path="/verify/:id" element={<VerifyContract />} />
