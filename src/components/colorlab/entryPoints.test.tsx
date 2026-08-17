@@ -33,6 +33,18 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/hooks/useHiringEnabled', () => ({ useHiringEnabled: () => false }));
 
+// The provider now reads the published site theme, which pulls in the real
+// Supabase client — and that throws "supabaseUrl is required" without a built
+// env. Stubbing the client rather than the siteTheme module keeps the
+// precedence logic under test instead of mocking it away.
+vi.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }),
+    }),
+  },
+}));
+
 vi.mock('@/components/NewsletterSignup', () => ({ NewsletterSignup: () => null }));
 
 vi.mock('@/components/MobileNav', () => ({ MobileNav: () => null }));

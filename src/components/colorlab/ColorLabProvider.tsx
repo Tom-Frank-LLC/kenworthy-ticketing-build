@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -10,40 +11,48 @@ import {
 } from 'react';
 import { lazyWithRecovery } from '@/lib/lazyWithRecovery';
 import { COLOR_LAB_ENABLED } from '@/lib/flags';
+import { isHex, OFF, readLabState, writeLabState, type LabState } from '@/lib/colorLab';
 import {
-  applyLabState,
-  isHex,
-  OFF,
-  readLabState,
-  writeLabState,
-  type LabState,
-} from '@/lib/colorLab';
+  applyEffectiveTheme,
+  loadSiteTheme,
+  NO_THEME,
+  subscribeSiteTheme,
+  type PublishedTheme,
+} from '@/lib/siteTheme';
 
 /**
- * The Color Lab's state, and the thing that puts it on the page.
+ * The Color Lab's state, and the thing that puts colour on the page.
  *
- * Mounted once, above `Layout`, so both entry points can reach it: the footer
- * link a signed-in staffer clicks, and the logo on the sign-in card a
- * logged-out reviewer clicks. See `src/lib/colorLab.ts` for what "enabled"
- * actually costs (a few inline custom properties on `<html>`, one tab, no
- * server).
+ * Two layers meet here, and only here:
  *
- * The panel itself is a separate chunk. A ticket buyer who never triggers the
- * Lab downloads the ~1kB of this provider and nothing else — the preset grids,
- * the pickers and the contrast readout only arrive if someone opens it.
+ *   session override  (this tab, from the Lab)   — wins
+ *   published theme   (app_config, every visitor)
+ *   index.css                                    — the floor
+ *
+ * Precedence is per colour rather than wholesale, so auditioning a green
+ * against the published purple works the way you would expect.
+ *
+ * Note what is *not* gated on `COLOR_LAB_ENABLED`: the published theme. The
+ * flag hides the editor, not the site's configured colours — switching the Lab
+ * off must not silently repaint the site back to the code defaults.
+ *
+ * The panel itself is a separate chunk. A ticket buyer who never opens the Lab
+ * downloads this provider and nothing else.
  */
 
 interface ColorLabApi {
   /** Build-time flag AND the session toggle — the panel is showing. */
   enabled: boolean;
+  /** This tab's override. null per colour means "fall through". */
   purple: string | null;
   green: string | null;
-  /** Idempotent: clicking the trigger twice does not close the Lab. */
+  /** What every visitor currently gets. */
+  published: PublishedTheme;
   open: () => void;
   close: () => void;
   setPurple: (hex: string) => void;
   setGreen: (hex: string) => void;
-  /** Drop both overrides; the Lab stays open on the shipped theme. */
+  /** Drop this tab's override; the Lab stays open on the published theme. */
   reset: () => void;
 }
 
@@ -52,6 +61,7 @@ const ColorLabContext = createContext<ColorLabApi>({
   enabled: false,
   purple: null,
   green: null,
+  published: NO_THEME,
   open: noop,
   close: noop,
   setPurple: noop,
@@ -70,24 +80,38 @@ export function ColorLabProvider({ children }: { children: React.ReactNode }) {
   // was open earlier this session — a navigation must not flash the shipped
   // colours before the override lands.
   const [state, setState] = useState<LabState>(() => (COLOR_LAB_ENABLED ? readLabState() : OFF));
+  const [published, setPublished] = useState<PublishedTheme>(NO_THEME);
+
+  // The published theme arrives asynchronously; main.tsx has already painted
+  // the cached guess, so this is the reconcile rather than the first paint.
+  useEffect(() => {
+    let alive = true;
+    loadSiteTheme().then(t => {
+      if (alive) setPublished(t);
+    });
+    const unsubscribe = subscribeSiteTheme(t => {
+      if (alive) setPublished(t);
+    });
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, []);
 
   // useLayoutEffect, not useEffect: it runs before the browser paints, so the
-  // custom properties are in place for the first frame rather than one frame
-  // late. Cheap — it is a handful of setProperty calls.
+  // custom properties are in place for the frame rather than one frame late.
   useLayoutEffect(() => {
-    if (!COLOR_LAB_ENABLED) return;
-    applyLabState(state);
-    writeLabState(state);
-  }, [state]);
+    applyEffectiveTheme(published);
+    if (COLOR_LAB_ENABLED) writeLabState(state);
+  }, [state, published]);
 
-  // The flag can only ever turn things off, so a stale session from before it
-  // was flipped cannot resurrect the Lab. Strip anything a previous bundle left
-  // on the document.
+  // The flag can only ever turn the *editor* off, so a stale session from
+  // before it was flipped cannot resurrect the Lab. The published theme is
+  // untouched by this — it is site config, not the Lab.
   const stripped = useRef(false);
   useLayoutEffect(() => {
     if (COLOR_LAB_ENABLED || stripped.current) return;
     stripped.current = true;
-    applyLabState(OFF);
     writeLabState(OFF);
   }, []);
 
@@ -108,13 +132,14 @@ export function ColorLabProvider({ children }: { children: React.ReactNode }) {
       enabled: COLOR_LAB_ENABLED && state.on,
       purple: state.purple,
       green: state.green,
+      published,
       open,
       close,
       setPurple,
       setGreen,
       reset,
     }),
-    [state, open, close, setPurple, setGreen, reset],
+    [state, published, open, close, setPurple, setGreen, reset],
   );
 
   return (
