@@ -101,11 +101,12 @@ async function sq(
   return data ?? {};
 }
 
-async function listAllItems(config: SquareConfig, version: string) {
+async function listAllItems(config: SquareConfig, version: string, catalogVersion?: number) {
   const objects: any[] = [];
   let cursor: string | undefined;
   do {
     const q = new URLSearchParams({ types: "ITEM" });
+    if (catalogVersion) q.set("catalog_version", String(catalogVersion));
     if (cursor) q.set("cursor", cursor);
     const res = await sq(config, `/catalog/list?${q}`, { version });
     objects.push(...(res.objects ?? []));
@@ -335,14 +336,92 @@ Deno.serve(async (req: Request) => {
     let dumps: any = null;
     if (Array.isArray(payload.dump_ids) && payload.dump_ids.length) {
       dumps = [];
-      for (const id of payload.dump_ids.slice(0, 5)) {
+      for (const id of payload.dump_ids.slice(0, 40)) {
         try {
-          const d = await sq(config, `/catalog/object/${id}?include_related_objects=false`, { version: CURRENT_VERSION });
+          const cv = payload.catalog_version ? `&catalog_version=${payload.catalog_version}` : "";
+          const d = await sq(config, `/catalog/object/${id}?include_related_objects=false${cv}`, { version: CURRENT_VERSION });
           dumps.push(d.object ?? null);
         } catch (e: any) {
           dumps.push({ id, error: e.message ?? String(e) });
         }
       }
+    }
+
+    // Capture the catalog as it stood at a chosen instant, in full, to a file
+    // we control.
+    //
+    // Square retains catalog history and serves it through `catalog_version`,
+    // which is how the 2026-08-14 damage turned out to be readable after all --
+    // the incident note's "nothing on our side can reconstruct them" was wrong.
+    // But Square documents no retention window for that history, so it is not
+    // something to depend on. This writes the whole pre-damage catalog to
+    // Supabase Storage and returns a short-lived signed URL, so the recovery
+    // source becomes a file we own rather than a vendor behaviour that could
+    // expire without notice.
+    if (payload.snapshot_version) {
+      const at = Number(payload.snapshot_version);
+      const objects = await listAllItems(config, CURRENT_VERSION, at);
+      const body = JSON.stringify({
+        captured_at: new Date().toISOString(),
+        catalog_version: at,
+        square_version: CURRENT_VERSION,
+        environment: config.environment,
+        item_count: objects.length,
+        objects,
+      });
+
+      const bucket = "catalog-snapshots";
+      try { await admin.storage.createBucket(bucket, { public: false }); } catch { /* exists */ }
+      const path = `square-catalog-${at}.json`;
+      const up = await admin.storage.from(bucket)
+        .upload(path, new Blob([body], { type: "application/json" }), { upsert: true });
+      if (up.error) return json({ error: `upload failed: ${up.error.message}` }, 500);
+      const signed = await admin.storage.from(bucket).createSignedUrl(path, 3600);
+      if (signed.error) return json({ error: `sign failed: ${signed.error.message}` }, 500);
+
+      return json({
+        ok: true,
+        snapshot: {
+          catalog_version: at,
+          item_count: objects.length,
+          bytes: body.length,
+          path: `${bucket}/${path}`,
+          signed_url: signed.data.signedUrl,
+        },
+      });
+    }
+
+    // How much of the 2026-08-14 damage is still readable from Square's own
+    // catalog history? Walk the catalog as it stood at a chosen instant and
+    // compare description/image presence against today.
+    let recovery: any = null;
+    if (payload.compare_version) {
+      const past = await listAllItems(config, CURRENT_VERSION, Number(payload.compare_version));
+      const pastById = new Map(past.map((o) => [o.id, o]));
+      const text = (o: any) =>
+        (o?.item_data?.description || o?.item_data?.description_html || "").length;
+      const imgs = (o: any) => (o?.item_data?.image_ids || []).length;
+      let lostDesc = 0, lostImg = 0, recoverableDesc = 0, recoverableImg = 0, sameDesc = 0;
+      const examples: any[] = [];
+      for (const nowObj of listCurrent) {
+        const then = pastById.get(nowObj.id);
+        if (!then) continue;
+        const dNow = text(nowObj), dThen = text(then);
+        const iNow = imgs(nowObj), iThen = imgs(then);
+        if (dThen > 0 && dNow === 0) { lostDesc++; recoverableDesc++;
+          if (examples.length < 8) examples.push({ id: nowObj.id, name: nowObj.item_data?.name, desc_chars_then: dThen, images_then: iThen }); }
+        else if (dThen > 0 && dNow > 0) sameDesc++;
+        if (iThen > 0 && iNow === 0) { lostImg++; recoverableImg++; }
+      }
+      recovery = {
+        as_of: payload.compare_version,
+        items_in_past_walk: past.length,
+        items_now: listCurrent.length,
+        lost_description_recoverable: recoverableDesc,
+        lost_images_recoverable: recoverableImg,
+        still_have_description: sameDesc,
+        examples,
+      };
     }
 
     // Cross-reference the CSV tokens the caller sends.
@@ -444,6 +523,7 @@ Deno.serve(async (req: Request) => {
         ? "STOP — RetrieveCatalogObject does not return the event block for some items. Read-modify-write would WIPE venue/date."
         : "Round-trip safe on the retrieve axis (still requires a verified single-item write test).",
       wipe,
+      recovery,
       dumps,
       csv,
     });

@@ -141,13 +141,17 @@ Deno.serve(async (req: Request) => {
     const token = String(row.token ?? "").trim();
     const rec: any = { token, name: null, item_id: null, action: null };
     try {
-      // The CSV's token is an ITEM_VARIATION id; the event block lives on the
-      // parent ITEM.
-      const v = await sq(config, `/catalog/object/${token}?include_related_objects=false`);
-      let itemId = token;
-      if (v.object?.type === "ITEM_VARIATION") {
-        itemId = v.object.item_variation_data?.item_id;
-        if (!itemId) throw new Error("variation has no parent item_id");
+      // Callers may address the ITEM directly (restores work from item ids) or
+      // by the CSV's token, which is an ITEM_VARIATION id whose parent ITEM is
+      // where the event block lives.
+      let itemId = String(row.item_id ?? "").trim();
+      if (!itemId) {
+        const v = await sq(config, `/catalog/object/${token}?include_related_objects=false`);
+        itemId = token;
+        if (v.object?.type === "ITEM_VARIATION") {
+          itemId = v.object.item_variation_data?.item_id;
+          if (!itemId) throw new Error("variation has no parent item_id");
+        }
       }
       rec.item_id = itemId;
 
@@ -178,6 +182,45 @@ Deno.serve(async (req: Request) => {
       // guessed timestamp to make the shape look complete would be worse than
       // leaving it empty. So a row without start_at sets the location fields
       // only and leaves any existing dates exactly as they are.
+      // Restore mode: replace the block with an exact captured one. Needed
+      // because the merge below can only add or change fields, never remove
+      // them -- and undoing a bad write means putting back a block that had NO
+      // end_at where we wrongly added one.
+      if (row.event_override) {
+        outgoing.item_data.event = row.event_override;
+        rec.pass = "restore";
+        const changedR = diffPaths(original, outgoing);
+        const strayR = changedR.filter((p) => !p.startsWith("item_data.event"));
+        rec.changed_paths = changedR;
+        rec.event_before = original.item_data?.event ?? null;
+        rec.event_after = outgoing.item_data.event;
+        if (strayR.length) {
+          rec.action = "refused";
+          rec.reason = `would also change: ${strayR.join(", ")}`;
+          results.push(rec);
+          continue;
+        }
+        if (dryRun) { rec.action = "dry_run"; results.push(rec); continue; }
+        await sq(config, "/catalog/object", {
+          method: "POST",
+          body: { idempotency_key: crypto.randomUUID(), object: outgoing },
+        });
+        const afterR = await sq(config, `/catalog/object/${itemId}?include_related_objects=false`);
+        const storedR = afterR.object?.item_data?.event ?? null;
+        const want = row.event_override;
+        const okR = !!storedR &&
+          storedR.start_at === want.start_at &&
+          (storedR.end_at ?? null) === (want.end_at ?? null) &&
+          storedR.event_location_name === want.event_location_name;
+        rec.action = okR ? "restored" : "accepted_but_not_stored";
+        rec.stored_event = storedR;
+        rec.collateral_changes = diffPaths(original, afterR.object)
+          .filter((p) => !p.startsWith("item_data.event"))
+          .filter((p) => { const l = p.split(".").pop(); return l !== "version" && l !== "updated_at"; });
+        results.push(rec);
+        continue;
+      }
+
       const settingDates = !!row.start_at;
       outgoing.item_data.event = {
         ...existing,                       // keep uid and anything undocumented
