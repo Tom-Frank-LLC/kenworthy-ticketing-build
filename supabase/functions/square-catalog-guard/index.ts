@@ -111,7 +111,7 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { /* none */ }
 
   const action: string = payload.action ?? "check";
-  if (!["snapshot", "check", "repair"].includes(action)) {
+  if (!["snapshot", "check", "repair", "install_schedule"].includes(action)) {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
 
@@ -142,6 +142,45 @@ Deno.serve(async (req: Request) => {
     if (!user) return json({ error: "Unauthorized" }, 401);
     const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
     if (!isAdmin) return json({ error: "Admin only" }, 403);
+  }
+
+  // Turn the nightly schedule on without anybody handling a credential.
+  //
+  // The schedule needs the service role key stored in Vault so pg_net can
+  // present it. Asking a person to paste it into the SQL editor went wrong twice
+  // — the placeholder text was submitted verbatim both times — and it was a poor
+  // design regardless: hand-transcribing a credential into a query.
+  //
+  // This function already holds the key and already talks to Postgres as
+  // service_role, so it can hand the key over itself. Admin-gated, and refused
+  // to machine callers so the scheduler cannot reconfigure its own schedule.
+  if (action === "install_schedule") {
+    if (isMachine) {
+      return json({ error: "Only an admin can install the schedule." }, 403);
+    }
+    // The URL this very request arrived on, so it is right by construction
+    // rather than by someone typing the project ref correctly.
+    const here = new URL(req.url);
+    const functionUrl = `${here.origin}${here.pathname}`;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+    const { data, error } = await admin.rpc("configure_square_catalog_guard", {
+      p_url: functionUrl,
+      p_service_key: serviceKey,
+    });
+    if (error) {
+      return json({ error: `Could not configure the schedule: ${error.message}` }, 500);
+    }
+    return json({
+      ok: true,
+      action,
+      configured_url: functionUrl,
+      result: data,
+      note: "Schedule configured. Nothing was pasted and no key left the platform. " +
+            "Prove it end to end: run { action: 'check' } from the scheduler by " +
+            "calling select public.run_square_catalog_guard_check(); and confirm a " +
+            "new row appears in square_catalog_guard_runs.",
+    });
   }
 
   const loaded = loadSquareConfig();

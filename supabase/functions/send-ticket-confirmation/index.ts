@@ -136,11 +136,23 @@ Deno.serve(async (req: Request) => {
       if (!order || order.user_id !== callerId) return json({ error: 'Order not found' }, 404);
     }
 
+    // A2P 10DLC consent, three-valued exactly as deliver.ts defines it.
+    //
+    // A `false` is honoured from anyone — it only ever suppresses a text, and
+    // "do not text this person" is not a claim that needs authority. A `true`
+    // is an affirmative assertion that someone opted in, so only an operator
+    // may make it; everyone else's `true` degrades to "no signal" rather than
+    // being refused, since the caller may simply be an older client.
+    let smsConsent: boolean | undefined;
+    if (body.sms_consent === false) smsConsent = false;
+    else if (body.sms_consent === true && isOperator) smsConsent = true;
+
     const result = await deliverConfirmation(admin, orderToken, {
       // Overrides are honoured for operators only. A patron resending their own
       // confirmation gets it at the address already on the order, and cannot
       // point it somewhere else.
       ...overridesFor(caller, body),
+      smsConsent,
       accountCreated: body.account_created === true,
       force: body.force === true,
     });

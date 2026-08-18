@@ -227,6 +227,21 @@ export interface DeliverOptions {
   name?: string;
   /** True when this checkout is what created the account. */
   accountCreated?: boolean;
+  /**
+   * Whether the buyer affirmatively agreed to be texted.
+   *
+   * Explicitly three-valued. `false` means asked and declined, and it blocks
+   * the SMS outright — including the number this function would otherwise
+   * recover from auth or `profiles`, which is the case that matters: a
+   * returning buyer whose number we already hold has not consented merely by
+   * having bought before. `undefined` means the caller has no consent signal
+   * (an operator resend, an older client) and leaves the previous behaviour
+   * alone.
+   *
+   * A2P 10DLC treats consent as per-number and affirmative, so the absence of
+   * a "no" is not a "yes" — but neither is a number in a database.
+   */
+  smsConsent?: boolean;
   /** Resend even if a confirmation already went out. */
   force?: boolean;
 }
@@ -370,6 +385,11 @@ export async function deliverConfirmation(
   }
 
   // ---- SMS ----------------------------------------------------------------
+  // Consent first, and before the number is even considered. Declining is not
+  // a delivery failure and must not be recorded as one — there is nothing
+  // wrong, the buyer simply did not ask to be texted.
+  if (opts.smsConsent === false) phone = '';
+
   // Unreachable-number errors are 400 (nothing to retry — the number is not
   // dialable) and provider errors 502 (ours or Twilio's, and worth retrying),
   // which is the same split the single-channel version made.

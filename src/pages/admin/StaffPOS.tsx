@@ -30,7 +30,7 @@ import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { COLLECT_PHONE, CONCESSION_POS_ENABLED, SMS_DELIVERY_LIVE } from '@/lib/flags';
+import { COLLECT_PHONE, CONCESSION_POS_ENABLED } from '@/lib/flags';
 import { formatShowtime } from '@/lib/datetime';
 import TicketScanner from './TicketScanner';
 
@@ -373,6 +373,20 @@ export default function StaffPOS() {
     const email = patronEmail.trim();
     const phone = patronPhone.trim();
     if (!email && !phone) return;
+
+    // No email means nothing can go out, because the counter cannot text.
+    // Online checkout carries an A2P 10DLC opt-in checkbox; a number typed at
+    // this window has no consent behind it and no record that anyone asked.
+    // Said plainly here rather than sent to the server to fail — and the sale
+    // still stands, exactly as it does for any other delivery failure.
+    if (!email) {
+      toast.warning(
+        'Sale complete, but there is no email to send the ticket to — the box office cannot text yet. ' +
+        'Take an email and use Resend below.',
+        { duration: 12000 },
+      );
+      return;
+    }
     try {
       const result = await invokeFunction<{
         delivered?: boolean;
@@ -380,16 +394,20 @@ export default function StaffPOS() {
         partial_error?: string;
       }>('send-ticket-confirmation', {
         order_token: orderToken,
-        email: email || undefined,
+        email,
         phone: phone || undefined,
+        // Never true from here. See SMS_DELIVERY_LIVE item 5 in @/lib/flags:
+        // the counter has no opt-in checkbox, so there is no consent to assert,
+        // and a number on a POS sale is a way to reach the patron rather than a
+        // delivery address. Flip this only alongside a real counter opt-in.
+        sms_consent: false,
       });
       if (result?.delivered) {
-        toast.success(`Tickets sent to ${result.channel === 'sms' ? phone : email}.`);
+        toast.success(`Tickets sent to ${email}.`);
       }
-      // Both channels are attempted now, so a working email plus a number we
-      // cannot text is a *delivered* order with a note attached. Say so rather
-      // than staying silent — until the A2P campaign clears (SMS_DELIVERY_LIVE)
-      // every phone number produces one of these.
+      // Kept even though the counter sends email only: `partial_error` is how
+      // deliver.ts reports a channel that was attempted and failed, and a
+      // delivered order with something still wrong should never pass silently.
       if (result?.partial_error) {
         toast.warning(
           `Sent, but one channel did not go through: ${result.partial_error}`,
@@ -608,20 +626,18 @@ export default function StaffPOS() {
       toast.error('Select a showing and at least one ticket');
       return;
     }
-    // Contact is required because it is now the delivery address: `deliverPos`
-    // sends the tickets to whatever is typed here, and nothing else on this
-    // screen knows who the patron is (the ticket rows are owned by the staff
-    // member ringing the sale).
+    // The email is the delivery address: `deliverPos` sends the tickets to
+    // whatever is typed here, and nothing else on this screen knows who the
+    // patron is (the ticket rows are owned by the staff member ringing the
+    // sale). The phone is a contact, not a channel — see the note by the field.
     //
-    // Still "email or phone", not "email": the server rule is the same, and a
-    // phone-only sale is accepted deliberately rather than blocked. Until the
-    // A2P campaign clears (SMS_DELIVERY_LIVE) the text will not go out, and the
-    // counter is told so — by the hint below before the sale, and by the failure
-    // toast after it — rather than being quietly refused at a busy window.
+    // Still only a warning, not a block. A walk-in who has no email address
+    // should not be turned away at a busy window; the sale goes through, and
+    // `deliverPos` says plainly that nothing could be sent.
     if (COLLECT_PHONE ? (!patronEmail && !patronPhone) : !patronEmail) {
       toast.error(
         COLLECT_PHONE
-          ? 'Enter a patron email or phone to send the tickets to'
+          ? 'Enter a patron email (or at least a phone) before selling'
           : 'Enter a patron email to send the tickets to',
       );
       return;
@@ -653,8 +669,8 @@ export default function StaffPOS() {
     if (!resendingTx) return;
     const email = resendEmail.trim();
     const phone = resendPhone.trim();
-    if (!email && !phone) {
-      toast.error('Enter an email or phone to send to');
+    if (!email) {
+      toast.error('Enter an email — the box office cannot send a ticket by text yet');
       return;
     }
     setResending(true);
@@ -667,9 +683,11 @@ export default function StaffPOS() {
         order_token: resendingTx.orderToken,
         email: email || undefined,
         phone: phone || undefined,
+        // As in deliverPos: no counter opt-in, so no consent to assert.
+        sms_consent: false,
         force: true,
       });
-      toast.success(`Confirmation resent to ${result?.channel === 'sms' ? phone : email}.`);
+      toast.success(`Confirmation resent to ${email}.`);
       if (result?.partial_error) {
         toast.warning(
           `Sent, but one channel did not go through: ${result.partial_error}`,
@@ -915,7 +933,7 @@ export default function StaffPOS() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="patron-email">Email{COLLECT_PHONE ? '' : ' *'}</Label>
+                <Label htmlFor="patron-email">Email — where the ticket is sent</Label>
                 <Input
                   id="patron-email"
                   type="email"
@@ -924,10 +942,13 @@ export default function StaffPOS() {
                   onChange={e => setPatronEmail(e.target.value)}
                 />
               </div>
-              {/* Back with COLLECT_PHONE (see @/lib/flags). The counter now
-                  does dispatch a confirmation, and both channels are attempted
-                  — so this is a delivery address, and the hint says plainly
-                  which of the two actually arrives today. */}
+              {/* Back with COLLECT_PHONE (see @/lib/flags), and — like the
+                  film-pass form, and unlike online checkout — deliberately
+                  without an SMS consent line. The counter dispatches by email
+                  only, because an A2P 10DLC opt-in cannot be collected by a
+                  staff member typing into a field. So this number is a way to
+                  reach the patron, not a delivery address, and the hint says
+                  so. */}
               {COLLECT_PHONE && (
                 <div className="space-y-2">
                   <Label htmlFor="patron-phone">Phone (optional)</Label>
@@ -938,11 +959,9 @@ export default function StaffPOS() {
                     value={patronPhone}
                     onChange={e => setPatronPhone(e.target.value)}
                   />
-                  {!SMS_DELIVERY_LIVE && (
-                    <p className="text-xs text-muted-foreground">
-                      Texts are not sending yet — take an email if you can.
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    A way to reach the patron — tickets are sent by email.
+                  </p>
                 </div>
               )}
             </CardContent>
@@ -1157,11 +1176,9 @@ export default function StaffPOS() {
                     value={resendPhone}
                     onChange={e => setResendPhone(e.target.value)}
                   />
-                  {!SMS_DELIVERY_LIVE && (
-                    <p className="text-xs text-muted-foreground">
-                      Texts are not sending yet — use the email address.
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Contact only — the resend goes to the email address.
+                  </p>
                 </div>
               )}
             </div>

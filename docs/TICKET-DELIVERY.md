@@ -131,6 +131,35 @@ Film passes are not on this path. `film-pass-checkout` calls
 given on the pass form is never texted — which is why that form carries no SMS
 consent line.
 
+**A number is not consent.** Ticket checkout carries a separate SMS checkbox,
+unchecked by default, and the buyer's answer travels with the order as
+`sms_consent` — it is not inferred from the phone field being filled in. The
+server cannot tell those apart from the number alone, and the distinction is the
+whole of A2P 10DLC compliance: consent has to be an affirmative act about a
+specific number.
+
+`deliverConfirmation` takes `smsConsent` as three-valued on purpose:
+
+| Value | Meaning | Effect |
+|---|---|---|
+| `true` | Asked and agreed | SMS sent |
+| `false` | Asked and declined | SMS skipped entirely, **including** a number recovered from auth or `profiles` |
+| `undefined` | No signal (operator resend, older client) | Previous behaviour, unchanged |
+
+The `false` case is why this lives in the server and not only in the form. A
+returning buyer whose number is already on their profile has not consented by
+having bought before, and `deliverConfirmation` recovers a phone from `profiles`
+when the caller does not supply one — so a client-side check alone would leak.
+Declining is also **not** recorded as a `confirmation_error`: nothing went
+wrong, and logging it would put every buyer who left the box unticked into the
+list of orders that need looking at.
+
+Known gap: consent is per-request, not stored. An operator resend through
+`send-ticket-confirmation` carries no consent field and falls into the
+`undefined` case, so it can text a stored number. Closing that means a
+`sms_consent` column on `tickets`, read back through `loadOrder` — worth doing
+before the volume justifies it, and required if resends ever become routine.
+
 **The box office is not on this pipeline at all.** `StaffPOS` requires a patron
 email or phone before it will take a sale, which reads as though a confirmation
 follows. It does not. The screen inserts ticket rows straight into `tickets`

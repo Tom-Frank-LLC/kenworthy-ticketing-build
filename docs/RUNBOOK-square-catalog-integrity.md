@@ -173,12 +173,24 @@ This is the project's first scheduled job.
 It is **inert until configured**, so applying the migration anywhere is safe. Two
 values are needed, neither of which belongs in git:
 
-```sql
-select public.configure_square_catalog_guard(
-  'https://<project-ref>.supabase.co/functions/v1/square-catalog-guard',
-  '<that project's service role key>'
-);
+Call the guard's `install_schedule` action as an admin — from the admin app, or
+any authenticated request:
+
 ```
+POST /functions/v1/square-catalog-guard   { "action": "install_schedule" }
+```
+
+The function already holds the service role key and already talks to Postgres as
+service_role, so it stores the key in Vault itself and derives the URL from the
+request it arrived on. Nothing is transcribed and no credential leaves the
+platform.
+
+There is still a manual path — `configure_square_catalog_guard(url, key)` from
+the SQL editor — but prefer the action. The manual path exists for recovery, and
+its arguments are validated precisely because hand-copying a key is where this
+went wrong twice.
+
+Configuring is not proof. Run the end-to-end check below.
 
 Run it in the **Supabase SQL editor**, which is also the only convenient place to
 paste a service role key. It accepts either a privileged direct connection (the
@@ -194,12 +206,34 @@ the key rather than adding a second one. Until then the job logs
 person repairs, having read what the check found — every incident in this
 project's history came from a write that nobody was watching.
 
-To confirm it is wired:
+To confirm it is wired, run these ONE AT A TIME — the SQL editor only returns the
+last statement's result:
 
 ```sql
-select jobname, schedule from cron.job where jobname = 'square-catalog-guard-daily';
-select ran_at, lost_event_block, lost_variations, note
-  from square_catalog_guard_runs order by ran_at desc limit 5;
+select public.run_square_catalog_guard_check();
+```
+```sql
+select ran_at, items_seen, lost_event_block, lost_variations, note
+  from square_catalog_guard_runs order by ran_at desc limit 3;
+```
+
+A **new row** within a few seconds is the proof: it means the service-role caller
+got through, walked the catalog and logged. `dispatched` on its own proves only
+that the request was sent.
+
+If no new row appears, the HTTP status is here — this is the only place a failed
+nightly run leaves a trace:
+
+```sql
+select status_code, left(content, 300), created
+  from net._http_response order by created desc limit 5;
+```
+
+And the schedule itself:
+
+```sql
+select jobname, schedule, active from cron.job
+ where jobname = 'square-catalog-guard-daily';
 ```
 
 Re-snapshot after any deliberate bulk change, or the next check reports your own

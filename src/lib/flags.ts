@@ -122,11 +122,25 @@ export const COLOR_LAB_ENABLED = import.meta.env.VITE_COLOR_LAB !== 'false';
  * direction.
  *
  * It also does not promise a text everywhere it shows a field. Ticket checkout
- * and the box office both deliver by SMS alongside email; film passes confirm
- * by email only, so that form asks for a number as a way to reach someone and
- * says so rather than implying a text that is not coming. Wherever a number
- * *is* a delivery address, `SMS_DELIVERY_LIVE` decides what the form claims
- * about it.
+ * delivers by SMS behind a consent checkbox — the A2P 10DLC opt-in, unchecked
+ * by default, carrying all four disclosures the campaign review requires (what
+ * we send, how often, that rates apply, STOP and HELP). Film passes confirm by
+ * email only, so that form asks for a number as a way to reach someone and says
+ * so rather than implying a text that is not coming.
+ *
+ * Note what the checkbox does *not* do: it is not a condition of purchase.
+ * Twilio's first review rejected this campaign partly for looking like one, and
+ * a checkout that cannot be completed without agreeing to texts is a genuine
+ * violation, not a formatting quibble. Nothing on the form may ever be gated on
+ * it.
+ *
+ * **The box office is the unresolved case.** It used to dispatch nothing, so it
+ * needed no opt-in; it now sends the patron their tickets, and a number typed
+ * at the counter has no checkbox behind it and no record of consent. Nothing is
+ * going out today — `SMS_DELIVERY_LIVE` is off, so the POS delivers by email
+ * and a phone-only counter sale fails loudly to the staff member. But counter
+ * consent has to be answered before that flag flips, not after. See the
+ * blocker under `SMS_DELIVERY_LIVE`.
  */
 export const COLLECT_PHONE = true;
 
@@ -156,6 +170,14 @@ export const COLLECT_PHONE = true;
  *      `TWILIO_FROM_NUMBER`.
  *   4. An approved A2P 10DLC campaign attached to that Messaging Service, with
  *      the sending number in its pool.
+ *   5. **An answer for consent at the box office.** Online checkout has its
+ *      opt-in checkbox; StaffPOS has a phone field and a staff member typing
+ *      into it. The moment this flag goes true, `deliverPos` starts texting
+ *      walk-ups whose consent was never captured — the same defect Twilio
+ *      rejected this campaign over the first time. Either capture it at the
+ *      counter (a checkbox the staff member ticks after asking, with the
+ *      disclosures on screen) or keep the POS on email only by not sending
+ *      `phone` from `deliverPos`. Do not flip this flag with the question open.
  *
  * Verify with a phone-only test purchase before flipping it, not after. If
  * Twilio is ever suspended or the campaign lapses, this goes back `false` in
