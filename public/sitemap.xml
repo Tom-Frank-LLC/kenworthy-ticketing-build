@@ -30,6 +30,15 @@
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
+  <!-- Listed on purpose, unlike the other static page in public/. An A2P 10DLC
+       campaign is vetted partly on whether the SMS opt-in disclosure is
+       publicly findable, so this one wants to be crawled rather than merely
+       reachable. -->
+  <url>
+    <loc>%SITE_URL%/sms</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
   <!-- /auth is the staff door now that patrons have no accounts. Not listed:
        there is nothing there for a search visitor. See src/lib/flags.ts. -->
 </urlset>

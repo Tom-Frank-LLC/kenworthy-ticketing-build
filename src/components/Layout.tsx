@@ -268,6 +268,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/terms" className="hover:text-primary transition-colors">
                 Terms of Use
               </Link>
+              <span aria-hidden className="mx-1.5 text-muted-foreground/50">·</span>
+              {/* A plain <a>, not a <Link> — /sms is a static file in public/,
+                  not a route in this app, and the router would swallow it into
+                  the SPA shell. That page exists precisely because the shell is
+                  invisible to anything that does not run JavaScript, so sending
+                  it through the router would defeat it. */}
+              <a href="/sms" className="hover:text-primary transition-colors">
+                Text Message Terms
+              </a>
             </p>
             {/* Reachable, unadvertised. Staff know it is here; a patron who
                 finds it has nothing to gain by it. Dropped from sitemap.xml

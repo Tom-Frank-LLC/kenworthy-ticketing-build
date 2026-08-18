@@ -1,0 +1,251 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kenworthy — Text Message Terms</title>
+<meta name="description" content="How the Kenworthy Performing Arts Centre uses text messages for ticket delivery: what we send, how often, how to opt in, and how to stop.">
+
+<!--
+  The SMS opt-in disclosure, as a page a machine can read.
+
+  This exists because the real opt-in — the consent checkbox on the ticket
+  checkout form — is invisible to anything that does not run JavaScript. The
+  site is a React SPA served by a Cloudflare Worker with
+  `not_found_handling: single-page-application`, so a plain fetch of a showing
+  URL returns a ~4KB shell with zero <input> elements and none of this copy;
+  the disclosure lives in a code-split chunk, and even in a browser it is
+  behind a click (you have to add a ticket before the contact fields render).
+  An A2P 10DLC vetting crawler therefore sees no checkbox and no disclosures,
+  and reports exactly that — which is what happened on the first submission.
+
+  So this page is deliberately plain HTML with no scripts, no framework and no
+  interaction. It is the URL to hand to Twilio, TCR, or a carrier audit, and it
+  renders the same for all of them as it does for a patron.
+
+  Keep it in sync with the checkbox label in `src/components/GuestCheckoutForm.tsx`
+  and the message body in `supabase/functions/_shared/notify.ts` (buildSmsBody).
+  A disclosure that no longer matches what the form says, or samples that no
+  longer match what we send, is worse than none — the first campaign submission
+  was rejected partly for quoting copy the form had stopped showing.
+
+  Two things that will go stale on their own:
+
+  1. The sample links use the workers.dev host because that is what the
+     edge functions' SITE_URL secret is set to today. At the kenworthy.org
+     cutover, change SITE_URL and these samples in the same commit.
+  2. STOP and HELP are answered by the Twilio Messaging Service's Advanced
+     Opt-Out, not by anything in this repo — there is no inbound webhook here.
+     This page states what those replies do, so Advanced Opt-Out must be
+     enabled and its HELP response set to name the theatre. If it is ever
+     turned off, this page becomes a promise nothing keeps.
+-->
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap');
+
+  /* Tokens copied from src/index.css so this page belongs to the same site it
+     describes, without importing the app's stylesheet. */
+  :root{
+    --background:0 0% 6%;
+    --foreground:38 30% 94%;
+    --card:0 0% 9%;
+    --muted-foreground:38 10% 65%;
+    --accent:41 65% 56%;
+    --primary:271 60% 62%;
+    --border:0 0% 16%;
+    --radius:0.5rem;
+  }
+
+  *{box-sizing:border-box}
+  html{background:hsl(var(--background))}
+  body{
+    margin:0;
+    padding:2.5rem 1.25rem 4rem;
+    background:hsl(var(--background));
+    color:hsl(var(--foreground));
+    font-family:'Fraunces',Georgia,serif;
+    font-size:17px;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  main{max-width:44rem;margin:0 auto}
+
+  h1{
+    font-family:'Anton',Impact,sans-serif;
+    font-weight:400;
+    text-transform:uppercase;
+    letter-spacing:.02em;
+    font-size:clamp(1.9rem,5vw,2.6rem);
+    line-height:1.1;
+    margin:0 0 .35rem;
+  }
+  h2{
+    font-family:'Anton',Impact,sans-serif;
+    font-weight:400;
+    text-transform:uppercase;
+    letter-spacing:.02em;
+    font-size:1.15rem;
+    margin:2.25rem 0 .6rem;
+    color:hsl(var(--accent));
+  }
+  p{margin:0 0 1rem}
+  ul{margin:0 0 1rem;padding-left:1.25rem}
+  li{margin:0 0 .45rem}
+  strong{font-weight:600}
+  a{color:hsl(var(--primary))}
+
+  .lede{color:hsl(var(--muted-foreground));margin-bottom:2rem}
+  .rule{border:0;border-top:1px solid hsl(var(--border));margin:2.5rem 0}
+
+  .card{
+    background:hsl(var(--card));
+    border:1px solid hsl(var(--border));
+    border-radius:var(--radius);
+    padding:1.15rem 1.35rem;
+    margin:0 0 1.25rem;
+  }
+  /* The consent language exactly as the checkout form shows it. Set apart so a
+     reviewer can see at a glance that it is a quotation, not a paraphrase. */
+  .quote{
+    border-left:3px solid hsl(var(--accent));
+    background:hsl(var(--card));
+    border-radius:0 var(--radius) var(--radius) 0;
+    padding:1rem 1.25rem;
+    margin:0 0 1.25rem;
+    font-style:italic;
+  }
+  .sample{
+    font-family:'Inter',ui-sans-serif,system-ui,sans-serif;
+    font-style:normal;
+    font-size:.94rem;
+    white-space:pre-wrap;
+    background:hsl(var(--card));
+    border:1px solid hsl(var(--border));
+    border-radius:var(--radius);
+    padding:.9rem 1.1rem;
+    margin:0 0 1rem;
+    overflow-wrap:anywhere;
+  }
+  footer{
+    margin-top:3rem;
+    padding-top:1.5rem;
+    border-top:1px solid hsl(var(--border));
+    color:hsl(var(--muted-foreground));
+    font-size:.9rem;
+  }
+
+  @media (max-width:480px){
+    body{font-size:16px;padding:2rem 1rem 3rem}
+  }
+</style>
+
+<main>
+  <h1>Text message terms</h1>
+  <p class="lede">
+    Kenworthy Performing Arts Centre &middot; 508 S Main St, Moscow, ID 83843
+  </p>
+
+  <p>
+    We can text you your tickets. This page explains exactly what that means:
+    what we send, how often, how you say yes, and how you stop. Nothing here is
+    a summary of a longer document &mdash; this is the whole programme.
+  </p>
+
+  <h2>What we send</h2>
+  <p>
+    <strong>Ticket confirmations and updates about an order you have placed.</strong>
+    A text carries the show, the date and time, your seats if the showing has
+    them, and a link to your tickets. That is the entire message type.
+  </p>
+  <p>
+    We do <strong>not</strong> send marketing, promotions, fundraising appeals or
+    newsletters by text. Those go by email, and only to people who ask for them
+    separately.
+  </p>
+
+  <h2>How you opt in</h2>
+  <p>
+    On the ticket checkout form at the Kenworthy website, the phone field is
+    optional, and next to it is a checkbox that is <strong>unchecked by
+    default</strong>. Texts are sent only if you tick it.
+  </p>
+  <p>
+    <strong>You never have to agree to texts in order to buy a ticket.</strong>
+    Consent is not a condition of purchase, of entry, or of anything else. Leave
+    the box alone and your tickets arrive by email as they always have.
+  </p>
+  <p>This is the checkbox, word for word as it appears at checkout:</p>
+  <div class="quote">
+    Text me my tickets. I agree to receive ticket confirmations and updates about
+    this order by text message from the Kenworthy Performing Arts Centre at the
+    number above. Message frequency varies &mdash; usually one message per order.
+    Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help. Optional
+    &mdash; your tickets come by email either way.
+  </div>
+
+  <h2>How often</h2>
+  <p>
+    <strong>Message frequency varies &mdash; usually one message per order.</strong>
+    Texts are tied to a purchase, so you hear from us when you buy tickets and
+    not otherwise. There is no recurring schedule and no campaign you are added
+    to.
+  </p>
+
+  <h2>Cost</h2>
+  <p>
+    <strong>Msg &amp; data rates may apply.</strong> We do not charge for texts;
+    your mobile carrier may, according to your own plan.
+  </p>
+
+  <h2>How to stop</h2>
+  <p>
+    <strong>Reply STOP to cancel.</strong> You will get one confirmation that you
+    have been unsubscribed, and then nothing further. You can also reply
+    UNSUBSCRIBE, CANCEL, END or QUIT.
+  </p>
+  <p>
+    <strong>Reply HELP for help</strong>, and you will get our contact details
+    back. You can also reach us the ordinary ways, listed at the bottom of this
+    page. If you ever want texts again, reply START.
+  </p>
+  <p>
+    Opting out of texts does not cancel your tickets and does not affect your
+    email confirmations.
+  </p>
+
+  <h2>What a message looks like</h2>
+  <div class="sample">Kenworthy: 1 ticket for Cat Video Fest 2026
+Fri, Aug 21, 2026 at 7:00 PM
+Show this at the door: https://kenworthy-ticketing-build.mrtomfrank.workers.dev/t/9f3c1a7e4b
+Add to calendar: https://vlmslygnimfbamrtwvyo.supabase.co/functions/v1/ticket-access?token=9f3c1a7e4b&amp;ics=1</div>
+  <div class="sample">Kenworthy: 2 tickets for Hadestown: The Musical
+Sun, Aug 23, 2026 at 12:30 PM E4, E5
+Show this at the door: https://kenworthy-ticketing-build.mrtomfrank.workers.dev/t/2b8d54c9f1
+Add to calendar: https://vlmslygnimfbamrtwvyo.supabase.co/functions/v1/ticket-access?token=2b8d54c9f1&amp;ics=1</div>
+
+  <h2>Carriers</h2>
+  <p>
+    Mobile carriers are not liable for delayed or undelivered messages. A text
+    is a convenience; your ticket is the emailed confirmation and the QR code it
+    carries, which is what the box office scans at the door.
+  </p>
+
+  <h2>Your number</h2>
+  <p>
+    A number you give us is used to send you the messages described above and
+    for nothing else. We do not sell it, and we do not share it with anyone for
+    their own marketing. See the
+    <a href="/privacy">Privacy Policy</a> and
+    <a href="/terms">Terms of Use</a>.
+  </p>
+
+  <hr class="rule">
+
+  <footer>
+    <p>
+      Questions, or trouble with a text?<br>
+      <strong>Kenworthy Performing Arts Centre</strong><br>
+      508 S Main St, Moscow, ID 83843<br>
+      208-882-4127 &middot; events@kenworthy.org
+    </p>
+    <p><a href="/">Back to the Kenworthy</a></p>
+  </footer>
+</main>
