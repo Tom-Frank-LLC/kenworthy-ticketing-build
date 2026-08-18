@@ -331,3 +331,143 @@ export function desiredVariations(
   }
   return { desired, skipped };
 }
+
+// --- catalog integrity ------------------------------------------------------
+//
+// Square's UpsertCatalogObject replaces the whole object, and a dashboard
+// Library CSV has no columns for per-showtime variations or item_data.event. So
+// a CSV round-trip strips both, silently, on every item it touches. Nothing in
+// this repo does that import; what this code can do is make the loss VISIBLE,
+// which is the part that has failed twice — the Aug 14 overwrite was found by
+// noticing a timestamp pattern, and the Aug 17 bleed by running a probe on a
+// hunch.
+
+/** The shape of one catalog item, reduced to the fields a CSV round-trip eats. */
+export interface ItemSummary {
+  square_item_id: string;
+  name: string | null;
+  product_type: string | null;
+  category_id: string | null;
+  is_archived: boolean;
+  has_event_block: boolean;
+  event_start_at: string | null;
+  variations: Array<{ id: string; name: string | null; price_cents: number | null }>;
+  variation_count: number;
+  item_version: number | null;
+  item_updated_at: string | null;
+}
+
+/** Reduce a live Square catalog object to its baseline summary. */
+export function summarizeItem(o: any): ItemSummary {
+  const d = o?.item_data ?? {};
+  const variations = (d.variations ?? []).map((v: any) => ({
+    id: v?.id ?? "",
+    name: v?.item_variation_data?.name ?? null,
+    price_cents: v?.item_variation_data?.price_money?.amount ?? null,
+  }));
+  return {
+    square_item_id: o?.id,
+    name: d.name ?? null,
+    product_type: d.product_type ?? null,
+    // Both shapes, because which one Square populates varies by API version.
+    category_id: d.category_id ?? d.categories?.[0]?.id ?? d.reporting_category?.id ?? null,
+    is_archived: !!d.is_archived,
+    has_event_block: !!d.event,
+    event_start_at: d.event?.start_at ?? null,
+    variations,
+    variation_count: variations.length,
+    item_version: o?.version ?? null,
+    item_updated_at: o?.updated_at ?? null,
+  };
+}
+
+export type FindingKind =
+  | "lost_event_block"
+  | "lost_variations"
+  | "lost_category"
+  | "flattened_to_regular"
+  | "vanished";
+
+export interface Finding {
+  square_item_id: string;
+  name: string | null;
+  kind: FindingKind;
+  detail: string;
+  /** Baseline capture time — the instant to read back from in version history. */
+  known_good_at: string;
+  lost_variation_ids?: string[];
+}
+
+/**
+ * What a catalog item lost since its baseline.
+ *
+ * Only ever reports LOSS. A catalog legitimately grows — new variations, new
+ * items, a renamed film — and reporting growth as damage would bury the signal
+ * that matters under normal editing. The Aug 14 and Aug 17 damage were both
+ * subtractions.
+ *
+ * `live` is null when the item is gone from the catalog walk entirely.
+ */
+export function compareToBaseline(
+  baseline: ItemSummary & { captured_at: string },
+  live: ItemSummary | null,
+): Finding[] {
+  const out: Finding[] = [];
+  const at = baseline.captured_at;
+  const base = { square_item_id: baseline.square_item_id, name: baseline.name, known_good_at: at };
+
+  if (!live) {
+    out.push({ ...base, kind: "vanished", detail: "item is absent from the catalog walk" });
+    return out;
+  }
+
+  if (baseline.has_event_block && !live.has_event_block) {
+    out.push({
+      ...base,
+      kind: "lost_event_block",
+      detail: `venue/date block gone${baseline.event_start_at ? ` (was ${baseline.event_start_at})` : ""}`,
+    });
+  }
+
+  // Variations are matched BY ID. A CSV round-trip that drops rows deletes those
+  // objects outright, so a missing id is a real deletion — not a rename, which
+  // keeps the id.
+  const liveIds = new Set(live.variations.map((v) => v.id));
+  const lost = baseline.variations.filter((v) => v.id && !liveIds.has(v.id));
+  if (lost.length) {
+    out.push({
+      ...base,
+      kind: "lost_variations",
+      detail: `${lost.length} of ${baseline.variation_count} variations deleted: ` +
+              lost.map((v) => v.name ?? v.id).slice(0, 6).join(", "),
+      lost_variation_ids: lost.map((v) => v.id),
+    });
+  }
+
+  if (baseline.category_id && !live.category_id) {
+    out.push({
+      ...base,
+      kind: "lost_category",
+      detail: `category ${baseline.category_id} cleared`,
+    });
+  }
+
+  // The Aug 14 signature specifically: many variations collapsed to a single one
+  // renamed "Regular". Worth calling out separately from a plain deletion,
+  // because it identifies the MECHANISM (an item rebuilt from four columns)
+  // rather than just the effect.
+  if (
+    baseline.variation_count > 1 &&
+    live.variation_count === 1 &&
+    /^regular$/i.test(live.variations[0]?.name ?? "")
+  ) {
+    out.push({
+      ...base,
+      kind: "flattened_to_regular",
+      detail: `${baseline.variation_count} variations replaced by a single "Regular" — ` +
+              `the signature of an item rebuilt from our own columns`,
+    });
+  }
+
+  return out;
+}

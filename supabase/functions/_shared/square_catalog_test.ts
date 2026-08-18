@@ -251,3 +251,123 @@ Deno.test('a free tier is legal, a negative price is not', () => {
   assertEquals(desired[0].price_cents, 0);
   assert(String(skipped[0].reason).includes('no valid price'));
 });
+
+// --- catalog integrity ------------------------------------------------------
+
+import { compareToBaseline, summarizeItem } from './square-catalog.ts';
+
+const AT = '2026-08-18T00:00:00Z';
+
+/** A live Square item with two priced variations and an event block. */
+function liveItem(over: Record<string, any> = {}) {
+  return {
+    id: 'ITEM1',
+    version: 100,
+    updated_at: AT,
+    item_data: {
+      name: 'MET Live in HD: FEDORA',
+      product_type: 'EVENT',
+      category_id: 'CAT_MET',
+      event: { start_at: '2026-01-14T17:55:00Z', event_location_name: 'Kenworthy' },
+      variations: [
+        { id: 'V1', item_variation_data: { name: 'Adult - January 14 at 9:55 AM', price_money: { amount: 2000 } } },
+        { id: 'V2', item_variation_data: { name: 'Student - January 14 at 9:55 AM', price_money: { amount: 1500 } } },
+      ],
+      ...over,
+    },
+  };
+}
+
+const baselineOf = (o: any) => ({ ...summarizeItem(o), captured_at: AT });
+
+Deno.test('summarizeItem pulls the fields a CSV round-trip destroys', () => {
+  const s = summarizeItem(liveItem());
+  assertEquals(s.product_type, 'EVENT');
+  assertEquals(s.has_event_block, true);
+  assertEquals(s.variation_count, 2);
+  assertEquals(s.category_id, 'CAT_MET');
+  assertEquals(s.variations[1], { id: 'V2', name: 'Student - January 14 at 9:55 AM', price_cents: 1500 });
+});
+
+Deno.test('an unchanged item reports nothing', () => {
+  assertEquals(compareToBaseline(baselineOf(liveItem()), summarizeItem(liveItem())), []);
+});
+
+Deno.test('a stripped event block is reported', () => {
+  const after = liveItem();
+  delete (after.item_data as any).event;
+  const found = compareToBaseline(baselineOf(liveItem()), summarizeItem(after));
+  assertEquals(found.map((f) => f.kind), ['lost_event_block']);
+  // The baseline capture time is what a repair reads back from.
+  assertEquals(found[0].known_good_at, AT);
+});
+
+Deno.test('deleted variations are reported by id, not by count', () => {
+  const after = liveItem({
+    variations: [{ id: 'V1', item_variation_data: { name: 'Adult - January 14 at 9:55 AM', price_money: { amount: 2000 } } }],
+  });
+  const found = compareToBaseline(baselineOf(liveItem()), summarizeItem(after));
+  assertEquals(found.map((f) => f.kind), ['lost_variations']);
+  assertEquals(found[0].lost_variation_ids, ['V2']);
+});
+
+Deno.test('a RENAMED variation is not a lost one', () => {
+  // Renames keep the id. Treating a rename as a deletion would fire on ordinary
+  // editing and train everyone to ignore the alarm.
+  const after = liveItem({
+    variations: [
+      { id: 'V1', item_variation_data: { name: 'Adult ~ January 14 at 9:55 AM', price_money: { amount: 2000 } } },
+      { id: 'V2', item_variation_data: { name: 'Student - January 14 at 9:55 AM', price_money: { amount: 1500 } } },
+    ],
+  });
+  assertEquals(compareToBaseline(baselineOf(liveItem()), summarizeItem(after)), []);
+});
+
+Deno.test('growth is not damage', () => {
+  // A new showtime appends a variation. The guard must stay quiet, or Part B's
+  // own writes would set it off on every run.
+  const after = liveItem({
+    variations: [
+      ...liveItem().item_data.variations,
+      { id: 'V3', item_variation_data: { name: 'Adult - January 16 at 6 PM', price_money: { amount: 2000 } } },
+    ],
+  });
+  assertEquals(compareToBaseline(baselineOf(liveItem()), summarizeItem(after)), []);
+});
+
+Deno.test('the Aug 14 flattening signature is called out by name', () => {
+  const after = liveItem({
+    variations: [{ id: 'V1', item_variation_data: { name: 'Regular', price_money: { amount: 2000 } } }],
+  });
+  const kinds = compareToBaseline(baselineOf(liveItem()), summarizeItem(after)).map((f) => f.kind);
+  assert(kinds.includes('flattened_to_regular'));
+  assert(kinds.includes('lost_variations'));
+});
+
+Deno.test('a cleared category is reported, and gaining one is not', () => {
+  const cleared = liveItem();
+  delete (cleared.item_data as any).category_id;
+  assertEquals(
+    compareToBaseline(baselineOf(liveItem()), summarizeItem(cleared)).map((f) => f.kind),
+    ['lost_category'],
+  );
+  const gained = liveItem();
+  const noCat = liveItem();
+  delete (noCat.item_data as any).category_id;
+  assertEquals(compareToBaseline(baselineOf(noCat), summarizeItem(gained)), []);
+});
+
+Deno.test('an item missing from the walk is reported once, not many times', () => {
+  const found = compareToBaseline(baselineOf(liveItem()), null);
+  assertEquals(found.length, 1);
+  assertEquals(found[0].kind, 'vanished');
+});
+
+Deno.test('several losses on one item are reported separately', () => {
+  // A CSV round-trip does all of this at once; each needs its own repair.
+  const after = liveItem({ variations: [] });
+  delete (after.item_data as any).event;
+  delete (after.item_data as any).category_id;
+  const kinds = compareToBaseline(baselineOf(liveItem()), summarizeItem(after)).map((f) => f.kind).sort();
+  assertEquals(kinds, ['lost_category', 'lost_event_block', 'lost_variations']);
+});

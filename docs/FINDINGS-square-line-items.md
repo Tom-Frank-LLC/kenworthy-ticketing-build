@@ -167,10 +167,17 @@ re-flattens exactly what this builds. `venue-date-square-mechanism.md` records
 770 of 838 EVENT items losing their event block that way, and calls it an
 ongoing bleed rather than finished damage.
 
-Nothing in this repo performs that import; it is a human dashboard workflow.
-**It has to stop before Part B is applied at any scale**, or the variations will
-be created and destroyed on a loop. This is a process decision, not a code
-change, and it is the one thing that would make this work wasted.
+Nothing in this repo performs that import; it is a human dashboard workflow, so
+it cannot be prevented in code. **It has to stop before Part B is applied at any
+scale**, or the variations will be created and destroyed on a loop.
+
+What *has* been built is the half that code can do — `square-catalog-guard`
+snapshots the catalog, detects losses (variations deleted, event blocks stripped,
+categories cleared) and repairs them from Square's own version history. That
+turns an invisible bleed into a finding within one check cycle, and a repair into
+one call. It does not stop the import. See
+`docs/RUNBOOK-square-catalog-integrity.md` for the rule and the safe
+alternatives to a CSV round-trip.
 
 ## Not done
 
