@@ -121,11 +121,12 @@ export const COLOR_LAB_ENABLED = import.meta.env.VITE_COLOR_LAB !== 'false';
  * stayed lenient at "email or phone" — so nothing downstream changes in either
  * direction.
  *
- * It also does not promise a text everywhere it shows a field. Only ticket
- * checkout delivers by SMS. Film passes confirm by email and the box office
- * does not dispatch a confirmation at all, so those two ask for a number as a
- * way to reach someone, and say so rather than implying a text that is not
- * coming.
+ * It also does not promise a text everywhere it shows a field. Ticket checkout
+ * and the box office both deliver by SMS alongside email; film passes confirm
+ * by email only, so that form asks for a number as a way to reach someone and
+ * says so rather than implying a text that is not coming. Wherever a number
+ * *is* a delivery address, `SMS_DELIVERY_LIVE` decides what the form claims
+ * about it.
  */
 export const COLLECT_PHONE = true;
 

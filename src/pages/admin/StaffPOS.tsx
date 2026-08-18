@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import {
   ShoppingCart, Film, User, Loader2, CheckCircle2, AlertTriangle,
   RotateCcw, Banknote, CreditCard, Minus, Plus, UtensilsCrossed, Ticket,
-  ScanLine,
+  ScanLine, Send,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -30,7 +30,7 @@ import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { COLLECT_PHONE, CONCESSION_POS_ENABLED } from '@/lib/flags';
+import { COLLECT_PHONE, CONCESSION_POS_ENABLED, SMS_DELIVERY_LIVE } from '@/lib/flags';
 import { formatShowtime } from '@/lib/datetime';
 import TicketScanner from './TicketScanner';
 
@@ -83,6 +83,14 @@ export default function StaffPOS() {
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [refundingTx, setRefundingTx] = useState<SessionTransaction | null>(null);
   const [refunding, setRefunding] = useState(false);
+
+  // Resending is how a mistyped address is recovered, so the dialog carries its
+  // own editable copy of the contact rather than replaying what was sold with.
+  const [resendDialogOpen, setResendDialogOpen] = useState(false);
+  const [resendingTx, setResendingTx] = useState<SessionTransaction | null>(null);
+  const [resendEmail, setResendEmail] = useState('');
+  const [resendPhone, setResendPhone] = useState('');
+  const [resending, setResending] = useState(false);
 
   const [dailyStats, setDailyStats] = useState({ revenue: 0, ticketCount: 0, refundCount: 0 });
 
@@ -342,6 +350,62 @@ export default function StaffPOS() {
     }
   }, [donationCents, patronEmail, patronPhone, selectedShowingId]);
 
+  /**
+   * Send the patron their tickets, once the sale that paid for them is done.
+   *
+   * The counter used to be the one paid path with no digital record: StaffPOS
+   * asks for an address, inserts the ticket rows, and — before this — stopped.
+   * Online checkout has always called `deliverConfirmation` in-process; this is
+   * the same delivery, reached over HTTP.
+   *
+   * The overrides are the whole point. POS ticket rows are owned by the *staff
+   * member* who rang the sale, so with no `email`/`phone` here the server would
+   * fall back to the account behind the order and mail the patron's ticket to
+   * whoever is signed in at the window. send-ticket-confirmation honours
+   * overrides for operators, which now includes signed-in staff.
+   *
+   * Failure is reported and nothing else, exactly as `recordDonation` does: the
+   * money is already in the till or on the card, so an undelivered email is a
+   * resend, not a rolled-back sale. The resend button on the transaction row is
+   * the recovery path — including for the common case, a mistyped address.
+   */
+  const deliverPos = useCallback(async (orderToken: string) => {
+    const email = patronEmail.trim();
+    const phone = patronPhone.trim();
+    if (!email && !phone) return;
+    try {
+      const result = await invokeFunction<{
+        delivered?: boolean;
+        channel?: string;
+        partial_error?: string;
+      }>('send-ticket-confirmation', {
+        order_token: orderToken,
+        email: email || undefined,
+        phone: phone || undefined,
+      });
+      if (result?.delivered) {
+        toast.success(`Tickets sent to ${result.channel === 'sms' ? phone : email}.`);
+      }
+      // Both channels are attempted now, so a working email plus a number we
+      // cannot text is a *delivered* order with a note attached. Say so rather
+      // than staying silent — until the A2P campaign clears (SMS_DELIVERY_LIVE)
+      // every phone number produces one of these.
+      if (result?.partial_error) {
+        toast.warning(
+          `Sent, but one channel did not go through: ${result.partial_error}`,
+          { duration: 10000 },
+        );
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'unknown error';
+      toast.error(
+        `Sale complete, but the ticket confirmation did not send: ${reason}. ` +
+        'Resend it from the transaction list below, or take the address again.',
+        { duration: 12000 },
+      );
+    }
+  }, [patronEmail, patronPhone]);
+
   const refreshAfterSale = useCallback(async () => {
     if (isAssignedSeating) {
       const { data: ticketsData } = await supabase
@@ -360,7 +424,11 @@ export default function StaffPOS() {
     }
   }, [selectedShowingId, isAssignedSeating]);
 
-  const addTransaction = useCallback((ticketIds: string[], method: PaymentMethod) => {
+  const addTransaction = useCallback((
+    ticketIds: string[],
+    method: PaymentMethod,
+    orderToken: string,
+  ) => {
     const seatLabels = isAssignedSeating
       ? Array.from(selectedSeats).map(seatId => {
           const seat = seats.find(s => s.id === seatId);
@@ -373,6 +441,12 @@ export default function StaffPOS() {
     const tx: SessionTransaction = {
       id: crypto.randomUUID(),
       ticketIds,
+      // Kept so the confirmation can be resent from this row: the order token
+      // is the only handle send-ticket-confirmation takes, and the address is
+      // what a resend is usually correcting.
+      orderToken,
+      patronEmail: patronEmail.trim(),
+      patronPhone: patronPhone.trim(),
       movieTitle: selectedShowing?.movie_title || 'Unknown',
       seatLabels,
       // The ticket total, not the charged total: this row is what the refund
@@ -384,7 +458,7 @@ export default function StaffPOS() {
       refunded: false,
     };
     setTransactions(prev => [tx, ...prev]);
-  }, [selectedSeats, seats, selectedShowing, grandTotal, isAssignedSeating, gaQuantity, hasTiers, lineItems]);
+  }, [selectedSeats, seats, selectedShowing, grandTotal, isAssignedSeating, gaQuantity, hasTiers, lineItems, patronEmail, patronPhone]);
 
   const resetForm = useCallback(() => {
     setSelectedSeats(new Set());
@@ -406,7 +480,7 @@ export default function StaffPOS() {
     setSelling(true);
     try {
       const { ticketIds, orderToken } = await createTickets('cash');
-      addTransaction(ticketIds, 'cash');
+      addTransaction(ticketIds, 'cash', orderToken);
       toast.success(
         donationCents > 0
           ? `${ticketCount} ticket(s) sold (cash) — collect $${chargeTotal.toFixed(2)} including the donation.`
@@ -414,6 +488,7 @@ export default function StaffPOS() {
         { duration: 5000 },
       );
       await recordDonation('cash', null, orderToken);
+      await deliverPos(orderToken);
       resetForm();
       await refreshAfterSale();
       loadDailyStats();
@@ -457,12 +532,13 @@ export default function StaffPOS() {
         setPaymentStatus('completed');
         const paymentId = data.checkout?.payment_ids?.[0] ?? null;
         const { ticketIds, orderToken } = await createTickets('card', paymentId);
-        addTransaction(ticketIds, 'card');
+        addTransaction(ticketIds, 'card', orderToken);
         toast.success(
           `${ticketCount} ticket(s) sold (card)! ${data.simulated ? '(Sandbox simulation)' : ''}`,
           { duration: 5000 }
         );
         await recordDonation('terminal', paymentId, orderToken);
+        await deliverPos(orderToken);
         resetForm();
         await refreshAfterSale();
         loadDailyStats();
@@ -494,9 +570,10 @@ export default function StaffPOS() {
         if (status === 'COMPLETED') {
           setPaymentStatus('completed');
           const { ticketIds, orderToken } = await createTickets('card', data.payment_id ?? null);
-          addTransaction(ticketIds, 'card');
+          addTransaction(ticketIds, 'card', orderToken);
           toast.success(`Payment complete! ${ticketCount} ticket(s) sold.`);
           await recordDonation('terminal', data.payment_id ?? null, orderToken);
+          await deliverPos(orderToken);
           resetForm();
           loadDailyStats();
           await refreshAfterSale();
@@ -524,26 +601,28 @@ export default function StaffPOS() {
     };
 
     poll();
-  }, [createTickets, addTransaction, resetForm, refreshAfterSale, recordDonation, ticketCount]);
+  }, [createTickets, addTransaction, resetForm, refreshAfterSale, recordDonation, deliverPos, ticketCount]);
 
   const handleSell = () => {
     if (!selectedShowingId || ticketCount === 0) {
       toast.error('Select a showing and at least one ticket');
       return;
     }
-    // Contact is required at the counter, but be accurate about why. This
-    // screen inserts ticket rows directly and never dispatches a confirmation
-    // — nothing here calls ticket-checkout or send-ticket-confirmation, and no
-    // trigger does it either — so neither an email nor a phone typed here
-    // sends the patron anything today. What they buy is the paper/QR handoff
-    // at the window; the contact is how the box office reaches them
-    // afterwards. Worth fixing separately, but do not let this message imply a
-    // delivery that is not happening.
+    // Contact is required because it is now the delivery address: `deliverPos`
+    // sends the tickets to whatever is typed here, and nothing else on this
+    // screen knows who the patron is (the ticket rows are owned by the staff
+    // member ringing the sale).
+    //
+    // Still "email or phone", not "email": the server rule is the same, and a
+    // phone-only sale is accepted deliberately rather than blocked. Until the
+    // A2P campaign clears (SMS_DELIVERY_LIVE) the text will not go out, and the
+    // counter is told so — by the hint below before the sale, and by the failure
+    // toast after it — rather than being quietly refused at a busy window.
     if (COLLECT_PHONE ? (!patronEmail && !patronPhone) : !patronEmail) {
       toast.error(
         COLLECT_PHONE
-          ? 'Enter a patron email or phone so the box office can reach them'
-          : 'Enter a patron email so the box office can reach them',
+          ? 'Enter a patron email or phone to send the tickets to'
+          : 'Enter a patron email to send the tickets to',
       );
       return;
     }
@@ -552,6 +631,62 @@ export default function StaffPOS() {
       handleCashSale();
     } else {
       handleCardSale();
+    }
+  };
+
+  const openResend = (tx: SessionTransaction) => {
+    setResendingTx(tx);
+    setResendEmail(tx.patronEmail);
+    setResendPhone(tx.patronPhone);
+    setResendDialogOpen(true);
+  };
+
+  /**
+   * Resend an order's confirmation, to a corrected address if need be.
+   *
+   * `force` is required and not optional: the first dispatch stamped
+   * `confirmation_sent_at`, and without it the server correctly answers
+   * "already sent" and does nothing — which is the guard that stops a double
+   * send, and exactly the wrong answer when the first send went to a typo.
+   */
+  const handleResend = async () => {
+    if (!resendingTx) return;
+    const email = resendEmail.trim();
+    const phone = resendPhone.trim();
+    if (!email && !phone) {
+      toast.error('Enter an email or phone to send to');
+      return;
+    }
+    setResending(true);
+    try {
+      const result = await invokeFunction<{
+        delivered?: boolean;
+        channel?: string;
+        partial_error?: string;
+      }>('send-ticket-confirmation', {
+        order_token: resendingTx.orderToken,
+        email: email || undefined,
+        phone: phone || undefined,
+        force: true,
+      });
+      toast.success(`Confirmation resent to ${result?.channel === 'sms' ? phone : email}.`);
+      if (result?.partial_error) {
+        toast.warning(
+          `Sent, but one channel did not go through: ${result.partial_error}`,
+          { duration: 10000 },
+        );
+      }
+      // So a second resend defaults to the address that worked.
+      setTransactions(prev => prev.map(tx =>
+        tx.id === resendingTx.id ? { ...tx, patronEmail: email, patronPhone: phone } : tx
+      ));
+      setResendDialogOpen(false);
+      setResendingTx(null);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'unknown error';
+      toast.error(`Could not resend: ${reason}`, { duration: 12000 });
+    } finally {
+      setResending(false);
     }
   };
 
@@ -766,6 +901,7 @@ export default function StaffPOS() {
           <TransactionHistory
             transactions={transactions}
             onRefund={(tx) => { setRefundingTx(tx); setRefundDialogOpen(true); }}
+            onResend={openResend}
           />
         </div>
 
@@ -788,10 +924,10 @@ export default function StaffPOS() {
                   onChange={e => setPatronEmail(e.target.value)}
                 />
               </div>
-              {/* Back with COLLECT_PHONE (see @/lib/flags), and like the
-                  film-pass form deliberately without an SMS consent line: the
-                  counter sends no confirmation of any kind, so this number is
-                  a way to reach the patron, not a delivery address. */}
+              {/* Back with COLLECT_PHONE (see @/lib/flags). The counter now
+                  does dispatch a confirmation, and both channels are attempted
+                  — so this is a delivery address, and the hint says plainly
+                  which of the two actually arrives today. */}
               {COLLECT_PHONE && (
                 <div className="space-y-2">
                   <Label htmlFor="patron-phone">Phone (optional)</Label>
@@ -802,6 +938,11 @@ export default function StaffPOS() {
                     value={patronPhone}
                     onChange={e => setPatronPhone(e.target.value)}
                   />
+                  {!SMS_DELIVERY_LIVE && (
+                    <p className="text-xs text-muted-foreground">
+                      Texts are not sending yet — take an email if you can.
+                    </p>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -970,6 +1111,75 @@ export default function StaffPOS() {
           scanner is on screen. The POS underneath keeps its state — the sale in
           progress is still there when staff come back. */}
       {scannerOpen && <TicketScanner onExit={() => setScannerOpen(false)} />}
+
+      {/* Resend the ticket confirmation — the counter's recovery path for a
+          mistyped address, and for a send that failed after the money was
+          taken. */}
+      <Dialog open={resendDialogOpen} onOpenChange={setResendDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-primary" />
+              Resend Confirmation
+            </DialogTitle>
+            <DialogDescription>
+              Sends the tickets again, to whatever is entered below. Correct the
+              address here if the first one was wrong.
+            </DialogDescription>
+          </DialogHeader>
+          {resendingTx && (
+            <div className="space-y-4 py-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Movie</span>
+                <span className="font-medium">{resendingTx.movieTitle}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Seats</span>
+                <span className="font-medium">{resendingTx.seatLabels.join(', ')}</span>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="resend-email">Email</Label>
+                <Input
+                  id="resend-email"
+                  type="email"
+                  placeholder="patron@example.com"
+                  value={resendEmail}
+                  onChange={e => setResendEmail(e.target.value)}
+                />
+              </div>
+              {COLLECT_PHONE && (
+                <div className="space-y-2">
+                  <Label htmlFor="resend-phone">Phone</Label>
+                  <Input
+                    id="resend-phone"
+                    type="tel"
+                    placeholder="(208) 555-1234"
+                    value={resendPhone}
+                    onChange={e => setResendPhone(e.target.value)}
+                  />
+                  {!SMS_DELIVERY_LIVE && (
+                    <p className="text-xs text-muted-foreground">
+                      Texts are not sending yet — use the email address.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResendDialogOpen(false)} disabled={resending}>
+              Cancel
+            </Button>
+            <Button onClick={handleResend} disabled={resending}>
+              {resending ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Sending...</>
+              ) : (
+                <><Send className="h-4 w-4 mr-1" /> Resend</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Refund confirmation dialog */}
       <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
