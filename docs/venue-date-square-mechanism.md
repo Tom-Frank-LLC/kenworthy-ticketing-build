@@ -1,0 +1,223 @@
+# Where venue and event date/time live on a Square catalog item
+
+**Phase 0 findings — READ-ONLY. No write was made to the Square catalog.**
+Status: **complete. Phase 1 is NOT cleared to run** — two data problems have to be
+settled first, and both change what Phase 1 would do.
+
+Companion to `INCIDENT-2026-08-14-square-catalog.md`. Read that first.
+
+Evidence: `supabase/functions/square-event-probe` (temporary, read-only, admin
+gated) run against the production catalog on 2026-08-17.
+
+## The short version
+
+1. The field is real, and writable in principle: an **undocumented**
+   `item_data.event` block on items whose `product_type` is `EVENT`.
+2. `RetrieveCatalogObject` **does** return it, so read-modify-write will not
+   silently wipe it. That was the question that could have killed the job, and
+   it came back clean.
+3. **The CSV cannot be applied as delivered.** `start_at`/`end_at` are full
+   RFC 3339 timestamps; the CSV has no year. And the CSV's venue value is a
+   street address, but the field it would go in holds a *name*, with the address
+   held separately by reference.
+4. **Something is still deleting these blocks.** 770 of the 838 `EVENT` items
+   were modified today and have no event block. This looks like an ongoing
+   bleed from the dashboard CSV imports, not damage that has stopped.
+
+## 1. The mechanism
+
+Standard `CatalogItem` has no venue and no date field — its documented schema
+lists none, and the app has never written one. But Square's
+`CatalogItemProductType` includes `EVENT` ("An event which tickets can be sold
+for, including location, address, and times"), created in the dashboard at
+**Items & services → Item library → Create item → Item Type: Event**.
+
+The data hangs off an undocumented `item_data.event` block. Full key set, read
+from live objects:
+
+```
+item_data.event.uid
+item_data.event.start_at
+item_data.event.end_at
+item_data.event.event_location_name
+item_data.event.event_location_time_zone
+item_data.event.event_location_types[]
+item_data.event.address_id
+item_data.event.all_day_event
+```
+
+A real, populated block (`NT LIVE: THE IMPORTANCE OF BEING EARNEST`, item
+`ZICSALMNQTVGGNU56N5ZEMDC`):
+
+```json
+{
+  "uid": "WZKA6PA5B7TDSRNVYRBDCNWM",
+  "start_at": "2025-03-23T19:00:00+00:00",
+  "event_location_time_zone": "America/Los_Angeles",
+  "event_location_name": "Kenworthy Performing Arts Centre",
+  "event_location_types": ["IN_PERSON"],
+  "address_id": "W4DB6IPQTCSWYZJZVZSLKD2I",
+  "all_day_event": false
+}
+```
+
+`end_at` is absent here, so it is optional — single-showing items simply omit it
+rather than repeating `start_at`.
+
+## 2. The round-trip is safe (the question that mattered most)
+
+The risk was that the block might be visible to `CatalogSearch` but not to
+`RetrieveCatalogObject` — in which case the object we retrieve is already
+missing it, and `UpsertCatalogObject`, which **replaces**, would delete the
+venue and date on every item we touched. That is the Aug 14 mechanism pointed
+at the exact field this job exists to restore.
+
+It does not happen. Across list, search, and retrieve, at both API versions:
+
+| | count |
+|---|---|
+| items whose event block list/search show but retrieve omits | **0** |
+| `item_data.event` visible at pinned `2024-01-18` | yes |
+| `item_data.event` visible at current `2025-07-16` | yes |
+
+The pinned `SQUARE_API_VERSION` in `_shared/square.ts` is **not** a problem
+here; it sees the same fields as a current version.
+
+This clears the mechanism, not the write. Nothing has yet proved Square
+*accepts* a write to this block. `square-catalog-sync/index.ts:1083` records the
+precedent that makes that a real risk:
+
+> a 2xx is not evidence of a write. At `SQUARE_API_VERSION` 2024-01-18
+> `item_data.categories` is derived, not writable: sending it is accepted and
+> ignored... The whole run then reports success and changes nothing.
+
+An undocumented field is a prime candidate for the same behaviour, and the
+`CatalogItemProductType` reference warns that "Connect V2 only allows the
+creation of `REGULAR` or `APPOINTMENTS_SERVICE` items" — which constrains
+creation, but says nothing about updating an existing `EVENT` item. **Phase 1
+must start with one item, written and then read back, before anything else.**
+
+## 3. The CSV's "Square Token" is a variation id, not an item id
+
+All 484 tokens were absent from a full catalog walk, which first looked like the
+items were gone. They are not. Two things were in the way, and both matter for
+Phase 1:
+
+- **The tokens are `ITEM_VARIATION` ids.** Square's Item Library CSV export
+  emits one row per variation and its `Token` column is the variation id. All 61
+  sampled tokens resolved as `ITEM_VARIATION`; every one has a parent `ITEM`
+  reachable through `item_variation_data.item_id`. The event block lives on the
+  **parent item**, so Phase 1 has to resolve token → parent before doing
+  anything.
+- **`CatalogList` and `CatalogSearch` both omit archived items.** 55 of the 61
+  sampled parents are archived (these are past listings, archived earlier today).
+  `RetrieveCatalogObject` returns them by id regardless. Any Phase 1 pass must
+  address items by id and must never treat absence from a walk as absence from
+  the catalog.
+
+Sample of 61 CSV rows, spread evenly across the file:
+
+| | count |
+|---|---|
+| tokens that resolve | 61 / 61 |
+| resolve as `ITEM_VARIATION` | 61 |
+| parent `product_type` = `EVENT` | 60 |
+| parent `product_type` = `REGULAR` | **1** |
+| parent archived | 55 |
+| parent already has an event block | 3 |
+
+The `REGULAR` one is the interesting number. `product_type` **cannot be modified
+once set**, so those rows can never hold a venue or a date by any API. At 1-in-61
+that is roughly 8 of the 484; the exact list should be enumerated before Phase 1
+so they can be reported rather than silently skipped.
+
+## 4. Two reasons the CSV cannot be applied as delivered
+
+**The year is missing.** `start_at`/`end_at` are RFC 3339 timestamps. The CSV
+carries `November 16 at 7 PM`. The review note that shipped with it says so:
+*"Year isn't in Start/End (descriptions don't carry it)... Say the word if you
+want the year added from the showings dates."* The file has to be regenerated
+with years before any date can be written. This is not a formatting detail — a
+timestamp cannot be constructed without it.
+
+**The venue value doesn't match the venue field.** The CSV's `Venue` column is
+`508 S Main St, Moscow, ID 83843`, a street address, on all 484 rows. But
+`event_location_name` holds a *name* — `Kenworthy Performing Arts Centre` — and
+the street address lives in a separate object referenced by `address_id`.
+Writing the street string into `event_location_name` would not match what the restored
+items look like. The right move is to set `event_location_name` to the venue
+name and reuse an existing `address_id`, which also makes the venue half of this
+job independent of the CSV entirely — it's the same two constant values on every
+row.
+
+**One open question before writing any date:** whether `start_at` is a true UTC
+instant or a local time carrying a `+00:00` suffix. `MEDEA` reads
+`2022-10-22T17:00:00+00:00` alongside `America/Los_Angeles`; 17:00 UTC is 10:00
+PDT, plausible for a MET matinee, but that is inference, not proof. Getting this
+wrong shifts every showtime by hours. Confirm against one item whose true
+showtime is known before writing the other 284.
+
+## 5. The blocks are still being destroyed
+
+Of 838 `EVENT` items in the live catalog, only **38** still carry an event
+block. The `updated_at` split is stark:
+
+| event block | last modified | count |
+|---|---|---|
+| **missing** | 2026-08-17 (today) | **770** |
+| missing | 2026-08-15 | 12 |
+| missing | 2026-08-14 | 7 |
+| present | 2026-05-02 | 32 |
+| present | 2026-08-17 (today) | 3 |
+
+The surviving blocks are almost all untouched since May. The empty ones cluster
+on today. The leading explanation is today's dashboard CSV import work — a
+Square Library CSV has no columns for event fields, so an import round-trip
+drops them, exactly as the Aug 14 push did. The 3 present-and-modified-today are
+consistent with the handful restored by hand.
+
+This reframes the job. It is not "add data that was never there" — it is
+**restoring data that is actively being destroyed**. Repairing 484 rows while
+the process that empties them is still in use will not hold. Worth confirming
+against Square's own item history for one affected item before accepting this
+reading, but the timestamp pattern is the same kind of evidence that identified
+the Aug 14 overwrite, and it points the same way.
+
+## 6. What Phase 1 would look like, if approved
+
+Not started, and it should not start until §4 is resolved.
+
+1. Regenerate the CSV with **years** on `Start`/`End`.
+2. Set venue from constants (`event_location_name` + an existing `address_id`),
+   not from the CSV's address column.
+3. For each row: resolve variation token → parent item → `RetrieveCatalogObject`
+   → mutate **only** `item_data.event` → `UpsertCatalogObject` with the returned
+   `version`, asserting every other field is byte-identical.
+4. **One item first**, then read it back and confirm Square stored it. A 2xx is
+   not acceptance. Then 10. Then the rest.
+5. Skip and report the `REGULAR` items; they cannot be fixed.
+6. Take a full catalog export as a pre-write snapshot first.
+
+## 7. Housekeeping
+
+`square-event-probe` was deployed to production Supabase to run this
+investigation, because the Square token exists only as a Supabase secret. It is
+read-only (it refuses any non-GET except `CatalogSearch`) and admin-gated. It was
+deliberately a **new** function rather than an action on `square-catalog-sync`,
+because prod runs that one from an uncommitted worktree and redeploying it from
+`main` could revert unmerged work. Delete it when it is no longer wanted:
+
+```
+supabase functions delete square-event-probe --project-ref vlmslygnimfbamrtwvyo
+```
+
+`scripts/square-inspect-events.mjs` does the same discovery from a laptop, given
+a `SQUARE_ACCESS_TOKEN`. It was written before the edge-function route worked
+and is kept because it needs no deploy.
+
+## 8. Sources
+
+- [CatalogItem](https://developer.squareup.com/reference/square/objects/CatalogItem)
+- [CatalogItemProductType](https://developer.squareup.com/reference/square/enums/CatalogItemProductType)
+- [New front-end event creation impacting catalog search](https://developer.squareup.com/forums/t/new-front-end-event-creation-impacting-catalog-search/25384)
+- [Sell non-physical items in Square Online](https://squareup.com/help/us/en/article/6873-sell-non-physical-items-in-square-online-store)
