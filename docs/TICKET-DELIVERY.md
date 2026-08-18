@@ -53,13 +53,15 @@ throughout. The gap was entirely in delivery.
         │                                order summary, link to the ticket page,
         │                                link to set a password
         │
-        └── phone only ─►  Twilio  ──►  SMS: title, showtime, seats, and a link
-                                         to the ticket page (an SMS cannot carry
-                                         a scannable QR)
+        ├── has phone ──►  Twilio  ──►  SMS: title, showtime, seats, and a link
+        │                                to the ticket page (an SMS cannot carry
+        │                                a scannable QR)
         │
+        │   both, when there are both — neither branch suppresses the other
         ▼
   outcome written back to every ticket row
   (confirmation_sent_at / confirmation_channel / confirmation_error)
+  channel is 'email', 'sms', or 'email+sms' — what sent, not what was tried
 ```
 
 ### The order token
@@ -84,7 +86,9 @@ possible at all, since those customers have no session and may never create one.
 | Mobile ticket page | `src/pages/PublicTicket.tsx` (`/t/:token`) | The SMS link destination |
 | Client helpers | `src/lib/tickets.ts` | Order fetch, ticket page path |
 | Schema | `supabase/migrations/20260811120000_ticket_delivery.sql` | `order_token`, `confirmation_*` |
-| Tests | `supabase/functions/_shared/tickets_test.ts` | 19 tests, incl. a QR decode round-trip |
+| Schema | `supabase/migrations/20260818214726_confirmation_channel_email_and_sms.sql` | Widens the channel CHECK to allow `email+sms` |
+| Tests | `supabase/functions/_shared/tickets_test.ts` | 24 tests, incl. a QR decode round-trip |
+| Tests | `supabase/functions/_shared/deliver_test.ts` | Which channels fire and what is recorded, incl. the retry guard |
 
 ### Design decisions worth knowing
 
@@ -103,9 +107,42 @@ implementation rendered something that looked like a QR and scanned as nothing.
 The raw ticket code is also printed as text under every QR, so a customer with
 images blocked still has something the box office can key in.
 
-**Email wins when a customer gives both email and phone.** The email carries
-the QR inline, so it works at the door with no signal in the lobby. The SMS
-requires loading a page.
+**Both channels fire when a customer gives both** (changed 2026-08-18). Email
+used to win and stop, with SMS reserved for buyers who had given nothing else.
+The text now goes alongside it, so a customer who hands over a number hears
+immediately that their tickets are out rather than finding out whenever they
+next open their mail. The email is still the one that matters at the door — it
+carries the QR inline and works with no signal in the lobby — so the SMS is a
+notification, not a substitute, and it costs a Twilio message per order with a
+phone number on it.
+
+**One channel getting through is a delivery.** The two sends are attempted
+independently and neither can suppress the other, which is the failure this
+shape exists to prevent: a working channel going unused because the other one
+threw first. If either succeeds, `confirmation_sent_at` is stamped — that is
+what stops a retry from texting someone twice — and the channel that failed is
+written to `confirmation_error` *beside* it rather than instead of it. An order
+with both columns set is one where the customer has their tickets and something
+still wants looking at. `status: 'failed'` now means nothing reached them at
+all.
+
+Film passes are not on this path. `film-pass-checkout` calls
+`sendTransactionalEmail` directly and confirms by email only, so a phone number
+given on the pass form is never texted — which is why that form carries no SMS
+consent line.
+
+**The box office is not on this pipeline at all.** `StaffPOS` requires a patron
+email or phone before it will take a sale, which reads as though a confirmation
+follows. It does not. The screen inserts ticket rows straight into `tickets`
+via `createTickets` and stops there — nothing in `src/` calls
+`send-ticket-confirmation`, the POS never calls `ticket-checkout`, and no
+database trigger dispatches on insert. The contact it collects reaches only the
+donation record. That was true before phone collection was switched off and is
+still true now; the counter's own copy was reworded on 2026-08-18 to say the
+contact is how the box office reaches the patron, rather than implying a
+delivery. Wiring the POS into `deliverConfirmation` is a separate piece of
+work — it is the one purchase path where a patron can be charged and receive no
+digital record of it at all.
 
 **The password link is generated, not emailed by Supabase.**
 `auth.admin.generateLink({ type: 'recovery' })` mints the link without sending
@@ -278,6 +315,57 @@ supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
 > `supabase migration list` first and temporarily move other people's pending
 > files aside if you mean to apply only your own. Staging needed
 > `--include-all` because a newer migration had already landed there.
+
+> **SMS activation status, 2026-08-18.** Two flags now, not one, because
+> "show the phone field" and "a phone number is a contact we can deliver to"
+> stopped being the same question:
+>
+> - `COLLECT_PHONE` is **`true`** — the field and its consent line are live on
+>   ticket checkout, film passes and the box office.
+> - `SMS_DELIVERY_LIVE` is **`false`** — email is still required at ticket
+>   checkout, so nobody can buy with a contact we cannot reach.
+>
+> `sendViaTwilio` was complete the whole time and did not change; what did
+> change is that `deliverConfirmation` now sends on both channels rather than
+> treating SMS as the phone-only fallback, which needs the migration above
+> applied before the functions deploy.
+>
+> **The blocker is an A2P 10DLC campaign, not the code.** Brand approval is not
+> campaign approval, and the two were conflated when this was scoped. Without a
+> registered campaign attached to the Messaging Service, US carriers reject
+> every long-code send outright with error 30034 — no credential fixes that.
+> Registration lives at Messaging → Regulatory Compliance → A2P 10DLC, wants a
+> use case, a sample message and a description of how buyers opt in, and takes
+> days rather than minutes. The consent line on the checkout form is the opt-in
+> evidence that submission asks for, which is exactly why the field ships ahead
+> of the texts.
+>
+> Two secrets are also still wrong or missing, on **both** projects:
+>
+> 1. **The API key SID is stored under the wrong name.** `TWILIO_ACCOUNT_SID`,
+>    `TWILIO_API_KEY` and `TWILIO_API_KEY_SECRET` are all set (identical
+>    digests on staging and production — one Twilio account, no sandbox). But
+>    `deliver.ts` reads `TWILIO_API_KEY_SID`, and `TWILIO_API_KEY` is a
+>    different name, so `twilioAuth()` sees no credential at all and returns
+>    "Configure TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET (preferred), or
+>    TWILIO_AUTH_TOKEN". Re-set the same `SK…` value under
+>    `TWILIO_API_KEY_SID`. (Noted in `DONATIONS.md` on 2026-08-13 and still
+>    true.)
+> 2. **No sender is configured.** Neither `TWILIO_MESSAGING_SERVICE_SID` nor
+>    `TWILIO_FROM_NUMBER` is set on either project, so even with auth fixed the
+>    send fails with "TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID must
+>    be set". Use the Messaging Service (`MG…`) the approved campaign is
+>    attached to — the consent line on the checkout form promises "Reply STOP
+>    to opt out", and a Messaging Service is what honours that automatically. A
+>    bare `TWILIO_FROM_NUMBER` makes STOP/HELP handling ours to build.
+>
+> Flip `SMS_DELIVERY_LIVE` only once all three are true — both secrets set and
+> the campaign approved — and only after a phone-only test purchase has
+> actually arrived. Flipping it early is the exact regression the original flag
+> was added for on 2026-08-15: the buyer is charged and delivered nothing,
+> silently, because delivery is fire-and-forget and the only trace is
+> `orders.confirmation_error`. Test to your own mobile — staging carries the
+> same live Twilio credentials as production, so that send is real and billed.
 
 `ticket-access` must deploy with `verify_jwt = false`. That is set in
 `supabase/config.toml`; confirm it took, because the QR images and the ticket

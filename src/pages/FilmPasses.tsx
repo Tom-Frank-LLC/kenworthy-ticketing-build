@@ -434,7 +434,11 @@ export default function FilmPasses() {
                 />
                 {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
               </div>
-              {/* Hidden until Twilio is wired — see COLLECT_PHONE in @/lib/flags. */}
+              {/* Shown with COLLECT_PHONE (see @/lib/flags), but deliberately
+                  without the SMS consent line ticket checkout carries. Pass
+                  orders confirm by email only — film-pass-checkout calls
+                  sendTransactionalEmail and never deliverConfirmation — so
+                  promising a text here would be a promise nothing keeps. */}
               {COLLECT_PHONE && (
                 <div className="sm:col-span-2">
                   <Label htmlFor="pass-phone" className="text-xs">Phone (optional)</Label>
@@ -450,7 +454,7 @@ export default function FilmPasses() {
             </div>
             <p className="text-xs text-muted-foreground">
               We use your name to find your pass at the counter, and your email to confirm the
-              order.
+              order.{COLLECT_PHONE ? ' A phone number is optional, and only so we can reach you about this order.' : ''}
             </p>
           </div>
         </div>
