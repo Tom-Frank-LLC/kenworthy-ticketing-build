@@ -1,8 +1,8 @@
 # Where venue and event date/time live on a Square catalog item
 
-**Phase 0 findings — READ-ONLY. No write was made to the Square catalog.**
-Status: **complete. Phase 1 is NOT cleared to run** — two data problems have to be
-settled first, and both change what Phase 1 would do.
+**Status: Phase 0 complete, Phase 1 applied 2026-08-18.** Venue is set on all
+484 eligible listings and dates on all 259 that have one, each read back from
+Square and confirmed. See §9 for the outcome.
 
 Companion to `INCIDENT-2026-08-14-square-catalog.md`. Read that first.
 
@@ -263,3 +263,73 @@ and is kept because it needs no deploy.
 - [CatalogItemProductType](https://developer.squareup.com/reference/square/enums/CatalogItemProductType)
 - [New front-end event creation impacting catalog search](https://developer.squareup.com/forums/t/new-front-end-event-creation-impacting-catalog-search/25384)
 - [Sell non-physical items in Square Online](https://squareup.com/help/us/en/article/6873-sell-non-physical-items-in-square-online-store)
+
+## 9. Outcome — Phase 1 applied, 2026-08-18
+
+Run in two passes through `square-event-write`, dry-run by default, batch-capped,
+with a diff assertion before each send and a read-back after it.
+
+### Gate test
+
+One item first: `THE GREEN KNIGHT` (archived, Aug 2021, no event block), venue
+only. Square accepted the write and minted its own event `uid`. That settled
+four unknowns at once — `item_data.event` **is** writable; an **archived** item
+can be upserted; an **`EVENT`** product-type item can be upserted despite the
+reference saying Connect V2 only allows *creating* `REGULAR` and
+`APPOINTMENTS_SERVICE`; and a single `address_id` **can be shared** across items
+rather than each needing its own.
+
+It also produced one scare worth recording. The read-back reported
+`item_data.variations` as a collateral change — the Aug 14 damage class — and the
+run halted. It was a false alarm caused by the diff itself: arrays were compared
+whole, so the nested `version`/`updated_at` bump that every successful upsert
+causes surfaced as one useless path. Confirmed harmless against the 2026-08-17
+catalog export, which is an independent pre-write record: the variation's id,
+name and $8.00 price were unchanged, the description was already empty
+beforehand, and the category was untouched. The diff now walks arrays element by
+element and excludes only the `version` and `updated_at` leaves, so a real price
+or name change would still report.
+
+### Results
+
+| pass | attempted | written | skipped (`REGULAR`) | collateral changes | accepted-but-not-stored |
+|---|---|---|---|---|---|
+| venue | 484 | 480 | 4 | **0** | **0** |
+| dates | 259 | 259 | 0 | **0** | **0** |
+
+Verification, read back from Square rather than inferred from response codes:
+
+- **Venue** — a 61-item sample spread across the file: 60 carry
+  `event_location_name = "Kenworthy Performing Arts Centre"`. The single miss is
+  `01 Adult`, a `REGULAR` item that structurally cannot hold one.
+- **Dates** — all **259** re-read individually. 258 matched on the first sweep;
+  the one failure was a Square `429 RATE_LIMITED — "Catalog locked by prior
+  request"` from running three writers concurrently, and it was repaired
+  serially and re-verified. Final state: **259/259 correct**.
+
+One reported mismatch was benign: `FUNDI: THE STORY OF ELLA BAKER` had a
+pre-existing `end_at` that the writer deliberately preserved because we sent
+none. Its `start_at` matches exactly. Keeping existing fields rather than
+overwriting them is the intended behaviour.
+
+### Operational notes for a re-run
+
+- Square **locks the catalog during an upsert**, so concurrent writers earn
+  `429 RATE_LIMITED`. Three workers produced exactly one collision in 259 writes;
+  more concurrency would produce more. Prefer serial, or keep a repair sweep.
+- The whole thing is **idempotent** — re-running writes the same values.
+- The read-back sweep is the real check. Run it after any bulk pass rather than
+  trusting the tally.
+
+### What is still not fixed
+
+**The bleed.** 770 of 838 `EVENT` items lost their event block on 2026-08-17,
+and a Square Library CSV export has no columns for event fields. Any further
+dashboard CSV import round-trip will strip venue and dates again, from these
+items and every other one. This pass restores the 484 listings in scope; it does
+nothing to stop the next import undoing it. That workflow needs to change, or
+this repair will need repeating.
+
+**Coverage.** 30 listings have a description date whose year could not be
+recovered, and 195 never had a date at all — they carry the venue only. Around 8
+of the 484 are `REGULAR` items that can hold neither, permanently.
