@@ -109,11 +109,15 @@ Phase 1:
   reachable through `item_variation_data.item_id`. The event block lives on the
   **parent item**, so Phase 1 has to resolve token → parent before doing
   anything.
-- **`CatalogList` and `CatalogSearch` both omit archived items.** 55 of the 61
-  sampled parents are archived (these are past listings, archived earlier today).
-  `RetrieveCatalogObject` returns them by id regardless. Any Phase 1 pass must
-  address items by id and must never treat absence from a walk as absence from
-  the catalog.
+- ~~**`CatalogList` and `CatalogSearch` both omit archived items.**~~
+  **Wrong — corrected 18 Aug.** The walks *do* return archived items: the
+  current walk holds 1,004 items of which **754 are archived**. The 484 tokens
+  were absent from the walk for the id-type reason above and that reason alone;
+  archiving had nothing to do with it, and this note inferred a second cause
+  that does not exist. 55 of the 61 sampled parents genuinely are archived, but
+  that never hid them. The real lesson survives: address items **by id**, and
+  never read absence from a walk as absence from the catalog — just not for the
+  reason originally given.
 
 Sample of 61 CSV rows, spread evenly across the file:
 

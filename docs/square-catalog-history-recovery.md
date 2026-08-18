@@ -40,8 +40,9 @@ The images are not dangling references. That `IMAGE` object still exists —
 `is_deleted: false`, a live S3 URL, filename `square GREEN.jpg`. Re-linking the
 `image_ids` restores real pictures.
 
-These counts are a floor, not a ceiling: both walks omit archived items, and
-many listings were archived on 17 August.
+These counts cover every item in the catalog, archived included — a walk returns
+archived items (754 of the current 1,004 are archived), contrary to what an
+earlier note in `venue-date-square-mechanism.md` claimed.
 
 ## The snapshots
 
@@ -113,3 +114,59 @@ writers earn `429 RATE_LIMITED — "Catalog locked by prior request"`. Three
 workers with a single retry-after-pause absorbed every collision — zero losses
 across 704 items. `square-catalog-CURRENT-2026-08-18.json` remains the rollback
 point.
+
+## What is still outstanding
+
+Measured by diffing the two snapshots field by field. Descriptions and images
+are done and verified separately; everything below is what the 14 August
+overwrite took and this pass did **not** put back.
+
+| loss | items | notes |
+|---|---|---|
+| **extra variations** | **270 items, 497 variations** | the substantive one — see below |
+| `reporting_category` | 11 | |
+| `categories` | 1 | `Met Live in HD: THE MAGIC FLUTE` |
+| `modifier_list_info` | 1 | `THE BOY AND THE HERON` |
+| `tax_ids` | **0** | nothing lost |
+| items deleted outright | **0** | |
+
+Two "renames" are noise, not damage: Square trimmed a trailing space from
+`MFS BIRTHDAY BIG POSTER ` and `Centennial Candy `.
+
+### The variations are showtimes and price tiers
+
+`pushItem` rebuilt each item with a single variation named `Regular`, so
+whatever structure the item had collapsed to one row. What that destroyed:
+
+```
+EMILY THE CRIMINAL      4 -> 1    Friday, September 16 at 7 PM      $7.00
+                                  Saturday, September 17 at 4 PM    $7.00
+                                  Saturday, September 17 at 7 PM    $7.00
+                                  Sunday, September 18 at 4 PM      $7.00
+                        now:      Regular                           $7.00
+
+MET Live in HD: FEDORA  4 -> 1    Adult - January 14 at 9:55 AM    $20.00
+                                  Student - January 14 at 9:55 AM  $15.00
+                                  Adult - January 16 at 6 PM       $20.00
+                                  Student - January 16 at 6 PM     $15.00
+                        now:      Regular                          $20.00
+
+Backstage with the Band 2 -> 1    General Admission                $25.00
+                                  VIP                              $50.00
+                        now:      Regular                          $25.00
+```
+
+So the loss is per-showtime variations and **price tiers** — Adult/Student,
+GA/VIP. Where tiers differed, the survivor kept the *higher* price, because
+`pushItem` took the first variation.
+
+This is recoverable the same way: the historical variations are in the
+pre-damage snapshot, with their names, prices and ids.
+
+**It has not been done, and it should not be done casually.** Variations carry
+prices and SKUs, are referenced by past orders, and are what a storefront
+actually sells. Restoring them re-creates sellable options — including
+per-showtime rows for screenings that happened in 2022. The right shape is
+probably to restore tiers on items that are still sold and leave dead
+per-showtime rows alone, which is a judgement call about the business, not a
+mechanical repair.
