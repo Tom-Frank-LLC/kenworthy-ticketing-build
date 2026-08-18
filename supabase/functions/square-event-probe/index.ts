@@ -347,6 +347,72 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // How does the theatre actually record money in Square? Sources, tenders,
+    // line-item shapes, taxes, discounts, fulfilment. This is the shape a new
+    // integration has to match for accounting to stay consistent.
+    if (payload.accounting_audit) {
+      const cats = await sq(config, "/catalog/list?types=CATEGORY");
+      const catName = new Map((cats.objects ?? []).map((c: any) => [c.id, c.category_data?.name]));
+
+      const tally = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+      const source = new Map<string, number>(), tender = new Map<string, number>();
+      const liType = new Map<string, number>(), fulfil = new Map<string, number>();
+      const state = new Map<string, number>(), cat = new Map<string, number>();
+      let orders = 0, lines = 0, withTax = 0, withDiscount = 0, withServiceCharge = 0;
+      let withCatalogId = 0, withNote = 0, withCustomer = 0, returns = 0, tipped = 0;
+      let cursor: string | undefined; let pages = 0;
+      const maxPages = Number(payload.max_pages ?? 10);
+      do {
+        const res = await sq(config, "/orders/search", {
+          method: "POST",
+          body: { location_ids: [config.locationId],
+                  query: { sort: { sort_field: "CREATED_AT", sort_order: "DESC" } },
+                  limit: 500, cursor },
+        });
+        for (const o of res.orders ?? []) {
+          orders++;
+          tally(source, o.source?.name ?? "(none)");
+          tally(state, o.state ?? "(none)");
+          if (o.discounts?.length) withDiscount++;
+          if (o.taxes?.length) withTax++;
+          if (o.service_charges?.length) withServiceCharge++;
+          if (o.returns?.length) returns++;
+          if (o.customer_id) withCustomer++;
+          for (const t of o.tenders ?? []) {
+            tally(tender, t.type ?? "(none)");
+            if ((t.tip_money?.amount ?? 0) > 0) tipped++;
+          }
+          for (const f of o.fulfillments ?? []) tally(fulfil, f.type ?? "(none)");
+          if (!(o.line_items ?? []).length) {
+            tally(liType, `NO LINE ITEMS (source=${o.source?.name ?? "none"})`);
+          }
+          for (const li of o.line_items ?? []) {
+            lines++;
+            tally(liType, li.item_type ?? "(none)");
+            if (li.catalog_object_id) withCatalogId++;
+            if (li.note) withNote++;
+            const c = li.catalog_object_id ? null : null;
+            tally(cat, li.item_type === "CUSTOM_AMOUNT" ? `CUSTOM: ${li.name ?? "?"}` : "(catalog)");
+            if (c) void c;
+          }
+        }
+        cursor = res.cursor; pages++;
+      } while (cursor && pages < maxPages);
+
+      const top = (m: Map<string, number>, n = 12) =>
+        [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n)
+          .map(([k, v]) => ({ k, v }));
+      return json({ ok: true, pages, orders, line_items: lines,
+        source: top(source), tender: top(tender), order_state: top(state),
+        line_item_type: top(liType), fulfillment: top(fulfil),
+        custom_amount_lines: top(cat, 20),
+        with_catalog_object_id: withCatalogId, with_note: withNote,
+        with_customer_id: withCustomer, orders_with_tax: withTax,
+        orders_with_discount: withDiscount, orders_with_service_charge: withServiceCharge,
+        orders_with_returns: returns, tenders_with_tip: tipped,
+        categories: [...catName.entries()].map(([id, name]) => ({ id, name })) });
+    }
+
     // Order history as an independent source of truth about what variations
     // once existed. The pre-damage snapshot is one witness; the sales record is
     // another, and it covers anything created after the snapshot was taken but
