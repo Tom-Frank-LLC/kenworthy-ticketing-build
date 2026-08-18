@@ -70,7 +70,13 @@ describe('GuestCheckoutForm', () => {
 
     await waitFor(() =>
       expect(onPurchase).toHaveBeenCalledWith(
-        { name: 'Tom Staging', email: 'tom@example.com', phone: '', newsletter: true },
+        {
+          name: 'Tom Staging',
+          email: 'tom@example.com',
+          phone: '',
+          newsletter: true,
+          smsConsent: false,
+        },
         'cnon:card-nonce-ok',
       ),
     );
@@ -167,10 +173,61 @@ describe('GuestCheckoutForm', () => {
 
       await screen.findByRole('button', { name: /Pay/ });
       expect(screen.getByLabelText(/^Phone$/)).toBeInTheDocument();
-      // Rates and STOP are the two disclosures the campaign is reviewed on, and
-      // they are in the copy whichever side of SMS_DELIVERY_LIVE we are on.
-      expect(screen.getByText(/Message and data rates may apply/)).toBeInTheDocument();
-      expect(screen.getByText(/Reply STOP to opt out/)).toBeInTheDocument();
+
+      // All four disclosures A2P 10DLC review checks for, in one place. The
+      // first submission was rejected for missing frequency and HELP, so these
+      // are assertions rather than a comment asking someone to remember.
+      const consent = screen.getByRole('checkbox', { name: /Text me my tickets/i });
+      const disclosure = consent.closest('label')!;
+      expect(disclosure).toHaveTextContent(/ticket confirmations and updates/i);
+      expect(disclosure).toHaveTextContent(/Message frequency varies/i);
+      expect(disclosure).toHaveTextContent(/Msg & data rates may apply/i);
+      expect(disclosure).toHaveTextContent(/Reply STOP to cancel, HELP for help/i);
+    });
+
+    it('leaves SMS consent unticked, and lets the purchase go through without it', async () => {
+      const onPurchase = vi.fn();
+      render(
+        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+      );
+
+      const payButton = await screen.findByRole('button', { name: /Pay/ });
+      await waitFor(() => expect(payButton).toBeEnabled());
+
+      // Unchecked by default is the requirement, not a preference: consent has
+      // to be an affirmative act, never a default the buyer has to undo.
+      expect(screen.getByRole('checkbox', { name: /Text me my tickets/i })).not.toBeChecked();
+
+      fillContactDetails();
+      fireEvent.click(payButton);
+
+      await waitFor(() => expect(onPurchase).toHaveBeenCalled());
+      expect(onPurchase.mock.calls[0][0].smsConsent).toBe(false);
+    });
+
+    it('reports consent only when the box is ticked and a number was given', async () => {
+      const onPurchase = vi.fn();
+      render(
+        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+      );
+
+      const payButton = await screen.findByRole('button', { name: /Pay/ });
+      await waitFor(() => expect(payButton).toBeEnabled());
+
+      fillContactDetails();
+      // Ticked with the number still blank — there is nothing to consent to,
+      // and reporting consent for no number would put an empty opt-in on record.
+      fireEvent.click(screen.getByRole('checkbox', { name: /Text me my tickets/i }));
+      fireEvent.click(payButton);
+      await waitFor(() => expect(onPurchase).toHaveBeenCalled());
+      expect(onPurchase.mock.calls[0][0].smsConsent).toBe(false);
+
+      onPurchase.mockClear();
+      fireEvent.change(screen.getByLabelText(/^Phone$/), { target: { value: '(208) 892-9752' } });
+      fireEvent.click(payButton);
+      await waitFor(() => expect(onPurchase).toHaveBeenCalled());
+      expect(onPurchase.mock.calls[0][0].smsConsent).toBe(true);
+      expect(onPurchase.mock.calls[0][0].phone).toBe('(208) 892-9752');
     });
   });
 
@@ -222,11 +279,18 @@ describe('GuestCheckoutForm', () => {
 
       fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Tom Staging' } });
       fireEvent.change(screen.getByLabelText(/^Phone$/), { target: { value: '(208) 892-9752' } });
+      fireEvent.click(screen.getByRole('checkbox', { name: /Text me my tickets/i }));
       fireEvent.click(payButton);
 
       await waitFor(() =>
         expect(onPurchase).toHaveBeenCalledWith(
-          { name: 'Tom Staging', email: '', phone: '(208) 892-9752', newsletter: true },
+          {
+            name: 'Tom Staging',
+            email: '',
+            phone: '(208) 892-9752',
+            newsletter: true,
+            smsConsent: true,
+          },
           'cnon:card-nonce-ok',
         ),
       );

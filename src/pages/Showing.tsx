@@ -327,7 +327,13 @@ export default function Showing() {
 
   const submitPurchase = async (opts: {
     sourceId?: string;
-    guest?: { name: string; email: string; phone: string; newsletter: boolean };
+    guest?: {
+      name: string;
+      email: string;
+      phone: string;
+      newsletter: boolean;
+      smsConsent: boolean;
+    };
   }) => {
     setPurchasing(true);
     try {
@@ -346,6 +352,13 @@ export default function Showing() {
         name: opts.guest?.name,
         email: opts.guest?.email || undefined,
         phone: opts.guest?.phone || undefined,
+        // Sent as its own field rather than inferred from `phone` being
+        // present. A number typed into the box and not consented to must not be
+        // texted, and there is no way for the server to tell those apart from
+        // the number alone. A signed-in staff purchase sends no guest block at
+        // all, so this is undefined there and the server treats it as no
+        // consent given.
+        sms_consent: opts.guest?.smsConsent === true,
       });
 
       if (!data?.success) throw new Error('Checkout failed');
@@ -451,7 +464,13 @@ export default function Showing() {
   };
 
   const handleGuestPurchase = (
-    guestInfo: { name: string; email: string; phone: string; newsletter: boolean },
+    guestInfo: {
+      name: string;
+      email: string;
+      phone: string;
+      newsletter: boolean;
+      smsConsent: boolean;
+    },
     sourceId: string,
   ) => {
     if (ticketCount === 0) { toast.error('Please select at least one ticket'); return; }

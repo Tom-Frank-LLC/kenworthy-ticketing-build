@@ -21,7 +21,18 @@ interface GuestCheckoutFormProps {
    * to ask on this form.
    */
   onPurchase: (
-    guestInfo: { name: string; email: string; phone: string; newsletter: boolean },
+    guestInfo: {
+      name: string;
+      email: string;
+      phone: string;
+      newsletter: boolean;
+      /**
+       * Whether the buyer ticked the SMS box. Distinct from `phone` being
+       * non-empty: a number typed and not consented to must never be texted,
+       * and the server cannot infer that from the number alone.
+       */
+      smsConsent: boolean;
+    },
     sourceId: string,
   ) => void;
 }
@@ -41,6 +52,11 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [newsletter, setNewsletter] = useState(true);
+  // Unchecked, and it stays unchecked — A2P 10DLC requires SMS consent to be an
+  // affirmative act, never a default the buyer has to notice and undo. It is
+  // also why nothing on this form is blocked when it is off: a purchase must be
+  // completable without agreeing to texts.
+  const [smsConsent, setSmsConsent] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [tokenizing, setTokenizing] = useState(false);
   const [cardReady, setCardReady] = useState(false);
@@ -57,7 +73,15 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
     const newErrors: Record<string, string> = {};
     if (!name.trim()) newErrors.name = 'Name is required';
     if (SMS_DELIVERY_LIVE) {
-      if (!email.trim() && !phone.trim()) newErrors.contact = 'Email or phone is required';
+      // A phone only counts as a contact if it has been consented to. Without
+      // the tick we will not text it, so a buyer with no email and no consent
+      // has given us nothing we can deliver to — which is the same hole as the
+      // one that charged phone-only buyers and sent them nothing in August.
+      if (!email.trim() && !smsOptIn) {
+        newErrors.contact = phone.trim()
+          ? 'Tick the box to have your tickets texted, or add an email'
+          : 'Email or phone is required';
+      }
     } else if (!email.trim()) {
       newErrors.email = 'Email is required so we can send your tickets';
     }
@@ -74,13 +98,18 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   // through as typed — `toE164` in _shared/notify.ts is what normalises it for
   // Twilio, and pre-mangling it here would only give that one less to work with.
   const contactPhone = COLLECT_PHONE ? phone.trim() : '';
+  // Consent is only meaningful about a number we actually have.
+  const smsOptIn = COLLECT_PHONE && smsConsent && contactPhone.length > 0;
 
   const handleSubmit = async () => {
     if (!validate()) return;
     // Free ($0) showing — no card step. The server skips Square for $0 orders,
     // so there is no token to collect; hand back an empty source.
     if (isFree) {
-      onPurchase({ name: name.trim(), email: email.trim(), phone: contactPhone, newsletter }, '');
+      onPurchase(
+        { name: name.trim(), email: email.trim(), phone: contactPhone, newsletter, smsConsent: smsOptIn },
+        '',
+      );
       return;
     }
     if (!cardRef.current) {
@@ -94,7 +123,10 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
     setTokenizing(true);
     try {
       const sourceId = await cardRef.current.tokenize();
-      onPurchase({ name: name.trim(), email: email.trim(), phone: contactPhone, newsletter }, sourceId);
+      onPurchase(
+      { name: name.trim(), email: email.trim(), phone: contactPhone, newsletter, smsConsent: smsOptIn },
+      sourceId,
+    );
     } catch (err) {
       setErrors({ card: err instanceof Error ? err.message : 'Please check your card details.' });
     } finally {
@@ -136,12 +168,13 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
             />
             {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
           </div>
-          {/* The consent line below is not decoration: it is the disclosure an
-              A2P 10DLC campaign is reviewed on, which is why the field can be
-              live before the texts are. It stays attached to the input rather
-              than living in the footer, and it says only what is true today —
-              until SMS_DELIVERY_LIVE flips, email is what carries the tickets.
-              STOP is handled by the Twilio Messaging Service, not by us. */}
+          {/* The phone field and its consent box are the opt-in an A2P 10DLC
+              campaign is reviewed on, which is why they are live before the
+              texts are. Both stay attached to the input rather than living in
+              the footer. STOP and HELP are answered by the Twilio Messaging
+              Service's Advanced Opt-Out, not by anything in this repo — there
+              is no inbound webhook here, so never disclose a keyword the
+              service is not configured to handle. */}
           {COLLECT_PHONE && (
             <div>
               <Label htmlFor="guest-phone" className="text-xs flex items-center gap-1">
@@ -155,12 +188,27 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
                 onChange={e => setPhone(e.target.value)}
                 maxLength={20}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                {SMS_DELIVERY_LIVE
-                  ? 'We\u2019ll text your tickets and updates about this order to this number.'
-                  : 'We\u2019ll text updates about this order to this number once text delivery is live \u2014 your tickets come by email either way.'}{' '}
-                Message and data rates may apply. Reply STOP to opt out.
-              </p>
+              {/* The A2P 10DLC disclosure block. Twilio's campaign review
+                  rejects an opt-in that is missing any of four things, so all
+                  four are here and stay here: what we send, how often, that
+                  rates apply, and how to stop. Unchecked by default and
+                  optional — the buyer can complete this purchase without it,
+                  which is the third thing the review checks for. */}
+              <label className="flex items-start gap-2 mt-2 text-xs text-muted-foreground cursor-pointer">
+                <Checkbox
+                  id="guest-sms-consent"
+                  checked={smsConsent}
+                  onCheckedChange={v => setSmsConsent(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Text me my tickets. I agree to receive ticket confirmations and updates about
+                  this order by text message from the Kenworthy Performing Arts Centre at the
+                  number above. Message frequency varies &mdash; usually one message per order.
+                  Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help. Optional
+                  &mdash; your tickets come by email either way.
+                </span>
+              </label>
             </div>
           )}
           {errors.contact && <p className="text-xs text-destructive mt-1">{errors.contact}</p>}

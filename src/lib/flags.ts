@@ -122,10 +122,18 @@ export const COLOR_LAB_ENABLED = import.meta.env.VITE_COLOR_LAB !== 'false';
  * direction.
  *
  * It also does not promise a text everywhere it shows a field. Only ticket
- * checkout delivers by SMS. Film passes confirm by email and the box office
- * does not dispatch a confirmation at all, so those two ask for a number as a
- * way to reach someone, and say so rather than implying a text that is not
- * coming.
+ * checkout delivers by SMS, and only there is there a consent checkbox — the
+ * A2P 10DLC opt-in, unchecked by default, carrying all four disclosures the
+ * campaign review requires (what we send, how often, that rates apply, STOP
+ * and HELP). Film passes confirm by email and the box office does not dispatch
+ * a confirmation at all, so those two ask for a number as a way to reach
+ * someone, and say so rather than implying a text that is not coming.
+ *
+ * Note what the checkbox does *not* do: it is not a condition of purchase.
+ * Twilio's first review rejected this campaign partly for looking like one, and
+ * a checkout that cannot be completed without agreeing to texts is a genuine
+ * violation, not a formatting quibble. Nothing on the form may ever be gated on
+ * it.
  */
 export const COLLECT_PHONE = true;
 
