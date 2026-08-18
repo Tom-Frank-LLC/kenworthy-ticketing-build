@@ -111,7 +111,7 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { /* none */ }
 
   const action: string = payload.action ?? "check";
-  if (!["snapshot", "check", "repair", "install_schedule"].includes(action)) {
+  if (!["snapshot", "check", "repair", "install_schedule", "ping"].includes(action)) {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
 
@@ -144,6 +144,13 @@ Deno.serve(async (req: Request) => {
     if (!isAdmin) return json({ error: "Admin only" }, 403);
   }
 
+  // The cheapest authenticated round trip there is. Exists so install_schedule
+  // can prove a credential works AS A BEARER before storing it, rather than
+  // storing it and finding out at 11:17 tomorrow. Touches nothing.
+  if (action === "ping") {
+    return json({ ok: true, caller: isMachine ? "machine" : "admin" });
+  }
+
   // Turn the nightly schedule on without anybody handling a credential.
   //
   // The schedule needs the service role key stored in Vault so pg_net can
@@ -163,6 +170,48 @@ Deno.serve(async (req: Request) => {
     const here = new URL(req.url);
     const functionUrl = `${here.origin}${here.pathname}`;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!serviceKey) {
+      return json({ error: "SUPABASE_SERVICE_ROLE_KEY is not set in this function's environment." }, 500);
+    }
+
+    // PROVE THE CREDENTIAL FIRST.
+    //
+    // Storing a key and trusting it is how this went wrong repeatedly: the value
+    // was accepted, everything reported success, and the only evidence of
+    // failure was a nightly 401 in net._http_response that nobody reads.
+    //
+    // The bearer has to clear two gates the function cannot inspect from here —
+    // the platform's JWT gateway, and then this function's own machine check.
+    // The only honest test is a real HTTP round trip against our own URL, which
+    // is exactly what pg_net will do every morning. Anything less is a guess
+    // about key formats, and the last such guess was wrong.
+    let probe: { status: number; body: string };
+    try {
+      const r = await fetch(functionUrl, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ping" }),
+      });
+      probe = { status: r.status, body: (await r.text()).slice(0, 300) };
+    } catch (e: any) {
+      return json({ error: `Could not reach ${functionUrl} to verify the key: ${e.message}` }, 502);
+    }
+
+    let probeOk = false;
+    try { probeOk = probe.status === 200 && JSON.parse(probe.body)?.caller === "machine"; } catch { /* not json */ }
+
+    if (!probeOk) {
+      return json({
+        error: "The service role key in this function's environment does not work " +
+               "as a bearer against this function, so the schedule would 401 every " +
+               "night. Nothing was stored.",
+        probe,
+        key_shape: `${serviceKey.length} chars, starts "${serviceKey.slice(0, 3)}"`,
+        hint: probe.status === 401
+          ? "The platform gateway rejected it before the function ran."
+          : "It reached the function but was not recognised as the machine caller.",
+      }, 502);
+    }
 
     const { data, error } = await admin.rpc("configure_square_catalog_guard", {
       p_url: functionUrl,
@@ -176,7 +225,9 @@ Deno.serve(async (req: Request) => {
       action,
       configured_url: functionUrl,
       result: data,
-      note: "Schedule configured. Nothing was pasted and no key left the platform. " +
+      verified: probe,
+      note: "Schedule configured, and the key was proven to work as a bearer " +
+            "before being stored. Nothing was pasted and no key left the platform. " +
             "Prove it end to end: run { action: 'check' } from the scheduler by " +
             "calling select public.run_square_catalog_guard_check(); and confirm a " +
             "new row appears in square_catalog_guard_runs.",
