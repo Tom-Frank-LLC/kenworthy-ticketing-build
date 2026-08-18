@@ -459,6 +459,11 @@ Deno.serve(async (req: Request) => {
     phone: contact.phone || undefined,
     name: contact.name || undefined,
     accountCreated,
+    // Read as a strict boolean, so anything the client does not send counts as
+    // no consent rather than as "unknown". This is the checkout path: the form
+    // always asks, so silence here is a decline, and a decline has to stop the
+    // number we hold on `profiles` from being texted too.
+    smsConsent: body.sms_consent === true,
   }).catch((e) => console.error('[ticket-checkout] confirmation dispatch failed', e));
 
   // waitUntil keeps the send alive past this response; a bare `void fetch` can

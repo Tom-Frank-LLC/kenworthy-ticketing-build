@@ -241,6 +241,63 @@ Deno.test('an already-confirmed order is not texted a second time', async () => 
   });
 });
 
+Deno.test('a declined SMS opt-in is not a delivery failure, and is not sent', async () => {
+  const admin = stubAdmin(ticketRows());
+  await withStubFetch(() => ok(), async (sent) => {
+    const result = await deliverConfirmation(admin, ORDER_TOKEN, {
+      ...contact,
+      smsConsent: false,
+    });
+
+    assertEquals(result.status, 'delivered');
+    assertEquals((result as { channel: string }).channel, 'email');
+    assertEquals(sent.twilio, 0);
+    // Declining is not an error. Recording one here would put every buyer who
+    // left the box unticked into the list of orders that need looking at.
+    assertEquals(admin.updates.at(-1)!.confirmation_error, null);
+  });
+});
+
+Deno.test('a decline also blocks the number we already had on file', async () => {
+  // The case that makes consent a server concern rather than a form concern:
+  // the client sends no phone at all, and deliverConfirmation would otherwise
+  // recover one from auth or `profiles` and text it. Having bought before is
+  // not consent.
+  const admin = {
+    ...stubAdmin(ticketRows()),
+    auth: {
+      admin: {
+        getUserById: () =>
+          Promise.resolve({ data: { user: { phone: '2088929752', email: null } } }),
+      },
+    },
+  } as unknown as ReturnType<typeof stubAdmin>;
+
+  await withStubFetch(() => ok(), async (sent) => {
+    const result = await deliverConfirmation(admin, ORDER_TOKEN, {
+      email: contact.email,
+      name: contact.name,
+      smsConsent: false,
+    });
+
+    assertEquals(result.status, 'delivered');
+    assertEquals((result as { channel: string }).channel, 'email');
+    assertEquals(sent.twilio, 0, 'a stored number is not a consented number');
+  });
+});
+
+Deno.test('no consent signal at all leaves the old behaviour alone', async () => {
+  // An operator resend through send-ticket-confirmation carries no consent
+  // field. Treating that silence as a decline would quietly break resends.
+  const admin = stubAdmin(ticketRows());
+  await withStubFetch(() => ok(), async (sent) => {
+    const result = await deliverConfirmation(admin, ORDER_TOKEN, contact);
+
+    assertEquals((result as { channel: string }).channel, 'email+sms');
+    assertEquals(sent.twilio, 1);
+  });
+});
+
 Deno.test('force resends a confirmed order on every channel', async () => {
   const admin = stubAdmin(ticketRows({ confirmation_sent_at: '2026-08-18T02:05:00.000Z' }));
   await withStubFetch(() => ok(), async (sent) => {
