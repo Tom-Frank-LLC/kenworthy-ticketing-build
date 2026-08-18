@@ -98,27 +98,39 @@ export const COLOR_LAB_ENABLED = import.meta.env.VITE_COLOR_LAB !== 'false';
 /**
  * Whether any purchase form asks the buyer for a phone number.
  *
- * **Off**, and this one is not a product decision — it is a delivery fact.
- * Tickets and passes go out by email (Resend) and SMS (Twilio), and Twilio is
- * not wired up. So a buyer who gave us only a phone number paid and received
- * nothing at all: the ticket-checkout server rule is "email or phone", the
- * phone satisfied it, and the SMS that was supposed to follow does not exist.
- * Silent, and invisible from our side, because nothing errored.
+ * **On.** It was off for three days, and that was never a product decision —
+ * it was a delivery fact. Tickets go out by email (Resend) or SMS (Twilio),
+ * the ticket-checkout server rule is "email or phone", and Twilio was not
+ * wired up. A buyer who gave us only a number paid and received nothing at
+ * all: no email, and an SMS that did not exist. Silent, and invisible from our
+ * side, because nothing errored — delivery is fire-and-forget, so the failure
+ * only ever landed in `orders.confirmation_error`.
  *
- * Hiding the field is what makes email mandatory in practice. Where a form
- * already required email (film passes) the field is hidden anyway, because
- * asking for a number we cannot use and will not call is a small lie.
+ * What makes it safe to ask again is that Twilio is now configured, not that
+ * the code changed: `sendViaTwilio` in `_shared/deliver.ts` has been complete
+ * the whole time and was gated purely on its environment. That is the standing
+ * condition on this flag. It is `true` only while the deployed edge functions
+ * hold `TWILIO_ACCOUNT_SID`, a credential (`TWILIO_API_KEY_SID` +
+ * `TWILIO_API_KEY_SECRET`, or `TWILIO_AUTH_TOKEN`), and a sender
+ * (`TWILIO_MESSAGING_SERVICE_SID`, or `TWILIO_FROM_NUMBER`). Names matter
+ * literally: `TWILIO_API_KEY` is not `TWILIO_API_KEY_SID`, and the mismatch
+ * reads as "no credential at all". If Twilio is ever suspended, rotated out,
+ * or the campaign lapses, set this back to `false` in the same breath —
+ * otherwise the silent non-delivery comes straight back.
  *
- * Deliberately a literal rather than a `VITE_` env var: flipping it back is one
+ * Deliberately a literal rather than a `VITE_` env var: flipping it is one
  * line in one file, reviewed like any other change, rather than a variable to
- * remember to set in `.env.staging`, `.env.production` and the Worker. It goes
- * `true` in the same pull request that finishes the Twilio wiring, and the
- * phone fields, the email-or-phone rule on ticket checkout, and the old helper
- * copy all come back together.
+ * remember to set in `.env.staging`, `.env.production` and the Worker.
  *
- * What it does NOT gate is the plumbing. Both checkout forms still send a
- * `phone` key, both edge functions still accept it, and the server rule stays
- * lenient at "email or phone" — so nothing downstream has to change in either
+ * What it does NOT gate is the plumbing. Both checkout forms always sent a
+ * `phone` key, both edge functions always accepted it, and the server rule
+ * stayed lenient at "email or phone" — so nothing downstream changes in either
  * direction.
+ *
+ * It also does not promise a text everywhere it shows a field. Only ticket
+ * checkout delivers by SMS. Film passes confirm by email and the box office
+ * does not dispatch a confirmation at all, so those two ask for a number as a
+ * way to reach someone, and say so rather than implying a text that is not
+ * coming.
  */
-export const COLLECT_PHONE = false;
+export const COLLECT_PHONE = true;

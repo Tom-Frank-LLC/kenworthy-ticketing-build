@@ -107,6 +107,19 @@ images blocked still has something the box office can key in.
 the QR inline, so it works at the door with no signal in the lobby. The SMS
 requires loading a page.
 
+**The box office is not on this pipeline at all.** `StaffPOS` requires a patron
+email or phone before it will take a sale, which reads as though a confirmation
+follows. It does not. The screen inserts ticket rows straight into `tickets`
+via `createTickets` and stops there — nothing in `src/` calls
+`send-ticket-confirmation`, the POS never calls `ticket-checkout`, and no
+database trigger dispatches on insert. The contact it collects reaches only the
+donation record. That was true before phone collection was switched off and is
+still true now; the counter's own copy was reworded on 2026-08-18 to say the
+contact is how the box office reaches the patron, rather than implying a
+delivery. Wiring the POS into `deliverConfirmation` is a separate piece of
+work — it is the one purchase path where a patron can be charged and receive no
+digital record of it at all.
+
 **The password link is generated, not emailed by Supabase.**
 `auth.admin.generateLink({ type: 'recovery' })` mints the link without sending
 anything; we deliver it ourselves through Resend. That is what closes the
@@ -278,6 +291,37 @@ supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
 > `supabase migration list` first and temporarily move other people's pending
 > files aside if you mean to apply only your own. Staging needed
 > `--include-all` because a newer migration had already landed there.
+
+> **SMS activation status, 2026-08-18.** Twilio's A2P 10DLC registration is
+> approved, so `COLLECT_PHONE` in `src/lib/flags.ts` is back `true` and the
+> phone field is on ticket checkout again. The send path did not change and did
+> not need to — `sendViaTwilio` was complete the whole time. What SMS is
+> waiting on is two secrets, on **both** projects:
+>
+> 1. **The API key SID is stored under the wrong name.** `TWILIO_ACCOUNT_SID`,
+>    `TWILIO_API_KEY` and `TWILIO_API_KEY_SECRET` are all set (identical
+>    digests on staging and production — one Twilio account, no sandbox). But
+>    `deliver.ts` reads `TWILIO_API_KEY_SID`, and `TWILIO_API_KEY` is a
+>    different name, so `twilioAuth()` sees no credential at all and returns
+>    "Configure TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET (preferred), or
+>    TWILIO_AUTH_TOKEN". Re-set the same `SK…` value under
+>    `TWILIO_API_KEY_SID`. (Noted in `DONATIONS.md` on 2026-08-13 and still
+>    true.)
+> 2. **No sender is configured.** Neither `TWILIO_MESSAGING_SERVICE_SID` nor
+>    `TWILIO_FROM_NUMBER` is set on either project, so even with auth fixed the
+>    send fails with "TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID must
+>    be set". Use the Messaging Service (`MG…`) the approved campaign is
+>    attached to — the consent line on the checkout form promises "Reply STOP
+>    to opt out", and a Messaging Service is what honours that automatically. A
+>    bare `TWILIO_FROM_NUMBER` makes STOP/HELP handling ours to build.
+>
+> Until both are set, a phone-only purchase is charged and delivered nothing —
+> silently, because delivery is fire-and-forget and the only trace is
+> `orders.confirmation_error`. Do not deploy the frontend with `COLLECT_PHONE`
+> on ahead of the secrets; that is the exact regression the flag was added for
+> on 2026-08-15. Verify on staging first with a phone-only purchase to your own
+> mobile — staging carries the same live Twilio credentials as production, so
+> that test sends a real, billed message from the real account.
 
 `ticket-access` must deploy with `verify_jwt = false`. That is set in
 `supabase/config.toml`; confirm it took, because the QR images and the ticket

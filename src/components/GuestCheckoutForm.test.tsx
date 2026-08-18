@@ -175,4 +175,48 @@ describe('GuestCheckoutForm', () => {
       expect(onPurchase).not.toHaveBeenCalled();
     });
   });
+
+  /**
+   * The other half of the same rule, so the flag is covered in both positions.
+   *
+   * Turning COLLECT_PHONE back on is only safe because Twilio can now deliver,
+   * and these are the two things that has to mean on this form: a phone-only
+   * buyer gets through checkout at all, and the number they typed reaches the
+   * purchase handler untouched — `toE164` on the server is what normalises it,
+   * and anything that trimmed or reformatted it here would be doing that job
+   * twice, differently. The consent line is asserted with them because an A2P
+   * 10DLC campaign is approved on the disclosure being present at the field.
+   */
+  describe.skipIf(!COLLECT_PHONE)('with phone collection on', () => {
+    it('asks for a phone number and discloses what texting it means', async () => {
+      render(
+        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={vi.fn()} />,
+      );
+
+      await screen.findByRole('button', { name: /Pay/ });
+      expect(screen.getByLabelText(/^Phone$/)).toBeInTheDocument();
+      expect(screen.getByText(/Reply STOP to opt out/)).toBeInTheDocument();
+    });
+
+    it('takes a phone-only purchase and passes the number through as typed', async () => {
+      const onPurchase = vi.fn();
+      render(
+        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+      );
+
+      const payButton = await screen.findByRole('button', { name: /Pay/ });
+      await waitFor(() => expect(payButton).toBeEnabled());
+
+      fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Tom Staging' } });
+      fireEvent.change(screen.getByLabelText(/^Phone$/), { target: { value: '(208) 892-9752' } });
+      fireEvent.click(payButton);
+
+      await waitFor(() =>
+        expect(onPurchase).toHaveBeenCalledWith(
+          { name: 'Tom Staging', email: '', phone: '(208) 892-9752', newsletter: true },
+          'cnon:card-nonce-ok',
+        ),
+      );
+    });
+  });
 });

@@ -531,13 +531,19 @@ export default function StaffPOS() {
       toast.error('Select a showing and at least one ticket');
       return;
     }
-    // The counter is not exempt from the delivery problem: a phone-only sale
-    // here takes the money and sends nothing, because there is no SMS to send.
+    // Contact is required at the counter, but be accurate about why. This
+    // screen inserts ticket rows directly and never dispatches a confirmation
+    // — nothing here calls ticket-checkout or send-ticket-confirmation, and no
+    // trigger does it either — so neither an email nor a phone typed here
+    // sends the patron anything today. What they buy is the paper/QR handoff
+    // at the window; the contact is how the box office reaches them
+    // afterwards. Worth fixing separately, but do not let this message imply a
+    // delivery that is not happening.
     if (COLLECT_PHONE ? (!patronEmail && !patronPhone) : !patronEmail) {
       toast.error(
         COLLECT_PHONE
-          ? 'Enter patron email or phone for digital ticket delivery'
-          : 'Enter a patron email — it is the only way the ticket can reach them',
+          ? 'Enter a patron email or phone so the box office can reach them'
+          : 'Enter a patron email so the box office can reach them',
       );
       return;
     }
@@ -782,7 +788,10 @@ export default function StaffPOS() {
                   onChange={e => setPatronEmail(e.target.value)}
                 />
               </div>
-              {/* Hidden until Twilio is wired — see COLLECT_PHONE in @/lib/flags. */}
+              {/* Back with COLLECT_PHONE (see @/lib/flags), and like the
+                  film-pass form deliberately without an SMS consent line: the
+                  counter sends no confirmation of any kind, so this number is
+                  a way to reach the patron, not a delivery address. */}
               {COLLECT_PHONE && (
                 <div className="space-y-2">
                   <Label htmlFor="patron-phone">Phone (optional)</Label>

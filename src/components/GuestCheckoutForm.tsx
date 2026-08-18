@@ -46,9 +46,11 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   const [cardReady, setCardReady] = useState(false);
   const cardRef = useRef<SquareCardFormHandle>(null);
 
-  // With no phone field on the form there is nothing for "email or phone" to
-  // fall back to, so email stops being optional. The old rule is kept intact
-  // for the day COLLECT_PHONE goes back on, rather than rewritten from memory.
+  // The contact rule follows the delivery channels that actually exist. With
+  // phone collection on, SMS is a real fallback and "email or phone" is honest
+  // again; with it off there is nothing for the fallback to fall back to, so
+  // email is mandatory. Both branches stay written down so flipping the flag
+  // never means reconstructing the other rule from memory.
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!name.trim()) newErrors.name = 'Name is required';
@@ -65,8 +67,10 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   };
 
   const isFree = total <= 0;
-  // With the field hidden `phone` can only ever be '', but send it explicitly
-  // rather than by accident: the server contract carries the key either way.
+  // Sent explicitly rather than by accident: the server contract carries the
+  // key either way, and with the field hidden this is deliberately ''. Passed
+  // through as typed — `toE164` in _shared/notify.ts is what normalises it for
+  // Twilio, and pre-mangling it here would only give that one less to work with.
   const contactPhone = COLLECT_PHONE ? phone.trim() : '';
 
   const handleSubmit = async () => {
@@ -130,7 +134,11 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
             />
             {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
           </div>
-          {/* Hidden until Twilio is wired — see COLLECT_PHONE in @/lib/flags. */}
+          {/* Shown only while Twilio can actually deliver — see COLLECT_PHONE
+              in @/lib/flags. The consent line below is not decoration: it is
+              the disclosure an A2P 10DLC campaign is approved on, so it stays
+              attached to the field rather than living in the footer. STOP is
+              handled by the Twilio Messaging Service, not by us. */}
           {COLLECT_PHONE && (
             <div>
               <Label htmlFor="guest-phone" className="text-xs flex items-center gap-1">
@@ -144,6 +152,10 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
                 onChange={e => setPhone(e.target.value)}
                 maxLength={20}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                We&rsquo;ll text your tickets and updates about this order to this number. Message
+                and data rates may apply. Reply STOP to opt out.
+              </p>
             </div>
           )}
           {errors.contact && <p className="text-xs text-destructive mt-1">{errors.contact}</p>}
