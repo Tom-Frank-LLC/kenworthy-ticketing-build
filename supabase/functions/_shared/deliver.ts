@@ -14,14 +14,23 @@
 // matters. send-ticket-confirmation remains as an HTTP endpoint so an operator
 // can resend, but it is now a thin wrapper over this.
 //
-// One entry point, branching on how the customer identified themselves:
+// One entry point, sending on every channel the customer gave us:
 //   has an email  -> transactional email with an embedded, scannable QR per
 //                    ticket, plus (when warranted) a link to set a password
-//   phone only    -> SMS with the essentials and a link to the mobile ticket
+//   has a phone   -> SMS with the essentials and a link to the mobile ticket
 //                    page, because an SMS cannot carry a scannable QR
 //
-// Email wins when a customer supplied both: it carries the QR inline, so it
-// works at the door even with no signal in the lobby.
+// Both, when there are both. Email used to win and stop, with SMS reserved for
+// buyers who gave nothing else; the text now goes alongside it, so a customer
+// who hands over a number hears immediately that their tickets are out instead
+// of finding out whenever they next open their mail. The email is still the
+// one that matters at the door — it carries the QR inline and works with no
+// signal in the lobby — so the SMS is a notification, not a substitute.
+//
+// The two are attempted independently and neither suppresses the other. One
+// channel getting through is a delivery: `confirmation_sent_at` is stamped so
+// a retry cannot send twice, and the channel that failed is recorded in
+// `confirmation_error` beside it rather than instead of it.
 //
 // Callers dispatch this fire-and-forget so delivery can never fail a purchase.
 // That makes silent failure the real risk, so every outcome is written back to
@@ -222,11 +231,21 @@ export interface DeliverOptions {
   force?: boolean;
 }
 
+/** Which channels a confirmation actually went out on. */
+export type DeliverChannel = 'email' | 'sms' | 'email+sms';
+
 export type DeliverResult =
-  | { status: 'delivered'; channel: 'email' | 'sms' }
+  /**
+   * At least one channel got through. `channel` is what actually sent, not
+   * what was attempted, and `partialError` is set when the *other* channel was
+   * tried and failed — a text that bounced off a dead number does not undo the
+   * emailed ticket, but it should not vanish either.
+   */
+  | { status: 'delivered'; channel: DeliverChannel; partialError?: string }
   | { status: 'skipped'; reason: 'already_sent'; sentAt: string }
   | { status: 'not_found' }
-  | { status: 'failed'; channel?: 'email' | 'sms'; error: string; httpStatus: number };
+  /** Nothing reached the customer. `channel` is what was attempted. */
+  | { status: 'failed'; channel?: DeliverChannel; error: string; httpStatus: number };
 
 /**
  * Deliver an order's tickets and record the outcome on every row in it.
@@ -283,7 +302,15 @@ export async function deliverConfirmation(
   const calendarUrl = ticketCalendarUrl(SUPABASE_URL, orderToken);
   const googleCalUrl = googleCalendarUrl(order, ticketUrl);
 
-  // ---- Email path ---------------------------------------------------------
+  // ---- Both channels, not the first one that matches ----------------------
+  // Email used to win and stop: SMS was only ever the fallback for a buyer who
+  // had left the email box blank. It now runs alongside, so anyone who gives
+  // us a number is told by text that their tickets are out, and the email is
+  // still what carries the scannable QR. The two are attempted independently
+  // and neither can suppress the other — the failure that matters here is the
+  // one where a working channel goes unused because the other one threw first.
+
+  let emailError: string | null = null;
   if (email) {
     // A recovery link doubles as "set your password" for an account the holder
     // has never signed into. Skipped for anyone who has signed in before —
@@ -338,44 +365,76 @@ export async function deliverConfirmation(
     const result = await sendTransactionalEmail(email, buildSubject(order), html, text);
     if (!result.ok) {
       console.error('[deliver] email send failed', result.error);
-      await record({ confirmation_error: result.error });
-      return { status: 'failed', channel: 'email', error: result.error, httpStatus: 502 };
+      emailError = result.error;
     }
-
-    await record({
-      confirmation_sent_at: new Date().toISOString(),
-      confirmation_channel: 'email',
-      confirmation_error: null,
-    });
-    return { status: 'delivered', channel: 'email' };
   }
 
-  // ---- SMS path -----------------------------------------------------------
+  // ---- SMS ----------------------------------------------------------------
+  // Unreachable-number errors are 400 (nothing to retry — the number is not
+  // dialable) and provider errors 502 (ours or Twilio's, and worth retrying),
+  // which is the same split the single-channel version made.
+  let smsError: string | null = null;
+  let smsStatus = 502;
   if (phone) {
     const e164 = toE164(phone);
     if (!e164) {
-      const error = `Phone number is not in a sendable format: ${phone}`;
-      console.error('[deliver]', error);
-      await record({ confirmation_error: error });
-      return { status: 'failed', channel: 'sms', error, httpStatus: 400 };
+      smsError = `Phone number is not in a sendable format: ${phone}`;
+      smsStatus = 400;
+      console.error('[deliver]', smsError);
+    } else {
+      const result = await sendViaTwilio(e164, buildSmsBody(order, ticketUrl, calendarUrl));
+      if (!result.ok) {
+        console.error('[deliver] sms send failed', result.error);
+        smsError = result.error;
+      }
     }
-
-    const result = await sendViaTwilio(e164, buildSmsBody(order, ticketUrl, calendarUrl));
-    if (!result.ok) {
-      console.error('[deliver] sms send failed', result.error);
-      await record({ confirmation_error: result.error });
-      return { status: 'failed', channel: 'sms', error: result.error, httpStatus: 502 };
-    }
-
-    await record({
-      confirmation_sent_at: new Date().toISOString(),
-      confirmation_channel: 'sms',
-      confirmation_error: null,
-    });
-    return { status: 'delivered', channel: 'sms' };
   }
 
-  const error = 'Order has no email or phone to deliver to';
+  // ---- Outcome ------------------------------------------------------------
+  if (!email && !phone) {
+    const error = 'Order has no email or phone to deliver to';
+    await record({ confirmation_error: error });
+    return { status: 'failed', error, httpStatus: 400 };
+  }
+
+  const emailSent = !!email && !emailError;
+  const smsSent = !!phone && !smsError;
+  const attempted: DeliverChannel =
+    email && phone ? 'email+sms' : email ? 'email' : 'sms';
+
+  if (emailSent || smsSent) {
+    const channel: DeliverChannel =
+      emailSent && smsSent ? 'email+sms' : emailSent ? 'email' : 'sms';
+    // Exactly one of these can be set here, since a delivery means the other
+    // channel succeeded or was never asked for.
+    const partialError = emailError || smsError;
+    if (partialError) {
+      console.warn(`[deliver] partial delivery on ${channel}: ${partialError}`);
+    }
+    // `confirmation_sent_at` is what stops a retry from sending twice, so it is
+    // stamped the moment anything reaches the customer. A partial failure rides
+    // alongside it in `confirmation_error` rather than in place of it: an order
+    // with both columns set is one where the customer was reached and something
+    // still needs looking at.
+    await record({
+      confirmation_sent_at: new Date().toISOString(),
+      confirmation_channel: channel,
+      confirmation_error: partialError,
+    });
+    return partialError
+      ? { status: 'delivered', channel, partialError }
+      : { status: 'delivered', channel };
+  }
+
+  // Nothing got through on any channel we had a contact for.
+  const error = [emailError, smsError].filter(Boolean).join('; ');
   await record({ confirmation_error: error });
-  return { status: 'failed', error, httpStatus: 400 };
+  return {
+    status: 'failed',
+    channel: attempted,
+    error,
+    // A dud phone number alone is the customer's typo; anything else means a
+    // provider or a credential is involved, and 502 is what a caller retries.
+    httpStatus: emailError || smsStatus === 502 ? 502 : 400,
+  };
 }

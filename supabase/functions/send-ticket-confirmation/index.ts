@@ -108,7 +108,15 @@ Deno.serve(async (req: Request) => {
 
     switch (result.status) {
       case 'delivered':
-        return json({ delivered: true, channel: result.channel });
+        // `partial_error` is present when one channel got through and the
+        // other did not. The order is delivered either way — an operator
+        // resending should not be told it failed — but the reason the text or
+        // the email did not go is the whole point of asking from here.
+        return json({
+          delivered: true,
+          channel: result.channel,
+          ...(result.partialError ? { partial_error: result.partialError } : {}),
+        });
       case 'skipped':
         return json({ delivered: false, reason: result.reason, sent_at: result.sentAt });
       case 'not_found':
