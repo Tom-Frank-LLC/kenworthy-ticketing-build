@@ -1,3 +1,17 @@
+> **CORRECTION, 18 Aug 2026 — the damage is recoverable after all.**
+> This note concluded that descriptions, images and extra variations "cannot be
+> restored from here — only from a Square-side backup or export". **That was
+> wrong.** Square retains historical catalog versions and serves them through
+> the ordinary Catalog API: pass `catalog_version=<epoch ms>` to a read and you
+> get the catalog as it stood at that instant. No export, no Support ticket.
+> Reading as of 14 Aug 21:00 UTC — after the over-pull, before the 22:27
+> overwrite — **682 descriptions and 539 images** that are gone today came back,
+> and the `IMAGE` objects they point at still exist and are undeleted. Captured
+> to `square-catalog-PRE-DAMAGE-2026-08-14T21-00Z.json` (989 items, 3.5 MB).
+> See `docs/square-catalog-history-recovery.md`. The claim below stood
+> unchallenged for four days because nobody tested it; the test was one query
+> parameter.
+
 # Incident — Square catalog over-pull and overwrite (14 Aug 2026)
 
 Two separate faults in `square-catalog-sync`. The first flooded the public site
