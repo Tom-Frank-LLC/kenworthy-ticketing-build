@@ -71,17 +71,45 @@ a minute. **A conclusion that closes off a whole class of solution deserves a
 cheap experiment before it is written down as fact** — especially one that is
 going to be read as a constraint by everyone who comes after.
 
-## Restoring is not done
+## The restore — done, 18 Aug 2026
 
-Only that the data is *readable* has been established. Putting it back is a
-write pass over ~682 items and has not been attempted or approved. Notes for
-whoever does it:
+Run through `square-catalog-restore`, dry-run by default, with a diff assertion
+before each write and a read-back after it.
 
-- Read-modify-write, as always. Take the historical object, copy `description` /
-  `description_html` / `image_ids` onto the **current** object, and send that
-  back. Do not send the historical object wholesale — it predates every
-  legitimate change since, including the venue and dates written on 18 August.
-- Square **locks the catalog during an upsert**, so concurrent writers earn
-  `429 RATE_LIMITED — "Catalog locked by prior request"`. Go serial.
-- A 2xx is not evidence. Read back and compare.
-- `square-catalog-CURRENT-2026-08-18.json` is the rollback point.
+| | count |
+|---|---|
+| items in scope | 704 |
+| **restored** | **694** |
+| already restored (idempotent no-op) | 10 |
+| accepted-but-not-stored | **0** |
+| collateral changes | **0** |
+| errors | **0** |
+
+Verified by re-running the plan afterwards: **0 items still needing a
+description or an image**. Down from 682 and 539.
+
+The rule that mattered: the historical object was never sent back wholesale. It
+predates every legitimate change since — including the venue and event dates
+written the same day. Each write took the **current** object and copied the
+three lost fields onto it. `THE GREEN KNIGHT` is the proof the layers compose:
+it now carries its restored 509-character description, its image, the venue, and
+its event dates, all at once.
+
+Two Square behaviours were checked rather than assumed, then whitelisted:
+
+- `description_plaintext` is derived read-only. Restoring a description
+  repopulates it to a matching length without our sending it.
+- Square **normalises whitespace** in `description`: a historical value with
+  three consecutive newlines comes back with two, every other character
+  identical. So a restored length landing 1–2 characters short of the historical
+  one is expected, not a failure.
+
+Left alone, deliberately: **extra variations**, also lost on 14 August. They
+carry prices and SKUs and are referenced by orders, so resurrecting them is a
+separate decision with a different risk profile.
+
+Operational note: Square locks the catalog during an upsert, so concurrent
+writers earn `429 RATE_LIMITED — "Catalog locked by prior request"`. Three
+workers with a single retry-after-pause absorbed every collision — zero losses
+across 704 items. `square-catalog-CURRENT-2026-08-18.json` remains the rollback
+point.
