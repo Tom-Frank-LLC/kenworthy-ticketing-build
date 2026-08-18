@@ -150,12 +150,54 @@ name and reuse an existing `address_id`, which also makes the venue half of this
 job independent of the CSV entirely — it's the same two constant values on every
 row.
 
-**One open question before writing any date:** whether `start_at` is a true UTC
-instant or a local time carrying a `+00:00` suffix. `MEDEA` reads
-`2022-10-22T17:00:00+00:00` alongside `America/Los_Angeles`; 17:00 UTC is 10:00
-PDT, plausible for a MET matinee, but that is inference, not proof. Getting this
-wrong shifts every showtime by hours. Confirm against one item whose true
-showtime is known before writing the other 284.
+**`start_at` is a true UTC instant — settled.** Square stores
+`2025-03-23T19:00:00+00:00` for `NT LIVE: THE IMPORTANCE OF BEING EARNEST`; our
+own `showings` export holds `2025-03-23 19:00:00+00` for the same title.
+Identical. The `event_location_time_zone` is a display hint, not an offset
+applied to the stored value.
+
+## 4a. Both problems are solved from data already on disk
+
+Neither fix needs Square. Two exports we already hold are enough:
+
+- `~/Downloads/kenworthy-showings-export.csv` — 1,437 showings with full
+  `start_time` timestamps, **including the year**.
+- `~/Downloads/Supabase Snippet Untitled query-5.csv` — the 1,279-row production
+  export whose descriptions supplied the original month/day/time.
+
+The descriptions say *which* run a title belongs to; the showings rows supply the
+instants. `scripts/build-venue-dates-v2.py` joins them and writes
+`square-venue-dates-v2.csv`:
+
+| | count |
+|---|---|
+| rows | 484 |
+| `event_location_name` (constant) | 484 |
+| **`start_at` as a real timestamp** | **259** |
+| `end_at` | 161 |
+| had a description date but no matching showing — year unknown | 30 |
+| never had a date (the `NEEDS DESCRIPTION` set) | 195 |
+
+Two independent checks that the conversion is right:
+
+- `BARBIE`'s description reads "September 1 at 7 PM"; converting that as local
+  Pacific gives `2023-09-02T02:00:00+00:00`, exactly what `showings` stores.
+- `NT LIVE: THE IMPORTANCE OF BEING EARNEST` regenerates as
+  `2025-03-23T19:00:00+00:00` — byte-identical to the value **Square itself
+  already holds** for that item. That is the strongest confirmation available:
+  our pipeline reproduces Square's own data for the one item where both exist.
+
+The showings export averages ~1.2 rows per title, so it cannot rebuild a
+multi-day run alone; the run's end comes from the description's `End` combined
+with the year from the matched showing. `A COMPLETE UNKNOWN` comes out
+`2025-02-07T21:00:00+00:00` → `2025-02-10T03:00:00+00:00` (Feb 7 1 PM → Feb 9
+7 PM Pacific), matching the "Feb 7 → Feb 9" span the review note described.
+
+One discrepancy worth knowing: for `MET Live in HD: MEDEA` the regenerated
+`end_at` matches Square's stored value exactly, but the `start_at` is 2 hours
+earlier than Square's. Our historical MET import looks approximate on start
+times. It affects a small number of MET rows and should be spot-checked rather
+than trusted wholesale.
 
 ## 5. The blocks are still being destroyed
 
@@ -187,7 +229,7 @@ the Aug 14 overwrite, and it points the same way.
 
 Not started, and it should not start until §4 is resolved.
 
-1. Regenerate the CSV with **years** on `Start`/`End`.
+1. ~~Regenerate the CSV with **years**~~ — done, `square-venue-dates-v2.csv`.
 2. Set venue from constants (`event_location_name` + an existing `address_id`),
    not from the CSV's address column.
 3. For each row: resolve variation token → parent item → `RetrieveCatalogObject`
