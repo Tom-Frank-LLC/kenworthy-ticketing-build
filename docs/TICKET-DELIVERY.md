@@ -316,13 +316,31 @@ supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
 > files aside if you mean to apply only your own. Staging needed
 > `--include-all` because a newer migration had already landed there.
 
-> **SMS activation status, 2026-08-18.** Twilio's A2P 10DLC registration is
-> approved, so `COLLECT_PHONE` in `src/lib/flags.ts` is back `true` and the
-> phone field is on ticket checkout again. `sendViaTwilio` was complete the
-> whole time and did not change; what did change is that `deliverConfirmation`
-> now sends on both channels rather than treating SMS as the phone-only
-> fallback, which needs the migration above applied before the functions
-> deploy. What SMS is waiting on is two secrets, on **both** projects:
+> **SMS activation status, 2026-08-18.** Two flags now, not one, because
+> "show the phone field" and "a phone number is a contact we can deliver to"
+> stopped being the same question:
+>
+> - `COLLECT_PHONE` is **`true`** — the field and its consent line are live on
+>   ticket checkout, film passes and the box office.
+> - `SMS_DELIVERY_LIVE` is **`false`** — email is still required at ticket
+>   checkout, so nobody can buy with a contact we cannot reach.
+>
+> `sendViaTwilio` was complete the whole time and did not change; what did
+> change is that `deliverConfirmation` now sends on both channels rather than
+> treating SMS as the phone-only fallback, which needs the migration above
+> applied before the functions deploy.
+>
+> **The blocker is an A2P 10DLC campaign, not the code.** Brand approval is not
+> campaign approval, and the two were conflated when this was scoped. Without a
+> registered campaign attached to the Messaging Service, US carriers reject
+> every long-code send outright with error 30034 — no credential fixes that.
+> Registration lives at Messaging → Regulatory Compliance → A2P 10DLC, wants a
+> use case, a sample message and a description of how buyers opt in, and takes
+> days rather than minutes. The consent line on the checkout form is the opt-in
+> evidence that submission asks for, which is exactly why the field ships ahead
+> of the texts.
+>
+> Two secrets are also still wrong or missing, on **both** projects:
 >
 > 1. **The API key SID is stored under the wrong name.** `TWILIO_ACCOUNT_SID`,
 >    `TWILIO_API_KEY` and `TWILIO_API_KEY_SECRET` are all set (identical
@@ -341,13 +359,13 @@ supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
 >    to opt out", and a Messaging Service is what honours that automatically. A
 >    bare `TWILIO_FROM_NUMBER` makes STOP/HELP handling ours to build.
 >
-> Until both are set, a phone-only purchase is charged and delivered nothing —
+> Flip `SMS_DELIVERY_LIVE` only once all three are true — both secrets set and
+> the campaign approved — and only after a phone-only test purchase has
+> actually arrived. Flipping it early is the exact regression the original flag
+> was added for on 2026-08-15: the buyer is charged and delivered nothing,
 > silently, because delivery is fire-and-forget and the only trace is
-> `orders.confirmation_error`. Do not deploy the frontend with `COLLECT_PHONE`
-> on ahead of the secrets; that is the exact regression the flag was added for
-> on 2026-08-15. Verify on staging first with a phone-only purchase to your own
-> mobile — staging carries the same live Twilio credentials as production, so
-> that test sends a real, billed message from the real account.
+> `orders.confirmation_error`. Test to your own mobile — staging carries the
+> same live Twilio credentials as production, so that send is real and billed.
 
 `ticket-access` must deploy with `verify_jwt = false`. That is set in
 `supabase/config.toml`; confirm it took, because the QR images and the ticket

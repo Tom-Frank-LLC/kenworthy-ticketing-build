@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Check, User, Mail, Phone, CreditCard, Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
-import { COLLECT_PHONE } from '@/lib/flags';
+import { COLLECT_PHONE, SMS_DELIVERY_LIVE } from '@/lib/flags';
 
 interface GuestCheckoutFormProps {
   ticketCount: number;
@@ -46,15 +46,17 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   const [cardReady, setCardReady] = useState(false);
   const cardRef = useRef<SquareCardFormHandle>(null);
 
-  // The contact rule follows the delivery channels that actually exist. With
-  // phone collection on, SMS is a real fallback and "email or phone" is honest
-  // again; with it off there is nothing for the fallback to fall back to, so
-  // email is mandatory. Both branches stay written down so flipping the flag
-  // never means reconstructing the other rule from memory.
+  // The contact rule follows the channels that can actually deliver, which is
+  // SMS_DELIVERY_LIVE and deliberately not COLLECT_PHONE. Showing the field is
+  // one question; whether a number alone is enough to reach someone is another,
+  // and right now the answer is no — the A2P campaign is unregistered, so every
+  // text is rejected by the carrier. So the number is collected and email stays
+  // mandatory. Both branches stay written down so flipping the flag never means
+  // reconstructing the other rule from memory.
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!name.trim()) newErrors.name = 'Name is required';
-    if (COLLECT_PHONE) {
+    if (SMS_DELIVERY_LIVE) {
       if (!email.trim() && !phone.trim()) newErrors.contact = 'Email or phone is required';
     } else if (!email.trim()) {
       newErrors.email = 'Email is required so we can send your tickets';
@@ -122,7 +124,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
           </div>
           <div>
             <Label htmlFor="guest-email" className="text-xs flex items-center gap-1">
-              <Mail className="h-3 w-3" /> Email{COLLECT_PHONE ? '' : ' *'}
+              <Mail className="h-3 w-3" /> Email{SMS_DELIVERY_LIVE ? '' : ' *'}
             </Label>
             <Input
               id="guest-email"
@@ -134,11 +136,12 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
             />
             {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
           </div>
-          {/* Shown only while Twilio can actually deliver — see COLLECT_PHONE
-              in @/lib/flags. The consent line below is not decoration: it is
-              the disclosure an A2P 10DLC campaign is approved on, so it stays
-              attached to the field rather than living in the footer. STOP is
-              handled by the Twilio Messaging Service, not by us. */}
+          {/* The consent line below is not decoration: it is the disclosure an
+              A2P 10DLC campaign is reviewed on, which is why the field can be
+              live before the texts are. It stays attached to the input rather
+              than living in the footer, and it says only what is true today —
+              until SMS_DELIVERY_LIVE flips, email is what carries the tickets.
+              STOP is handled by the Twilio Messaging Service, not by us. */}
           {COLLECT_PHONE && (
             <div>
               <Label htmlFor="guest-phone" className="text-xs flex items-center gap-1">
@@ -153,14 +156,16 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
                 maxLength={20}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                We&rsquo;ll text your tickets and updates about this order to this number. Message
-                and data rates may apply. Reply STOP to opt out.
+                {SMS_DELIVERY_LIVE
+                  ? 'We\u2019ll text your tickets and updates about this order to this number.'
+                  : 'We\u2019ll text updates about this order to this number once text delivery is live \u2014 your tickets come by email either way.'}{' '}
+                Message and data rates may apply. Reply STOP to opt out.
               </p>
             </div>
           )}
           {errors.contact && <p className="text-xs text-destructive mt-1">{errors.contact}</p>}
           <p className="text-xs text-muted-foreground">
-            {COLLECT_PHONE
+            {SMS_DELIVERY_LIVE
               ? 'Provide email or phone so we can send your tickets and QR codes.'
               : 'Enter your email so we can send your tickets and QR codes.'}
           </p>

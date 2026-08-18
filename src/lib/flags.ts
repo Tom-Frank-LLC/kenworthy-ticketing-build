@@ -106,17 +106,11 @@ export const COLOR_LAB_ENABLED = import.meta.env.VITE_COLOR_LAB !== 'false';
  * side, because nothing errored — delivery is fire-and-forget, so the failure
  * only ever landed in `orders.confirmation_error`.
  *
- * What makes it safe to ask again is that Twilio is now configured, not that
- * the code changed: `sendViaTwilio` in `_shared/deliver.ts` has been complete
- * the whole time and was gated purely on its environment. That is the standing
- * condition on this flag. It is `true` only while the deployed edge functions
- * hold `TWILIO_ACCOUNT_SID`, a credential (`TWILIO_API_KEY_SID` +
- * `TWILIO_API_KEY_SECRET`, or `TWILIO_AUTH_TOKEN`), and a sender
- * (`TWILIO_MESSAGING_SERVICE_SID`, or `TWILIO_FROM_NUMBER`). Names matter
- * literally: `TWILIO_API_KEY` is not `TWILIO_API_KEY_SID`, and the mismatch
- * reads as "no credential at all". If Twilio is ever suspended, rotated out,
- * or the campaign lapses, set this back to `false` in the same breath —
- * otherwise the silent non-delivery comes straight back.
+ * Asking is safe again because it no longer implies anything about delivery.
+ * That is the whole reason this is now two flags rather than one: the original
+ * conflated "show the field" with "a phone number is a contact we can deliver
+ * to", and those come back at different times. See `SMS_DELIVERY_LIVE` below
+ * for the second half.
  *
  * Deliberately a literal rather than a `VITE_` env var: flipping it is one
  * line in one file, reviewed like any other change, rather than a variable to
@@ -134,3 +128,38 @@ export const COLOR_LAB_ENABLED = import.meta.env.VITE_COLOR_LAB !== 'false';
  * coming.
  */
 export const COLLECT_PHONE = true;
+
+/**
+ * Whether a phone number on its own is a contact we can actually deliver to.
+ *
+ * **Off**, and this is the flag that carries the delivery fact `COLLECT_PHONE`
+ * used to carry alone. Ticket checkout's server rule is "email or phone". When
+ * this is on, the form matches it and a buyer may give a number and nothing
+ * else. When it is off, email is required — the number is still collected, the
+ * disclosure is still shown, but nobody can complete a purchase whose only
+ * contact is one we cannot reach.
+ *
+ * It is off because of A2P 10DLC, not because of our code. `sendViaTwilio` has
+ * been complete since 2026-08-12. What is missing is a registered *campaign*:
+ * US carriers reject unregistered long-code traffic outright with error 30034,
+ * so every send fails no matter how the credentials are set. Brand approval is
+ * not campaign approval, and the two were conflated when this work was scoped.
+ *
+ * Turning it on takes all of the following, and the last one is the slow one:
+ *   1. `TWILIO_ACCOUNT_SID` set on the deployed functions.
+ *   2. A credential — `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET`, or
+ *      `TWILIO_AUTH_TOKEN`. Names matter literally: `TWILIO_API_KEY` is not
+ *      `TWILIO_API_KEY_SID`, and that mismatch reads as no credential at all.
+ *   3. A sender — `TWILIO_MESSAGING_SERVICE_SID` (preferred; it answers STOP
+ *      and HELP for us, which the consent copy promises) or
+ *      `TWILIO_FROM_NUMBER`.
+ *   4. An approved A2P 10DLC campaign attached to that Messaging Service, with
+ *      the sending number in its pool.
+ *
+ * Verify with a phone-only test purchase before flipping it, not after. If
+ * Twilio is ever suspended or the campaign lapses, this goes back `false` in
+ * the same breath — otherwise a buyer pays and is sent nothing, silently,
+ * because delivery is fire-and-forget and the only trace is
+ * `orders.confirmation_error`.
+ */
+export const SMS_DELIVERY_LIVE = false;

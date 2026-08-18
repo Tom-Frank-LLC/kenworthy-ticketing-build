@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { GuestCheckoutForm } from './GuestCheckoutForm';
-import { COLLECT_PHONE } from '@/lib/flags';
+import { COLLECT_PHONE, SMS_DELIVERY_LIVE } from '@/lib/flags';
 
 /**
  * Guards the wiring between the checkout button and Square's card form.
@@ -139,16 +139,17 @@ describe('GuestCheckoutForm', () => {
   });
 
   /**
-   * The reason email is mandatory while COLLECT_PHONE is off.
+   * Two flags, deliberately, and these blocks are keyed on them separately.
    *
-   * Delivery is Resend or Twilio, and Twilio is not wired up. The old rule was
-   * "email or phone", so a buyer who typed only a phone number was charged and
-   * then sent nothing at all — no email, and an SMS that does not exist. There
-   * was no error anywhere to notice. These two tests are what stops the lenient
-   * rule from creeping back in before the SMS side is real.
+   * COLLECT_PHONE decides whether the field is on the form. SMS_DELIVERY_LIVE
+   * decides whether a phone number alone is a contact we can reach — and those
+   * are true at different times. The field and its disclosure are live now so
+   * an A2P 10DLC reviewer can see the opt-in; the texts are not, because the
+   * campaign is unregistered and carriers reject every send. Conflating the two
+   * is what charged phone-only buyers and sent them nothing in August.
    */
-  describe.skipIf(COLLECT_PHONE)('with phone collection off', () => {
-    it('does not ask for a phone number it cannot deliver to', async () => {
+  describe.skipIf(COLLECT_PHONE)('with the phone field hidden', () => {
+    it('does not ask for a phone number it is not collecting', async () => {
       render(
         <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={vi.fn()} />,
       );
@@ -156,7 +157,33 @@ describe('GuestCheckoutForm', () => {
       await screen.findByRole('button', { name: /Pay/ });
       expect(screen.queryByLabelText(/phone/i)).not.toBeInTheDocument();
     });
+  });
 
+  describe.skipIf(!COLLECT_PHONE)('with the phone field shown', () => {
+    it('asks for a phone number and discloses what texting it means', async () => {
+      render(
+        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={vi.fn()} />,
+      );
+
+      await screen.findByRole('button', { name: /Pay/ });
+      expect(screen.getByLabelText(/^Phone$/)).toBeInTheDocument();
+      // Rates and STOP are the two disclosures the campaign is reviewed on, and
+      // they are in the copy whichever side of SMS_DELIVERY_LIVE we are on.
+      expect(screen.getByText(/Message and data rates may apply/)).toBeInTheDocument();
+      expect(screen.getByText(/Reply STOP to opt out/)).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * The rule that stops a buyer paying for tickets that cannot reach them.
+   *
+   * The old "email or phone" was honest only while SMS worked. With delivery
+   * off, a buyer who typed only a number was charged and sent nothing at all —
+   * no email, and a text the carrier refused — with no error anywhere to
+   * notice. This is what keeps the lenient rule from creeping back before the
+   * SMS side is real, and it holds whether or not the field is on screen.
+   */
+  describe.skipIf(SMS_DELIVERY_LIVE)('while SMS cannot deliver', () => {
     it('refuses a purchase with no email, rather than taking money and sending nothing', async () => {
       const onPurchase = vi.fn();
       render(
@@ -177,27 +204,13 @@ describe('GuestCheckoutForm', () => {
   });
 
   /**
-   * The other half of the same rule, so the flag is covered in both positions.
-   *
-   * Turning COLLECT_PHONE back on is only safe because Twilio can now deliver,
-   * and these are the two things that has to mean on this form: a phone-only
-   * buyer gets through checkout at all, and the number they typed reaches the
-   * purchase handler untouched — `toE164` on the server is what normalises it,
-   * and anything that trimmed or reformatted it here would be doing that job
-   * twice, differently. The consent line is asserted with them because an A2P
-   * 10DLC campaign is approved on the disclosure being present at the field.
+   * The other side of the same rule, so flipping SMS_DELIVERY_LIVE is covered
+   * before it happens rather than discovered afterwards. The number reaches the
+   * purchase handler exactly as typed: `toE164` on the server is what
+   * normalises it, and trimming or reformatting it here would be doing that job
+   * twice, differently.
    */
-  describe.skipIf(!COLLECT_PHONE)('with phone collection on', () => {
-    it('asks for a phone number and discloses what texting it means', async () => {
-      render(
-        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={vi.fn()} />,
-      );
-
-      await screen.findByRole('button', { name: /Pay/ });
-      expect(screen.getByLabelText(/^Phone$/)).toBeInTheDocument();
-      expect(screen.getByText(/Reply STOP to opt out/)).toBeInTheDocument();
-    });
-
+  describe.skipIf(!SMS_DELIVERY_LIVE)('once SMS can deliver', () => {
     it('takes a phone-only purchase and passes the number through as typed', async () => {
       const onPurchase = vi.fn();
       render(
