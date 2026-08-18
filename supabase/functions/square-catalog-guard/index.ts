@@ -107,18 +107,6 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return json({ error: "Missing Authorization" }, 401);
-  const { data: userRes } = await admin.auth.getUser(authHeader.replace("Bearer ", ""));
-  const user = userRes?.user;
-  if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
-  if (!isAdmin) return json({ error: "Admin only" }, 403);
-
-  const loaded = loadSquareConfig();
-  if (!loaded.ok) return json({ error: loaded.error }, 500);
-  const config = loaded.config;
-
   let payload: any = {};
   try { payload = await req.json(); } catch { /* none */ }
 
@@ -126,6 +114,39 @@ Deno.serve(async (req: Request) => {
   if (!["snapshot", "check", "repair"].includes(action)) {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
+
+  // Two kinds of caller.
+  //
+  //   a human admin  — any action, including repair;
+  //   the scheduler  — presents the service role key, and may ONLY read.
+  //
+  // The scheduled job exists to notice damage, never to act on it unattended.
+  // `repair` writes to the live catalog and every incident in this project's
+  // history came from an unattended-looking write, so a machine caller is
+  // refused it outright rather than merely discouraged.
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return json({ error: "Missing Authorization" }, 401);
+  const bearer = authHeader.replace("Bearer ", "").trim();
+
+  const isMachine = bearer === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (isMachine) {
+    if (action === "repair") {
+      return json({
+        error: "The scheduler may not repair. Run repair as an admin, having " +
+               "read what the check found.",
+      }, 403);
+    }
+  } else {
+    const { data: userRes } = await admin.auth.getUser(bearer);
+    const user = userRes?.user;
+    if (!user) return json({ error: "Unauthorized" }, 401);
+    const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
+    if (!isAdmin) return json({ error: "Admin only" }, 403);
+  }
+
+  const loaded = loadSquareConfig();
+  if (!loaded.ok) return json({ error: loaded.error }, 500);
+  const config = loaded.config;
 
   try {
     // ---- snapshot ---------------------------------------------------------

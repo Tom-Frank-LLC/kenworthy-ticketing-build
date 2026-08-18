@@ -164,11 +164,39 @@ Two things worth drawing out of that:
   same day. The point of the schedule is that the *next* drop is detectable
   without anybody having to suspect it.
 
-### Still to do
+### The schedule
 
-The check has no scheduler. Until one is wired, it only runs when somebody calls
-it, which is most of the problem it was built to solve. Daily is enough to catch
-a bleed inside one working day.
+`check` runs daily at **11:17 UTC** (mid-morning Pacific, so a finding lands at
+the start of a working day) via pg_cron, calling the function through pg_net.
+This is the project's first scheduled job.
+
+It is **inert until configured**, so applying the migration anywhere is safe. Two
+values are needed, neither of which belongs in git:
+
+```sql
+select public.configure_square_catalog_guard(
+  'https://<project-ref>.supabase.co/functions/v1/square-catalog-guard',
+  '<that project's service role key>'
+);
+```
+
+Run it as an admin — the function refuses anybody else. It writes the URL to
+`app_config` and the key into Vault, and re-running rotates the key rather than
+adding a second one. Until then the job logs
+`square-catalog-guard not scheduled yet` and does nothing.
+
+**The scheduler can only read.** The guard accepts the service role key for
+`snapshot` and `check`, and refuses `repair` to any machine caller with a 403. A
+person repairs, having read what the check found — every incident in this
+project's history came from a write that nobody was watching.
+
+To confirm it is wired:
+
+```sql
+select jobname, schedule from cron.job where jobname = 'square-catalog-guard-daily';
+select ran_at, lost_event_block, lost_variations, note
+  from square_catalog_guard_runs order by ran_at desc limit 5;
+```
 
 Re-snapshot after any deliberate bulk change, or the next check reports your own
 intended work as loss.
