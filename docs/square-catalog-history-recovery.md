@@ -220,8 +220,61 @@ tier is not mispriced — it is missing, and the survivor kept the higher price.
    outside `item_data.variations` changed.
 6. **Check the storefront** for the live items, since these are on sale.
 
-### Recommendation
+### Outcome — variations restored, 18 Aug 2026
 
-Do the 17. Leave the 253. Restoring dead per-showtime rows for past events adds
-clutter and sellable surface area in exchange for nothing the snapshot does not
-already preserve.
+Done in two passes, after order history exposed a second kind of damage the
+first pass could not see.
+
+**Pass 1 — missing variations.** 270 items short of 494 variations. `Donation`
+first, by request: `$10 / $20 / $50 / $100 / Custom Amount` all back, including
+the `VARIABLE_PRICING` shape. Then the remaining 269.
+
+**Pass 2 — names only.** The audit below found tickets sold as
+`Wednesday, October 5 at 7 PM` that the catalog now called `Regular`, on items
+that were **not** short of variations. An item that only ever had one variation
+lost its name and nothing else, so a count-based plan is blind to it. **417 more
+items**, 399 of them archived. Restored.
+
+| | result |
+|---|---|
+| items with missing variations | 270 → **1** |
+| items with name-only damage | 417 → **0** |
+| collateral changes | **0** |
+| accepted-but-not-stored | **0** |
+
+The one remaining is `Met Live in HD: THE MAGIC FLUTE`, held deliberately: its
+survivor was renamed *after* the damage, so its current name is somebody's work,
+not wreckage. The restorer refuses to rename any survivor not still called
+`Regular` — four items are in that state.
+
+### Order history as the second witness
+
+The snapshot is one record of what existed; the sales ledger is another, and it
+covers what the snapshot cannot — anything created after 14 Aug 22:20 and
+damaged later by the 15 and 17 August imports.
+
+Auditing 10,000 orders / 15,848 line items, 237 distinct variations have been
+sold. Sold-but-not-offered went **58 → 22** across the two passes, and only 8 of
+those name a variation at all:
+
+- **11** were sold while the catalog was flattened, under the literal name
+  `Regular`. That name *was* the damage; it is correctly gone.
+- **11** are separator drift — sold as `Adult ~ Thursday…`, offered now as
+  `Adult - Thursday…`. Same option, renamed.
+- **14** are custom POS line items with no variation at all (`Marquee Rental`,
+  `Audio Recording`, `Sponsorship`) — never catalog objects.
+- **8** name a real variation. Most are post-damage renames we deliberately did
+  not overwrite (the Silent Film Festival items dropped a
+  `General Admission ~ ` prefix by hand). `La Croix` lost `Passionfruit` and
+  `Lime`, which may simply be discontinued.
+
+None of the 8 should be restored mechanically: doing so would overwrite
+deliberate later edits. They are a short review list, not a repair queue.
+
+### Why the order audit was worth building
+
+Pass 1 verified clean — its own plan re-ran to near zero — and was still missing
+417 items. The count-based check could only ever find the damage it was designed
+to look for. It took a **different source of truth**, one that records what the
+catalog *did*, to reveal a whole category of loss. A verification that shares an
+assumption with the thing it verifies will confirm it.

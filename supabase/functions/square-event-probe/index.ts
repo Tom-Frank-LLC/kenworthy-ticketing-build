@@ -347,6 +347,94 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Order history as an independent source of truth about what variations
+    // once existed. The pre-damage snapshot is one witness; the sales record is
+    // another, and it covers anything created after the snapshot was taken but
+    // before the damage. Anything sold that the catalog can no longer offer is
+    // a gap the snapshot did not close.
+    if (payload.orders_audit) {
+      const seen = new Map<string, any>();   // itemName|variationName -> sample
+      let cursor: string | undefined;
+      let pages = 0, orders = 0, lines = 0;
+      const maxPages = Number(payload.max_pages ?? 20);
+      do {
+        const res = await sq(config, "/orders/search", {
+          method: "POST",
+          body: {
+            location_ids: [config.locationId],
+            query: { sort: { sort_field: "CREATED_AT", sort_order: "DESC" } },
+            limit: 500, cursor,
+          },
+        });
+        for (const o of res.orders ?? []) {
+          orders++;
+          for (const li of o.line_items ?? []) {
+            lines++;
+            const k = `${li.name ?? ""}|${li.variation_name ?? ""}`;
+            if (!seen.has(k)) {
+              seen.set(k, {
+                item: li.name ?? null,
+                variation: li.variation_name ?? null,
+                amount: (li.base_price_money ?? {}).amount ?? null,
+                catalog_object_id: li.catalog_object_id ?? null,
+                first_seen_order: o.created_at,
+              });
+            }
+          }
+        }
+        cursor = res.cursor;
+        pages++;
+      } while (cursor && pages < maxPages);
+
+      // What can the catalog offer today?
+      const now = await listAllItems(config, CURRENT_VERSION);
+      const live = new Set<string>();
+      const liveIds = new Set<string>();
+      for (const it of now) {
+        const nm = it.item_data?.name ?? "";
+        for (const v of it.item_data?.variations ?? []) {
+          live.add(`${nm}|${v.item_variation_data?.name ?? ""}`);
+          liveIds.add(v.id);
+        }
+      }
+      const soldButMissing = [...seen.entries()]
+        .filter(([k]) => !live.has(k))
+        .map(([, v]) => v);
+      // A sale whose variation was literally named "Regular" happened while the
+      // catalog was flattened -- that name was the damage, and it is correctly
+      // gone now. Those are artefacts of the window, not gaps in the restore.
+      const damagedWindow = soldButMissing.filter((v) => v.variation === "Regular");
+      // Separator and spacing drift is not a missing variation. A ticket sold as
+      // "Adult ~ Thursday, August 27 at 7 PM" and now offered as
+      // "Adult - Thursday, August 27 at 7 PM" is the same option renamed.
+      const norm = (x: string) =>
+        (x ?? "").toLowerCase().replace(/[~\-–—]/g, "-").replace(/\s+/g, " ").trim();
+      const liveNorm = new Set([...live].map((k) => {
+        const i = k.indexOf("|");
+        return `${norm(k.slice(0, i))}|${norm(k.slice(i + 1))}`;
+      }));
+      const stillMissing = soldButMissing.filter(
+        (v) => v.variation !== "Regular" &&
+               !liveNorm.has(`${norm(v.item ?? "")}|${norm(v.variation ?? "")}`),
+      );
+      const renamedOnly = soldButMissing.filter(
+        (v) => v.variation !== "Regular" &&
+               liveNorm.has(`${norm(v.item ?? "")}|${norm(v.variation ?? "")}`),
+      );
+      const realGaps = stillMissing;
+
+      return json({
+        ok: true, pages, orders, line_items: lines,
+        distinct_sold_variations: seen.size,
+        sold_but_not_offered_now: soldButMissing.length,
+        sold_as_Regular_during_damage: damagedWindow.length,
+        renamed_only_not_a_gap: renamedOnly.length,
+        real_gaps: realGaps.length,
+        by_dangling_id: soldButMissing.filter((v) => v.catalog_object_id && !liveIds.has(v.catalog_object_id)).length,
+        examples: realGaps.slice(0, 60),
+      });
+    }
+
     // Do past orders still carry the names and prices of variations that have
     // since been deleted? This decides whether restoring variations repairs
     // anything historical, or only re-creates sellable options going forward.
