@@ -3,11 +3,16 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
-import { History, Banknote, CreditCard, RotateCcw } from 'lucide-react';
+import { History, Banknote, CreditCard, RotateCcw, Send } from 'lucide-react';
 
 export interface SessionTransaction {
   id: string;
   ticketIds: string[];
+  /** Handle for a resend — the only identifier send-ticket-confirmation takes. */
+  orderToken: string;
+  /** What the confirmation was actually sent to, so a resend can correct it. */
+  patronEmail: string;
+  patronPhone: string;
   movieTitle: string;
   seatLabels: string[];
   total: number;
@@ -19,9 +24,10 @@ export interface SessionTransaction {
 interface TransactionHistoryProps {
   transactions: SessionTransaction[];
   onRefund: (tx: SessionTransaction) => void;
+  onResend: (tx: SessionTransaction) => void;
 }
 
-export function TransactionHistory({ transactions, onRefund }: TransactionHistoryProps) {
+export function TransactionHistory({ transactions, onRefund, onResend }: TransactionHistoryProps) {
   return (
     <Card className="glass">
       <CardHeader>
@@ -47,7 +53,7 @@ export function TransactionHistory({ transactions, onRefund }: TransactionHistor
                   <TableHead>Seats</TableHead>
                   <TableHead>Payment</TableHead>
                   <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -75,19 +81,32 @@ export function TransactionHistory({ transactions, onRefund }: TransactionHistor
                       ${tx.total.toFixed(2)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {tx.refunded ? (
-                        <Badge variant="destructive" className="text-xs">Refunded</Badge>
-                      ) : (
+                      <div className="flex items-center justify-end gap-1">
+                        {/* Offered even on a refunded sale: the patron may still
+                            need the record, and the refund is what tells them
+                            the seat is gone — not a missing email. */}
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => onRefund(tx)}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => onResend(tx)}
                         >
-                          <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                          Refund
+                          <Send className="h-3.5 w-3.5 mr-1" />
+                          Resend
                         </Button>
-                      )}
+                        {tx.refunded ? (
+                          <Badge variant="destructive" className="text-xs">Refunded</Badge>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onRefund(tx)}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                            Refund
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

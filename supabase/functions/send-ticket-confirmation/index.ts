@@ -1,14 +1,18 @@
-// HTTP entry point for resending a ticket confirmation.
+// HTTP entry point for sending or resending a ticket confirmation.
 //
 // The sending itself lives in _shared/deliver.ts, which guest-checkout calls
-// in-process. This function exists so an operator (or the authenticated
-// checkout path in the browser) can trigger a send over HTTP. It is a thin
-// authorization wrapper and nothing more.
+// in-process. This function exists so a caller that is not the checkout server
+// can trigger a send over HTTP: an operator resending, the authenticated
+// checkout path in the browser, and the box office — StaffPOS is the one paid
+// path that inserts its ticket rows itself, so this is the only thing that
+// delivers a counter sale. It is a thin authorization wrapper and nothing
+// more.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
 import { loadOrder } from '../_shared/tickets.ts';
 import { deliverConfirmation } from '../_shared/deliver.ts';
+import { isOperator as callerIsOperator, overridesFor } from '../_shared/confirmation_auth.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -48,13 +52,26 @@ Deno.serve(async (req: Request) => {
     });
 
   try {
-    // Two legitimate callers, with different privileges:
+    // Three legitimate callers, in two privilege classes:
     //
-    //   service role   -- an operator resending. Fully trusted, and the only
-    //                     caller allowed to redirect delivery to a different
-    //                     address via the email/phone overrides.
+    //   service role   -- an operator resending, or another function. Fully
+    //                     trusted.
+    //   signed-in staff-- the box office. StaffPOS sells a ticket that is
+    //                     *owned by the staff member* and typed the patron's
+    //                     address at the counter, so it can only deliver by
+    //                     overriding the recipient. Trusted the same as the
+    //                     service role: any order, overrides honoured.
     //   signed-in user -- the authenticated checkout path in Showing.tsx.
     //                     Allowed only for their own order, overrides ignored.
+    //
+    // "Operator" below is the first two. The staff gate is `has_role(.., 'staff')`
+    // — the same test as `isStaff` in src/lib/auth.tsx and the same one
+    // square-refund uses, and the one that actually matches who can open
+    // StaffPOS. Gating on 'admin' instead would be worse than a refusal: a
+    // staff-role counter worker would still pass the own-order check below
+    // (the POS rows are theirs), the override would be dropped, and the
+    // patron's ticket would be emailed to the staff member — stamping
+    // confirmation_sent_at, which then blocks the correct resend.
     //
     // The anon key is not enough: anyone holding it plus an order_token could
     // otherwise trigger a resend and redirect the ticket to an address of
@@ -74,7 +91,10 @@ Deno.serve(async (req: Request) => {
       (bearer.length > 0 && bearer === SERVICE_ROLE_KEY) ||
       (apiKeyHeader.length > 0 && apiKeyHeader === SERVICE_ROLE_KEY);
 
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
     let callerId: string | null = null;
+    let isStaff = false;
     if (!isServiceRole) {
       const userClient = createClient(SUPABASE_URL, ANON_KEY, {
         global: { headers: { Authorization: authHeader } },
@@ -82,26 +102,57 @@ Deno.serve(async (req: Request) => {
       const { data: caller } = await userClient.auth.getUser();
       callerId = caller?.user?.id ?? null;
       if (!callerId) return json({ error: 'Not authorised' }, 401);
+
+      // Asked through the admin client, not the caller's: has_role is SECURITY
+      // DEFINER, but user_roles is not readable by every signed-in user, and a
+      // role check that can be starved by RLS is a role check that fails open
+      // in the wrong direction.
+      const { data: hasStaff, error: roleError } = await admin.rpc('has_role', {
+        _user_id: callerId,
+        _role: 'staff',
+      });
+      if (roleError) {
+        // Never silently demote a staff caller to the own-order path — that is
+        // exactly the case that would mail the patron's ticket to the counter.
+        console.error('[send-ticket-confirmation] role lookup failed', roleError);
+        return json({ error: 'Could not verify your access. Try again.' }, 503);
+      }
+      isStaff = hasStaff === true;
     }
+
+    // Service role and staff are both operators here. The rule itself lives in
+    // _shared/confirmation_auth.ts so it can be tested without a live function.
+    const caller = { isServiceRole, isStaff };
+    const isOperator = callerIsOperator(caller);
 
     const body = await req.json().catch(() => ({}));
     const orderToken = String(body.order_token || '').trim();
     if (!orderToken) return json({ error: 'order_token is required' }, 400);
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-    if (!isServiceRole) {
+    if (!isOperator) {
       // Same 404 as an unknown token: a signed-in user probing for other
       // people's orders learns nothing about whether the token exists.
       const order = await loadOrder(admin, orderToken);
       if (!order || order.user_id !== callerId) return json({ error: 'Order not found' }, 404);
     }
 
+    // A2P 10DLC consent, three-valued exactly as deliver.ts defines it.
+    //
+    // A `false` is honoured from anyone — it only ever suppresses a text, and
+    // "do not text this person" is not a claim that needs authority. A `true`
+    // is an affirmative assertion that someone opted in, so only an operator
+    // may make it; everyone else's `true` degrades to "no signal" rather than
+    // being refused, since the caller may simply be an older client.
+    let smsConsent: boolean | undefined;
+    if (body.sms_consent === false) smsConsent = false;
+    else if (body.sms_consent === true && isOperator) smsConsent = true;
+
     const result = await deliverConfirmation(admin, orderToken, {
-      // Overrides are honoured only for the service role.
-      email: isServiceRole ? String(body.email || '') : '',
-      phone: isServiceRole ? String(body.phone || '') : '',
-      name: isServiceRole ? String(body.name || '') : '',
+      // Overrides are honoured for operators only. A patron resending their own
+      // confirmation gets it at the address already on the order, and cannot
+      // point it somewhere else.
+      ...overridesFor(caller, body),
+      smsConsent,
       accountCreated: body.account_created === true,
       force: body.force === true,
     });
