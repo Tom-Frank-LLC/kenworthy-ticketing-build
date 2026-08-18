@@ -217,6 +217,45 @@ Deno.serve(async (req: Request) => {
       keyPaths(o.item_data.event, "item_data.event", eventKeys);
     }
 
+    // Every surviving event block, not a sample. A Square Library CSV export
+    // has no columns for event fields, so the dashboard export CANNOT back this
+    // data up -- reading it through the API is the only snapshot that exists.
+    // Small enough to return whole (38 at time of writing).
+    const allBlocks = [...new Map(
+      [...withEvent, ...withEventSearch].map((o) => [o.id, o]),
+    ).values()].map((o) => ({
+      id: o.id,
+      name: o.item_data?.name,
+      version: o.version,
+      updated_at: o.updated_at,
+      event: o.item_data.event,
+    }));
+
+    // How is the venue address modelled? If every item points at its own
+    // address object, Phase 1 has to create one per item; if they share, we can
+    // reuse a single id. Two different ids were seen by hand, so count them.
+    const addressIds: Record<string, number> = {};
+    for (const b of allBlocks) {
+      const a = b.event?.address_id;
+      if (a) addressIds[a] = (addressIds[a] ?? 0) + 1;
+    }
+    const locationNames: Record<string, number> = {};
+    for (const b of allBlocks) {
+      const n = b.event?.event_location_name ?? "(none)";
+      locationNames[n] = (locationNames[n] ?? 0) + 1;
+    }
+    // Is an address_id a retrievable catalog object, or something else?
+    let addressProbe: any = null;
+    const someAddress = Object.keys(addressIds)[0];
+    if (someAddress) {
+      try {
+        const a = await sq(config, `/catalog/object/${someAddress}?include_related_objects=false`, { version: CURRENT_VERSION });
+        addressProbe = { id: someAddress, type: a.object?.type ?? null, object: a.object ?? null };
+      } catch (e: any) {
+        addressProbe = { id: someAddress, error: e.message ?? String(e) };
+      }
+    }
+
     // Populated blocks — this is the format Phase 1 has to match exactly.
     const samples = [...withEvent, ...withEventSearch].slice(0, 10).map((o) => ({
       id: o.id,
@@ -380,6 +419,10 @@ Deno.serve(async (req: Request) => {
       by_product_type: byProductType,
       event_keys: [...eventKeys].sort(),
       samples,
+      all_blocks: allBlocks,
+      address_ids: addressIds,
+      location_names: locationNames,
+      address_probe: addressProbe,
       round_trip: roundTrip,
       would_drop_count: wouldDrop.length,
       verdict: wouldDrop.length
