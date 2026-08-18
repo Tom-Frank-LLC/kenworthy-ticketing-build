@@ -180,9 +180,13 @@ select public.configure_square_catalog_guard(
 );
 ```
 
-Run it as an admin — the function refuses anybody else. It writes the URL to
-`app_config` and the key into Vault, and re-running rotates the key rather than
-adding a second one. Until then the job logs
+Run it in the **Supabase SQL editor**, which is also the only convenient place to
+paste a service role key. It accepts either a privileged direct connection (the
+SQL editor, or psql as `postgres`) or a PostgREST caller carrying an admin JWT;
+an ordinary web caller is refused either way.
+
+It writes the URL to `app_config` and the key into Vault, and re-running rotates
+the key rather than adding a second one. Until then the job logs
 `square-catalog-guard not scheduled yet` and does nothing.
 
 **The scheduler can only read.** The guard accepts the service role key for
