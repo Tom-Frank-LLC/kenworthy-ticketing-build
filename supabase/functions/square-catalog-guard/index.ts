@@ -165,10 +165,22 @@ Deno.serve(async (req: Request) => {
     if (isMachine) {
       return json({ error: "Only an admin can install the schedule." }, 403);
     }
-    // The URL this very request arrived on, so it is right by construction
-    // rather than by someone typing the project ref correctly.
-    const here = new URL(req.url);
-    const functionUrl = `${here.origin}${here.pathname}`;
+    // Built from SUPABASE_URL, not from req.url.
+    //
+    // Deriving it from the incoming request looked more elegant and was wrong:
+    // inside an edge function req.url's pathname is just "/square-catalog-guard"
+    // with no "/functions/v1" prefix, so the self-probe hit
+    // https://<ref>.supabase.co/square-catalog-guard and got a 404
+    // "requested path is invalid". SUPABASE_URL is injected by the platform and
+    // is the project's real base.
+    //
+    // Worth noting the probe caught this: without it the bad URL would have gone
+    // into Vault and pg_net would have 404'd nightly into a table nobody reads.
+    const base = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/+$/, "");
+    if (!base) {
+      return json({ error: "SUPABASE_URL is not set in this function's environment." }, 500);
+    }
+    const functionUrl = `${base}/functions/v1/square-catalog-guard`;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     if (!serviceKey) {
       return json({ error: "SUPABASE_SERVICE_ROLE_KEY is not set in this function's environment." }, 500);
