@@ -173,18 +173,22 @@ This is the project's first scheduled job.
 It is **inert until configured**, so applying the migration anywhere is safe. Two
 values are needed, neither of which belongs in git:
 
-```sql
-select public.configure_square_catalog_guard(
-  'https://PROJECT_REF.supabase.co/functions/v1/square-catalog-guard',
-  'PASTE_THE_LEGACY_service_role_JWT_HERE'   -- Settings -> API, starts eyJ
-);
+Call the guard's `install_schedule` action as an admin — from the admin app, or
+any authenticated request:
+
+```
+POST /functions/v1/square-catalog-guard   { "action": "install_schedule" }
 ```
 
-It must be the **legacy `service_role` JWT** (three dot-separated segments,
-starts `eyJ`), not the newer `sb_secret_…` key: the edge function gateway rejects
-a non-JWT bearer before the function runs. The arguments are validated, so a
-placeholder, an `sb_secret_…` key or a wrong URL raises an error here rather than
-being stored and failing quietly at 11:17 every morning.
+The function already holds the service role key and already talks to Postgres as
+service_role, so it stores the key in Vault itself and derives the URL from the
+request it arrived on. Nothing is transcribed and no credential leaves the
+platform.
+
+There is still a manual path — `configure_square_catalog_guard(url, key)` from
+the SQL editor — but prefer the action. The manual path exists for recovery, and
+its arguments are validated precisely because hand-copying a key is where this
+went wrong twice.
 
 Configuring is not proof. Run the end-to-end check below.
 
