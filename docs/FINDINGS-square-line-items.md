@@ -44,24 +44,38 @@ under a UNIQUE constraint and would quietly accumulate one row per sync.
 treats "resolve the film's EVENT item" as one bullet; it is the largest unbuilt
 piece, because it has to be resolved against 823 live EVENT items by title.
 
-Worse — creating one may not be possible. Square's reference says Connect V2
-allows creating only `REGULAR` and `APPOINTMENTS_SERVICE` items, and
-`product_type` is immutable after creation, so an item created by the build
-could never become an EVENT and could never hold a venue or date.
+**Creating one turned out to be possible — the reference is wrong.** Square's
+`CatalogItemProductType` reference says Connect V2 allows creating only
+`REGULAR` and `APPOINTMENTS_SERVICE` items. Tested against the Square sandbox on
+2026-08-18 via `square-event-create-probe`:
 
-**That claim is untested for creation, and should be tested.** The same sentence
-in the reference did *not* prevent 739 successful writes to `item_data.event` on
-existing EVENT items (`venue-date-square-mechanism.md`), so it is not a reliable
-guide to what the API actually refuses — and this repo's history is emphatic
-about distrusting inherited impossibilities: the Aug 14 damage was called
-unrecoverable for four days and was not. One create plus a read-back settles it.
-Not done here, because this session was scoped to no live catalog writes.
+| product_type sent | HTTP | stored product_type | downgraded? |
+|---|---|---|---|
+| `EVENT` | 200 | `EVENT` | no |
+| `REGULAR` (control) | 200 | `REGULAR` | no |
 
-Until it is settled, the planner **does not create items**: it emits a dashboard
-work list of titles a human must create as Event items, with the intended
-category for each. So the "match, then auto-create" decision is delivered as
-*match automatically, create by hand* — and the auto-create half is one
-experiment away from being answerable either way.
+Read back from Square, not inferred from the status code — a silent downgrade to
+`REGULAR` would have been the easy thing to miss, and it did not happen. The
+control rules out a malformed request explaining an EVENT-only failure.
+
+That is the second time this exact sentence in the reference has failed to
+predict behaviour: it was also cited as a reason *updates* to EVENT items might
+fail, and 739 then succeeded (`venue-date-square-mechanism.md` §9). Treat it as
+unreliable for this account.
+
+**So auto-create is unblocked**, and the "match, then auto-create" decision can
+be built as chosen. Two caveats before relying on it:
+
+- The test ran in the **sandbox**. Sandbox refusing something is strong evidence;
+  sandbox accepting it wants one production confirmation. That confirmation is
+  cheap and safe — creating an item is additive and deletable, unlike the upsert
+  class of write that caused every incident here.
+- `product_type` is still immutable, so a create with the wrong type cannot be
+  fixed in place. Whatever creates items must get it right the first time.
+
+Until the production confirmation is done, the planner still **does not create
+items**: it emits a dashboard work list of titles with the intended category for
+each.
 
 ### 4. Letting Square compute tax would break the refund path
 
