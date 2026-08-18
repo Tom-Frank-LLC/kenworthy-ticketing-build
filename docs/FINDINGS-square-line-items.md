@@ -49,10 +49,11 @@ piece, because it has to be resolved against 823 live EVENT items by title.
 `REGULAR` and `APPOINTMENTS_SERVICE` items. Tested against the Square sandbox on
 2026-08-18 via `square-event-create-probe`:
 
-| product_type sent | HTTP | stored product_type | downgraded? |
-|---|---|---|---|
-| `EVENT` | 200 | `EVENT` | no |
-| `REGULAR` (control) | 200 | `REGULAR` | no |
+| environment | product_type sent | HTTP | stored product_type | downgraded? |
+|---|---|---|---|---|
+| sandbox | `EVENT` | 200 | `EVENT` | no |
+| sandbox | `REGULAR` (control) | 200 | `REGULAR` | no |
+| **production** | **`EVENT`** | **200** | **`EVENT`** | **no** |
 
 Read back from Square, not inferred from the status code — a silent downgrade to
 `REGULAR` would have been the easy thing to miss, and it did not happen. The
@@ -63,19 +64,19 @@ predict behaviour: it was also cited as a reason *updates* to EVENT items might
 fail, and 739 then succeeded (`venue-date-square-mechanism.md` §9). Treat it as
 unreliable for this account.
 
-**So auto-create is unblocked**, and the "match, then auto-create" decision can
-be built as chosen. Two caveats before relying on it:
+The production run was confirmed the same way and the probe item was deleted
+after read-back; a follow-up guard `check` showed 1002/1002 items healthy, so it
+left no trace. The `REGULAR` control is skipped once `EVENT` succeeds — it exists
+only to tell "Square refuses EVENT" from "the request was malformed", so on
+production it would be one live write for no information.
 
-- The test ran in the **sandbox**. Sandbox refusing something is strong evidence;
-  sandbox accepting it wants one production confirmation. That confirmation is
-  cheap and safe — creating an item is additive and deletable, unlike the upsert
-  class of write that caused every incident here.
-- `product_type` is still immutable, so a create with the wrong type cannot be
-  fixed in place. Whatever creates items must get it right the first time.
+**So auto-create is unblocked** on both environments, and the "match, then
+auto-create" decision can be built as chosen. One constraint remains:
+`product_type` is immutable, so a create with the wrong type cannot be fixed in
+place — whatever creates items must get it right the first time.
 
-Until the production confirmation is done, the planner still **does not create
-items**: it emits a dashboard work list of titles with the intended category for
-each.
+The planner still does not create items today; that is now a matter of building
+it, not of whether the API allows it.
 
 ### 4. Letting Square compute tax would break the refund path
 

@@ -58,17 +58,21 @@ Deno.serve(async (req: Request) => {
   if (!loaded.ok) return json({ error: loaded.error }, 500);
   const config = loaded.config;
 
-  // The hard gate. No override, no payload flag.
-  if (config.environment === "production") {
-    return json({
-      error: "Refusing to run against the production Square catalog. " +
-             "This probe is sandbox-only by construction.",
-    }, 400);
-  }
-
   let payload: any = {};
   try { payload = await req.json(); } catch { /* none */ }
   const keep = payload.keep === true;
+
+  // Production is not forbidden outright any more — the sandbox answered yes and
+  // a production confirmation is the point — but it must be asked for by name.
+  // A missing flag defaults to refusing, so this can never run against the live
+  // catalog by accident or by a stray retry of a sandbox call.
+  if (config.environment === "production" && payload.confirm !== "PRODUCTION-CREATE") {
+    return json({
+      error: 'Refusing production without confirm:"PRODUCTION-CREATE". ' +
+             "Creating is additive and the probe deletes what it makes, but the " +
+             "live catalog is never touched on a default call.",
+    }, 400);
+  }
 
   const stamp = Date.now();
   const results: any[] = [];
@@ -76,6 +80,14 @@ Deno.serve(async (req: Request) => {
   // Try EVENT first, then REGULAR as a control. If EVENT fails and REGULAR
   // succeeds, the constraint is real and specific rather than a broken request.
   for (const productType of ["EVENT", "REGULAR"]) {
+    // The REGULAR control only earns its keep when EVENT failed: it separates
+    // "Square refuses EVENT" from "the request itself was wrong". If EVENT
+    // succeeded there is nothing to disambiguate, so skip it and leave the live
+    // catalog one write lighter.
+    if (productType === "REGULAR" && results[0]?.created) {
+      results.push({ product_type: "REGULAR", skipped: "EVENT succeeded; control not needed" });
+      continue;
+    }
     const rec: any = { product_type: productType, created: false };
     const object = {
       type: "ITEM",
@@ -128,7 +140,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const evt = results.find((r) => r.product_type === "EVENT");
-  const reg = results.find((r) => r.product_type === "REGULAR");
+  const reg = results.find((r) => r.product_type === "REGULAR" && !r.skipped);
   const verdict = evt?.created
     ? "EVENT items CAN be created via Connect V2 — the reference's claim does not hold here."
     : reg?.created

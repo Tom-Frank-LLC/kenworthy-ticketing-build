@@ -137,3 +137,38 @@ repeat forever.
 - **The guard cannot stop the import.** It shortens the time-to-discovery from
   days to one cycle and makes the repair a single call. Prevention is the rule at
   the top of this page.
+
+## Deployed state, 18 August 2026
+
+`square-catalog-guard` is deployed to **production** (`vlmslygnimfbamrtwvyo`) and
+to staging, and the baseline tables are migrated on both.
+
+### The first real reading
+
+```
+snapshot →  items_seen 1002 · EVENT items 837 · with_event_block 500
+            total_variations 1654
+check    →  1002 baselined, 1002 healthy, no findings
+```
+
+Two things worth drawing out of that:
+
+- **337 `EVENT` items still have no event block.** Phase 1 restored the 484
+  listings that were in scope (480 written); these are the remainder, which were
+  never in scope. They are not new damage, but they are the population a future
+  venue/date pass would target.
+- **Phase 1's work is still intact.** 500 items carry a block, which is the ~480
+  Phase 1 wrote plus those that never lost one. Had a CSV round-trip run since
+  18 August, that number would have fallen. So there is **no evidence the bleed
+  has recurred** — but note this is one reading against a baseline captured the
+  same day. The point of the schedule is that the *next* drop is detectable
+  without anybody having to suspect it.
+
+### Still to do
+
+The check has no scheduler. Until one is wired, it only runs when somebody calls
+it, which is most of the problem it was built to solve. Daily is enough to catch
+a bleed inside one working day.
+
+Re-snapshot after any deliberate bulk change, or the next check reports your own
+intended work as loss.
