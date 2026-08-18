@@ -67,13 +67,29 @@ async function sq(
   return data ?? {};
 }
 
-/** Every dotted path whose leaf value differs between two objects. */
+/**
+ * Every dotted path whose leaf value differs between two objects.
+ *
+ * Arrays are walked element by element rather than compared whole. Treating a
+ * variations array as one opaque leaf reports the useless path
+ * "item_data.variations" whenever any nested field moves -- including the
+ * version bump every successful upsert causes -- which would either cry wolf on
+ * every item or, if suppressed wholesale, hide a real change to a price.
+ */
 function diffPaths(a: any, b: any, prefix = "", out: string[] = []): string[] {
   const isObj = (v: any) => v !== null && typeof v === "object" && !Array.isArray(v);
   if (isObj(a) && isObj(b)) {
     for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
       diffPaths(a[k], b[k], prefix ? `${prefix}.${k}` : k, out);
     }
+    return out;
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) {
+      out.push(`${prefix}.length`);
+      return out;
+    }
+    for (let i = 0; i < a.length; i++) diffPaths(a[i], b[i], `${prefix}[${i}]`, out);
     return out;
   }
   if (JSON.stringify(a) !== JSON.stringify(b)) out.push(prefix || "(root)");
@@ -155,16 +171,26 @@ Deno.serve(async (req: Request) => {
       const outgoing = JSON.parse(JSON.stringify(original));
       outgoing.item_data ??= {};
       const existing = outgoing.item_data.event ?? {};
+
+      // Two passes run over these items. The venue pass carries no start_at and
+      // must not invent one -- 195 of the listings have no known date at all,
+      // and 30 more have a date whose year we could not recover. Sending a
+      // guessed timestamp to make the shape look complete would be worse than
+      // leaving it empty. So a row without start_at sets the location fields
+      // only and leaves any existing dates exactly as they are.
+      const settingDates = !!row.start_at;
       outgoing.item_data.event = {
         ...existing,                       // keep uid and anything undocumented
-        start_at: row.start_at,
-        ...(row.end_at ? { end_at: row.end_at } : {}),
+        ...(settingDates
+          ? { start_at: row.start_at, ...(row.end_at ? { end_at: row.end_at } : {}) }
+          : {}),
         event_location_name: VENUE_NAME,
         event_location_time_zone: existing.event_location_time_zone ?? VENUE_TZ,
         event_location_types: existing.event_location_types ?? VENUE_TYPES,
         address_id: existing.address_id ?? addressId,
         all_day_event: existing.all_day_event ?? false,
       };
+      rec.pass = settingDates ? "venue+dates" : "venue only";
 
       // DEFENCE 2 — nothing outside item_data.event may move.
       const changed = diffPaths(original, outgoing);
@@ -193,16 +219,29 @@ Deno.serve(async (req: Request) => {
       // DEFENCE 3 — a 2xx is not evidence. Ask Square what it actually holds.
       const after = await sq(config, `/catalog/object/${itemId}?include_related_objects=false`);
       const stored = after.object?.item_data?.event ?? null;
-      const wantStart = row.start_at;
       const storedOk = !!stored &&
-        stored.start_at === wantStart &&
         stored.event_location_name === VENUE_NAME &&
-        (!row.end_at || stored.end_at === row.end_at);
+        (!row.start_at || stored.start_at === row.start_at) &&
+        (!row.end_at || stored.end_at === row.end_at) &&
+        // A venue-only write must not have disturbed an existing date.
+        (row.start_at || stored.start_at === (existing.start_at ?? undefined));
 
       // And confirm the write did not disturb anything else, comparing the
       // stored object against what we retrieved before the write.
+      //
+      // Upserting an item bumps the optimistic-concurrency version and the
+      // timestamp on the item AND on each child variation, so those paths move
+      // on every successful write and say nothing about damage. Verified on
+      // THE GREEN KNIGHT against the 2026-08-17 catalog export: the variation's
+      // id, name, and price were identical afterwards and only version and
+      // updated_at had changed. Excluded by exact leaf name so that a real
+      // change to a price or a name still reports.
+      const noisy = (p: string) => {
+        const leaf = p.split(".").pop();
+        return leaf === "version" || leaf === "updated_at";
+      };
       const post = diffPaths(original, after.object)
-        .filter((p) => !p.startsWith("item_data.event") && p !== "version" && p !== "updated_at");
+        .filter((p) => !p.startsWith("item_data.event") && !noisy(p));
 
       rec.action = storedOk ? "written" : "accepted_but_not_stored";
       rec.stored_event = stored;

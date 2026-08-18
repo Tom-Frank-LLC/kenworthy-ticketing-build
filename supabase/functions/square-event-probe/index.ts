@@ -330,6 +330,21 @@ Deno.serve(async (req: Request) => {
       by_product_type: eventBlockByProductType,
     };
 
+    // Full object dump for named ids -- used to inspect exactly what a write
+    // left behind, field by field.
+    let dumps: any = null;
+    if (Array.isArray(payload.dump_ids) && payload.dump_ids.length) {
+      dumps = [];
+      for (const id of payload.dump_ids.slice(0, 5)) {
+        try {
+          const d = await sq(config, `/catalog/object/${id}?include_related_objects=false`, { version: CURRENT_VERSION });
+          dumps.push(d.object ?? null);
+        } catch (e: any) {
+          dumps.push({ id, error: e.message ?? String(e) });
+        }
+      }
+    }
+
     // Cross-reference the CSV tokens the caller sends.
     let csv: any = null;
     if (payload.csv_tokens?.length) {
@@ -429,6 +444,7 @@ Deno.serve(async (req: Request) => {
         ? "STOP — RetrieveCatalogObject does not return the event block for some items. Read-modify-write would WIPE venue/date."
         : "Round-trip safe on the retrieve axis (still requires a verified single-item write test).",
       wipe,
+      dumps,
       csv,
     });
   } catch (e: any) {
