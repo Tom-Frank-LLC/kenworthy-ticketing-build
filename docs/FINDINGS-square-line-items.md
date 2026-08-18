@@ -44,19 +44,24 @@ under a UNIQUE constraint and would quietly accumulate one row per sync.
 treats "resolve the film's EVENT item" as one bullet; it is the largest unbuilt
 piece, because it has to be resolved against 823 live EVENT items by title.
 
-Worse — **Connect V2 cannot create an `EVENT` item.** The API permits creating
-only `REGULAR` and `APPOINTMENTS_SERVICE` items, and `product_type` is immutable
-after creation, so an item created by the build could never become an EVENT and
-could never hold a venue or date. This partially overrides the "match, then
-auto-create" decision: **matching is automated, creation cannot be.** The
-planner emits a dashboard work list of titles a human must create as Event items
-instead, and never creates an item itself.
+Worse — creating one may not be possible. Square's reference says Connect V2
+allows creating only `REGULAR` and `APPOINTMENTS_SERVICE` items, and
+`product_type` is immutable after creation, so an item created by the build
+could never become an EVENT and could never hold a venue or date.
 
-*(That constraint is a vendor-doc claim, and this repo's own history says to
-distrust those — the Aug 14 damage was called unrecoverable for four days and
-was not. It is worth one deliberate test: attempt a single EVENT create against
-the catalog and read it back. Not done here, because this session was scoped to
-no live catalog writes.)*
+**That claim is untested for creation, and should be tested.** The same sentence
+in the reference did *not* prevent 739 successful writes to `item_data.event` on
+existing EVENT items (`venue-date-square-mechanism.md`), so it is not a reliable
+guide to what the API actually refuses — and this repo's history is emphatic
+about distrusting inherited impossibilities: the Aug 14 damage was called
+unrecoverable for four days and was not. One create plus a read-back settles it.
+Not done here, because this session was scoped to no live catalog writes.
+
+Until it is settled, the planner **does not create items**: it emits a dashboard
+work list of titles a human must create as Event items, with the intended
+category for each. So the "match, then auto-create" decision is delivered as
+*match automatically, create by hand* — and the auto-create half is one
+experiment away from being answerable either way.
 
 ### 4. Letting Square compute tax would break the refund path
 
