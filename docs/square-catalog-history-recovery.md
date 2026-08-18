@@ -170,3 +170,58 @@ per-showtime rows for screenings that happened in 2022. The right shape is
 probably to restore tiers on items that are still sold and leave dead
 per-showtime rows alone, which is a judgement call about the business, not a
 mechanical repair.
+
+## Process for the missing variations
+
+Two findings decide the shape of this, and both were checked rather than assumed.
+
+**1. The original variation objects are gone, not soft-deleted.** Retrieving a
+destroyed variation id returns a hard `404 NOT_FOUND`. Square assigns ids on
+create, so a restore cannot reuse them: it produces **new objects that resemble
+the old ones**. Restoring is therefore forward-looking — it makes the catalog
+sellable again — and cannot repair any historical linkage.
+
+**2. Nothing historical needs repairing.** Square order line items carry `name`,
+`variation_name` and `base_price_money` **on the order**, e.g.
+`"Adult - Sunday, August 23 at 12:30 PM"` at `$50.00`. Sales history, receipts
+and reporting are intact regardless of catalog deletions.
+
+Together: **restoring archived past listings buys nothing.** It would mint new
+sellable objects for screenings in 2022 whose sales records are already correct.
+The pre-damage snapshot is the historical record; that is what a record is for.
+
+### What is actually wrong today
+
+| | items | variations |
+|---|---|---|
+| archived past listings | 253 | 473 |
+| **live in the item library** | **17** | **25** |
+
+Only the 17 live items are a present-tense inaccuracy, and the damage there is
+specific: `pushItem` kept the **first** variation, so an item that offered
+Adult $20 / Student $15 now offers a single `Regular` at **$20**. The cheaper
+tier is not mispriced — it is missing, and the survivor kept the higher price.
+13 of the 17 lost tiers this way.
+
+### The pass
+
+1. **Freeze imports.** A dashboard CSV import round-trip re-flattens variations.
+   Nothing is durable until that workflow changes.
+2. **Generate a proposal** from the snapshot: for each of the 17, the current
+   single variation against the historical set, with names and prices.
+3. **Review it as a pricing decision, not a repair.** Names encode showtimes
+   (`Friday, September 16 at 7 PM`) that are meaningless for a past run, and
+   2022 prices may not be today's. Typically: keep the tiers, drop dead
+   per-showtime rows. This step is the client's call and cannot be automated.
+4. **Apply read-modify-write.** Take the current object, **append** approved
+   variations with `#temp` ids, and leave the existing variation in place — it
+   may carry sales. Never send the historical object.
+5. **Read back**, and assert variation count, names and prices, with nothing
+   outside `item_data.variations` changed.
+6. **Check the storefront** for the live items, since these are on sale.
+
+### Recommendation
+
+Do the 17. Leave the 253. Restoring dead per-showtime rows for past events adds
+clutter and sellable surface area in exchange for nothing the snapshot does not
+already preserve.

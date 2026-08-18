@@ -60,7 +60,7 @@ const json = (body: unknown, status = 200) =>
 
 /** Hard stop on anything that could mutate the catalog. */
 function assertRead(path: string, method: string) {
-  const isSearch = path.startsWith("/catalog/search");
+  const isSearch = path.startsWith("/catalog/search") || path.startsWith("/orders/search");
   if (method !== "GET" && !isSearch) {
     throw new Error(`probe refused a non-read call: ${method} ${path}`);
   }
@@ -345,6 +345,45 @@ Deno.serve(async (req: Request) => {
           dumps.push({ id, error: e.message ?? String(e) });
         }
       }
+    }
+
+    // Do past orders still carry the names and prices of variations that have
+    // since been deleted? This decides whether restoring variations repairs
+    // anything historical, or only re-creates sellable options going forward.
+    if (payload.orders_probe) {
+      const res = await sq(config, "/orders/search", {
+        method: "POST",
+        body: {
+          location_ids: [config.locationId],
+          query: { sort: { sort_field: "CREATED_AT", sort_order: "DESC" } },
+          limit: Number(payload.orders_limit ?? 20),
+        },
+      });
+      const orders = res.orders ?? [];
+      const lines: any[] = [];
+      for (const o of orders) {
+        for (const li of o.line_items ?? []) {
+          lines.push({
+            order_created: o.created_at,
+            name: li.name ?? null,
+            variation_name: li.variation_name ?? null,
+            catalog_object_id: li.catalog_object_id ?? null,
+            base_price: li.base_price_money ?? null,
+          });
+        }
+      }
+      // Which referenced variation ids no longer resolve in the catalog?
+      const refIds = [...new Set(lines.map((l) => l.catalog_object_id).filter(Boolean))];
+      const resolved: Record<string, boolean> = {};
+      for (const id of refIds.slice(0, 15)) {
+        try { await sq(config, `/catalog/object/${id}?include_related_objects=false`); resolved[id] = true; }
+        catch { resolved[id] = false; }
+      }
+      return json({ ok: true, orders: orders.length, line_items: lines.length,
+                    sample_lines: lines.slice(0, 12),
+                    referenced_ids_checked: Object.keys(resolved).length,
+                    referenced_ids_now_missing: Object.values(resolved).filter((v) => !v).length,
+                    resolved });
     }
 
     // Capture the catalog as it stood at a chosen instant, in full, to a file
