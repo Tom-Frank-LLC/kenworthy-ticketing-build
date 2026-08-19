@@ -13,6 +13,12 @@
 // means the charged amount always equals SUM(tickets.total_price) for the
 // order, which is what the refund path re-reads. Anything else would refund a
 // different number than it charged.
+//
+// The trigger also zeroes price and tax for `comp` AND `film_pass` (migration
+// 20260819040000): a pass admission was paid for, with tax, when the pass was
+// bought, so redeeming it is a $0 admission rather than a second taxable sale.
+// Nothing here prices a redemption — ticket-checkout refuses film passes
+// outright — but the two must not drift.
 
 import { SHOWING_PASSED_MESSAGE, isPast } from './purchasable.ts';
 
