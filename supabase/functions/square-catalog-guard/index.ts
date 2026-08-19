@@ -316,6 +316,31 @@ Deno.serve(async (req: Request) => {
 
     if (action === "check") {
       const nowIso = new Date().toISOString();
+
+      // Adopt items we have never seen before.
+      //
+      // Without this the guard's coverage decays silently: `check` only ever
+      // compared baseline against live, so anything added to the catalog after
+      // the last snapshot had no "before" and could be stripped without a
+      // finding. Caught the morning after go-live, when the catalog went 1002 ->
+      // 1003 and the new item was, quietly, unmonitored. Left alone it would
+      // have degraded to "the guard watches the items we happened to have in
+      // August" — a blind spot in the thing built to remove blind spots.
+      //
+      // Adopting can only add protection. It cannot mask damage: a genuinely
+      // deleted item still reports `vanished` under its own id, and an item
+      // whose variations were stripped BEFORE we ever saw it was never
+      // detectable from here anyway.
+      const known = new Set(baseline.map((b: any) => b.square_item_id));
+      const fresh = items.filter((o) => !known.has(o.id)).map((o) => ({
+        ...summarizeItem(o), captured_at: nowIso, last_ok_at: nowIso,
+      }));
+      for (let i = 0; i < fresh.length; i += 200) {
+        const { error } = await admin
+          .from("square_catalog_baseline")
+          .upsert(fresh.slice(i, i + 200), { onConflict: "square_item_id" });
+        if (error) throw new Error(`baseline adopt failed: ${error.message}`);
+      }
       for (let i = 0; i < okIds.length; i += 500) {
         await admin
           .from("square_catalog_baseline")
@@ -332,8 +357,8 @@ Deno.serve(async (req: Request) => {
         vanished: counts.vanished ?? 0,
         findings: findings.slice(0, 500),
         note: findings.length
-          ? "Losses detected — see findings."
-          : "Catalog matches baseline.",
+          ? `Losses detected — see findings.${fresh.length ? ` ${fresh.length} new item(s) adopted.` : ""}`
+          : `Catalog matches baseline.${fresh.length ? ` ${fresh.length} new item(s) adopted.` : ""}`,
       });
 
       return json({
@@ -341,6 +366,7 @@ Deno.serve(async (req: Request) => {
         api_version: SQUARE_API_VERSION,
         items_seen: items.length, items_baselined: baseline.length,
         healthy: okIds.length,
+        newly_baselined: fresh.length,
         counts,
         findings: findings.slice(0, 200),
         truncated: findings.length > 200 ? findings.length - 200 : 0,
