@@ -38,6 +38,8 @@ interface FilmPassType {
   per_showing_use_limit: number | null;
   /** Pre-ticked on a newly created standard-priced movie screening. */
   is_default_for_movies: boolean;
+  /** Set on the pass a festival page advertises; NULL on an ordinary pass. */
+  festival_slug: string | null;
 }
 
 const BLANK_FORM = {
@@ -48,6 +50,7 @@ const BLANK_FORM = {
   expiration_days: '',
   per_showing_use_limit: '',
   is_default_for_movies: true,
+  festival_slug: '',
 };
 
 /**
@@ -371,6 +374,7 @@ export default function FilmPassesTab() {
       per_showing_use_limit:
         pt.per_showing_use_limit === null ? '' : String(pt.per_showing_use_limit),
       is_default_for_movies: pt.is_default_for_movies,
+      festival_slug: pt.festival_slug ?? '',
     });
     setShowForm(true);
   }
@@ -404,6 +408,10 @@ export default function FilmPassesTab() {
       expiration_days: form.expiration_days ? parseInt(form.expiration_days) : null,
       per_showing_use_limit: limit,
       is_default_for_movies: form.is_default_for_movies,
+      // Empty means "not a festival pass". It must reach Postgres as NULL, not
+      // '': the unique index only ignores NULLs, so a second pass saved with a
+      // blank box would collide with the first instead of being unconstrained.
+      festival_slug: form.festival_slug.trim() || null,
     };
 
     // RLS filters writes rather than failing them, so a blocked update comes
@@ -827,6 +835,27 @@ export default function FilmPassesTab() {
                 </span>
               </span>
             </label>
+
+            {/* Which festival page, if any, advertises this pass.
+                The page finds its pass by this value rather than by name,
+                because the name is editable here and three duplicate
+                "SILENT FILM FESTIVAL PASS" SKUs already exist in Square. It
+                controls only what that page shows; what the pass admits to is
+                still the screenings tagged under Eligibility. */}
+            <div className="border-t border-border pt-4">
+              <Label htmlFor="festival-slug">Festival page (optional)</Label>
+              <Input
+                id="festival-slug"
+                placeholder="silent-film-festival"
+                value={form.festival_slug}
+                onChange={e => setForm(f => ({ ...f, festival_slug: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Leave blank for an ordinary pass. Enter{' '}
+                <code className="font-mono">silent-film-festival</code> to make this the pass
+                sold on the Silent Film Festival page. One pass per festival.
+              </p>
+            </div>
 
             <div className="flex gap-2">
               <Button onClick={handleSaveType}>{editingId ? 'Save changes' : 'Create'}</Button>
