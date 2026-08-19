@@ -129,12 +129,23 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { /* none */ }
 
   const action: string = payload.action ?? "plan";
-  if (!["plan", "apply", "map_donation", "link_item"].includes(action)) {
+  if (!["plan", "apply", "ensure_showing", "map_donation", "link_item"].includes(action)) {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
 
-  const dryRun = payload.dry_run !== false;
-  const maxBatch = Number(payload.max_batch ?? 1);
+  // One showing, published from the admin form. It is an apply in every respect
+  // except that the deliberate-confirmation ritual would be absurd on a form
+  // save: the scope is a single showing the user just created, the writes are
+  // append-only, and every defence below still applies. The cap is what keeps it
+  // bounded — a showing has a handful of tiers, never dozens.
+  const scopedShowingId = String(payload.showing_id ?? "").trim();
+  const isEnsure = action === "ensure_showing";
+  if (isEnsure && !scopedShowingId) {
+    return json({ error: "ensure_showing needs a showing_id" }, 400);
+  }
+
+  const dryRun = isEnsure ? false : payload.dry_run !== false;
+  const maxBatch = isEnsure ? Number(payload.max_batch ?? 8) : Number(payload.max_batch ?? 1);
   if (action === "apply" && !dryRun && payload.confirm !== "WRITE") {
     return json({ error: 'a real write requires confirm:"WRITE"' }, 400);
   }
@@ -248,16 +259,17 @@ Deno.serve(async (req: Request) => {
     const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const to = new Date(Date.now() + horizonDays * 24 * 60 * 60 * 1000).toISOString();
 
-    const showings = await allRows((f, t) =>
-      admin
+    // A named showing bypasses the horizon: the admin just saved it, and where
+    // it falls relative to a rolling window is beside the point.
+    const showings = await allRows((f, t) => {
+      let q = admin
         .from("showings")
-        .select("id, start_time, ticket_price, is_active, movie_id, event_id, live_performance_id")
-        .eq("is_active", true)
-        .gte("start_time", from)
-        .lte("start_time", to)
-        .order("start_time")
-        .range(f, t)
-    );
+        .select("id, start_time, ticket_price, is_active, movie_id, event_id, live_performance_id");
+      q = scopedShowingId
+        ? q.eq("id", scopedShowingId)
+        : q.eq("is_active", true).gte("start_time", from).lte("start_time", to);
+      return q.order("start_time").range(f, t);
+    });
 
     if (!showings.length) {
       return json({
