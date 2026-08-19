@@ -6,6 +6,7 @@ import { Calendar, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { formatShowtime } from '@/lib/datetime';
+import { isPast } from '@/lib/purchasable';
 
 interface ShowingInfo {
   id: string;
@@ -36,6 +37,20 @@ interface ProductionDetailDrawerProps {
 
 export function ProductionDetailDrawer({ production, open, onOpenChange }: ProductionDetailDrawerProps) {
   if (!production) return null;
+
+  // The heading below has always said "Upcoming Showings"; this is what makes
+  // that true. The feed these rows come from filters on start_time at query
+  // time, so a past showing only reaches here in a tab left open across one —
+  // but that is exactly the tab that would otherwise offer a ticket to a film
+  // that has finished. The rule is src/lib/purchasable.ts.
+  const upcoming = production.showings.filter(
+    (s) => !isPast(s, { duration_minutes: production.duration_minutes }),
+  );
+
+  // An RSVP event with dates, all of them behind us, has nothing left to RSVP
+  // to. One with no showings at all is the standalone kind the feed carries
+  // without a date, and there is nothing to judge it against.
+  const rsvpClosed = production.showings.length > 0 && upcoming.length === 0;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -76,16 +91,20 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
               of this drawer, and on a phone a long description pushed every
               showtime below the fold. */}
           {production.ticket_type === 'rsvp' && production.rsvp_url ? (
-            <div>
-              <Button size="lg" className="w-full" asChild>
-                <a href={production.rsvp_url} target="_blank" rel="noopener noreferrer">RSVP Now</a>
-              </Button>
-            </div>
-          ) : production.ticket_type === 'info_only' ? null : production.showings.length > 0 ? (
+            rsvpClosed ? (
+              <p className="text-sm text-muted-foreground">This event has passed.</p>
+            ) : (
+              <div>
+                <Button size="lg" className="w-full" asChild>
+                  <a href={production.rsvp_url} target="_blank" rel="noopener noreferrer">RSVP Now</a>
+                </Button>
+              </div>
+            )
+          ) : production.ticket_type === 'info_only' ? null : upcoming.length > 0 ? (
             <div className="space-y-3">
               <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Upcoming Showings</h3>
               <div className="space-y-2">
-                {production.showings.map(showing => (
+                {upcoming.map(showing => (
                   <Button
                     key={showing.id}
                     variant="outline"

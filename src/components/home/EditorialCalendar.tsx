@@ -6,6 +6,7 @@ import { addDays, isThisWeek } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
+import { isPast } from '@/lib/purchasable';
 import type { FeedItem } from './TrailerFeed';
 
 const TYPE_ICON = {
@@ -117,7 +118,11 @@ export function EditorialCalendar({
                 </p>
               )}
             </button>
-            {featured.showingId && (
+            {/* useFeed filters past showings out at query time, so this only
+                bites in a tab left open across a start time — which is the one
+                case where the page would otherwise sell a finished screening.
+                The rule is src/lib/purchasable.ts. */}
+            {featured.showingId && !isPast({ start_time: featured.startTime }) && (
               <div className="mt-4">
                 <Button asChild className={cn('h-11', GREEN_CTA)}>
                   <Link to={`/showing/${featured.showingId}`}>
