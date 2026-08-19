@@ -43,6 +43,7 @@ import {
   isNoisyPath,
   normalizeTitle,
   sameVariation,
+  suggestTitleMatches,
   desiredVariations,
   type ProductionKind,
   type Desired,
@@ -128,7 +129,7 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { /* none */ }
 
   const action: string = payload.action ?? "plan";
-  if (!["plan", "apply", "map_donation"].includes(action)) {
+  if (!["plan", "apply", "map_donation", "link_item"].includes(action)) {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
 
@@ -136,6 +137,46 @@ Deno.serve(async (req: Request) => {
   const maxBatch = Number(payload.max_batch ?? 1);
   if (action === "apply" && !dryRun && payload.confirm !== "WRITE") {
     return json({ error: 'a real write requires confirm:"WRITE"' }, 400);
+  }
+
+  // ---- link_item ----------------------------------------------------------
+  //
+  // Record that a production IS a particular Square item. The plan suggests
+  // candidates and refuses to act on them; this is where a person says yes.
+  // Writes one column on our side and nothing at all to Square.
+  if (action === "link_item") {
+    const kind = String(payload.kind ?? "");
+    const productionId = String(payload.production_id ?? "").trim();
+    const itemId = String(payload.square_item_id ?? "").trim();
+    const table = { movie: "movies", event: "events", live_performance: "live_performances" }[kind];
+    if (!table || !productionId || !itemId) {
+      return json({ error: 'kind (movie|event|live_performance), production_id and square_item_id are all required' }, 400);
+    }
+
+    try {
+      // Confirm the item exists and can actually hold showtimes before pointing
+      // a production at it. A typo here would send every future variation for
+      // that film onto somebody else's item.
+      const res = await sq(config, `/catalog/object/${itemId}?include_related_objects=false`);
+      const obj = res.object;
+      if (!obj || obj.type !== "ITEM") return json({ error: "That id is not a catalog ITEM." }, 400);
+      if (obj.item_data?.product_type !== "EVENT") {
+        return json({
+          error: `That item is ${obj.item_data?.product_type}, not EVENT, so it cannot hold a venue or dates.`,
+        }, 400);
+      }
+
+      const { error } = await admin.from(table).update({ square_item_id: itemId }).eq("id", productionId);
+      if (error) return json({ error: `Could not save the link: ${error.message}` }, 500);
+
+      return json({
+        ok: true, action, kind, production_id: productionId,
+        square_item_id: itemId, square_item_name: obj.item_data?.name ?? null,
+        note: "Linked. Re-run plan to see its showtimes move out of needs_item.",
+      });
+    } catch (e: any) {
+      return json({ error: e.message ?? String(e) }, 500);
+    }
   }
 
   // ---- map_donation -------------------------------------------------------
@@ -414,10 +455,20 @@ Deno.serve(async (req: Request) => {
           status: p.status,
         }])
     ).values()];
+    const eventItems = items
+      .filter((i) => i.item_data?.product_type === "EVENT")
+      .map((i) => ({ id: i.id, name: i.item_data?.name ?? "" }));
+
     for (const n of needsItem) {
       n.showings = new Set(
         plans.filter((p) => p.production_id === n.production_id).map((p) => p.showing_id)
       ).size;
+      // Offer, never assume. Five of the ten titles this reported as needing a
+      // new item on its first real run already existed in the catalog under a
+      // bare title, and creating them would have split each film's revenue
+      // across two Square items. These are for a human to confirm with
+      // `link_item`; nothing here links anything.
+      (n as any).possible_matches = suggestTitleMatches(n.title, eventItems);
     }
 
     const base = {
@@ -475,16 +526,19 @@ Deno.serve(async (req: Request) => {
     // default: max_batch is 1, a real catalog has hundreds of appendable
     // variations, so `{action:"apply"}` answered 400 and showed nothing. The
     // step that exists to be read before writing could not be read.
-    const queue = dryRun ? appendable.slice(0, 200) : appendable;
-    if (!dryRun && queue.length > maxBatch) {
-      return json({
-        ...base,
-        dry_run: dryRun,
-        adopted,
-        error: `refusing ${queue.length} appends; max_batch is ${maxBatch}. ` +
-               "Raise it deliberately, never by accident.",
-      }, 400);
-    }
+    // max_batch LIMITS the run; it does not refuse it.
+    //
+    // It used to reject the whole batch when there were more appends than the
+    // cap, which read as prudent and made the intended workflow impossible: the
+    // advice is "write one, read it back in the dashboard, then raise the cap",
+    // and with five pending you could never write one. The only way through was
+    // to set the cap to the full count, which is precisely the deliberate-choice
+    // step the cap exists to force.
+    //
+    // Now it takes the first max_batch and reports what is left, so a cautious
+    // run is one call and a bigger one is the same call with a bigger number.
+    const queue = dryRun ? appendable.slice(0, 200) : appendable.slice(0, maxBatch);
+    const remaining = dryRun ? 0 : Math.max(0, appendable.length - queue.length);
 
     const results: any[] = [];
     for (const p of queue) {
@@ -616,6 +670,10 @@ Deno.serve(async (req: Request) => {
       adopted,
       appendable: appendable.length,
       previewed: dryRun ? queue.length : undefined,
+      remaining: dryRun ? undefined : remaining,
+      note: remaining
+        ? `${remaining} append(s) left. Re-run with a larger max_batch once you have checked these in the dashboard.`
+        : undefined,
       tally,
       results,
     });

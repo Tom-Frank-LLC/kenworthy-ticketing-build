@@ -471,3 +471,83 @@ export function compareToBaseline(
 
   return out;
 }
+
+
+/**
+ * Titles that MIGHT be the same film, for a human to confirm.
+ *
+ * Strictly a suggestion. `normalizeTitle` demands exact equality on purpose —
+ * appending a showtime to the wrong film is worse than appending to none — so
+ * this never links anything. It exists because the opposite mistake turned out
+ * to be just as expensive: a plan run against the real catalog reported ten
+ * productions as needing a new Square item, and five of them were already there
+ * under a bare title. "Moscow Film Society: Event Horizon" is EVENT HORIZON;
+ * "Page to Screen: Divergent" is DIVERGENT. Somebody working that list would
+ * have created five duplicates, splitting each film's revenue across two items.
+ *
+ * Two cheap relationships catch those, and neither is trusted enough to act on:
+ *
+ *   - our title is "<Series>: <Film>" and the catalog holds <Film>;
+ *   - one normalised title contains the other as a whole-word run, which catches
+ *     "Charlie Chaplin Shorts" against "CHAPLIN SHORTS".
+ *
+ * Ranked shortest-first so the tightest match reads first, and capped, because a
+ * list of twenty maybes is no more useful than none.
+ */
+export function suggestTitleMatches(
+  title: string,
+  candidates: Array<{ id: string; name: string }>,
+  limit = 3,
+): Array<{ id: string; name: string; why: string }> {
+  const ours = normalizeTitle(title);
+  if (!ours) return [];
+
+  // "Summer Family Matinee: Peter Rabbit" -> "peter rabbit"
+  const afterColon = title.includes(":") ? normalizeTitle(title.slice(title.indexOf(":") + 1)) : "";
+
+  const words = (s: string) => ` ${s} `;
+  const out: Array<{ id: string; name: string; why: string; rank: number }> = [];
+
+  for (const c of candidates) {
+    const theirs = normalizeTitle(c.name ?? "");
+    if (!theirs || theirs === ours) continue;   // exact matches are not suggestions
+
+    if (afterColon && theirs === afterColon) {
+      out.push({ id: c.id, name: c.name, why: "same title without the series prefix", rank: 0 });
+      continue;
+    }
+    if (words(ours).includes(words(theirs))) {
+      out.push({ id: c.id, name: c.name, why: "catalog title appears inside ours", rank: theirs.length });
+      continue;
+    }
+    if (words(theirs).includes(words(ours))) {
+      out.push({ id: c.id, name: c.name, why: "our title appears inside the catalog's", rank: ours.length });
+      continue;
+    }
+
+    // Every word of one title present in the other, in any order. Catches
+    // "Silent Film Festival: Charlie Chaplin Shorts" against
+    // "Silent Film Festival: CHAPLIN SHORTS", where the shared run is broken by
+    // a word in the middle so neither contains the other.
+    //
+    // Two words minimum: a single shared word would offer DUNE for every film
+    // with "dune" in it, and a suggestion list nobody trusts is one nobody reads.
+    const a = new Set(ours.split(" ").filter(Boolean));
+    const b = new Set(theirs.split(" ").filter(Boolean));
+    const smaller = a.size <= b.size ? a : b;
+    const larger = a.size <= b.size ? b : a;
+    if (smaller.size >= 2 && [...smaller].every((w) => larger.has(w))) {
+      out.push({
+        id: c.id,
+        name: c.name,
+        why: "same words in a different order or spelling",
+        rank: 100 + (larger.size - smaller.size),
+      });
+    }
+  }
+
+  return out
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, limit)
+    .map(({ id, name, why }) => ({ id, name, why }));
+}
