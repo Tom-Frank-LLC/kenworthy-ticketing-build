@@ -109,15 +109,68 @@ The 2026 screenings are already live in `showings`; the pass is not.
 4. **Admin → Festival → upload programs**, then publish each. Nothing is public
    until published.
 
-## Known, not fixed
+## Loading the archive
 
-Poster thumbnails on the screening cards are the full print scans — ~1.1 MB each,
-2000×3037, displayed in a 108×162 box. This is the existing site-wide behaviour
-(`Index.tsx` and `Showing.tsx` render `poster_url` the same way), so it was left
-consistent rather than fixed on one page.
+`scripts/import-festival-programs.mjs` walks a folder of scans and uploads them.
 
-Supabase's image transform endpoint **is** enabled on production and would cut
-this by ~93% (`/storage/v1/render/image/public/<path>?width=240&quality=50` →
-81 KB). Nothing in the repo uses it yet and it could not be confirmed on
-staging, so adopting it should be a deliberate site-wide change, not a
-side effect of this page.
+```
+SUPABASE_URL=https://<ref>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<service-role key> \
+node scripts/import-festival-programs.mjs "<archive dir>" --dry-run
+```
+
+Drop `--dry-run` to upload. Rows land **unpublished**, so nothing is public
+until someone has looked at it in Admin → Festival. `--replace` re-imports a
+year that already has rows; `--publish` publishes on the way in.
+
+It is shape-based rather than a fixed list of files, because no two years were
+handed over in the same form:
+
+- a **directory** with a year in its name → its images are that year's pages, in
+  filename-number order;
+- a **PDF** with a year in its name → every page is rendered to an image so the
+  year is browsable, *and* the PDF is uploaded for download.
+
+PDFs found *inside* a year directory are skipped. In the 2023 folder those are
+the printer's spreads — back cover and front cover imposed on one landscape
+sheet — which is the right artefact for reprinting and the wrong one for reading
+online; the same content is already there as single portrait pages.
+`--include-spreads` keeps them.
+
+### What was in the 2026-08 handover
+
+| Year | Source | Imported as |
+| --- | --- | --- |
+| 2023 | 8 portrait page PNGs (~33 MB) + 4 print spreads | 8 page images; spreads skipped |
+| 2024 | one 12-page PDF, 9.4 MB | 12 page images + the PDF |
+| 2025 | one 8-page PDF, 6.2 MB | 8 page images + the PDF |
+
+Two traps that folder contains, both of which a naive importer walks straight
+into:
+
+- The 2024 and 2025 PDFs are **Dropbox online-only placeholders**. `du` reports
+  them as 0 B; `stat` gives the true size and reading them hydrates the file.
+  Anything that sizes files with `du` will upload nothing and report success.
+- `sips -Z` fits the **longest** side. On a portrait page that caps the height
+  and leaves the width ~35% short of every PDF-rendered page, so the years come
+  out at visibly different quality. The script uses `--resampleWidth`.
+
+## Image sizes: one file, two sizes
+
+Stored pages are normalised to 2000px wide (JPEG q88) — wide enough that the
+body copy is comfortably legible, against a 24 MB source for 2023's cover alone.
+
+The archive grid does **not** fetch those. Tiles request Supabase's image
+transform endpoint off the same object:
+
+```
+getPublicUrl(path, { transform: { width: 500, quality: 70 } })
+```
+
+Verified working on **both** production and staging (2026-08-19). One stored
+file serves the thumbnail and the click-through; nothing is uploaded twice.
+
+Note this is the first use of the transform endpoint in the repo. Posters
+elsewhere (`Index.tsx`, `Showing.tsx`) still ship at full print resolution —
+~1.1 MB each — and would benefit from the same treatment, but that is a
+site-wide change and was deliberately left out of this page's scope.

@@ -148,8 +148,18 @@ export default function SilentFilmFestival() {
     ? new Date(lineup[0].start_time).getFullYear()
     : null;
 
+  // The stored page is a ~2000px-wide scan, because a reader who clicks a
+  // thumbnail wants a page they can actually read. The grid must not fetch that
+  // — thirty of them is tens of megabytes — so the tile asks Supabase's image
+  // transform endpoint for a thumbnail off the same object. One stored file
+  // serves both sizes; nothing is uploaded twice.
   const publicUrl = (path: string) =>
     supabase.storage.from('festival-programs').getPublicUrl(path).data.publicUrl;
+
+  const thumbUrl = (path: string) =>
+    supabase.storage.from('festival-programs').getPublicUrl(path, {
+      transform: { width: 500, quality: 70 },
+    }).data.publicUrl;
 
   return (
     <>
@@ -324,7 +334,7 @@ export default function SilentFilmFestival() {
                           >
                             {program.file_type === 'image' ? (
                               <img
-                                src={href}
+                                src={thumbUrl(program.file_path)}
                                 alt={label}
                                 loading="lazy"
                                 decoding="async"
