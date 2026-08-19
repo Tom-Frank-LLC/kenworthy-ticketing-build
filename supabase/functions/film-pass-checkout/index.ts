@@ -37,10 +37,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/http.ts';
 import {
   createPayment,
+  squareFetch,
   loadSquareConfig,
   publishableConfig,
   squareErrorMessage,
 } from '../_shared/square.ts';
+import { buildTicketOrder, orderRequestBody } from '../_shared/square-order.ts';
 import {
   EMAIL_RE,
   authenticatedUser,
@@ -708,7 +710,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: passType } = await admin
     .from('film_pass_types')
-    .select('id, name, price, initial_balance, redemption_price, expiration_days, is_active')
+    .select('id, name, price, initial_balance, redemption_price, expiration_days, is_active, square_variation_id')
     .eq('id', passTypeId)
     .maybeSingle();
 
@@ -826,11 +828,64 @@ Deno.serve(async (req: Request) => {
   let paymentId: string | null = null;
   let receiptUrl: string | null = null;
 
+  // Register the sale as an Order so the pass lands in Square's item sales under
+  // '9 Film Passes' instead of being an amount with a note. Best-effort: any
+  // disagreement about the total falls back to the bare payment rather than
+  // charging a different number than the buyer was shown.
+  let squareOrderId: string | undefined;
+  try {
+    const built = buildTicketOrder([{
+      tierKey: '__film_pass',
+      displayName: passType.name,
+      variationId: (passType as any).square_variation_id ?? null,
+      unitPriceCents: Math.round(unitPrice * 100),
+      unitTaxCents: 0,
+      count: quantity,
+      // Our arithmetic charges price x quantity and adds no tax, so the line
+      // must not be taxed either — Square would otherwise add 6% that the
+      // buyer never agreed to. Whether a film pass SHOULD be taxed is a
+      // question for the box office, not something to change quietly here.
+      taxable: false,
+    }]);
+
+    if (!(passType as any).square_variation_id) {
+      console.warn(`[film-pass-checkout] pass type ${passType.name} has no Square variation; billed as an ad-hoc line`);
+    }
+
+    if (built.expectedTotalCents !== amountCents) {
+      console.error(`[film-pass-checkout] order total ${built.expectedTotalCents} != charge ${amountCents}; bare payment`);
+    } else {
+      const createdOrder = await squareFetch(square.config, '/orders', {
+        method: 'POST',
+        body: orderRequestBody({
+          locationId: square.config.locationId,
+          referenceId: pending.id,
+          built,
+          idempotencyKey: `order-${idempotencyKey}`,
+          fulfillment: 'DIGITAL',
+          buyerEmail: contact.email,
+          buyerName: contact.name,
+        }),
+      });
+      const squareTotal = createdOrder.data?.order?.total_money?.amount;
+      if (!createdOrder.ok || !createdOrder.data?.order?.id) {
+        console.error('[film-pass-checkout] order create failed', createdOrder.status, JSON.stringify(createdOrder.data));
+      } else if (squareTotal !== amountCents) {
+        console.error(`[film-pass-checkout] Square totalled ${squareTotal} vs charge ${amountCents}; abandoning order`);
+      } else {
+        squareOrderId = createdOrder.data.order.id;
+      }
+    }
+  } catch (err) {
+    console.error('[film-pass-checkout] order build threw, falling back to bare payment', err);
+  }
+
   try {
     const result = await createPayment(square.config, {
       sourceId: body.source_id,
       amountCents,
       idempotencyKey,
+      orderId: squareOrderId,
       referenceId: pending.id,
       note: `${quantity} × ${passType.name}`,
       buyerEmail: contact.email,

@@ -128,7 +128,7 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { /* none */ }
 
   const action: string = payload.action ?? "plan";
-  if (action !== "plan" && action !== "apply") {
+  if (!["plan", "apply", "map_donation"].includes(action)) {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
 
@@ -136,6 +136,66 @@ Deno.serve(async (req: Request) => {
   const maxBatch = Number(payload.max_batch ?? 1);
   if (action === "apply" && !dryRun && payload.confirm !== "WRITE") {
     return json({ error: 'a real write requires confirm:"WRITE"' }, 400);
+  }
+
+  // ---- map_donation -------------------------------------------------------
+  //
+  // Find the catalog's DONATION item and record which variation to ring each
+  // gift against. Read-only against Square; writes one app_config row, and only
+  // when asked.
+  //
+  // Separate from the showings plan because a donation has no showtime and no
+  // tier — it is one item with a handful of preset amounts and a variable-priced
+  // "Custom Amount". Without this mapping square-donation bills every gift as an
+  // ad-hoc line, which works but never rolls up.
+  if (action === "map_donation") {
+    try {
+      const items = await listItems(config);
+      const donationItems = items.filter((i) => i.item_data?.product_type === "DONATION");
+      if (donationItems.length !== 1) {
+        return json({
+          ok: false,
+          found: donationItems.length,
+          names: donationItems.map((i) => i.item_data?.name),
+          error: donationItems.length === 0
+            ? "No DONATION product-type item in the catalog."
+            : "More than one DONATION item; refusing to guess which one gifts belong to.",
+        }, 400);
+      }
+
+      const item = donationItems[0];
+      const byAmount: Record<string, string> = {};
+      let custom: string | null = null;
+      for (const v of item.item_data?.variations ?? []) {
+        const d = v.item_variation_data ?? {};
+        if (d.pricing_type === "VARIABLE_PRICING") { custom = v.id; continue; }
+        const amount = d.price_money?.amount;
+        if (typeof amount === "number") byAmount[String(amount)] = v.id;
+      }
+
+      const value = { item_id: item.id, by_amount_cents: byAmount, custom };
+      const dry = payload.dry_run !== false;
+      if (!dry) {
+        const { error } = await admin
+          .from("app_config")
+          .upsert({ key: "square_donation_variations", value }, { onConflict: "key" });
+        if (error) return json({ error: `Could not save the mapping: ${error.message}` }, 500);
+      }
+
+      return json({
+        ok: true,
+        action,
+        dry_run: dry,
+        item: { id: item.id, name: item.item_data?.name, is_taxable: item.item_data?.is_taxable },
+        presets: Object.keys(byAmount).length,
+        value,
+        note: dry
+          ? "Read-only. Pass dry_run:false to save. Nothing was written to Square either way."
+          : "Saved to app_config.square_donation_variations.",
+      });
+    } catch (e: any) {
+      return json({ error: e.message ?? String(e) }, 500);
+    }
   }
 
   try {
