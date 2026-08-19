@@ -78,9 +78,166 @@ interface FestivalPass {
   redemption_price: number;
 }
 
+const publicUrl = (path: string) =>
+  supabase.storage.from('festival-programs').getPublicUrl(path).data.publicUrl;
+
+const thumbUrl = (path: string, width: number) =>
+  supabase.storage.from('festival-programs').getPublicUrl(path, {
+    transform: { width, quality: 70 },
+  }).data.publicUrl;
+
+/** What a slide is actually fetched at. Kept here so preloading asks for the
+ *  identical URL the <img> will ask for — a different width is a different
+ *  object and the preload would warm the wrong one. */
+const SLIDE_WIDTH = 1400;
+
 /** A screening's production, whichever of the three tables it lives in. */
 function productionOf(screening: Screening): Production | null {
   return screening.movies ?? screening.events ?? screening.live_performances ?? null;
+}
+
+/**
+ * A year's programme, one page at a time.
+ *
+ * Images rather than an embedded PDF, and that is the whole point. The
+ * browser's PDF viewer arrives with a toolbar offering to rotate, annotate,
+ * download and summarise, none of which belongs on a scanned programme, and it
+ * cannot be reliably suppressed — `#toolbar=0` is an Adobe convention Chrome
+ * happens to honour and Firefox ignores. A slideshow of images has no controls
+ * except the ones written here, so it is read-only because of what it is rather
+ * than because something was hidden.
+ *
+ * Declared at module scope, not inside the page component. A component defined
+ * inside another is a new function on every parent render, which React reads as
+ * a different component type — it unmounts the old tree and mounts a fresh one,
+ * so the slideshow would silently lose its page and reload its image any time
+ * anything else on the page changed.
+ */
+function YearSlideshow({ entry }: { entry: FestivalYear }) {
+  const [page, setPage] = useState(0);
+  const total = entry.pages.length;
+
+  // A new year opens at its cover, not at whatever page the last one reached.
+  useEffect(() => { setPage(0); }, [entry.year]);
+
+  const index = Math.min(page, Math.max(0, total - 1));
+
+  // Warm the neighbours. Without this every click blanked the pane while the
+  // next scan downloaded, which reads as the page reloading rather than as a
+  // page turning. Browser cache does the rest: by the time the src changes the
+  // bytes are already there, so the swap is immediate.
+  useEffect(() => {
+    if (total === 0) return;
+    for (const offset of [1, -1]) {
+      const neighbour = entry.pages[index + offset];
+      if (neighbour) {
+        const img = new Image();
+        img.src = thumbUrl(neighbour.file_path, SLIDE_WIDTH);
+      }
+    }
+  }, [entry, index, total]);
+
+  if (total === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50" aria-hidden="true" />
+          <p className="font-serif text-muted-foreground">
+            This programme has no scanned pages yet.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const current = entry.pages[index];
+  const go = (delta: number) =>
+    setPage(p => Math.min(total - 1, Math.max(0, p + delta)));
+
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-0">
+        <div
+          className="relative bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          role="group"
+          aria-roledescription="carousel"
+          aria-label={`${entry.year} Silent Film Festival programme`}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+          }}
+        >
+          {/* The box keeps its height whatever the page is doing. Sizing to the
+              image instead let the pane collapse for the moment between one
+              scan going and the next arriving, and a pane that jumps is the
+              other half of why this looked like a reload. */}
+          <div className="h-[60vh] lg:h-[72vh] flex items-center justify-center">
+            <img
+              /* Deliberately no key: a key per page throws the element away and
+                 builds a new one, so the browser starts from nothing every
+                 click. Reusing one <img> and changing src lets a preloaded page
+                 appear at once. */
+              src={thumbUrl(current.file_path, SLIDE_WIDTH)}
+              alt={`Page ${index + 1} of the ${entry.year} Silent Film Festival programme`}
+              /* The slide is the content, not something below the fold. */
+              loading="eager"
+              decoding="async"
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
+
+          {total > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => go(-1)}
+                disabled={index === 0}
+                aria-label="Previous page"
+                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 border border-border p-2 text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => go(1)}
+                disabled={index >= total - 1}
+                aria-label="Next page"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 border border-border p-2 text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronRight className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 p-4 border-t border-border">
+          <div className="min-w-0">
+            <p className="font-display uppercase tracking-[0.15em] text-xs text-primary">
+              {entry.year}
+            </p>
+            <p className="font-serif text-foreground" aria-live="polite">
+              {total > 1 ? `Page ${index + 1} of ${total}` : 'Programme'}
+            </p>
+          </div>
+          {entry.booklet && (
+            /* The one link that still leaves the page, because saving a file
+               is what a new tab is actually for. */
+            <Button asChild variant="outline" size="sm" className="shrink-0">
+              <a
+                href={publicUrl(entry.booklet.file_path)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Download className="h-4 w-4 mr-1" aria-hidden="true" />
+                Download PDF
+              </a>
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function SilentFilmFestival() {
@@ -177,125 +334,7 @@ export default function SilentFilmFestival() {
   // — thirty of them is tens of megabytes — so the tile asks Supabase's image
   // transform endpoint for a thumbnail off the same object. One stored file
   // serves both sizes; nothing is uploaded twice.
-  const publicUrl = (path: string) =>
-    supabase.storage.from('festival-programs').getPublicUrl(path).data.publicUrl;
 
-  const thumbUrl = (path: string, width: number) =>
-    supabase.storage.from('festival-programs').getPublicUrl(path, {
-      transform: { width, quality: 70 },
-    }).data.publicUrl;
-
-  /**
-   * A year's programme, one page at a time.
-   *
-   * Images rather than an embedded PDF, and that is the whole point. The
-   * browser's PDF viewer arrives with a toolbar offering to rotate, annotate,
-   * download and summarise, none of which belongs on a scanned museum piece,
-   * and it cannot be reliably suppressed — `#toolbar=0` is an Adobe convention
-   * Chrome happens to honour and Firefox ignores. A slideshow of images has no
-   * controls except the ones written here, so it is read-only because of what
-   * it is rather than because something was hidden.
-   */
-  const YearSlideshow = ({ entry }: { entry: FestivalYear }) => {
-    const [page, setPage] = useState(0);
-    const total = entry.pages.length;
-
-    // A new year opens at its cover, not at whatever page the last one reached.
-    useEffect(() => { setPage(0); }, [entry.year]);
-
-    if (total === 0) {
-      return (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50" aria-hidden="true" />
-            <p className="font-serif text-muted-foreground">
-              This programme has no scanned pages yet.
-            </p>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    const index = Math.min(page, total - 1);
-    const current = entry.pages[index];
-    const go = (delta: number) =>
-      setPage(p => Math.min(total - 1, Math.max(0, p + delta)));
-
-    return (
-      <Card className="overflow-hidden">
-        <CardContent className="p-0">
-          <div
-            className="relative bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            role="group"
-            aria-roledescription="carousel"
-            aria-label={`${entry.year} Silent Film Festival programme`}
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
-              if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
-            }}
-          >
-            <img
-              key={current.id}
-              src={thumbUrl(current.file_path, 1400)}
-              alt={`Page ${index + 1} of the ${entry.year} Silent Film Festival programme`}
-              loading="lazy"
-              decoding="async"
-              className="w-full max-h-[72vh] object-contain"
-            />
-
-            {total > 1 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => go(-1)}
-                  disabled={index === 0}
-                  aria-label="Previous page"
-                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 border border-border p-2 text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => go(1)}
-                  disabled={index >= total - 1}
-                  aria-label="Next page"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 border border-border p-2 text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <ChevronRight className="h-5 w-5" aria-hidden="true" />
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between gap-3 p-4 border-t border-border">
-            <div className="min-w-0">
-              <p className="font-display uppercase tracking-[0.15em] text-xs text-primary">
-                {entry.year}
-              </p>
-              <p className="font-serif text-foreground" aria-live="polite">
-                {total > 1 ? `Page ${index + 1} of ${total}` : 'Programme'}
-              </p>
-            </div>
-            {entry.booklet && (
-              /* The one link that still leaves the page, because saving a file
-                 is what a new tab is actually for. */
-              <Button asChild variant="outline" size="sm" className="shrink-0">
-                <a
-                  href={publicUrl(entry.booklet.file_path)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Download className="h-4 w-4 mr-1" aria-hidden="true" />
-                  Download PDF
-                </a>
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
 
   return (
     <>
