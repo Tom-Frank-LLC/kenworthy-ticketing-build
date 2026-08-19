@@ -467,8 +467,16 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const queue = plans.filter((p) => p.status === "would_append");
-    if (queue.length > maxBatch) {
+    const appendable = plans.filter((p) => p.status === "would_append");
+
+    // The cap governs WRITES, not the rehearsal.
+    //
+    // It used to apply in both modes, which made the dry run useless at its own
+    // default: max_batch is 1, a real catalog has hundreds of appendable
+    // variations, so `{action:"apply"}` answered 400 and showed nothing. The
+    // step that exists to be read before writing could not be read.
+    const queue = dryRun ? appendable.slice(0, 200) : appendable;
+    if (!dryRun && queue.length > maxBatch) {
       return json({
         ...base,
         dry_run: dryRun,
@@ -602,7 +610,15 @@ Deno.serve(async (req: Request) => {
     const tally: Record<string, number> = {};
     for (const r of results) tally[r.action ?? "?"] = (tally[r.action ?? "?"] ?? 0) + 1;
 
-    return json({ ...base, dry_run: dryRun, adopted, tally, results });
+    return json({
+      ...base,
+      dry_run: dryRun,
+      adopted,
+      appendable: appendable.length,
+      previewed: dryRun ? queue.length : undefined,
+      tally,
+      results,
+    });
   } catch (e: any) {
     return json({ error: e.message ?? String(e) }, 500);
   }
