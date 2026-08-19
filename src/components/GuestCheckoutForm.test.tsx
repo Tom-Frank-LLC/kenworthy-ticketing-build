@@ -128,7 +128,7 @@ describe('GuestCheckoutForm', () => {
     expect(onPurchase).not.toHaveBeenCalled();
   });
 
-  it('will not submit without a name or a way to reach the buyer', async () => {
+  it('will not submit without a way to reach the buyer', async () => {
     const onPurchase = vi.fn();
     render(
       <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
@@ -139,9 +139,37 @@ describe('GuestCheckoutForm', () => {
 
     fireEvent.click(payButton);
 
-    expect(await screen.findByText(/Name is required/)).toBeInTheDocument();
+    // A contact is the only hard requirement. Which contact counts depends on
+    // SMS_DELIVERY_LIVE, so match either message rather than pinning this test
+    // to whichever side of the flag we happen to be on.
+    expect(await screen.findByText(/is required/)).toBeInTheDocument();
     expect(tokenizeCard).not.toHaveBeenCalled();
     expect(onPurchase).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A name is a courtesy, and a courtesy is not worth a lost sale.
+   *
+   * It used to be required on the form and again in ticket-checkout, so a
+   * buyer who skipped it was rejected twice over something delivery never
+   * depended on. Everything downstream falls back: buyers.ts names the account
+   * after whatever contact we do have, and the confirmation drops the greeting
+   * rather than addressing nobody.
+   */
+  it('takes a purchase with no name at all', async () => {
+    const onPurchase = vi.fn();
+    render(
+      <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+    );
+
+    const payButton = await screen.findByRole('button', { name: /Pay/ });
+    await waitFor(() => expect(payButton).toBeEnabled());
+
+    fireEvent.change(emailField(), { target: { value: 'tom@example.com' } });
+    fireEvent.click(payButton);
+
+    await waitFor(() => expect(onPurchase).toHaveBeenCalled());
+    expect(onPurchase.mock.calls[0][0].name).toBe('');
   });
 
   /**

@@ -147,42 +147,44 @@ export const COLLECT_PHONE = true;
 /**
  * Whether a phone number on its own is a contact we can actually deliver to.
  *
- * **Off**, and this is the flag that carries the delivery fact `COLLECT_PHONE`
- * used to carry alone. Ticket checkout's server rule is "email or phone". When
- * this is on, the form matches it and a buyer may give a number and nothing
- * else. When it is off, email is required — the number is still collected, the
- * disclosure is still shown, but nobody can complete a purchase whose only
- * contact is one we cannot reach.
+ * **On**, and read the next paragraph before trusting that. Ticket checkout's
+ * server rule is "email or phone"; this makes the form match it, so a buyer may
+ * give a number and nothing else. With it off, email was required — the number
+ * was still collected and the disclosure still shown, but nobody could complete
+ * a purchase whose only contact was one we could not reach.
  *
- * It is off because of A2P 10DLC, not because of our code. `sendViaTwilio` has
- * been complete since 2026-08-12. What is missing is a registered *campaign*:
- * US carriers reject unregistered long-code traffic outright with error 30034,
- * so every send fails no matter how the credentials are set. Brand approval is
- * not campaign approval, and the two were conflated when this work was scoped.
+ * It is on by decision, not because the conditions below are all met. As of
+ * 2026-08-18 the A2P 10DLC campaign is **not** approved, and US carriers reject
+ * unregistered long-code traffic outright with error 30034 — so a phone-only
+ * buyer who ticks the SMS box is charged and receives nothing, and finds out at
+ * the door. Delivery is fire-and-forget, so the only trace is
+ * `orders.confirmation_error`. That trade was put to Tom in those words and
+ * taken deliberately; it is not an oversight to be tidied up by someone reading
+ * this later. **Watch `confirmation_error` until the campaign clears.**
  *
- * Turning it on takes all of the following, and the last one is the slow one:
- *   1. `TWILIO_ACCOUNT_SID` set on the deployed functions.
+ * The consent gate closes the other half of it. A buyer who types a number and
+ * leaves the box unticked is stopped at validation rather than charged, because
+ * `smsOptIn` — not a non-empty phone field — is what counts as a contact. So
+ * there is exactly one way to be charged and undelivered today: tick the box
+ * while the campaign is pending.
+ *
+ * What it takes for this flag to be *honestly* true, rather than merely set:
+ *   1. `TWILIO_ACCOUNT_SID` set on the deployed functions. **Done.**
  *   2. A credential — `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET`, or
- *      `TWILIO_AUTH_TOKEN`. Names matter literally: `TWILIO_API_KEY` is not
- *      `TWILIO_API_KEY_SID`, and that mismatch reads as no credential at all.
+ *      `TWILIO_AUTH_TOKEN`. **Done.** Names matter literally: `TWILIO_API_KEY`
+ *      is not `TWILIO_API_KEY_SID`, and that mismatch reads as no credential at
+ *      all. It was set wrong twice before it was set right.
  *   3. A sender — `TWILIO_MESSAGING_SERVICE_SID` (preferred; it answers STOP
  *      and HELP for us, which the consent copy promises) or
- *      `TWILIO_FROM_NUMBER`.
+ *      `TWILIO_FROM_NUMBER`. **Done**, with Advanced Opt-Out enabled.
  *   4. An approved A2P 10DLC campaign attached to that Messaging Service, with
- *      the sending number in its pool.
- *   5. **An answer for consent at the box office.** Online checkout has its
- *      opt-in checkbox; StaffPOS has a phone field and a staff member typing
- *      into it. The moment this flag goes true, `deliverPos` starts texting
- *      walk-ups whose consent was never captured — the same defect Twilio
- *      rejected this campaign over the first time. Either capture it at the
- *      counter (a checkbox the staff member ticks after asking, with the
- *      disclosures on screen) or keep the POS on email only by not sending
- *      `phone` from `deliverPos`. Do not flip this flag with the question open.
+ *      the sending number in its pool. **Outstanding — this is the one.**
+ *   5. An answer for consent at the box office. **Done:** `deliverPos` sends
+ *      `sms_consent: false` and refuses a sale it has no email for, so the
+ *      counter cannot text a walk-up whose consent nobody captured. If a
+ *      counter opt-in is ever built, that is what changes.
  *
- * Verify with a phone-only test purchase before flipping it, not after. If
- * Twilio is ever suspended or the campaign lapses, this goes back `false` in
- * the same breath — otherwise a buyer pays and is sent nothing, silently,
- * because delivery is fire-and-forget and the only trace is
- * `orders.confirmation_error`.
+ * If Twilio is suspended or the campaign lapses after approval, set this back
+ * `false` in the same breath.
  */
-export const SMS_DELIVERY_LIVE = false;
+export const SMS_DELIVERY_LIVE = true;

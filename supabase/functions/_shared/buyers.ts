@@ -103,7 +103,13 @@ export async function findOrCreateBuyer(
   const createPayload: Record<string, unknown> = {
     password: crypto.randomUUID() + 'Aa1!',
     email_confirm: true,
-    user_metadata: { display_name: contact.name },
+    // Falls back rather than storing '', now that the name is optional at
+    // checkout. A blank display_name reads as a broken record everywhere it
+    // surfaces — the attendee list, the admin search, the pass counter — and
+    // the contact we were given is a more useful handle than nothing.
+    user_metadata: {
+      display_name: contact.name || contact.email || contact.phone || 'Kenworthy patron',
+    },
   };
   if (contact.email) createPayload.email = contact.email.toLowerCase();
   if (contact.phone) createPayload.phone = contact.phone;

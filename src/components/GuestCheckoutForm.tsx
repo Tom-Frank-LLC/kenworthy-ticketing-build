@@ -71,7 +71,11 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   // reconstructing the other rule from memory.
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    if (!name.trim()) newErrors.name = 'Name is required';
+    // Name is asked for, never required. It is a courtesy — it puts a person's
+    // name on the confirmation and gives the box office something to search —
+    // and none of that is worth turning a paying customer away over. The
+    // server agrees: ticket-checkout dropped its own name check with this
+    // change, so a blank name is a complete order, not a rejected one.
     if (SMS_DELIVERY_LIVE) {
       // A phone only counts as a contact if it has been consented to. Without
       // the tick we will not text it, so a buyer with no email and no consent
@@ -144,7 +148,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
         </p>
         <div className="space-y-2">
           <div>
-            <Label htmlFor="guest-name" className="text-xs">Name *</Label>
+            <Label htmlFor="guest-name" className="text-xs">Name</Label>
             <Input
               id="guest-name"
               placeholder="Your name"

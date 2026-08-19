@@ -156,7 +156,12 @@ Deno.serve(async (req: Request) => {
     userId = signedIn.id;
     contact = await contactForUser(admin, userId, contact);
   } else {
-    if (!contact.name) return json({ error: 'Name is required' }, 400);
+    // No name check. It used to be required here and on the form, and it was
+    // never worth a rejected purchase — a name is a courtesy for the receipt
+    // and for finding someone at the counter, not something delivery depends
+    // on. Everything downstream already falls back: buyers.ts names the
+    // account after the contact we do have, and the confirmation drops the
+    // greeting rather than addressing nobody.
     if (!contact.email && !contact.phone) {
       return json({ error: 'Email or phone is required so we can send your tickets' }, 400);
     }
