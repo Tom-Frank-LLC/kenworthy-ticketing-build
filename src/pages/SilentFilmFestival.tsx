@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { FileText, Ticket } from 'lucide-react';
+import { ChevronRight, Download, FileText, Ticket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime } from '@/lib/datetime';
@@ -85,6 +85,7 @@ export default function SilentFilmFestival() {
   const [screenings, setScreenings] = useState<Screening[]>([]);
   const [programs, setPrograms] = useState<FestivalProgram[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +103,7 @@ export default function SilentFilmFestival() {
 
       const programQuery = supabase
         .from('festival_programs')
-        .select('id, year, title, file_path, file_type, display_order')
+        .select('id, year, title, file_path, file_type, display_order, thumbnail_path')
         .eq('festival_slug', FESTIVAL_SLUG)
         .eq('is_published', true);
 
@@ -144,6 +145,17 @@ export default function SilentFilmFestival() {
 
   const lineup = useMemo(() => selectFestivalLineup(screenings), [screenings]);
   const archive = useMemo(() => groupProgramsByYear(programs), [programs]);
+
+  // The newest year's first page, so the pane is never an empty box on arrival.
+  const firstProgram = archive[0]?.programs[0] ?? null;
+  useEffect(() => {
+    if (!selectedId && firstProgram) setSelectedId(firstProgram.id);
+  }, [selectedId, firstProgram]);
+
+  const selected = useMemo(
+    () => programs.find(p => p.id === selectedId) ?? null,
+    [programs, selectedId],
+  );
   const festivalYear = lineup.length
     ? new Date(lineup[0].start_time).getFullYear()
     : null;
@@ -156,10 +168,67 @@ export default function SilentFilmFestival() {
   const publicUrl = (path: string) =>
     supabase.storage.from('festival-programs').getPublicUrl(path).data.publicUrl;
 
-  const thumbUrl = (path: string) =>
+  const thumbUrl = (path: string, width: number) =>
     supabase.storage.from('festival-programs').getPublicUrl(path, {
-      transform: { width: 500, quality: 70 },
+      transform: { width, quality: 70 },
     }).data.publicUrl;
+
+  /**
+   * The little image on a row. An image program is its own thumbnail; a PDF
+   * borrows the cover rendered for it at import. A PDF with no cover returns
+   * null and the row draws a glyph instead — a missing cover must not cost the
+   * reader the row.
+   */
+  const tileUrl = (program: FestivalProgram): string | null => {
+    if (program.file_type === 'image') return thumbUrl(program.file_path, 160);
+    return program.thumbnail_path ? thumbUrl(program.thumbnail_path, 160) : null;
+  };
+
+  /** The preview pane. Renders in place — nothing here opens a new tab. */
+  const ProgramPreview = ({ program }: { program: FestivalProgram }) => {
+    const label = program.title ?? `${program.year} program`;
+    const alt = `${program.title ? `${program.title} — ` : ''}${program.year} Silent Film Festival program`;
+    return (
+      <Card className="overflow-hidden">
+        <CardContent className="p-0">
+          {program.file_type === 'image' ? (
+            <img
+              src={thumbUrl(program.file_path, 1200)}
+              alt={alt}
+              loading="lazy"
+              decoding="async"
+              className="w-full max-h-[70vh] object-contain bg-background"
+            />
+          ) : (
+            /* The booklet, readable where it sits. The browser's own PDF
+               viewer already gives page turning and zoom, so embedding it
+               beats sending the reader somewhere else to get the same thing. */
+            <iframe
+              src={`${publicUrl(program.file_path)}#view=FitH`}
+              title={alt}
+              className="w-full h-[70vh] bg-background border-0"
+            />
+          )}
+          <div className="flex items-center justify-between gap-3 p-4 border-t border-border">
+            <div className="min-w-0">
+              <p className="font-display uppercase tracking-[0.15em] text-xs text-primary">
+                {program.year}
+              </p>
+              <p className="font-serif text-foreground truncate">{label}</p>
+            </div>
+            {/* The one link that still leaves the page, because saving a file
+                is the thing a new tab is actually for. */}
+            <Button asChild variant="outline" size="sm" className="shrink-0">
+              <a href={publicUrl(program.file_path)} target="_blank" rel="noopener noreferrer">
+                <Download className="h-4 w-4 mr-1" aria-hidden="true" />
+                {program.file_type === 'pdf' ? 'Download PDF' : 'Full size'}
+              </a>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <>
@@ -312,53 +381,86 @@ export default function SilentFilmFestival() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-10">
-              {archive.map((group) => (
-                <div key={group.year}>
-                  <h3 className="font-display uppercase tracking-[0.25em] text-sm text-primary mb-4">
-                    {group.year}
-                  </h3>
-                  <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {group.programs.map((program) => {
-                      const href = publicUrl(program.file_path);
-                      const label = program.title
-                        ? `${program.title} — ${group.year} Silent Film Festival program`
-                        : `${group.year} Silent Film Festival program`;
-                      return (
-                        <li key={program.id}>
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block rounded border border-border hover:border-primary focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors overflow-hidden bg-card"
-                          >
-                            {program.file_type === 'image' ? (
-                              <img
-                                src={thumbUrl(program.file_path)}
-                                alt={label}
-                                loading="lazy"
-                                decoding="async"
-                                className="w-full aspect-[3/4] object-cover"
-                              />
-                            ) : (
-                              <span className="flex flex-col items-center justify-center gap-2 w-full aspect-[3/4] text-muted-foreground">
-                                <FileText className="h-8 w-8" aria-hidden="true" />
-                                <span className="font-display uppercase tracking-[0.15em] text-xs">
-                                  PDF
+            /* Same instrument the home page uses for showings: a list you pick
+               from and a pane that fills in beside it. Below lg the pane moves
+               under the selected row instead, because a sticky column with no
+               room to sit is just a page you have to scroll past. */
+            <div className="grid lg:grid-cols-[1fr_1.8fr] gap-6 lg:gap-10">
+              <div className="min-w-0 space-y-6 lg:max-h-[620px] lg:overflow-y-auto lg:pr-2">
+                {archive.map((group) => (
+                  <div key={group.year}>
+                    <h3 className="font-display uppercase tracking-[0.25em] text-sm text-primary mb-3">
+                      {group.year}
+                    </h3>
+                    <ul className="space-y-2">
+                      {group.programs.map((program) => {
+                        const isSelected = selected?.id === program.id;
+                        const thumb = tileUrl(program);
+                        return (
+                          <li key={program.id}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedId(program.id)}
+                              aria-current={isSelected ? 'true' : undefined}
+                              className={cn(
+                                'w-full text-left rounded-md border p-3 transition-colors flex items-center gap-3 group',
+                                isSelected
+                                  ? 'border-primary bg-primary/10'
+                                  : 'border-accent/20 bg-card hover:border-primary/60 hover:bg-primary/5',
+                              )}
+                            >
+                              {thumb ? (
+                                <img
+                                  src={thumb}
+                                  alt=""
+                                  loading="lazy"
+                                  decoding="async"
+                                  className="w-12 h-16 object-cover rounded border border-border shrink-0 bg-background"
+                                />
+                              ) : (
+                                <span className="w-12 h-16 shrink-0 rounded border border-border flex items-center justify-center text-muted-foreground">
+                                  <FileText className="h-5 w-5" aria-hidden="true" />
                                 </span>
-                                <span className="sr-only">{label}</span>
+                              )}
+                              <span className="flex-1 min-w-0">
+                                <span
+                                  className={cn(
+                                    'block font-serif text-base leading-snug truncate',
+                                    isSelected ? 'text-primary' : 'group-hover:text-primary',
+                                  )}
+                                >
+                                  {program.title ?? `${group.year} program`}
+                                </span>
+                                <span className="block text-xs uppercase tracking-widest text-muted-foreground mt-0.5">
+                                  {program.file_type === 'pdf' ? 'Full programme · PDF' : 'Page'}
+                                </span>
                               </span>
+                              <ChevronRight
+                                className="h-5 w-5 shrink-0 text-muted-foreground lg:hidden"
+                                aria-hidden="true"
+                              />
+                            </button>
+
+                            {/* Below lg the preview belongs with the row that
+                                opened it, not in a column that is not there. */}
+                            {isSelected && (
+                              <div className="lg:hidden mt-3">
+                                <ProgramPreview program={program} />
+                              </div>
                             )}
-                            <span className="block px-3 py-2 font-serif text-sm text-foreground truncate">
-                              {program.title ?? `${group.year} program`}
-                            </span>
-                          </a>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+
+              {selected && (
+                <div className="hidden min-w-0 lg:block lg:sticky lg:top-4 lg:self-start">
+                  <ProgramPreview program={selected} />
                 </div>
-              ))}
+              )}
             </div>
           )}
         </section>

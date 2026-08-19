@@ -185,7 +185,7 @@ async function existingYears() {
   return new Set((data ?? []).map(r => r.year));
 }
 
-async function uploadOne({ year, path, body, contentType, title, fileType, order }) {
+async function uploadOne({ year, path, body, contentType, title, fileType, order, thumbnailPath }) {
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
     .upload(path, body, { contentType, upsert: false });
@@ -201,6 +201,7 @@ async function uploadOne({ year, path, body, contentType, title, fileType, order
       file_type: fileType,
       display_order: order,
       is_published: publish,
+      thumbnail_path: thumbnailPath ?? null,
     })
     .select('id');
   if (error) throw new Error(`insert ${path}: ${error.message}`);
@@ -233,10 +234,11 @@ try {
         .delete()
         .eq('festival_slug', FESTIVAL_SLUG)
         .eq('year', year)
-        .select('file_path');
+        .select('file_path, thumbnail_path');
       if (error) throw error;
       if (old?.length) {
-        await supabase.storage.from(BUCKET).remove(old.map(r => r.file_path));
+        await supabase.storage.from(BUCKET).remove(
+          old.flatMap(r => [r.file_path, r.thumbnail_path].filter(Boolean)));
         console.log(`  ${year}: replaced — removed ${old.length} existing file(s)`);
       }
     }
@@ -269,9 +271,16 @@ try {
           }
         }
         // The whole booklet, last, so it reads as "and here is the lot".
+        //
+        // It carries page one as its cover. A PDF cannot be its own thumbnail,
+        // and without this the archive lists the most substantial item of the
+        // year as an anonymous grey card. The cover is the page image already
+        // rendered above, uploaded a second time under its own path so that
+        // deleting one row never blanks another's tile.
         files.push({
           body: entry.source, title: `Full programme (${pageCount} pages)`, fileType: 'pdf',
           order: 500, ext: 'pdf', contentType: 'application/pdf', normalise: false,
+          coverFrom: pages[0] ?? null,
         });
       }
     }
@@ -282,12 +291,29 @@ try {
     if (dryRun) { files.forEach(f => console.log(`      ${String(f.order).padStart(3)}  ${f.title ?? '(untitled)'}  [${f.fileType}]`)); continue; }
 
     for (const f of files) {
+      // The cover first: the row must never point at an object that is not
+      // there yet, or a reader who lands mid-import sees a broken tile.
+      let thumbnailPath = null;
+      if (f.coverFrom) {
+        thumbnailPath = `${FESTIVAL_SLUG}/${year}/cover-${Date.now()}.jpg`;
+        const { error } = await supabase.storage
+          .from(BUCKET)
+          .upload(thumbnailPath, readFileSync(f.coverFrom), {
+            contentType: 'image/jpeg', upsert: false,
+          });
+        if (error) {
+          // A missing cover costs a thumbnail, not the programme.
+          console.warn(`      ! cover upload failed (${error.message}) — listing without one`);
+          thumbnailPath = null;
+        }
+      }
+
       const src = f.normalise ? normaliseImage(f.body, `n${year}-${f.order}`) : f.body;
       const bytes = readFileSync(src);
       const path = `${FESTIVAL_SLUG}/${year}/${String(f.order).padStart(3, '0')}-${Date.now()}.${f.ext}`;
       await uploadOne({
         year, path, body: bytes, contentType: f.contentType,
-        title: f.title, fileType: f.fileType, order: f.order,
+        title: f.title, fileType: f.fileType, order: f.order, thumbnailPath,
       });
       uploaded++;
       process.stdout.write(`      ${f.title} → ${(bytes.length / 1024).toFixed(0)} KB\n`);

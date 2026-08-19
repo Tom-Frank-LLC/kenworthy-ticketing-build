@@ -20,6 +20,8 @@ export interface FestivalProgram {
   file_path: string;
   file_type: string;
   display_order: number;
+  /** Cover image for a PDF, which cannot be its own thumbnail. */
+  thumbnail_path?: string | null;
 }
 
 export interface ProgramYear {
