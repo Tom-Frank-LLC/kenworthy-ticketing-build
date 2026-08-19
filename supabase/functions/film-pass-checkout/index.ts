@@ -424,6 +424,7 @@ Deno.serve(async (req: Request) => {
     let passTypeId: string | null = String(body.pass_type_id ?? '').trim() || null;
     let paymentMethod: string | null = null;
     let pricePaid: number | null = null;
+    let taxPaid = 0;
     let squarePaymentId: string | null = null;
 
     if (!orderId) {
@@ -443,7 +444,13 @@ Deno.serve(async (req: Request) => {
       paymentMethod = ['cash', 'card', 'comp'].includes(body.payment_method)
         ? body.payment_method
         : 'cash';
+      // Pre-tax, deliberately: price_paid is the revenue figure the QBO export
+      // books, and tax is recorded separately as tax_paid. A comp collects
+      // neither.
       pricePaid = paymentMethod === 'comp' ? 0 : Number(passType.price);
+      taxPaid = paymentMethod === 'comp'
+        ? 0
+        : Math.round(Math.round(Number(passType.price) * 100) * FILM_PASS_TAX_RATE) / 100;
       squarePaymentId =
         typeof body.square_payment_id === 'string' ? body.square_payment_id : null;
 
@@ -491,7 +498,22 @@ Deno.serve(async (req: Request) => {
       return json({ ...verdict, error: activationMessage(verdict) }, 400);
     }
 
-    return json({ success: true, ...verdict });
+    // activate_film_pass has a fixed signature and no tax parameter, so the
+    // figure is stamped on afterwards rather than by widening an RPC that other
+    // callers share. A failure here costs the tax split on one counter sale and
+    // nothing else — the pass is already live and the money already collected —
+    // so it is logged rather than surfaced to somebody holding a queue.
+    if (taxPaid > 0 && verdict.pass_id) {
+      const { error: taxErr } = await admin
+        .from('user_film_passes')
+        .update({ tax_paid: taxPaid })
+        .eq('id', verdict.pass_id);
+      if (taxErr) {
+        console.error('[film-pass-checkout] could not record tax_paid', verdict.pass_id, taxErr);
+      }
+    }
+
+    return json({ success: true, ...verdict, tax_paid: taxPaid });
   }
 
   // ---------------------------------------------------------------------
@@ -817,6 +839,9 @@ Deno.serve(async (req: Request) => {
       buyer_email: contact.email,
       buyer_phone: contact.phone,
       amount_paid: total,
+      // Contained in amount_paid, not added to it — the QBO export books
+      // amount_paid - tax_amount as revenue.
+      tax_amount: (unitTaxCents * quantity) / 100,
       payment_method: 'online',
       status: 'pending',
       checkout_idempotency_key: idempotencyKey,
