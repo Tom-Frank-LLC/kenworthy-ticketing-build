@@ -45,3 +45,17 @@ dist-ssr
 
 # Supabase CLI local state (linked project ref, version caches)
 supabase/.temp/
+
+# Claude Code's own state — session transcripts, caches, and the git worktrees
+# other sessions are working in. It reached 187 MB / ~2,900 files in the shared
+# checkout, which buried real changes in `git status` and is how a pile of
+# macOS " 2"/" 3" copy artifacts went unnoticed long enough to be mistaken for
+# work.
+.claude/
+
+# Deno's lockfile for the edge functions. No deno.lock has ever been tracked
+# here, and the functions deploy through the Supabase CLI rather than CI, so it
+# pins nothing anyone else consumes. Committing stray lockfiles has bitten this
+# repo before: a stale bun.lock took the Cloudflare build off npm and made the
+# PR checks fail on every PR (c7ac00b).
+deno.lock
