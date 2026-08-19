@@ -61,26 +61,30 @@ Deno.test('a multi-tier sale is one line per tier', () => {
   assertEquals(b.expectedTotalCents, (800 + 48) * 2 + (500 + 30));
 });
 
-Deno.test('a catalogued line sends no tax of its own', () => {
-  // The tax lives on the catalog item and Square applies it. Sending ours too
-  // would tax every ticket twice.
+Deno.test('a catalogued line STILL carries our tax', () => {
+  // Measured, not assumed: Square applies no tax of its own to an Orders API
+  // line, even when the referenced item is is_taxable with tax_ids. A line for
+  // an $8.25 taxable item came back total_tax_money 0. Relying on the catalog
+  // would undercharge sales tax on every catalogued ticket, and the order would
+  // look perfectly well formed while doing it.
   const b = buildTicketOrder([g()]);
-  assertEquals(b.lineItems[0].applied_taxes, undefined);
-  assertEquals(b.taxes.length, 0);
+  assertEquals(b.lineItems[0].catalog_object_id, 'VAR_ADULT');
+  assertEquals((b.lineItems[0].applied_taxes as any[]).length, 1);
+  assertEquals(b.taxes.length, 1);
+  assertEquals(b.expectedTotalCents, 848);
 });
 
-Deno.test('an ad-hoc line carries our tax, because no catalog item can', () => {
+Deno.test('an ad-hoc line carries our tax too', () => {
   const b = buildTicketOrder([g({ variationId: null })]);
   assertEquals(b.lineItems[0].catalog_object_id, undefined);
   assertEquals(b.lineItems[0].name, 'Adult - Wednesday, September 16 at 7 PM');
   assertEquals((b.lineItems[0].applied_taxes as any[]).length, 1);
-  assertEquals(b.taxes.length, 1);
   assertEquals(b.adHocGroups, 1);
 });
 
-Deno.test('a mixed order taxes only the ad-hoc half', () => {
+Deno.test('every line in a mixed order is taxed, and the tax is declared once', () => {
   const b = buildTicketOrder([g(), g({ tierKey: 'Student', variationId: null, unitPriceCents: 500, unitTaxCents: 30 })]);
-  assertEquals(b.lineItems[0].applied_taxes, undefined);
+  assertEquals((b.lineItems[0].applied_taxes as any[]).length, 1);
   assertEquals((b.lineItems[1].applied_taxes as any[]).length, 1);
   assertEquals(b.taxes.length, 1);
   assertEquals(b.adHocGroups, 1);
@@ -137,4 +141,28 @@ Deno.test('an in-person sale is not marked DIGITAL', () => {
   });
   assertEquals(body.order.fulfillments[0].type, 'IN_STORE');
   assertEquals(body.order.fulfillments[0].delivery_details, undefined);
+});
+
+import { donationGroup, processingFeeGroup } from './square-order.ts';
+
+Deno.test('a bundled donation is never taxed', () => {
+  // pricing.ts keeps a gift out of the tax base on purpose. Taxing it here would
+  // charge more than the checkout page quoted.
+  const b = buildTicketOrder([g(), donationGroup(2500)]);
+  assertEquals(b.lineItems[1].name, 'Donation');
+  assertEquals(b.lineItems[1].applied_taxes, undefined);
+  assertEquals(b.expectedTotalCents, 848 + 2500);
+});
+
+Deno.test('the processing surcharge is never taxed either', () => {
+  const b = buildTicketOrder([g(), processingFeeGroup(59)]);
+  assertEquals(b.lineItems[1].name, 'Card processing fee');
+  assertEquals(b.lineItems[1].applied_taxes, undefined);
+  assertEquals(b.expectedTotalCents, 848 + 59);
+});
+
+Deno.test('an order of nothing but a donation declares no tax at all', () => {
+  const b = buildTicketOrder([donationGroup(5000)]);
+  assertEquals(b.taxes.length, 0);
+  assertEquals(b.expectedTotalCents, 5000);
 });

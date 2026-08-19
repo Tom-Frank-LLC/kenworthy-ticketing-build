@@ -30,7 +30,16 @@ import {
   loadSquareConfig,
   publishableConfig,
   squareErrorMessage,
+  squareFetch,
 } from '../_shared/square.ts';
+import {
+  buildTicketOrder,
+  donationGroup,
+  loadTicketGroups,
+  orderRequestBody,
+  processingFeeGroup,
+} from '../_shared/square-order.ts';
+import { canonicalTier, variationName } from '../_shared/square-catalog.ts';
 import {
   PricingError,
   priceTicketOrder,
@@ -338,11 +347,81 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Payments are not configured. Please contact the box office.' }, 500);
     }
 
+    // -----------------------------------------------------------------------
+    // Register the sale as an Order first, so it carries catalogued line items.
+    //
+    // A bare payment records an amount and a note and nothing else: no item, no
+    // category, no tax attribution. 99.7% of this account's line items carry a
+    // catalog_object_id and ours carried none, which is why per-title and
+    // per-showtime revenue was invisible and the two ledgers agreed only on the
+    // grand total (docs/SQUARE-TRANSACTION-CONVENTIONS.md).
+    //
+    // The order is best-effort. If anything about it disagrees with our own
+    // arithmetic we fall back to the bare payment rather than risk charging a
+    // different number than the site quoted — attribution is worth a lot, but
+    // not a cent of somebody's money.
+    let squareOrderId: string | undefined;
+    try {
+      const groups = await loadTicketGroups(admin, showingId, order, {
+        canonicalTier,
+        variationName,
+        timeZone: Deno.env.get('VENUE_TIME_ZONE') || undefined,
+      });
+      if (order.processingFee > 0) groups.push(processingFeeGroup(Math.round(order.processingFee * 100)));
+      if (donationCents > 0) groups.push(donationGroup(donationCents));
+
+      const built = buildTicketOrder(groups);
+      if (built.adHocGroups > 0) {
+        // Sells fine, reports badly: no item-sales or category rollup for these
+        // tiers. Worth a line in the log rather than silence.
+        console.warn(
+          `[ticket-checkout] ${built.adHocGroups} tier(s) had no Square variation for showing ${showingId}; billed as ad-hoc lines`,
+        );
+      }
+
+      if (built.expectedTotalCents !== chargeCents) {
+        // Our own two calculations disagree. Do not send it.
+        console.error(
+          `[ticket-checkout] order build total ${built.expectedTotalCents} != charge ${chargeCents}; falling back to a bare payment`,
+        );
+      } else {
+        const created = await squareFetch(square.config, '/orders', {
+          method: 'POST',
+          body: orderRequestBody({
+            locationId: square.config.locationId,
+            referenceId: orderToken,
+            built,
+            idempotencyKey: `order-${idempotencyKey}`,
+            fulfillment: 'DIGITAL',
+            buyerEmail: contact.email,
+            buyerName: contact.name,
+          }),
+        });
+        const squareTotal = created.data?.order?.total_money?.amount;
+        if (!created.ok || !created.data?.order?.id) {
+          console.error('[ticket-checkout] order create failed', created.status, JSON.stringify(created.data));
+        } else if (squareTotal !== chargeCents) {
+          // Square totalled it differently. Charging the order would take the
+          // wrong amount; charging our amount against it would leave it
+          // part-paid. Neither is acceptable, so the order is abandoned — it
+          // bills nobody on its own — and the payment goes through bare.
+          console.error(
+            `[ticket-checkout] Square totalled ${squareTotal} but we charge ${chargeCents}; abandoning order ${created.data.order.id}`,
+          );
+        } else {
+          squareOrderId = created.data.order.id;
+        }
+      }
+    } catch (err) {
+      console.error('[ticket-checkout] order build threw, falling back to bare payment', err);
+    }
+
     try {
       const result = await createPayment(square.config, {
         sourceId,
         amountCents: chargeCents,
         idempotencyKey,
+        orderId: squareOrderId,
         referenceId: orderToken,
         note: donationCents > 0
           ? `${order.productionTitle} — ${created.length} ticket(s) + $${(donationCents / 100).toFixed(2)} donation`

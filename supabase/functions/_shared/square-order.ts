@@ -39,6 +39,12 @@ export interface TicketGroup {
   /** OUR per-ticket tax, already rounded the way the DB trigger rounds it. */
   unitTaxCents: number;
   count: number;
+  /**
+   * False for lines that must never be taxed — a bundled donation, a card
+   * processing surcharge. `pricing.ts` deliberately keeps a gift out of the tax
+   * base, and an order that taxed it would charge more than the site quoted.
+   */
+  taxable?: boolean;
 }
 
 export interface BuiltOrder {
@@ -67,24 +73,31 @@ export function aggregationChangesTax(g: TicketGroup): boolean {
 /**
  * Build the line items for an order.
  *
- * Ad-hoc lines carry our own tax explicitly, because there is no catalog item to
- * carry it. Catalog-linked lines do NOT: the tax lives on the item and Square
- * applies it, and sending our own on top would tax the ticket twice. Whether
- * Square really does apply it is not assumed — `expectedTotalCents` exists so the
- * caller can compare against the order Square actually returns and refuse to
- * charge on a mismatch.
+ * EVERY line carries our tax explicitly, catalogued or not.
+ *
+ * This was measured, not assumed, and the measurement reversed the design.
+ * Square does NOT apply a catalog item's `tax_ids` to an Orders API line item:
+ * a line referencing a `is_taxable` item priced $8.25 came back with
+ * `total_tax_money: 0`. Trusting the catalog would have undercharged sales tax
+ * on every catalogued ticket — silently, since the order looks perfectly well
+ * formed. And sending our own tax on a catalogued line does NOT double it:
+ * the same line with an ADDITIVE 6% came back $8.75 with one applied tax.
+ * (square-order-probe, sandbox, API 2024-01-18.)
+ *
+ * `expectedTotalCents` remains the caller's check against the order Square
+ * actually returns. It is what would have caught this had the probe not: an
+ * 825 total against an expected 875 refuses to charge.
  */
 export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
   const lineItems: Record<string, unknown>[] = [];
   let expectedTotalCents = 0;
   let adHocGroups = 0;
   let splitGroups = 0;
-  let anyAdHoc = false;
 
   groups.forEach((g, gi) => {
     if (g.count <= 0) return;
     const adHoc = !g.variationId;
-    if (adHoc) { adHocGroups++; anyAdHoc = true; }
+    if (adHoc) adHocGroups++;
 
     const split = aggregationChangesTax(g);
     if (split) splitGroups++;
@@ -95,14 +108,14 @@ export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
         quantity: String(qty),
         base_price_money: { amount: g.unitPriceCents, currency: 'USD' },
       };
+      // The catalog link drives item-sales and category reporting; the price and
+      // the tax are ours either way.
       if (g.variationId) {
         line.catalog_object_id = g.variationId;
-        // Deliberately no applied_taxes: a catalogued item carries its own
-        // tax_ids and Square applies them.
       } else {
         line.name = g.displayName.slice(0, 512);
-        line.applied_taxes = [{ tax_uid: SALES_TAX_UID }];
       }
+      if (g.taxable !== false) line.applied_taxes = [{ tax_uid: SALES_TAX_UID }];
       lineItems.push(line);
     };
 
@@ -117,9 +130,9 @@ export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
 
   return {
     lineItems,
-    // Declared only when an ad-hoc line needs it; a fully catalogued order lets
-    // the catalog's own taxes do the work.
-    taxes: anyAdHoc
+    // Always declared when there is anything to tax, because Square applies no
+    // tax of its own to these lines.
+    taxes: groups.some((x) => x.count > 0 && x.taxable !== false)
       ? [{
         uid: SALES_TAX_UID,
         name: SALES_TAX_NAME,
@@ -175,5 +188,96 @@ export function orderRequestBody(params: {
           : {}),
       }],
     },
+  };
+}
+
+// --- turning a priced ticket order into groups ------------------------------
+
+/**
+ * Group a priced order into one entry per (tier, price), with the Square
+ * variation to bill each against.
+ *
+ * Grouping is by tier AND price rather than tier alone: the two should never
+ * disagree, and if they ever do, billing a $5 ticket at the $8 tier's price is
+ * the kind of error that reconciles perfectly and is wrong.
+ *
+ * A tier with no stored variation still sells — it just sells as a named ad-hoc
+ * line, which forfeits item-sales and category attribution. That is a degraded
+ * sale, not a failed one, and the caller logs it.
+ */
+export async function loadTicketGroups(
+  admin: any,
+  showingId: string,
+  priced: {
+    tickets: Array<{ tier_id: string | null; price: number; tax_amount: number }>;
+    showing: { start_time: string };
+    productionTitle: string;
+  },
+  helpers: {
+    canonicalTier: (raw: string | null | undefined) => string;
+    variationName: (tier: string | null | undefined, startTime: string | Date, tz?: string) => string;
+    timeZone?: string;
+  },
+): Promise<TicketGroup[]> {
+  const [{ data: tierRows }, { data: mapRows }] = await Promise.all([
+    admin.from('showing_price_tiers').select('id, tier_name').eq('showing_id', showingId),
+    admin.from('showing_square_variations')
+      .select('tier_name, square_variation_id').eq('showing_id', showingId),
+  ]);
+
+  const tierNameById = new Map<string, string>(
+    (tierRows ?? []).map((t: any) => [t.id, t.tier_name]),
+  );
+  const variationByTier = new Map<string, string>(
+    (mapRows ?? []).map((m: any) => [m.tier_name, m.square_variation_id]),
+  );
+
+  const byKey = new Map<string, TicketGroup>();
+  for (const t of priced.tickets) {
+    const rawTier = t.tier_id ? tierNameById.get(t.tier_id) ?? null : null;
+    const tierKey = helpers.canonicalTier(rawTier);
+    const unitPriceCents = Math.round(Number(t.price) * 100);
+    const unitTaxCents = Math.round(Number(t.tax_amount) * 100);
+    const key = `${tierKey}|${unitPriceCents}`;
+
+    const existing = byKey.get(key);
+    if (existing) { existing.count++; continue; }
+
+    byKey.set(key, {
+      tierKey,
+      displayName: helpers.variationName(tierKey, priced.showing.start_time, helpers.timeZone),
+      variationId: variationByTier.get(tierKey) ?? null,
+      unitPriceCents,
+      unitTaxCents,
+      count: 1,
+    });
+  }
+
+  return [...byKey.values()];
+}
+
+/** A bundled gift. Never taxed, never a ticket line. */
+export function donationGroup(cents: number): TicketGroup {
+  return {
+    tierKey: '__donation',
+    displayName: 'Donation',
+    variationId: null,
+    unitPriceCents: cents,
+    unitTaxCents: 0,
+    count: 1,
+    taxable: false,
+  };
+}
+
+/** The buyer-paid card surcharge, when a production has opted into it. */
+export function processingFeeGroup(cents: number): TicketGroup {
+  return {
+    tierKey: '__processing_fee',
+    displayName: 'Card processing fee',
+    variationId: null,
+    unitPriceCents: cents,
+    unitTaxCents: 0,
+    count: 1,
+    taxable: false,
   };
 }
