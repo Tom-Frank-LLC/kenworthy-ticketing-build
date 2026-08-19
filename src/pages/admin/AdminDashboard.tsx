@@ -20,6 +20,7 @@ import AccountingTab from '@/components/admin/AccountingTab';
 import ChartOfAccountsTab from '@/components/admin/accounting/ChartOfAccountsTab';
 import AccountMappingsTab from '@/components/admin/accounting/AccountMappingsTab';
 import QboExportTab from '@/components/admin/accounting/QboExportTab';
+import SquareCatalogTab from '@/components/admin/SquareCatalogTab';
 import RentalRequestsTab from '@/components/admin/RentalRequestsTab';
 import BoxOfficeReceiptsTab from '@/components/admin/BoxOfficeReceiptsTab';
 import LaborTab from '@/components/admin/LaborTab';
@@ -941,6 +942,7 @@ export default function AdminDashboard() {
               <TabsTrigger value="coa">Chart of Accounts</TabsTrigger>
               <TabsTrigger value="mappings">Mappings</TabsTrigger>
               <TabsTrigger value="qbo-export">QBO Export</TabsTrigger>
+              <TabsTrigger value="square-catalog">Square catalog</TabsTrigger>
             </TabsList>
             <TabsContent value="overview">
               <AnalyticsTab />
@@ -951,6 +953,7 @@ export default function AdminDashboard() {
             <TabsContent value="coa"><ChartOfAccountsTab /></TabsContent>
             <TabsContent value="mappings"><AccountMappingsTab /></TabsContent>
             <TabsContent value="qbo-export"><QboExportTab /></TabsContent>
+            <TabsContent value="square-catalog"><SquareCatalogTab /></TabsContent>
           </Tabs>
         </TabsContent>
         )}

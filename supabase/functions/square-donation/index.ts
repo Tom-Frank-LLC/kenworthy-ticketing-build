@@ -2,10 +2,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/http.ts";
 import {
   createPayment,
+  squareFetch,
   loadSquareConfig,
   publishableConfig,
   squareErrorMessage,
 } from "../_shared/square.ts";
+import { buildTicketOrder, orderRequestBody } from "../_shared/square-order.ts";
 import { settleDonation } from "../_shared/donations.ts";
 
 Deno.serve(async (req) => {
@@ -127,10 +129,75 @@ Deno.serve(async (req) => {
     }
     const note = noteParts.join(" — ").slice(0, 500);
 
+    // A donation is NOT a ticket line. The catalog has one DONATION product-type
+    // item with $10 / $20 / $50 / $100 and a variable-priced "Custom Amount"
+    // variation, all is_taxable false. Ringing a gift against a ticket item
+    // would inflate admissions revenue and put a donation into the tax base.
+    //
+    // The mapping lives in app_config['square_donation_variations'] and is unset
+    // until somebody populates it from the live catalog, so this degrades to a
+    // named ad-hoc "Donation" line rather than failing.
+    let squareOrderId: string | undefined;
+    try {
+      const { data: cfg } = await admin
+        .from("app_config")
+        .select("value")
+        .eq("key", "square_donation_variations")
+        .maybeSingle();
+      const map = (cfg?.value ?? {}) as any;
+      // An exact preset ($10/$20/$50/$100) if one matches, otherwise the
+      // variable-priced Custom Amount variation, which still needs an explicit
+      // price sent with it.
+      const variationId: string | null =
+        map?.by_amount_cents?.[String(amountCents)] ?? map?.custom ?? null;
+
+      const built = buildTicketOrder([{
+        tierKey: "__donation",
+        displayName: "Donation",
+        variationId,
+        unitPriceCents: amountCents,
+        unitTaxCents: 0,
+        count: 1,
+        taxable: false, // the DONATION item is is_taxable false, and a gift is not a sale
+      }]);
+
+      if (!variationId) {
+        console.warn("[square-donation] no DONATION variation mapped; billed as an ad-hoc line");
+      }
+
+      if (built.expectedTotalCents !== amountCents) {
+        console.error(`[square-donation] order total ${built.expectedTotalCents} != charge ${amountCents}; bare payment`);
+      } else {
+        const createdOrder = await squareFetch(square.config, "/orders", {
+          method: "POST",
+          body: orderRequestBody({
+            locationId: square.config.locationId,
+            referenceId: pending.id,
+            built,
+            idempotencyKey: `order-${idempotencyKey}`,
+            fulfillment: "DIGITAL",
+            buyerEmail: donorEmail,
+            buyerName: donorName,
+          }),
+        });
+        const squareTotal = createdOrder.data?.order?.total_money?.amount;
+        if (!createdOrder.ok || !createdOrder.data?.order?.id) {
+          console.error("[square-donation] order create failed", createdOrder.status, JSON.stringify(createdOrder.data));
+        } else if (squareTotal !== amountCents) {
+          console.error(`[square-donation] Square totalled ${squareTotal} vs charge ${amountCents}; abandoning order`);
+        } else {
+          squareOrderId = createdOrder.data.order.id;
+        }
+      }
+    } catch (err) {
+      console.error("[square-donation] order build threw, falling back to bare payment", err);
+    }
+
     const sqResult = await createPayment(square.config, {
       sourceId,
       amountCents,
       idempotencyKey,
+      orderId: squareOrderId,
       referenceId: pending.id,
       note,
       buyerEmail: donorEmail,

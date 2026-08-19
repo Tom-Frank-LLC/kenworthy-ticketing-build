@@ -371,3 +371,44 @@ Deno.test('several losses on one item are reported separately', () => {
   const kinds = compareToBaseline(baselineOf(liveItem()), summarizeItem(after)).map((f) => f.kind).sort();
   assertEquals(kinds, ['lost_category', 'lost_event_block', 'lost_variations']);
 });
+
+import { suggestTitleMatches } from './square-catalog.ts';
+
+const CATALOG = [
+  { id: 'I1', name: 'EVENT HORIZON' },
+  { id: 'I2', name: 'WHO FRAMED ROGER RABBIT' },
+  { id: 'I3', name: 'Silent Film Festival: CHAPLIN SHORTS' },
+  { id: 'I4', name: 'DUNE' },
+  { id: 'I5', name: 'Moscow Film Society: Event Horizon' },
+];
+
+Deno.test('a series prefix does not hide a film already in the catalog', () => {
+  // Measured against production: ten titles reported as needing a new item, five
+  // of which already existed. Creating those would have split each film's
+  // revenue across two Square items.
+  const s = suggestTitleMatches('Moscow Film Society: Event Horizon', CATALOG);
+  assertEquals(s[0].id, 'I1');
+  assert(s[0].why.includes('series prefix'));
+});
+
+Deno.test('a near title is offered, not assumed', () => {
+  const s = suggestTitleMatches('Silent Film Festival: Charlie Chaplin Shorts', CATALOG);
+  assert(s.some((x) => x.id === 'I3'));
+});
+
+Deno.test('an exact match is never a suggestion', () => {
+  // It would already be linked; offering it as a maybe is noise.
+  const s = suggestTitleMatches('Moscow Film Society: Event Horizon', [CATALOG[4]]);
+  assertEquals(s.length, 0);
+});
+
+Deno.test('an unrelated film is not suggested', () => {
+  assertEquals(suggestTitleMatches('Cinema Classics: On the Waterfront', [CATALOG[3]]), []);
+});
+
+Deno.test('partial words do not match', () => {
+  // "Rabbit" must not pull in "WHO FRAMED ROGER RABBIT" for Peter Rabbit, and a
+  // substring like "dune" inside another word must not match at all.
+  const s = suggestTitleMatches('Summer Family Matinee: Peter Rabbit', CATALOG);
+  assertEquals(s.length, 0);
+});

@@ -105,8 +105,8 @@ export default function QboExportTab() {
       //
       // Every status but the unsold ones counts: filtering on 'active' alone
       // would drop a pass sold and spent to nothing inside the same period.
-      supabase.from('user_film_passes').select('id,pass_type_id,price_paid,purchased_at,status').in('status', ['active', 'depleted', 'expired', 'void', 'refunded']).gte('purchased_at', fromIso).lt('purchased_at', toIso),
-      supabase.from('film_pass_orders').select('pass_id,pass_type_id,amount_paid,quantity,created_at,status').in('status', ['paid', 'fulfilled']).gte('created_at', fromIso).lt('created_at', toIso),
+      supabase.from('user_film_passes').select('id,pass_type_id,price_paid,tax_paid,purchased_at,status').in('status', ['active', 'depleted', 'expired', 'void', 'refunded']).gte('purchased_at', fromIso).lt('purchased_at', toIso),
+      supabase.from('film_pass_orders').select('pass_id,pass_type_id,amount_paid,tax_amount,quantity,created_at,status').in('status', ['paid', 'fulfilled']).gte('created_at', fromIso).lt('created_at', toIso),
       supabase.from('film_pass_types').select('id,name,price'),
       // Paged: there are ~1,800 showings and this is the map that decides which
       // account each ticket's revenue is booked against. PostgREST truncates at
@@ -198,8 +198,15 @@ export default function QboExportTab() {
     }
 
     // Online orders: booked at the order, for what was actually charged.
+    //
+    // amount_paid is the GROSS charge and has contained sales tax since passes
+    // became taxable at purchase, so the tax is split out here the same way a
+    // ticket's is above. Booking the gross would report six percent of every
+    // pass sale as income that is actually owed to the state.
     for (const o of passOrders) {
-      add(passAccount(o.pass_type_id), Number(o.amount_paid || 0));
+      const passTax = Number(o.tax_amount || 0);
+      add(passAccount(o.pass_type_id), Number(o.amount_paid || 0) - passTax);
+      if (passTax) add(resolve('sales_tax', 'collected'), passTax);
     }
 
     // Counter sales: booked at activation, which is when the cash arrived.
@@ -214,6 +221,10 @@ export default function QboExportTab() {
         ? Number(p.price_paid)
         : Number(pt?.price || 0);
       add(passAccount(p.pass_type_id), amount);
+      // price_paid is already pre-tax at a counter sale, so unlike an online
+      // order nothing is subtracted — the tax simply sits beside it.
+      const counterTax = Number(p.tax_paid || 0);
+      if (counterTax) add(resolve('sales_tax', 'collected'), counterTax);
     }
 
     // Rental invoice lines — honor per-line account override, else map by line_kind

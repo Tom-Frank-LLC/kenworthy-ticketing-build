@@ -178,8 +178,20 @@ export async function createPayment(
     referenceId?: string;
     note?: string;
     buyerEmail?: string | null;
+    /**
+     * Attach the payment to an Order, so the sale carries catalogued line items.
+     *
+     * Without it Square records an amount and a text note and nothing else — no
+     * item, no category, no tax attribution. 99.7% of this account's line items
+     * are catalogued; ours were the exception. See
+     * docs/SQUARE-TRANSACTION-CONVENTIONS.md.
+     */
+    orderId?: string;
+    /** CASH tenders need the amount the buyer handed over. */
+    cashBuyerSuppliedCents?: number;
   },
 ) {
+  const isCash = params.sourceId === 'CASH';
   return await squareFetch(config, '/payments', {
     method: 'POST',
     body: {
@@ -188,6 +200,17 @@ export async function createPayment(
       amount_money: { amount: params.amountCents, currency: 'USD' },
       location_id: config.locationId,
       autocomplete: true,
+      order_id: params.orderId,
+      ...(isCash
+        ? {
+          cash_details: {
+            buyer_supplied_money: {
+              amount: params.cashBuyerSuppliedCents ?? params.amountCents,
+              currency: 'USD',
+            },
+          },
+        }
+        : {}),
       reference_id: params.referenceId?.slice(0, 40),
       note: params.note?.slice(0, 500),
       buyer_email_address: params.buyerEmail || undefined,

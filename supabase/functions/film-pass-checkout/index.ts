@@ -37,10 +37,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/http.ts';
 import {
   createPayment,
+  squareFetch,
   loadSquareConfig,
   publishableConfig,
   squareErrorMessage,
 } from '../_shared/square.ts';
+import { buildTicketOrder, orderRequestBody } from '../_shared/square-order.ts';
 import {
   EMAIL_RE,
   authenticatedUser,
@@ -65,6 +67,9 @@ import {
 
 // Deno globals
 declare const Deno: any;
+
+/** Idaho sales tax, the same rate _shared/pricing.ts applies to a ticket. */
+const FILM_PASS_TAX_RATE = 0.06;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -419,6 +424,7 @@ Deno.serve(async (req: Request) => {
     let passTypeId: string | null = String(body.pass_type_id ?? '').trim() || null;
     let paymentMethod: string | null = null;
     let pricePaid: number | null = null;
+    let taxPaid = 0;
     let squarePaymentId: string | null = null;
 
     if (!orderId) {
@@ -438,7 +444,13 @@ Deno.serve(async (req: Request) => {
       paymentMethod = ['cash', 'card', 'comp'].includes(body.payment_method)
         ? body.payment_method
         : 'cash';
+      // Pre-tax, deliberately: price_paid is the revenue figure the QBO export
+      // books, and tax is recorded separately as tax_paid. A comp collects
+      // neither.
       pricePaid = paymentMethod === 'comp' ? 0 : Number(passType.price);
+      taxPaid = paymentMethod === 'comp'
+        ? 0
+        : Math.round(Math.round(Number(passType.price) * 100) * FILM_PASS_TAX_RATE) / 100;
       squarePaymentId =
         typeof body.square_payment_id === 'string' ? body.square_payment_id : null;
 
@@ -486,7 +498,22 @@ Deno.serve(async (req: Request) => {
       return json({ ...verdict, error: activationMessage(verdict) }, 400);
     }
 
-    return json({ success: true, ...verdict });
+    // activate_film_pass has a fixed signature and no tax parameter, so the
+    // figure is stamped on afterwards rather than by widening an RPC that other
+    // callers share. A failure here costs the tax split on one counter sale and
+    // nothing else — the pass is already live and the money already collected —
+    // so it is logged rather than surfaced to somebody holding a queue.
+    if (taxPaid > 0 && verdict.pass_id) {
+      const { error: taxErr } = await admin
+        .from('user_film_passes')
+        .update({ tax_paid: taxPaid })
+        .eq('id', verdict.pass_id);
+      if (taxErr) {
+        console.error('[film-pass-checkout] could not record tax_paid', verdict.pass_id, taxErr);
+      }
+    }
+
+    return json({ success: true, ...verdict, tax_paid: taxPaid });
   }
 
   // ---------------------------------------------------------------------
@@ -708,7 +735,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: passType } = await admin
     .from('film_pass_types')
-    .select('id, name, price, initial_balance, redemption_price, expiration_days, is_active')
+    .select('id, name, price, initial_balance, redemption_price, expiration_days, is_active, square_variation_id')
     .eq('id', passTypeId)
     .maybeSingle();
 
@@ -739,8 +766,21 @@ Deno.serve(async (req: Request) => {
     mailingAddress = parsed.address;
   }
 
-  const total = Math.round(unitPrice * quantity * 100) / 100;
-  const amountCents = Math.round(total * 100);
+  // Sales tax, added on top of the listed price. film_pass_types.price is the
+  // pre-tax figure, the way showings.ticket_price is.
+  //
+  // This used to charge price x quantity flat, which meant the theatre collected
+  // no tax on a pass while recording 6% on every admission redeemed against it
+  // — tax owed on money nobody paid, and none on the money it took. Redemptions
+  // are $0 now (migration 20260819040000); the tax belongs here, at the sale.
+  //
+  // Rounded PER PASS, matching how enforce_ticket_pricing rounds a ticket, so
+  // two passes cost exactly twice one pass and the arithmetic never depends on
+  // quantity.
+  const unitPriceCents = Math.round(unitPrice * 100);
+  const unitTaxCents = Math.round(unitPriceCents * FILM_PASS_TAX_RATE);
+  const amountCents = (unitPriceCents + unitTaxCents) * quantity;
+  const total = amountCents / 100;
   const idempotencyKey = normaliseKey(body.idempotency_key);
 
   // -------------------------------------------------------------------------
@@ -799,6 +839,9 @@ Deno.serve(async (req: Request) => {
       buyer_email: contact.email,
       buyer_phone: contact.phone,
       amount_paid: total,
+      // Contained in amount_paid, not added to it — the QBO export books
+      // amount_paid - tax_amount as revenue.
+      tax_amount: (unitTaxCents * quantity) / 100,
       payment_method: 'online',
       status: 'pending',
       checkout_idempotency_key: idempotencyKey,
@@ -826,11 +869,60 @@ Deno.serve(async (req: Request) => {
   let paymentId: string | null = null;
   let receiptUrl: string | null = null;
 
+  // Register the sale as an Order so the pass lands in Square's item sales under
+  // '9 Film Passes' instead of being an amount with a note. Best-effort: any
+  // disagreement about the total falls back to the bare payment rather than
+  // charging a different number than the buyer was shown.
+  let squareOrderId: string | undefined;
+  try {
+    const built = buildTicketOrder([{
+      tierKey: '__film_pass',
+      displayName: passType.name,
+      variationId: (passType as any).square_variation_id ?? null,
+      unitPriceCents,
+      unitTaxCents,
+      count: quantity,
+      // Taxed at the sale. The redemption that spends this pass records $0.
+    }]);
+
+    if (!(passType as any).square_variation_id) {
+      console.warn(`[film-pass-checkout] pass type ${passType.name} has no Square variation; billed as an ad-hoc line`);
+    }
+
+    if (built.expectedTotalCents !== amountCents) {
+      console.error(`[film-pass-checkout] order total ${built.expectedTotalCents} != charge ${amountCents}; bare payment`);
+    } else {
+      const createdOrder = await squareFetch(square.config, '/orders', {
+        method: 'POST',
+        body: orderRequestBody({
+          locationId: square.config.locationId,
+          referenceId: pending.id,
+          built,
+          idempotencyKey: `order-${idempotencyKey}`,
+          fulfillment: 'DIGITAL',
+          buyerEmail: contact.email,
+          buyerName: contact.name,
+        }),
+      });
+      const squareTotal = createdOrder.data?.order?.total_money?.amount;
+      if (!createdOrder.ok || !createdOrder.data?.order?.id) {
+        console.error('[film-pass-checkout] order create failed', createdOrder.status, JSON.stringify(createdOrder.data));
+      } else if (squareTotal !== amountCents) {
+        console.error(`[film-pass-checkout] Square totalled ${squareTotal} vs charge ${amountCents}; abandoning order`);
+      } else {
+        squareOrderId = createdOrder.data.order.id;
+      }
+    }
+  } catch (err) {
+    console.error('[film-pass-checkout] order build threw, falling back to bare payment', err);
+  }
+
   try {
     const result = await createPayment(square.config, {
       sourceId: body.source_id,
       amountCents,
       idempotencyKey,
+      orderId: squareOrderId,
       referenceId: pending.id,
       note: `${quantity} × ${passType.name}`,
       buyerEmail: contact.email,

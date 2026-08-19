@@ -499,6 +499,30 @@ export default function StaffPOS() {
     try {
       const { ticketIds, orderToken } = await createTickets('cash');
       addTransaction(ticketIds, 'cash', orderToken);
+
+      // Put the sale into Square as an Order with a CASH tender.
+      //
+      // Until now a cash ticket never reached Square at all — the rows were
+      // written with square_payment_id null and that was the end of it, so the
+      // till and the Square dashboard could only be reconciled by hand.
+      //
+      // The server re-reads the ticket rows and decides the amount; nothing here
+      // tells it what was collected. And it runs AFTER the sale is already
+      // written and scannable, so a failure costs the Square record and nothing
+      // else. The staff member is told, because a missing record is a note to
+      // the manager — not a reason to void a sale whose money is in the drawer.
+      try {
+        const { data: sq, error: sqErr } = await supabase.functions.invoke('square-cash-sale', {
+          body: { order_token: orderToken, donation_cents: donationCents },
+        });
+        if (sqErr || !sq?.ok) {
+          console.error('[StaffPOS] cash sale not recorded in Square', sqErr || sq);
+          toast.warning('Sale complete, but it was not recorded in Square. Tell a manager.');
+        }
+      } catch (sqErr) {
+        console.error('[StaffPOS] cash sale not recorded in Square', sqErr);
+        toast.warning('Sale complete, but it was not recorded in Square. Tell a manager.');
+      }
       toast.success(
         donationCents > 0
           ? `${ticketCount} ticket(s) sold (cash) — collect $${chargeTotal.toFixed(2)} including the donation.`

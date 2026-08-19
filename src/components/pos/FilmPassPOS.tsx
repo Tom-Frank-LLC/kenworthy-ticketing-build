@@ -76,6 +76,23 @@ const STATUS_LABEL: Record<string, string> = {
   refunded: 'Refunded',
 };
 
+/**
+ * What a pass costs at the counter, in cents.
+ *
+ * Sales tax is added on top of the listed price and rounded per pass, matching
+ * film-pass-checkout exactly. The server records price_paid pre-tax and tax_paid
+ * beside it; this is the single figure the patron actually hands over, and the
+ * terminal and the on-screen total must both use it or they disagree with the
+ * till.
+ */
+const PASS_TAX_RATE = 0.06;
+function passTaxCents(pt: { price: number }) {
+  return Math.round(Math.round(Number(pt.price) * 100) * PASS_TAX_RATE);
+}
+function passTotalCents(pt: { price: number }) {
+  return Math.round(Number(pt.price) * 100) + passTaxCents(pt);
+}
+
 export function FilmPassPOS() {
   const [passTypes, setPassTypes] = useState<PassType[]>([]);
   const [queue, setQueue] = useState<QueuedOrder[]>([]);
@@ -235,7 +252,7 @@ export function FilmPassPOS() {
       let squarePaymentId: string | null = null;
       if (!order && paymentMethod === 'card' && selectedType) {
         squarePaymentId = await collectTerminalPayment(
-          Math.round(selectedType.price * 100),
+          passTotalCents(selectedType),
           `${selectedType.name} film pass`,
         );
       }
@@ -444,7 +461,11 @@ export function FilmPassPOS() {
                   <div className="p-4 rounded-lg bg-secondary/50 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>{selectedType.name}</span>
-                      <span className="font-bold">{money(Number(selectedType.price))}</span>
+                      <span className="font-bold">{money(passTotalCents(selectedType) / 100)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{money(Number(selectedType.price))} + sales tax</span>
+                      <span>{money(passTaxCents(selectedType) / 100)}</span>
                     </div>
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>Loads</span>

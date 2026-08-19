@@ -406,6 +406,33 @@ export default function ShowingForm() {
       }
     }
 
+    // Give the showing its Square variations, so a sale can carry a
+    // catalog_object_id and land in item-sales under the right category.
+    //
+    // After the save and deliberately non-blocking. The catalog write is
+    // append-only and read back before it counts, but Square locks the catalog
+    // during an upsert and answers 429 while it is held — that is a reason to
+    // tell somebody, never a reason to lose a showing they just filled in. A
+    // failure leaves the showing sellable as an ad-hoc line and the batch job
+    // picks it up later.
+    try {
+      const { data: sq, error: sqErr } = await supabase.functions.invoke('square-showing-variations', {
+        body: { action: 'ensure_showing', showing_id: showingId },
+      });
+      const tally = (sq as any)?.tally ?? {};
+      if (sqErr || (sq as any)?.error) {
+        console.error('[ShowingForm] Square variations not created', sqErr || sq);
+        toast.warning('Saved, but Square did not get its ticket items. It will sell without item reporting.');
+      } else if ((sq as any)?.counts?.needs_item) {
+        toast.warning('Saved. This title has no Square item yet — link it under Square catalog.');
+      } else if (tally.accepted_but_not_stored) {
+        toast.warning('Saved, but Square did not keep the ticket items. Tell a manager.');
+      }
+    } catch (sqErr) {
+      console.error('[ShowingForm] Square variations threw', sqErr);
+      toast.warning('Saved, but Square did not get its ticket items.');
+    }
+
     toast.success(isEdit ? 'Showing updated!' : 'Showing created!');
     if (!isEdit && showingId) {
       setSavedShowingId(showingId);

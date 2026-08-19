@@ -43,6 +43,7 @@ import {
   isNoisyPath,
   normalizeTitle,
   sameVariation,
+  suggestTitleMatches,
   desiredVariations,
   type ProductionKind,
   type Desired,
@@ -128,14 +129,225 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { /* none */ }
 
   const action: string = payload.action ?? "plan";
-  if (action !== "plan" && action !== "apply") {
+  if (!["plan", "apply", "ensure_showing", "map_donation", "link_item", "plan_film_passes", "link_pass_type"].includes(action)) {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
 
-  const dryRun = payload.dry_run !== false;
-  const maxBatch = Number(payload.max_batch ?? 1);
+  // One showing, published from the admin form. It is an apply in every respect
+  // except that the deliberate-confirmation ritual would be absurd on a form
+  // save: the scope is a single showing the user just created, the writes are
+  // append-only, and every defence below still applies. The cap is what keeps it
+  // bounded — a showing has a handful of tiers, never dozens.
+  const scopedShowingId = String(payload.showing_id ?? "").trim();
+  const isEnsure = action === "ensure_showing";
+  if (isEnsure && !scopedShowingId) {
+    return json({ error: "ensure_showing needs a showing_id" }, 400);
+  }
+
+  const dryRun = isEnsure ? false : payload.dry_run !== false;
+  const maxBatch = isEnsure ? Number(payload.max_batch ?? 8) : Number(payload.max_batch ?? 1);
   if (action === "apply" && !dryRun && payload.confirm !== "WRITE") {
     return json({ error: 'a real write requires confirm:"WRITE"' }, 400);
+  }
+
+  // ---- film pass types ------------------------------------------------------
+  //
+  // Simpler than a showing: a pass is one REGULAR item filed under
+  // '9 Film Passes' with no showtime dimension, so the mapping is one-to-one and
+  // there is nothing to append. It either exists in the catalog or somebody
+  // makes it.
+  //
+  // Linked by VARIATION id rather than item id, because that is what a checkout
+  // line item actually sends. An item with several variations — a 5-admission
+  // and a 10-admission pass on one item — would otherwise leave the choice
+  // ambiguous at exactly the wrong moment.
+  if (action === "plan_film_passes") {
+    try {
+      const { data: types } = await admin
+        .from("film_pass_types")
+        .select("id, name, price, is_active, square_item_id, square_variation_id")
+        .eq("is_active", true)
+        .order("price");
+
+      const items = await listItems(config);
+      const byVariation = new Map<string, { item: any; variation: any }>();
+      for (const i of items) {
+        for (const v of i.item_data?.variations ?? []) byVariation.set(v.id, { item: i, variation: v });
+      }
+      // Passes are REGULAR items; an EVENT item is a screening and never a pass.
+      const candidates = items
+        .filter((i) => i.item_data?.product_type !== "EVENT")
+        .map((i) => ({ id: i.id, name: i.item_data?.name ?? "" }));
+
+      const rows = (types ?? []).map((t: any) => {
+        const linked = t.square_variation_id ? byVariation.get(t.square_variation_id) : null;
+        const exact = items.find((i) =>
+          normalizeTitle(i.item_data?.name ?? "") === normalizeTitle(t.name) &&
+          i.item_data?.product_type !== "EVENT"
+        );
+        const source = linked?.item ?? exact ?? null;
+        return {
+          pass_type_id: t.id,
+          name: t.name,
+          price_cents: Math.round(Number(t.price) * 100),
+          status: linked ? "linked" : exact ? "match_found" : "needs_item",
+          square_variation_id: t.square_variation_id ?? null,
+          square_item_name: source?.item_data?.name ?? null,
+          // Every variation on the candidate item, so a human picks the right
+          // one rather than us assuming the first is correct.
+          variations: (source?.item_data?.variations ?? []).map((v: any) => ({
+            id: v.id,
+            name: v.item_variation_data?.name ?? null,
+            price_cents: v.item_variation_data?.price_money?.amount ?? null,
+          })),
+          possible_matches: linked || exact ? [] : suggestTitleMatches(t.name, candidates),
+        };
+      });
+
+      return json({
+        ok: true, action, environment: config.environment,
+        catalog_items: items.length,
+        counts: rows.reduce((a: any, r: any) => ({ ...a, [r.status]: (a[r.status] ?? 0) + 1 }), {}),
+        pass_types: rows,
+        note: "Read-only. Nothing was written to Square.",
+      });
+    } catch (e: any) {
+      return json({ error: e.message ?? String(e) }, 500);
+    }
+  }
+
+  if (action === "link_pass_type") {
+    const passTypeId = String(payload.pass_type_id ?? "").trim();
+    const variationId = String(payload.square_variation_id ?? "").trim();
+    if (!passTypeId || !variationId) {
+      return json({ error: "pass_type_id and square_variation_id are both required" }, 400);
+    }
+    try {
+      // Resolve the variation to its parent item and confirm it is real before
+      // pointing sales at it. A wrong id here bills film passes against somebody
+      // else's product for as long as nobody notices.
+      const res = await sq(config, `/catalog/object/${variationId}?include_related_objects=false`);
+      const obj = res.object;
+      if (!obj || obj.type !== "ITEM_VARIATION") {
+        return json({ error: "That id is not a catalog ITEM_VARIATION." }, 400);
+      }
+      const itemId = obj.item_variation_data?.item_id;
+      if (!itemId) return json({ error: "That variation has no parent item." }, 400);
+
+      const { error } = await admin
+        .from("film_pass_types")
+        .update({ square_item_id: itemId, square_variation_id: variationId })
+        .eq("id", passTypeId);
+      if (error) return json({ error: `Could not save the link: ${error.message}` }, 500);
+
+      return json({
+        ok: true, action, pass_type_id: passTypeId,
+        square_item_id: itemId, square_variation_id: variationId,
+        variation_name: obj.item_variation_data?.name ?? null,
+      });
+    } catch (e: any) {
+      return json({ error: e.message ?? String(e) }, 500);
+    }
+  }
+
+  // ---- link_item ----------------------------------------------------------
+  //
+  // Record that a production IS a particular Square item. The plan suggests
+  // candidates and refuses to act on them; this is where a person says yes.
+  // Writes one column on our side and nothing at all to Square.
+  if (action === "link_item") {
+    const kind = String(payload.kind ?? "");
+    const productionId = String(payload.production_id ?? "").trim();
+    const itemId = String(payload.square_item_id ?? "").trim();
+    const table = { movie: "movies", event: "events", live_performance: "live_performances" }[kind];
+    if (!table || !productionId || !itemId) {
+      return json({ error: 'kind (movie|event|live_performance), production_id and square_item_id are all required' }, 400);
+    }
+
+    try {
+      // Confirm the item exists and can actually hold showtimes before pointing
+      // a production at it. A typo here would send every future variation for
+      // that film onto somebody else's item.
+      const res = await sq(config, `/catalog/object/${itemId}?include_related_objects=false`);
+      const obj = res.object;
+      if (!obj || obj.type !== "ITEM") return json({ error: "That id is not a catalog ITEM." }, 400);
+      if (obj.item_data?.product_type !== "EVENT") {
+        return json({
+          error: `That item is ${obj.item_data?.product_type}, not EVENT, so it cannot hold a venue or dates.`,
+        }, 400);
+      }
+
+      const { error } = await admin.from(table).update({ square_item_id: itemId }).eq("id", productionId);
+      if (error) return json({ error: `Could not save the link: ${error.message}` }, 500);
+
+      return json({
+        ok: true, action, kind, production_id: productionId,
+        square_item_id: itemId, square_item_name: obj.item_data?.name ?? null,
+        note: "Linked. Re-run plan to see its showtimes move out of needs_item.",
+      });
+    } catch (e: any) {
+      return json({ error: e.message ?? String(e) }, 500);
+    }
+  }
+
+  // ---- map_donation -------------------------------------------------------
+  //
+  // Find the catalog's DONATION item and record which variation to ring each
+  // gift against. Read-only against Square; writes one app_config row, and only
+  // when asked.
+  //
+  // Separate from the showings plan because a donation has no showtime and no
+  // tier — it is one item with a handful of preset amounts and a variable-priced
+  // "Custom Amount". Without this mapping square-donation bills every gift as an
+  // ad-hoc line, which works but never rolls up.
+  if (action === "map_donation") {
+    try {
+      const items = await listItems(config);
+      const donationItems = items.filter((i) => i.item_data?.product_type === "DONATION");
+      if (donationItems.length !== 1) {
+        return json({
+          ok: false,
+          found: donationItems.length,
+          names: donationItems.map((i) => i.item_data?.name),
+          error: donationItems.length === 0
+            ? "No DONATION product-type item in the catalog."
+            : "More than one DONATION item; refusing to guess which one gifts belong to.",
+        }, 400);
+      }
+
+      const item = donationItems[0];
+      const byAmount: Record<string, string> = {};
+      let custom: string | null = null;
+      for (const v of item.item_data?.variations ?? []) {
+        const d = v.item_variation_data ?? {};
+        if (d.pricing_type === "VARIABLE_PRICING") { custom = v.id; continue; }
+        const amount = d.price_money?.amount;
+        if (typeof amount === "number") byAmount[String(amount)] = v.id;
+      }
+
+      const value = { item_id: item.id, by_amount_cents: byAmount, custom };
+      const dry = payload.dry_run !== false;
+      if (!dry) {
+        const { error } = await admin
+          .from("app_config")
+          .upsert({ key: "square_donation_variations", value }, { onConflict: "key" });
+        if (error) return json({ error: `Could not save the mapping: ${error.message}` }, 500);
+      }
+
+      return json({
+        ok: true,
+        action,
+        dry_run: dry,
+        item: { id: item.id, name: item.item_data?.name, is_taxable: item.item_data?.is_taxable },
+        presets: Object.keys(byAmount).length,
+        value,
+        note: dry
+          ? "Read-only. Pass dry_run:false to save. Nothing was written to Square either way."
+          : "Saved to app_config.square_donation_variations.",
+      });
+    } catch (e: any) {
+      return json({ error: e.message ?? String(e) }, 500);
+    }
   }
 
   try {
@@ -147,16 +359,17 @@ Deno.serve(async (req: Request) => {
     const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const to = new Date(Date.now() + horizonDays * 24 * 60 * 60 * 1000).toISOString();
 
-    const showings = await allRows((f, t) =>
-      admin
+    // A named showing bypasses the horizon: the admin just saved it, and where
+    // it falls relative to a rolling window is beside the point.
+    const showings = await allRows((f, t) => {
+      let q = admin
         .from("showings")
-        .select("id, start_time, ticket_price, is_active, movie_id, event_id, live_performance_id")
-        .eq("is_active", true)
-        .gte("start_time", from)
-        .lte("start_time", to)
-        .order("start_time")
-        .range(f, t)
-    );
+        .select("id, start_time, ticket_price, is_active, movie_id, event_id, live_performance_id");
+      q = scopedShowingId
+        ? q.eq("id", scopedShowingId)
+        : q.eq("is_active", true).gte("start_time", from).lte("start_time", to);
+      return q.order("start_time").range(f, t);
+    });
 
     if (!showings.length) {
       return json({
@@ -354,10 +567,20 @@ Deno.serve(async (req: Request) => {
           status: p.status,
         }])
     ).values()];
+    const eventItems = items
+      .filter((i) => i.item_data?.product_type === "EVENT")
+      .map((i) => ({ id: i.id, name: i.item_data?.name ?? "" }));
+
     for (const n of needsItem) {
       n.showings = new Set(
         plans.filter((p) => p.production_id === n.production_id).map((p) => p.showing_id)
       ).size;
+      // Offer, never assume. Five of the ten titles this reported as needing a
+      // new item on its first real run already existed in the catalog under a
+      // bare title, and creating them would have split each film's revenue
+      // across two Square items. These are for a human to confirm with
+      // `link_item`; nothing here links anything.
+      (n as any).possible_matches = suggestTitleMatches(n.title, eventItems);
     }
 
     const base = {
@@ -407,16 +630,27 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const queue = plans.filter((p) => p.status === "would_append");
-    if (queue.length > maxBatch) {
-      return json({
-        ...base,
-        dry_run: dryRun,
-        adopted,
-        error: `refusing ${queue.length} appends; max_batch is ${maxBatch}. ` +
-               "Raise it deliberately, never by accident.",
-      }, 400);
-    }
+    const appendable = plans.filter((p) => p.status === "would_append");
+
+    // The cap governs WRITES, not the rehearsal.
+    //
+    // It used to apply in both modes, which made the dry run useless at its own
+    // default: max_batch is 1, a real catalog has hundreds of appendable
+    // variations, so `{action:"apply"}` answered 400 and showed nothing. The
+    // step that exists to be read before writing could not be read.
+    // max_batch LIMITS the run; it does not refuse it.
+    //
+    // It used to reject the whole batch when there were more appends than the
+    // cap, which read as prudent and made the intended workflow impossible: the
+    // advice is "write one, read it back in the dashboard, then raise the cap",
+    // and with five pending you could never write one. The only way through was
+    // to set the cap to the full count, which is precisely the deliberate-choice
+    // step the cap exists to force.
+    //
+    // Now it takes the first max_batch and reports what is left, so a cautious
+    // run is one call and a bigger one is the same call with a bigger number.
+    const queue = dryRun ? appendable.slice(0, 200) : appendable.slice(0, maxBatch);
+    const remaining = dryRun ? 0 : Math.max(0, appendable.length - queue.length);
 
     const results: any[] = [];
     for (const p of queue) {
@@ -542,7 +776,19 @@ Deno.serve(async (req: Request) => {
     const tally: Record<string, number> = {};
     for (const r of results) tally[r.action ?? "?"] = (tally[r.action ?? "?"] ?? 0) + 1;
 
-    return json({ ...base, dry_run: dryRun, adopted, tally, results });
+    return json({
+      ...base,
+      dry_run: dryRun,
+      adopted,
+      appendable: appendable.length,
+      previewed: dryRun ? queue.length : undefined,
+      remaining: dryRun ? undefined : remaining,
+      note: remaining
+        ? `${remaining} append(s) left. Re-run with a larger max_batch once you have checked these in the dashboard.`
+        : undefined,
+      tally,
+      results,
+    });
   } catch (e: any) {
     return json({ error: e.message ?? String(e) }, 500);
   }
