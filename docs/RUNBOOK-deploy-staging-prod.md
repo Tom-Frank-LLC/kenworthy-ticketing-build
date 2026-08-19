@@ -106,6 +106,8 @@ holds the build command, the deploy command (defaults to `npx wrangler deploy`)
 and build variables. Deploys are meant to be manual and verified — the whole
 point of the checks above — so the deploy command should be neutered on both
 workers. Verified 2026-08-17: a green build on a **PR branch** deploys nothing.
+Note that only the production worker has been measured on a merge (below); the
+staging worker is assumed to match, not confirmed.
 
 **A push to `main` does not deploy production either — measured, 2026-08-18.**
 This was the open half of the note above, and it is now closed. PR #91 was

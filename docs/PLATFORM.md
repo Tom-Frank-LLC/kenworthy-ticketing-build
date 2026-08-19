@@ -178,9 +178,15 @@ target environment must complete clean.
 
 > **Answered, 2026-08-18: Workers Builds is connected, and it does not deploy.**
 > The Worker *is* connected to the repo — that is why two `Workers Builds:` checks
-> run on every PR — but the build's deploy step is a no-op on both workers, so
-> neither a PR nor a push to `main` ships anything. **`wrangler deploy` is the only
-> thing that puts code in front of a patron.**
+> run on every PR — but the build's deploy step does not ship: neither a PR nor a
+> push to `main` deployed the **production** worker. **`wrangler deploy` is the
+> only thing that puts code in front of a patron.**
+>
+> Scope of the measurement, so nobody over-reads it: this was measured on the
+> *production* worker only. The staging worker is configured the same way and is
+> assumed to behave the same, but that was not tested — staging was being
+> deployed by hand throughout, which would have masked an automatic deploy. If it
+> matters, measure it the same way on the next merge.
 >
 > Measured rather than read off a settings page: PR #91 was squash-merged to
 > `main` at 23:12:55Z with both checks green, and the production worker stayed on
@@ -299,7 +305,7 @@ Standing themes as of August 2026:
 - [ ] SMS provider decided (Twilio vs. Mailchimp) and configured, or phone-only purchase disabled
 - [ ] Custom SMTP configured for Supabase auth email
 - [ ] Custom domain — decide the hostname (`kenworthy.org` or a subdomain), add the Worker route and DNS record, then document it in §2.3
-- [x] Cloudflare Workers Builds status confirmed (2026-08-18): builds run on PRs and on `main`, and **neither deploys** — production ships only by a manual `npx wrangler deploy`. Measured by comparing the production worker's version id across the #91 merge; see `RUNBOOK-deploy-staging-prod.md`, "Deploy-on-push".
+- [x] Cloudflare Workers Builds status confirmed (2026-08-18): builds run on PRs and on `main`, and **neither deploys production** — it ships only by a manual `npx wrangler deploy`. Measured by comparing the production worker's version id across the #91 merge. Staging is assumed to match but was not measured; see `RUNBOOK-deploy-staging-prod.md`, "Deploy-on-push".
 - [ ] Production build deployed from `main` with `npm run build:production` (never a bare `npm run build`)
 - [ ] Supabase production project confirmed on a paid plan (backups and scale)
 - [ ] Tax rate confirmed with client
