@@ -194,7 +194,7 @@ export function ConcessionsPreview() {
             </a>
           </div>
         )}
-        <p className="mt-6 text-center font-serif italic text-xs text-muted-foreground/70">
+        <p className="mt-6 text-center font-serif italic text-sm text-muted-foreground/70">
           Prices subject to change. Idaho sales tax added at the register.
         </p>
       </div>

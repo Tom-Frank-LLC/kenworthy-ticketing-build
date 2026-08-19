@@ -589,7 +589,7 @@ export function FilmPassPOS() {
                       ` · expires ${formatShowtime(pass.expires_at, 'MMM d, yyyy')}`}
                   </p>
                   {pass.qr_code && (
-                    <p className="text-[11px] font-mono text-muted-foreground break-all">
+                    <p className="text-xs font-mono text-muted-foreground break-all">
                       {pass.qr_code}
                     </p>
                   )}

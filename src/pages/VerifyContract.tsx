@@ -113,7 +113,7 @@ export default function VerifyContract() {
           <Row k="Signed at" v={sig.signed_at ? format(new Date(sig.signed_at), 'PPpp') : '—'} />
           <Row k="Algorithm" v={sig.algorithm || '—'} />
           {sig.signed_pdf_sha256 && (
-            <Row k="Expected SHA-256" v={<span className="font-mono text-xs break-all">{sig.signed_pdf_sha256}</span>} />
+            <Row k="Expected SHA-256" v={<span className="font-mono text-sm break-all">{sig.signed_pdf_sha256}</span>} />
           )}
         </CardContent>
       </Card>
@@ -130,7 +130,7 @@ export default function VerifyContract() {
           <CardContent className="p-6 space-y-4">
             <div className="space-y-2">
               <Label className="font-display uppercase text-sm tracking-wider">Upload the signed PDF</Label>
-              <p className="font-serif text-xs text-muted-foreground">
+              <p className="font-serif text-sm text-muted-foreground">
                 The file is read entirely in your browser. Nothing is uploaded.
               </p>
               <label className="flex items-center justify-center gap-2 border-2 border-dashed border-border rounded-md p-6 cursor-pointer hover:bg-muted/30 transition">
@@ -164,7 +164,7 @@ export default function VerifyContract() {
                 <p className="font-serif text-sm text-muted-foreground">
                   This PDF does not match the signed original. It has been modified, or this isn't the right file.
                 </p>
-                <p className="font-mono text-[10px] break-all text-muted-foreground mt-2">Got: {result.sha256}</p>
+                <p className="font-mono text-sm break-all text-muted-foreground mt-2">Got: {result.sha256}</p>
               </div>
             )}
             {result.state === 'error' && (

@@ -157,7 +157,7 @@ export default function PublicTicket() {
                   <p className="text-sm text-muted-foreground">{ticket.tier_name}</p>
                 )}
                 <p className="text-sm text-primary font-medium">${Number(ticket.total_price).toFixed(2)}</p>
-                <p className="text-[10px] font-mono text-muted-foreground break-all pt-1">{ticket.qr_code}</p>
+                <p className="text-sm font-mono text-muted-foreground break-all pt-1">{ticket.qr_code}</p>
               </div>
             </CardContent>
           </Card>
@@ -174,7 +174,7 @@ export default function PublicTicket() {
       </Card>
 
       <div className="text-center mt-8 space-y-3">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Bookmark this page — it opens your tickets without signing in.
         </p>
         {/* This page is where the confirmation email lands, so it is the one

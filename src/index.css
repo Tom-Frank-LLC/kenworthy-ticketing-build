@@ -79,16 +79,23 @@
   }
 
   /* Under viewport-fit=cover the page paints edge to edge, so the overscroll
-     / notch areas need the marquee black too — otherwise they flash white. */
+     / notch areas need the marquee black too — otherwise they flash white.
+
+     The patron base skews older, so the shipped default is a larger root.
+     Tailwind's type and spacing scales are both rem-based off this value, so
+     one line lifts the whole UI proportionally and keeps the hierarchy
+     intact. Because it is a percentage, browser zoom and OS "large text"
+     still scale on top of it — so do not reintroduce fixed px font sizes. */
   html {
+    font-size: 112.5%; /* 18px at a 16px browser default */
     @apply bg-background;
   }
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Fraunces', Georgia, serif;
-    font-size: 17px;
-    line-height: 1.6;
+    font-size: 1rem; /* rem, not px, so it tracks the root above */
+    line-height: 1.65;
     font-optical-sizing: auto;
     /* Kill the grey flash iOS paints over every tapped control. */
     -webkit-tap-highlight-color: transparent;

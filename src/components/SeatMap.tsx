@@ -55,7 +55,7 @@ function SeatButton({
       onClick={() => onToggleSeat(seat.id)}
       disabled={taken}
       className={cn(
-        'h-7 w-7 shrink-0 rounded-t-md text-[10px] font-medium transition-all',
+        'h-7 w-7 shrink-0 rounded-t-md text-xs font-medium transition-all',
         taken && 'bg-muted-foreground/30 cursor-not-allowed text-muted-foreground',
         !taken && !selected && !tinted && 'bg-secondary hover:bg-primary/20 border border-border hover:border-primary/60 text-foreground',
         tinted && 'border border-transparent text-white hover:brightness-110',
@@ -264,7 +264,7 @@ export function SeatMap({ seats, takenSeatIds, selectedSeats, onToggleSeat, load
   return (
     <div className="w-full">
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground mb-3 justify-center">
+      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-3 justify-center">
         <span className="flex items-center gap-1.5">
           <div className="h-4 w-4 rounded-t bg-secondary border border-border" /> Available
         </span>
@@ -277,8 +277,11 @@ export function SeatMap({ seats, takenSeatIds, selectedSeats, onToggleSeat, load
       </div>
 
       {/* Zoom controls */}
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
+      {/* Stacked on a phone: the three 44px touch targets leave the hint only
+          ~120px beside them, which at the larger base size wrapped it into a
+          five-line column. It gets its own full-width line instead. */}
+      <div className="mb-2 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
           <span className="sm:hidden">Pinch or use + to zoom, drag to pan.</span>
           <span className="hidden sm:inline">Drag to pan · ⌘/Ctrl + scroll to zoom.</span>
         </p>
@@ -366,7 +369,7 @@ export function SeatMap({ seats, takenSeatIds, selectedSeats, onToggleSeat, load
                   <p className="font-display uppercase tracking-[0.3em] text-foreground/70 text-sm">Stage</p>
                 </div>
                 <div className="w-2/3 border-x-2 border-b-2 border-foreground/40 bg-foreground/5 py-1 text-center">
-                  <p className="font-display uppercase tracking-[0.3em] text-foreground/50 text-[10px]">Screen</p>
+                  <p className="font-display uppercase tracking-[0.3em] text-foreground/50 text-xs">Screen</p>
                 </div>
               </div>
             </div>

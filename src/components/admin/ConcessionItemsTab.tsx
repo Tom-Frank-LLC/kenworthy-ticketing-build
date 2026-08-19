@@ -659,7 +659,7 @@ export default function ConcessionItemsTab() {
                       <p className="font-medium flex items-center gap-2">
                         {item.name}
                         {item.is_combo && (
-                          <Badge variant="outline" className="text-[10px] uppercase tracking-wide">Combo</Badge>
+                          <Badge variant="outline" className="text-xs uppercase tracking-wide">Combo</Badge>
                         )}
                         {!item.is_combo && (item.square_catalog_id ? (
                           <span title={`Synced${item.square_synced_at ? ' ' + new Date(item.square_synced_at).toLocaleString() : ''}`}>
@@ -797,7 +797,7 @@ export default function ConcessionItemsTab() {
                     <summary className="cursor-pointer text-xs text-muted-foreground">
                       Raw metadata on 5 orphans
                     </summary>
-                    <pre className="mt-1 max-h-56 overflow-auto rounded bg-muted/30 p-2 text-[10px] leading-relaxed">
+                    <pre className="mt-1 max-h-56 overflow-auto rounded bg-muted/30 p-2 text-xs leading-relaxed">
 {JSON.stringify(census?.images?.metadata?.raw_sample, null, 2)}
                     </pre>
                   </details>
@@ -958,7 +958,7 @@ export default function ConcessionItemsTab() {
                       >
                         {c.category}
                         {stand && (
-                          <span className="ml-2 text-[10px] uppercase tracking-wide text-accent">
+                          <span className="ml-2 text-xs uppercase tracking-wide text-accent">
                             on the till
                           </span>
                         )}
@@ -1229,7 +1229,7 @@ export default function ConcessionItemsTab() {
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-[11px] text-muted-foreground italic">
+              <p className="text-sm text-muted-foreground italic">
                 Editing a child item's price elsewhere will update the "sum of children" reference here automatically. The combo's customer-facing price stays at the override above.
               </p>
             </div>

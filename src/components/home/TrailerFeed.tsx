@@ -180,7 +180,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
 
               {/* Top label */}
               <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
-                <Badge variant="outline" className="border-accent/60 text-accent bg-black/40 backdrop-blur-sm uppercase tracking-widest text-[10px]">
+                <Badge variant="outline" className="border-accent/60 text-accent bg-black/40 backdrop-blur-sm uppercase tracking-widest text-xs">
                   <Icon className="h-3 w-3 mr-1" /> {TYPE_LABEL[item.type]}
                 </Badge>
               </div>

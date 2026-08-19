@@ -201,7 +201,7 @@ export default function RentalInvoiceLines({ rentalRequestId }: { rentalRequestI
                             <option key={a.id} value={a.id}>{a.code} — {a.qbo_account_name}</option>
                           ))}
                         </select>
-                        {isOverride && <Badge variant="outline" className="text-[10px]">override</Badge>}
+                        {isOverride && <Badge variant="outline" className="text-xs">override</Badge>}
                       </div>
                     </td>
                     <td className="py-1.5 pr-2 text-center">

@@ -87,7 +87,7 @@ export function EditorialCalendar({
         {/* Featured */}
         {featured && (
           <article className="mb-12">
-            <p className="font-serif text-[11px] uppercase tracking-[0.25em] text-accent mb-3">
+            <p className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-3">
               {featured.isFeatured ? "Curator's pick" : 'Featured'} · {dayLabel(featured.startTime)}
             </p>
             <button
@@ -146,7 +146,7 @@ export function EditorialCalendar({
               <section key={key}>
                 <h3 className="font-display text-xl tracking-wide text-foreground mb-3 pb-2 border-b border-border">
                   {dayLabel(dayItems[0].startTime)}
-                  <span className="font-serif normal-case text-xs tracking-normal text-muted-foreground ml-2 lowercase">
+                  <span className="font-serif normal-case text-sm tracking-normal text-muted-foreground ml-2 lowercase">
                     {formatShowtime(dayItems[0].startTime, 'MMMM d')}
                   </span>
                 </h3>
@@ -171,18 +171,18 @@ export function EditorialCalendar({
                         >
                           <div className="font-display text-2xl tabular-nums text-accent shrink-0 w-20">
                             {formatShowtime(item.startTime, 'h:mm')}
-                            <span className="font-serif text-xs lowercase ml-0.5">
+                            <span className="font-serif text-sm lowercase ml-0.5">
                               {formatShowtime(item.startTime, 'a')}
                             </span>
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                              <span className="font-serif text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                              <span className="font-serif text-xs uppercase tracking-[0.2em] text-muted-foreground">
                                 {item.type === 'movie' ? 'Film' : item.type === 'concert' ? 'Live' : 'Event'}
                               </span>
                               {item.ticketType === 'rsvp' && (
-                                <Badge variant="outline" className="text-[10px] py-0">RSVP</Badge>
+                                <Badge variant="outline" className="text-xs py-0">RSVP</Badge>
                               )}
                             </div>
                             <div className="font-display text-lg tracking-wide leading-snug group-hover:text-primary transition-colors">
@@ -215,7 +215,7 @@ export function EditorialCalendar({
               <p className="font-serif text-muted-foreground">
                 508 S Main Street · Moscow, Idaho
               </p>
-              <p className="font-serif text-xs text-muted-foreground/70 mt-2 italic">
+              <p className="font-serif text-sm text-muted-foreground/70 mt-2 italic">
                 A century of stories, told one screening at a time.
               </p>
             </div>

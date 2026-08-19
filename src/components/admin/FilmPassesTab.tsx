@@ -1143,7 +1143,7 @@ export default function FilmPassesTab() {
                       </p>
                     )}
                     {up.qr_code && (
-                      <p className="text-[11px] font-mono text-muted-foreground break-all mt-1">
+                      <p className="text-xs font-mono text-muted-foreground break-all mt-1">
                         {up.qr_code}
                       </p>
                     )}

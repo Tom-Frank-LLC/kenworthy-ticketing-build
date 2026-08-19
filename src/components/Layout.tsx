@@ -259,8 +259,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="md:text-right text-muted-foreground">
             <p className="font-serif">Performing Arts Centre</p>
             <p className="font-serif">Celebrating 100 Years · Est. 1926</p>
-            <p className="mt-3 text-xs">© {new Date().getFullYear()} Kenworthy</p>
-            <p className="mt-2 text-xs">
+            <p className="mt-3 text-sm">© {new Date().getFullYear()} Kenworthy</p>
+            <p className="mt-2 text-sm">
               <Link to="/privacy" className="hover:text-primary transition-colors">
                 Privacy Policy
               </Link>
@@ -282,7 +282,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 finds it has nothing to gain by it. Dropped from sitemap.xml
                 for the same reason. */}
             {!MEMBER_ACCOUNTS_ENABLED && !user && (
-              <p className="mt-2 text-xs">
+              <p className="mt-2 text-sm">
                 <Link to={authHref} className="text-muted-foreground/70 hover:text-primary transition-colors">
                   Staff login
                 </Link>
@@ -295,7 +295,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 otherwise leave staff with no way in at all. Same footer slot,
                 same quietness; temporary, and gated on VITE_COLOR_LAB. */}
             {COLOR_LAB_ENABLED && user && !colorLab.enabled && (
-              <p className="mt-2 text-xs">
+              <p className="mt-2 text-sm">
                 <button
                   type="button"
                   onClick={colorLab.open}

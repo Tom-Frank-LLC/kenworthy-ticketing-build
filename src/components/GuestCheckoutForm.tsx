@@ -148,7 +148,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
         </p>
         <div className="space-y-2">
           <div>
-            <Label htmlFor="guest-name" className="text-xs">Name</Label>
+            <Label htmlFor="guest-name" className="text-sm">Name</Label>
             <Input
               id="guest-name"
               placeholder="Your name"
@@ -156,10 +156,10 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
               onChange={e => setName(e.target.value)}
               maxLength={100}
             />
-            {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
+            {errors.name && <p className="text-sm text-destructive mt-1">{errors.name}</p>}
           </div>
           <div>
-            <Label htmlFor="guest-email" className="text-xs flex items-center gap-1">
+            <Label htmlFor="guest-email" className="text-sm flex items-center gap-1">
               <Mail className="h-3 w-3" /> Email{SMS_DELIVERY_LIVE ? '' : ' *'}
             </Label>
             <Input
@@ -170,7 +170,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
               onChange={e => setEmail(e.target.value)}
               maxLength={255}
             />
-            {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
+            {errors.email && <p className="text-sm text-destructive mt-1">{errors.email}</p>}
           </div>
           {/* The phone field and its consent box are the opt-in an A2P 10DLC
               campaign is reviewed on, which is why they are live before the
@@ -181,7 +181,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
               service is not configured to handle. */}
           {COLLECT_PHONE && (
             <div>
-              <Label htmlFor="guest-phone" className="text-xs flex items-center gap-1">
+              <Label htmlFor="guest-phone" className="text-sm flex items-center gap-1">
                 <Phone className="h-3 w-3" /> Phone
               </Label>
               <Input
@@ -198,7 +198,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
                   rates apply, and how to stop. Unchecked by default and
                   optional — the buyer can complete this purchase without it,
                   which is the third thing the review checks for. */}
-              <label className="flex items-start gap-2 mt-2 text-xs text-muted-foreground cursor-pointer">
+              <label className="flex items-start gap-2 mt-2 text-sm text-muted-foreground cursor-pointer">
                 <Checkbox
                   id="guest-sms-consent"
                   checked={smsConsent}
@@ -215,8 +215,8 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
               </label>
             </div>
           )}
-          {errors.contact && <p className="text-xs text-destructive mt-1">{errors.contact}</p>}
-          <p className="text-xs text-muted-foreground">
+          {errors.contact && <p className="text-sm text-destructive mt-1">{errors.contact}</p>}
+          <p className="text-sm text-muted-foreground">
             {SMS_DELIVERY_LIVE
               ? 'Provide email or phone so we can send your tickets and QR codes.'
               : 'Enter your email so we can send your tickets and QR codes.'}
@@ -226,7 +226,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
               no signup form now, so the ask lives on the form everyone fills
               in. Ticked by default, and it only ever means "yes" because they
               left it ticked — never because they bought something. */}
-          <label className="flex items-start gap-2 pt-1 text-xs text-muted-foreground cursor-pointer">
+          <label className="flex items-start gap-2 pt-1 text-sm text-muted-foreground cursor-pointer">
             <Checkbox
               checked={newsletter}
               onCheckedChange={v => setNewsletter(v === true)}
@@ -243,7 +243,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
             <CreditCard className="h-4 w-4" /> Payment
           </p>
           <SquareCardForm ref={cardRef} source="ticket-checkout" onReadyChange={setCardReady} />
-          {errors.card && <p className="text-xs text-destructive mt-1">{errors.card}</p>}
+          {errors.card && <p className="text-sm text-destructive mt-1">{errors.card}</p>}
         </div>
       )}
 
@@ -262,7 +262,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
         )}
       </Button>
       {!isFree && (
-        <p className="text-xs text-muted-foreground text-center">
+        <p className="text-sm text-muted-foreground text-center">
           Payments are processed securely by Square. Your card details never reach our servers.
         </p>
       )}
