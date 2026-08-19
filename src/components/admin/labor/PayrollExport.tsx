@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, subWeeks, differenceInMinutes } from 'date-fns';
-import { Loader2, Send } from 'lucide-react';
+import { Loader2, Send, Download } from 'lucide-react';
 
 interface Shift {
   id: string;
@@ -44,6 +44,7 @@ export function PayrollExport() {
   const [qboConnected, setQboConnected] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,6 +100,74 @@ export function PayrollExport() {
     });
   }, [shifts, members, links]);
 
+  /**
+   * Payroll leaves this system as a CSV that someone imports into QuickBooks by
+   * hand. The columns mirror what the API push would have sent, so the two do
+   * not drift apart while the integration is unfinished.
+   *
+   * The ledger row is the point of the exercise as much as the file is:
+   * QuickBooks will not stop anyone importing the same period twice, so the
+   * only place that is visible is here, before they do it.
+   */
+  const exportCsv = async () => {
+    if (!lines.length) return;
+    setExporting(true);
+    try {
+      const esc = (v: unknown) => {
+        const t = String(v ?? '');
+        return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+      };
+      const header = ['Period start', 'Period end', 'Staff', 'Linked to user',
+                      'Regular hours', 'Overtime hours', 'Cost'];
+      const rows = lines.map((l) => [
+        periodStart, periodEnd, l.staff_name, l.user_id ? 'yes' : 'no',
+        l.regular_hours.toFixed(2), l.overtime_hours.toFixed(2), l.cost.toFixed(2),
+      ]);
+      rows.push(['', '', 'TOTAL', '', totalHours.toFixed(2), '', totalCost.toFixed(2)]);
+      const csv = [header, ...rows].map((r) => r.map(esc).join(',')).join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kenworthy-payroll-${periodStart}-to-${periodEnd}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      // RLS on payroll_exports is admin-only, and a blocked write comes back
+      // 204 with no error — so check the row came back rather than the error.
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: row, error } = await supabase
+        .from('payroll_exports')
+        .insert({
+          period_start: periodStart,
+          period_end: periodEnd,
+          status: 'exported',
+          totals: {
+            employees: lines.length,
+            regular_hours: lines.reduce((a, l) => a + l.regular_hours, 0),
+            overtime_hours: lines.reduce((a, l) => a + l.overtime_hours, 0),
+            cost: totalCost,
+          },
+          error_message: 'CSV downloaded for manual import into QuickBooks.',
+          exported_by: user?.id ?? null,
+        })
+        .select('id')
+        .single();
+
+      if (error || !row) {
+        toast.warning('CSV downloaded, but the export was not recorded — check for a duplicate before importing.');
+      } else {
+        toast.success('CSV downloaded and recorded');
+        load();
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const push = async () => {
     setPushing(true);
     try {
@@ -134,9 +203,21 @@ export function PayrollExport() {
           <Button variant="outline" onClick={load} disabled={loading}>{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh preview'}</Button>
           <div className="ml-auto flex items-center gap-3">
             <Badge variant={qboConnected ? 'secondary' : 'outline'}>{qboConnected ? 'QuickBooks connected' : 'QuickBooks not connected'}</Badge>
-            <Button onClick={push} disabled={pushing || lines.length === 0}>
+            <Button variant="outline" onClick={exportCsv} disabled={exporting || lines.length === 0}>
+              {exporting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+              Export CSV
+            </Button>
+            {/* Disabled on purpose, not broken. qbo-sync is deployed nowhere and
+                its payroll path reports a push it never makes, so the button is
+                left visible and inert until the API side is real. See
+                docs/briefs/FINDINGS-quickbooks-integration-state.md */}
+            <Button
+              onClick={push}
+              disabled
+              title="Direct posting to QuickBooks is not available yet — export the CSV and import it by hand."
+            >
               {pushing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
-              {qboConnected ? 'Push to QuickBooks' : 'Stage export'}
+              Push to QuickBooks
             </Button>
           </div>
         </CardContent>
@@ -188,7 +269,7 @@ export function PayrollExport() {
               {history.map((h) => (
                 <TableRow key={h.id}>
                   <TableCell>{h.period_start} → {h.period_end}</TableCell>
-                  <TableCell><Badge variant={h.status === 'success' ? 'secondary' : h.status === 'failed' ? 'destructive' : 'outline'}>{h.status}</Badge></TableCell>
+                  <TableCell><Badge variant={h.status === 'success' || h.status === 'exported' ? 'secondary' : h.status === 'failed' ? 'destructive' : 'outline'}>{h.status}</Badge></TableCell>
                   <TableCell className="text-right">{((h.totals?.regular_hours || 0) + (h.totals?.overtime_hours || 0)).toFixed(2)}</TableCell>
                   <TableCell className="text-right">${Number(h.totals?.cost || 0).toFixed(2)}</TableCell>
                   <TableCell className="font-mono text-xs">{h.qbo_batch_id || '—'}</TableCell>

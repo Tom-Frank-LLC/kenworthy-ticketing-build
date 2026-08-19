@@ -310,7 +310,14 @@ export default function QboExportTab() {
               {qbo.token_expires_at && (
                 <span className="text-xs text-muted-foreground">Token expires {new Date(qbo.token_expires_at).toLocaleString()}</span>
               )}
-              <Button variant="outline" size="sm" onClick={disconnectQbo} disabled={qboBusy} className="ml-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={disconnectQbo}
+                disabled
+                title="Disabled while the QuickBooks API side is unfinished."
+                className="ml-auto"
+              >
                 <Unlink className="h-4 w-4 mr-1" /> Disconnect
               </Button>
             </div>
@@ -319,7 +326,18 @@ export default function QboExportTab() {
               <div className="flex flex-wrap items-center gap-3">
                 <Badge variant="outline">Not connected</Badge>
                 <span className="text-sm text-muted-foreground">Environment: {qbo.environment}</span>
-                <Button onClick={connectQbo} disabled={qboBusy} className="ml-auto">
+                {/* Left visible but inert on purpose. The OAuth half of qbo-sync
+                    works, but nothing is ever sent to or read from the
+                    QuickBooks API, and the function is deployed nowhere.
+                    Connecting would only enable a payroll path that reports a
+                    push it never makes. Export the CSV/IIF below instead. See
+                    docs/briefs/FINDINGS-quickbooks-integration-state.md */}
+                <Button
+                  onClick={connectQbo}
+                  disabled
+                  title="Connecting is not available yet — export the CSV or IIF below and import it into QuickBooks by hand."
+                  className="ml-auto"
+                >
                   {qboBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
                   Connect QuickBooks
                 </Button>
