@@ -111,8 +111,10 @@ export function MonthCalendar({
         </div>
 
         <div className="flex flex-col lg:flex-row gap-8 lg:items-start">
-          {/* Month grid */}
-          <div className="lg:shrink-0">
+          {/* Month grid. Not shrink-0: the cells are minmax(0,132px) and can
+              give up width, and the preview panel beside them needs a usable
+              minimum more than the grid needs its full 132px. */}
+          <div className="lg:min-w-0">
             <div className="grid grid-cols-7 md:grid-cols-[repeat(7,minmax(0,132px))] justify-start gap-1 md:gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-2">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
                 <div key={d} className="px-2 py-1 text-center">{d}</div>
@@ -244,7 +246,7 @@ export function MonthCalendar({
           </div>
 
           {/* Selected day list */}
-          <div className="lg:flex-1 lg:border-l lg:border-accent/20 lg:pl-8">
+          <div className="lg:flex-1 lg:min-w-[16rem] lg:border-l lg:border-accent/20 lg:pl-8">
             <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
               {isToday(selectedDay) ? 'Tonight' : format(selectedDay, 'EEEE')}
             </p>
@@ -267,21 +269,21 @@ export function MonthCalendar({
                         <button
                           type="button"
                           onClick={() => onSelect?.(it)}
-                          className="w-full text-left rounded-md border border-accent/20 bg-card hover:border-primary hover:bg-primary/5 transition-colors p-3 flex items-start gap-3 group"
+                          className="w-full text-left rounded-md border border-accent/20 bg-card hover:border-primary hover:bg-primary/5 transition-colors p-3 flex items-start gap-3 group lg:flex-col lg:items-stretch"
                         >
                           {it.posterUrl ? (
                             <img
                               src={it.posterUrl}
                               alt=""
                               loading="lazy"
-                              className="w-14 h-20 object-cover rounded shrink-0 bg-muted"
+                              className="w-14 h-20 shrink-0 object-cover rounded bg-muted lg:w-full lg:h-auto lg:aspect-[2/3]"
                             />
                           ) : (
-                            <div className="w-14 h-20 rounded shrink-0 bg-muted flex items-center justify-center">
-                              <Icon className="w-5 h-5 text-muted-foreground" />
+                            <div className="w-14 h-20 shrink-0 rounded bg-muted flex items-center justify-center lg:w-full lg:h-auto lg:aspect-[2/3]">
+                              <Icon className="w-5 h-5 text-muted-foreground lg:w-8 lg:h-8" />
                             </div>
                           )}
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1 min-w-0 lg:flex-none lg:w-full">
                             <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-0.5">
                               <Icon className="w-3 h-3" />
                               {TYPE_LABEL[it.type]}
