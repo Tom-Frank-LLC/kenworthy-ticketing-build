@@ -1,6 +1,6 @@
 # Brief (for Claude Code): System-wide rule — no ticket/purchase for a past showing (hide the button, enforce on the server)
 
-**Status:** 🔴 Architectural gap — a past showing can currently be purchased (server does not check). Launch‑relevant correctness.
+**Status:** ✅ Shipped — `c551357` (PR #102), plus migration `20260819143722_showing_end_and_past_sales_rules.sql`.
 **Date:** August 15, 2026
 **Requested by:** Tom — logically you can't buy a ticket to something that already happened, so the purchase option should **disappear** (not just dim) for anything in the past — movies, events, and live performances alike — as a rule baked into the underlying system.
 
