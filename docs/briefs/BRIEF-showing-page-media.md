@@ -1,11 +1,11 @@
 ---
 brief: showing-page-media
 title: Enrich the Showing / Ticketing Page with Drawer Elements
-status: needs-triage
+status: shipped
 track: ux
-severity: P1
 date: 2026-08-11
-verified: false
+evidence: ProductionMedia rendered at Showing.tsx:606
+verified: true
 ---
 
 # Brief: Enrich the Showing / Ticketing Page with Drawer Elements

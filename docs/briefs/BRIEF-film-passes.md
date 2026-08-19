@@ -1,11 +1,11 @@
 ---
 brief: film-passes
 title: Film Passes — physical, activated-on-handoff, in-person only
-status: needs-triage
+status: shipped
 track: feature
-severity: P2
 date: 2026-08-13
-verified: false
+evidence: seven film_pass migrations
+verified: true
 findings: FINDINGS-film-passes.md
 ---
 

@@ -4,7 +4,8 @@ title: Full RLS / permissions audit before launch
 status: shipped
 track: security
 date: 2026-08-14
-verified: false
+shipped_in: ["#59", "43496e8"]
+verified: true
 findings: FINDINGS-rls-security-audit.md
 ---
 

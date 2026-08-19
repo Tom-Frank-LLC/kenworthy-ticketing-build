@@ -4,7 +4,8 @@ title: Turn off patron login (staff/admin-only auth), keep the data model
 status: shipped
 track: security
 date: 2026-08-13
-verified: false
+shipped_in: ["c90637c", "cb7a22f"]
+verified: true
 ---
 
 # Brief: Turn off patron login (staff/admin-only auth), keep the data model

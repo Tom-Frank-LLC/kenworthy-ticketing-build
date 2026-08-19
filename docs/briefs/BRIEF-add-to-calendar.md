@@ -1,11 +1,11 @@
 ---
 brief: add-to-calendar
 title: "Add to calendar" on the ticket page, email, and SMS
-status: needs-triage
+status: shipped
 track: ops
-severity: P2
 date: 2026-08-13
-verified: false
+evidence: ICS generation in supabase/functions/_shared/calendar.ts
+verified: true
 ---
 
 # Brief (for Claude Code): "Add to calendar" on the ticket page, email, and SMS

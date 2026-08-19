@@ -4,7 +4,8 @@ title: Temporarily remove the screened-films Archive — preserve for post-launc
 status: shipped
 track: feature
 date: 2026-08-14
-verified: false
+shipped_in: ["9eb7448"]
+verified: true
 ---
 
 # Brief (for Claude Code): Temporarily remove the screened-films Archive — preserve for post-launch

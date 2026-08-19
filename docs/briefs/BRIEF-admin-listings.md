@@ -1,11 +1,11 @@
 ---
 brief: admin-listings
 title: Admin Dashboard — Listings Section Improvements
-status: needs-triage
+status: shipped
 track: ux
-severity: P0
 date: 2026-08-12
-verified: false
+evidence: byShowtime sort, AttendeeSheet, ProductionDetailDrawer; 774/1087 movies carry a trailer_url
+verified: true
 ---
 
 # Brief: Admin Dashboard — Listings Section Improvements

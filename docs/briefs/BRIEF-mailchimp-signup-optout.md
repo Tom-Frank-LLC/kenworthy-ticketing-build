@@ -4,7 +4,8 @@ title: Fix the footer newsletter signup + switch ticket-checkout marketing to op
 status: shipped
 track: ops
 date: 2026-08-14
-verified: false
+evidence: unsubscribe handling in mailchimp-webhook and mailchimp-subscribe
+verified: true
 ---
 
 # Brief (for Claude Code): Fix the footer newsletter signup + switch ticket-checkout marketing to opt-OUT

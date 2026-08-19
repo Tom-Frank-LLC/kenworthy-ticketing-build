@@ -1,11 +1,11 @@
 ---
 brief: square-production-cutover
 title: Square production cutover — audit + fix the sandbox-locked functions
-status: needs-triage
+status: shipped
 track: ops
-severity: P0
 date: 2026-08-13
-verified: false
+shipped_in: ["7f465d1"]
+verified: true
 ---
 
 # Brief (for Claude Code): Square production cutover — audit + fix the sandbox-locked functions

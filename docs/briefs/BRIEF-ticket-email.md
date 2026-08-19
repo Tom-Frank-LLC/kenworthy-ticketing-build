@@ -1,11 +1,12 @@
 ---
 brief: ticket-email
 title: Missing Ticket Confirmation & Account Emails
-status: needs-triage
+status: shipped
 track: ops
-severity: P0
 date: 2026-08-11
-verified: false
+shipped_in: ["#91", "bb9a506", "2bb68d4"]
+evidence: RESEND_API_KEY wired in _shared/deliver.ts
+verified: true
 ---
 
 # Brief: Missing Ticket Confirmation & Account Emails

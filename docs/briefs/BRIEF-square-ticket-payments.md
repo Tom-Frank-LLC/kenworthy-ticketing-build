@@ -1,11 +1,12 @@
 ---
 brief: square-ticket-payments
 title: Online Ticket & Film-Pass Purchases Take No Payment
-status: built
+status: shipped
 track: ops
-severity: P1
 date: 2026-08-12
-verified: false
+shipped_in: ["#103", "9d5876a"]
+evidence: superseded by order-then-pay across every sale
+verified: true
 ---
 
 # Brief: Online Ticket & Film-Pass Purchases Take No Payment

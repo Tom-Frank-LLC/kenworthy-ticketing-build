@@ -1,11 +1,12 @@
 ---
 brief: listings-time-offset
 title: Listings Show Times One Hour Off — Diagnose & Fix
-status: needs-triage
+status: shipped
 track: bug
-severity: P0
 date: 2026-08-12
-verified: false
+shipped_in: ["e15beb7"]
+evidence: src/lib/datetime.ts, 14 passing tests
+verified: true
 findings: FINDINGS-listings-time-offset.md
 ---
 
