@@ -116,7 +116,13 @@ async function scanCode(code: string) {
 
 /** A verdict as check_in_ticket returns it. */
 function verdict(
-  v: 'valid' | 'already_scanned' | 'not_confirmed' | 'not_found' | 'forbidden',
+  v:
+    | 'valid'
+    | 'wrong_showing'
+    | 'already_scanned'
+    | 'not_confirmed'
+    | 'not_found'
+    | 'forbidden',
   ticket: Record<string, unknown> | null
 ) {
   return { data: { verdict: v, ticket }, error: null };
@@ -161,7 +167,10 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
     );
     expect(screen.getByText('Casablanca')).toBeInTheDocument();
     expect(screen.getByText(/General Admission/i)).toBeInTheDocument();
-    expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-GA-MOVIE' });
+    expect(rpc).toHaveBeenCalledWith('check_in_ticket', {
+      p_qr_code: 'QR-GA-MOVIE',
+      p_showing_id: null,
+    });
     // The claim is the server's job; the client must not write the table.
     expectNoTicketTableAccess();
   });
@@ -179,7 +188,10 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
       expect(screen.getByText(/Ticket validated/i)).toBeInTheDocument()
     );
     expect(screen.getByText('Silent Film Gala')).toBeInTheDocument();
-    expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-EVENT' });
+    expect(rpc).toHaveBeenCalledWith('check_in_ticket', {
+      p_qr_code: 'QR-EVENT',
+      p_showing_id: null,
+    });
   });
 
   it('accepts a live performance (concert) ticket', async () => {
@@ -195,6 +207,51 @@ describe('TicketScanner - GA, event, and concert tickets', () => {
       expect(screen.getByText(/Ticket validated/i)).toBeInTheDocument()
     );
     expect(screen.getByText('Palouse Jazz Quartet')).toBeInTheDocument();
+  });
+
+  it('scopes the scan to the selected screening', async () => {
+    rpcResponse = verdict('valid', ticketRow({ id: 'ticket-scoped' }));
+
+    renderScanner();
+    await showingReady();
+    await scanCode('QR-SCOPED');
+
+    await waitFor(() =>
+      expect(screen.getByText(/Ticket validated/i)).toBeInTheDocument()
+    );
+    // Without this argument the door admits a ticket for any screening — and
+    // stamps it used, so the holder loses the night they actually paid for.
+    expect(rpc).toHaveBeenCalledWith('check_in_ticket', {
+      p_qr_code: 'QR-SCOPED',
+      p_showing_id: 'showing-1',
+    });
+  });
+
+  it('refuses a ticket for another screening, and says it was not used', async () => {
+    rpcResponse = verdict(
+      'wrong_showing',
+      ticketRow({
+        id: 'ticket-other-night',
+        production_title: 'The Third Man',
+        start_time: '2026-09-02T02:00:00Z',
+        scanned_at: null,
+      })
+    );
+
+    renderScanner();
+    await showingReady();
+    await scanCode('QR-OTHER-NIGHT');
+
+    // Named, so the patron is told which night to come back on...
+    await waitFor(() =>
+      expect(screen.getByText(/Wrong screening/i)).toBeInTheDocument()
+    );
+    // The title shows twice — once in the sentence, once on the verdict card.
+    expect(screen.getAllByText(/The Third Man/).length).toBeGreaterThan(0);
+    // ...and reassured, because the server left the ticket unclaimed.
+    expect(screen.getByText(/has not been used/i)).toBeInTheDocument();
+    // It must never read as an admission.
+    expect(screen.queryByText(/Ticket validated/i)).not.toBeInTheDocument();
   });
 
   it('shows a seat when the ticket has one', async () => {
@@ -335,7 +392,13 @@ describe('TicketScanner - centre-screen verdict', () => {
     // Gate is open again.
     await scanCode('QR-NEXT');
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Admit/i));
-    expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-NEXT' });
+    // objectContaining, not an exact match: this test is about the gate, and
+    // by now the screening selector has had time to settle on a showing, so
+    // pinning p_showing_id here would make it fail for an unrelated reason.
+    expect(rpc).toHaveBeenCalledWith(
+      'check_in_ticket',
+      expect.objectContaining({ p_qr_code: 'QR-NEXT' }),
+    );
   });
 });
 
@@ -546,8 +609,15 @@ describe('TicketScanner - film passes at the door', () => {
     await scanCode('QR-MIXED');
 
     await waitFor(() => expect(screen.getByText(/Ticket validated/i)).toBeInTheDocument());
-    // A ticket carries its own showing; the selector must not touch it.
+    // A ticket is still a ticket: the selector routes it to check_in_ticket,
+    // never to the film-pass admission path.
     expect(admit).not.toHaveBeenCalled();
-    expect(rpc).toHaveBeenCalledWith('check_in_ticket', { p_qr_code: 'QR-MIXED' });
+    // It does, however, scope the check-in. The selector used to be ignored
+    // entirely for tickets, which is what let a ticket for another night scan
+    // green here and be stamped used in the process.
+    expect(rpc).toHaveBeenCalledWith('check_in_ticket', {
+      p_qr_code: 'QR-MIXED',
+      p_showing_id: 'showing-1',
+    });
   });
 });

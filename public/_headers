@@ -1,0 +1,105 @@
+# Security headers for the SPA, served by the Cloudflare Worker.
+#
+# Until this file existed the site answered with no security headers at all —
+# no CSP, no HSTS, no nosniff, no framing rule. Verified against both
+# deployments on 2026-08-19; the whole response was content-type,
+# cache-control and server.
+#
+# `_headers` is read by Workers Static Assets from the assets directory
+# (`./dist`, see wrangler.jsonc), so this file must be copied into the build
+# output — Vite does that for everything in public/ automatically.
+#
+# Cloudflare applies *every* matching rule and appends the results, so two rules
+# that both set the same header produce two headers rather than an override.
+# That is why there is exactly one block here — see the Permissions-Policy note.
+
+/*
+  # Clickjacking. The checkout page renders Square's card iframe, and a
+  # transparent overlay on top of somebody else's page is the classic way to
+  # harvest a click on it. X-Frame-Options is the old spelling kept for
+  # browsers that predate frame-ancestors; both say the same thing.
+  X-Frame-Options: DENY
+
+  # MIME sniffing. Posters are user-uploaded into a public bucket, and while
+  # they are served from the Supabase origin rather than this one, nosniff is
+  # the cheap half of never letting a response be reinterpreted as script.
+  X-Content-Type-Options: nosniff
+
+  # Ticket links carry the order token in the query string. Without this, that
+  # token rides along in the Referer header to every third-party image, script
+  # and outbound link the ticket page touches. strict-origin-when-cross-origin
+  # sends the bare origin off-site and the full URL only to ourselves.
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # A year of HTTPS-only, including the apex and any future subdomain. Not
+  # preloaded: preloading is effectively irreversible, and that is a decision
+  # to make deliberately once the production hostname is settled, not a side
+  # effect of an audit.
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+  # One rule for the whole site, deliberately — there is no /admin override.
+  #
+  # The first shape of this was `camera=()` here and `camera=(self)` under
+  # /admin/*, which reads correctly and does not work: Cloudflare *appends*
+  # matching rules rather than replacing them, so /admin/scanner came back with
+  # two Permissions-Policy headers. Confirmed on the staging deploy:
+  #
+  #   permissions-policy: camera=(), microphone=(), geolocation=(), payment=(self)
+  #   permissions-policy: camera=(self), microphone=(), geolocation=(), payment=(self)
+  #
+  # A browser resolving two of these does not take the more permissive one, so
+  # the door scanner would have lost the camera — an outage on the one surface
+  # that has to work with a queue in front of it, caused by a header nobody
+  # would think to check.
+  #
+  # `camera=(self)` sitewide is the honest version: it permits same-origin
+  # documents to *ask*, which is all the scanner needs and still leaves the
+  # browser's own permission prompt in front of it. Cross-origin frames are
+  # refused either way, which is the part that was ever worth having.
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(self)
+
+  # ---------------------------------------------------------------------
+  # Content-Security-Policy — REPORT-ONLY, deliberately
+  # ---------------------------------------------------------------------
+  #
+  # Report-only because a CSP that breaks the card form breaks the ability to
+  # take money, and the origins this app needs are not all knowable by reading
+  # it: poster images come from the database and point at TMDB, at
+  # kenworthy.org's WordPress, and at Supabase storage, and trailers embed
+  # YouTube or Vimeo depending on what an admin pasted.
+  #
+  # So this reports and does not block. Watch the browser console on staging
+  # through a real checkout, a trailer, and the scanner; when it is quiet,
+  # rename this header to Content-Security-Policy and it starts enforcing.
+  # Everything above is already enforcing, including the framing rule — the
+  # clickjacking exposure is closed today, not when the CSP graduates.
+  #
+  # Notes on the specific sources:
+  #   script-src omits 'unsafe-inline' on purpose. Vite emits external
+  #     bundles, so if a report shows an inline script we want to know about
+  #     it rather than have blanket-allowed it in advance.
+  #   style-src needs 'unsafe-inline': React inline styles and Tailwind's
+  #     arbitrary-value classes both emit style attributes.
+  #   connect-src covers Supabase (REST, edge functions, realtime over wss)
+  #     and Square's PCI endpoint, which is where the card iframe posts the
+  #     card to get a single-use token. Sandbox and production hosts differ.
+  #   img-src is deliberately open to https:. Poster URLs are admin-entered
+  #     and arbitrary; narrowing this is a content decision, not a header one.
+  #
+  # The Square hosts in style-src and font-src are not guesses. A first pass
+  # allowed only the SDK origin, and driving a real checkout on staging with
+  # this header in report-only mode reported seven violations the card form
+  # would have suffered under enforcement:
+  #
+  #   style-src-elem  sandbox.web.squarecdn.com/1.84.1/card-wrapper.css
+  #   font-src        square-fonts-production-f.squarecdn.com  (Square Sans x2)
+  #   font-src        d1g145x70srn7h.cloudfront.net            (SQ Market x2)
+  #   font-src        cash-f.squarecdn.com                     (Cash Sans x2)
+  #
+  # The SDK pulls its stylesheet and typefaces from four hosts that are not the
+  # one it is served from, and the cloudfront.net one is not discoverable from
+  # any documentation — only from watching it ask. Enforcing first would have
+  # shipped an unstyled card form in fallback fonts on the page where somebody
+  # is being asked to type a card number.
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://web.squarecdn.com https://sandbox.web.squarecdn.com https://*.squarecdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com https://d1g145x70srn7h.cloudfront.net; img-src 'self' data: blob: https:; connect-src 'self' https://challenges.cloudflare.com https://*.supabase.co wss://*.supabase.co https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://connect.squareup.com https://connect.squareupsandbox.com https://*.squarecdn.com; frame-src https://challenges.cloudflare.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+

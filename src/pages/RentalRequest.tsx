@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { rentalRequestSchema } from '@/lib/rentalRequest';
+import { invokeFunction } from '@/lib/functions';
+import { Turnstile, turnstileConfigured } from '@/components/Turnstile';
 
 const EQUIPMENT = [
   { key: 'podium_mic', label: 'Podium with mic' },
@@ -36,6 +38,9 @@ export default function RentalRequest() {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // null until the bot check hands one over, and null again once it expires.
+  // When Turnstile is not configured it stays null and nothing waits on it.
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     event_title: '',
@@ -103,12 +108,18 @@ export default function RentalRequest() {
       if (payload[k] === '') payload[k] = null;
     }
 
-    const { error } = await supabase.from('rental_requests').insert(payload);
-    setSubmitting(false);
-    if (error) {
-      toast.error(error.message);
+    // Through the server, not straight into the table. The form used to insert
+    // as `anon` from the browser, which took twelve scripted submissions in a
+    // row without complaint — there was nowhere to check anything, because
+    // there was nothing in between. See supabase/functions/rental-request.
+    try {
+      await invokeFunction('rental-request', { ...payload, turnstile_token: turnstileToken });
+    } catch (err) {
+      setSubmitting(false);
+      toast.error(err instanceof Error ? err.message : 'Could not send that request');
       return;
     }
+    setSubmitting(false);
     setSubmitted(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -289,11 +300,24 @@ export default function RentalRequest() {
           </Field>
         </Section>
 
-        <div className="flex items-center justify-between gap-4 pt-4 border-t border-border/40">
-          <p className="text-sm font-serif text-muted-foreground italic">This form is not your contract.</p>
-          <Button type="submit" size="lg" disabled={submitting}>
-            {submitting ? 'Sending…' : 'Send Request'}
-          </Button>
+        <div className="pt-4 border-t border-border/40 space-y-3">
+          <Turnstile onToken={setTurnstileToken} />
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm font-serif text-muted-foreground italic">This form is not your contract.</p>
+            {/*
+              Held until the bot check has handed over a token — but only when
+              there is a check to wait for. `turnstileConfigured` is false until
+              the Cloudflare site key is set, and gating on the token alone
+              would then disable the button forever.
+            */}
+            <Button
+              type="submit"
+              size="lg"
+              disabled={submitting || (turnstileConfigured && !turnstileToken)}
+            >
+              {submitting ? 'Sending…' : 'Send Request'}
+            </Button>
+          </div>
         </div>
         {token && <input type="hidden" value={token} readOnly />}
       </form>
