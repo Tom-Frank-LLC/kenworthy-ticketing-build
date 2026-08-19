@@ -8,13 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper } from 'lucide-react';
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
 import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
 import FestivalProgramsTab from '@/components/admin/FestivalProgramsTab';
+import { DEFAULT_PAGES_TAB, resolveAdminSection } from '@/lib/adminSections';
 import FilmPassesTab from '@/components/admin/FilmPassesTab';
 import HostManagementTab from '@/components/admin/HostManagementTab';
 import AccountingTab from '@/components/admin/AccountingTab';
@@ -122,7 +123,14 @@ export default function AdminDashboard() {
   const [ticketCount, setTicketCount] = useState(0);
   const [scheduleQuery, setScheduleQuery] = useState(() => searchParams.get('q') || '');
   const [activeScheduleTab, setActiveScheduleTab] = useState(() => searchParams.get('tab') || 'movies');
-  const [activeTopTab, setActiveTopTab] = useState(() => searchParams.get('section') || 'listings');
+  // Festival, Hiring and Press were each a top-level tab until the dashboard
+  // grew past what a row of tabs can hold. They are all one job — editing a
+  // specific public page — so they live under Pages now. Their old ?section=
+  // values still work: an existing bookmark or a link in someone's notes lands
+  // on Pages with the right sub-tab open rather than on a blank panel.
+  const initialTabs = resolveAdminSection(searchParams.get('section'), searchParams.get('page'));
+  const [activeTopTab, setActiveTopTab] = useState(initialTabs.section);
+  const [activePagesTab, setActivePagesTab] = useState(initialTabs.pagesTab);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>(
     () => (searchParams.get('status') as any) || 'all'
   );
@@ -158,6 +166,7 @@ export default function AdminDashboard() {
     setOrDel('q', scheduleQuery, '');
     setOrDel('tab', activeScheduleTab, 'movies');
     setOrDel('section', activeTopTab, 'listings');
+    setOrDel('page', activePagesTab, DEFAULT_PAGES_TAB);
     setOrDel('status', statusFilter, 'all');
     setOrDel('rating', ratingFilter, 'all');
     setOrDel('genre', genreFilter, 'all');
@@ -168,7 +177,7 @@ export default function AdminDashboard() {
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [scheduleQuery, activeScheduleTab, activeTopTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter, liveEventKindFilter, sortOrder]);
+  }, [scheduleQuery, activeScheduleTab, activeTopTab, activePagesTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter, liveEventKindFilter, sortOrder]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -470,13 +479,11 @@ export default function AdminDashboard() {
             { value: 'listings', label: 'Listings', icon: Calendar, show: true },
             { value: 'concessions', label: 'Concessions', icon: UtensilsCrossed, show: true },
             { value: 'passes', label: 'Passes', icon: CreditCard, show: true },
-            { value: 'festival', label: 'Festival', icon: Film, show: isAdmin },
             { value: 'dvds', label: 'DVDs', icon: Disc, show: true },
             { value: 'rentals', label: 'Rentals', icon: KeyRound, show: true },
             { value: 'labor', label: 'Staff', icon: Clock, show: isAdmin },
             { value: 'sponsors', label: 'Sponsors', icon: Handshake, show: true },
-            { value: 'hiring', label: 'Hiring', icon: Briefcase, show: isAdmin },
-            { value: 'press', label: 'Press', icon: Newspaper, show: isAdmin },
+            { value: 'pages', label: 'Pages', icon: Globe, show: isAdmin },
             { value: 'analytics', label: 'Analytics', icon: BarChart3, show: isAdmin },
             { value: 'mailchimp', label: 'Mailchimp', icon: Mail, show: isAdmin },
             { value: 'lgl', label: 'LGL', icon: Heart, show: isAdmin },
@@ -929,12 +936,6 @@ export default function AdminDashboard() {
           <FilmPassesTab />
         </TabsContent>
 
-        {/* Festival Tab — the program archive behind /silent-film-festival.
-            Admin-only, matching the RLS on festival_programs. */}
-        <TabsContent value="festival">
-          <FestivalProgramsTab />
-        </TabsContent>
-
         {/* DVDs Tab */}
         <TabsContent value="dvds">
           <DvdLibraryTab />
@@ -996,15 +997,32 @@ export default function AdminDashboard() {
           <SponsorsTab />
         </TabsContent>
 
+        {/* Pages — each sub-tab edits one public page. Admin-only, which is
+            also what the RLS behind all three enforces. */}
         {isAdmin && (
-          <TabsContent value="hiring">
-            <HiringTab />
-          </TabsContent>
-        )}
-
-        {isAdmin && (
-          <TabsContent value="press">
-            <PressTab />
+          <TabsContent value="pages">
+            <Tabs value={activePagesTab} onValueChange={setActivePagesTab} className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="festival">
+                  <Film className="h-4 w-4 mr-1 inline" />Silent Film Festival
+                </TabsTrigger>
+                <TabsTrigger value="hiring">
+                  <Briefcase className="h-4 w-4 mr-1 inline" />Hiring
+                </TabsTrigger>
+                <TabsTrigger value="press">
+                  <Newspaper className="h-4 w-4 mr-1 inline" />Press
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="festival">
+                <FestivalProgramsTab />
+              </TabsContent>
+              <TabsContent value="hiring">
+                <HiringTab />
+              </TabsContent>
+              <TabsContent value="press">
+                <PressTab />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         )}
 
