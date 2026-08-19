@@ -14,6 +14,8 @@
 // order, which is what the refund path re-reads. Anything else would refund a
 // different number than it charged.
 
+import { SHOWING_PASSED_MESSAGE, isPast } from './purchasable.ts';
+
 export const TAX_RATE = 0.06;
 
 // Square's published rates. Mirrors SQUARE_RATES in src/lib/booking.ts.
@@ -140,7 +142,7 @@ export async function priceTicketOrder(
   const { data: showing, error: showingErr } = await admin
     .from('showings')
     .select(
-      'id, ticket_price, is_active, requires_seat_selection, total_seats, start_time, movie_id, event_id, live_performance_id',
+      'id, ticket_price, is_active, requires_seat_selection, total_seats, start_time, duration_minutes, movie_id, event_id, live_performance_id',
     )
     .eq('id', showingId)
     .maybeSingle();
@@ -149,8 +151,23 @@ export async function priceTicketOrder(
   if (!showing) throw new PricingError('Showing not found');
   if (showing.is_active === false) throw new PricingError('This showing is no longer on sale');
 
-  // Production row carries the title and the buyer-paid-fee opt-in.
+  // Production row carries the title, the buyer-paid-fee opt-in, and — for a
+  // film — the runtime that decides when this showing is over.
   const production = await loadProduction(admin, showing);
+
+  // You cannot buy a ticket to something that has already happened.
+  //
+  // This sits here rather than in ticket-checkout because this function is the
+  // one gate every online sale passes through, so a future checkout path
+  // inherits the rule instead of having to remember it. It is *after* the
+  // production load because the cutoff is the end of the show, and for a film
+  // the runtime that defines "the end" lives on the movies row.
+  //
+  // The browser also hides its buy button (src/lib/purchasable.ts), and the
+  // tickets table refuses the insert outright (the trigger in
+  // migrations/20260819143722_showing_end_and_past_sales_rules.sql). This is
+  // the layer that turns a stale tab into a sentence a customer can read.
+  if (isPast(showing, production)) throw new PricingError(SHOWING_PASSED_MESSAGE);
 
   // Active tiers for this showing, and the per-seat tier mapping. Both are
   // read once and matched in memory — the trigger does the same join per row.
@@ -305,14 +322,20 @@ async function loadProduction(admin: any, showing: any) {
       category: 'Live Performances',
     };
   }
+  // duration_minutes is what makes "sales stop when the show ends" mean
+  // anything for a film — showings.duration_minutes is only ever set when an
+  // admin overrides it. Events and live performances have no runtime column at
+  // all, which is why the two branches above carry none and fall back to
+  // DEFAULT_SHOWING_MINUTES.
   const { data } = await admin
     .from('movies')
-    .select('title, pass_processing_fee')
+    .select('title, pass_processing_fee, duration_minutes')
     .eq('id', showing.movie_id)
     .maybeSingle();
   return {
     title: data?.title || 'Kenworthy showing',
     pass_processing_fee: !!data?.pass_processing_fee,
+    duration_minutes: data?.duration_minutes ?? null,
     category: 'Films',
   };
 }

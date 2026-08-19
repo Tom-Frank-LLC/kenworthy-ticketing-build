@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { resolveTrailer } from '@/lib/trailer';
 import { formatShowtime } from '@/lib/datetime';
+import { isPast } from '@/lib/purchasable';
 
 export interface FeedItem {
   id: string;
@@ -201,7 +202,11 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                   </p>
                 )}
                 <div className="flex flex-wrap items-center gap-2">
-                  {item.ticketType === 'rsvp' && item.rsvpUrl ? (
+                  {/* A standalone RSVP event carries no real date (useFeed
+                      gives it a far-future placeholder), so it is never past.
+                      One attached to a showing that has finished has nothing
+                      left to RSVP to. */}
+                  {item.ticketType === 'rsvp' && item.rsvpUrl && !isPast({ start_time: item.startTime }) ? (
                     <Button asChild size="lg" className="h-12">
                       <a href={item.rsvpUrl} target="_blank" rel="noopener noreferrer">
                         <Calendar className="h-4 w-4 mr-1" /> RSVP
@@ -216,7 +221,11 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                     >
                       Learn More
                     </Button>
-                  ) : item.showingId ? (
+                  ) : item.showingId && !isPast({ start_time: item.startTime }) ? (
+                    // The feed excludes past showings at query time, so this
+                    // only bites in a tab left open across one — the case that
+                    // would otherwise sell a finished screening. The rule is
+                    // src/lib/purchasable.ts.
                     <Button asChild size="lg" className={cn('h-12', GREEN_CTA)}>
                       <Link to={`/showing/${item.showingId}`}>
                         <Ticket className="h-4 w-4 mr-1" /> Get Tickets

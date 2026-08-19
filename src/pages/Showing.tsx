@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { invokeFunction } from '@/lib/functions';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
@@ -21,6 +21,7 @@ import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
+import { SHOWING_PASSED_MESSAGE, isPast } from '@/lib/purchasable';
 import { SITE_URL } from '@/lib/site';
 
 type ProductionType = 'movie' | 'event' | 'concert';
@@ -54,6 +55,37 @@ function SoldOutNotice({ assigned }: { assigned: boolean }) {
         Seats occasionally reopen when an unfinished checkout expires, so it is worth checking back —
         or ask the box office about availability.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Shown in place of the entire buy flow once the showing is over.
+ *
+ * Replaces the ticket picker, the seat map and the order summary rather than
+ * disabling them — you cannot buy a ticket to something that has already
+ * happened, and a greyed-out button invites the reader to work out why. The
+ * page above it stays: title, poster, showtime, cast. Past programming is
+ * worth keeping readable at a theatre with a hundred years of it.
+ *
+ * The rule is src/lib/purchasable.ts. The server refuses the sale
+ * independently — see supabase/functions/_shared/pricing.ts — so this is
+ * presentation, not enforcement.
+ */
+function PassedNotice({ startTime }: { startTime: string }) {
+  return (
+    <div
+      role="status"
+      className="rounded-lg border border-border bg-secondary/40 p-6 text-center"
+    >
+      <p className="font-display text-lg font-semibold">This showing has passed.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        It played on {formatShowtime(startTime, "EEEE, MMMM d, yyyy 'at' h:mm a")}. Tickets are no
+        longer available.
+      </p>
+      <Button variant="outline" className="mt-4" asChild>
+        <Link to="/">See what&rsquo;s playing now</Link>
+      </Button>
     </div>
   );
 }
@@ -335,6 +367,16 @@ export default function Showing() {
       smsConsent: boolean;
     };
   }) => {
+    // A tab left open across the end of the show still holds a rendered buy
+    // button: `hasPassed` is computed at render time and nothing re-renders on
+    // a timer. The server refuses this anyway (see _shared/pricing.ts), so
+    // this exists only to give that case the same sentence as the page rather
+    // than a checkout error.
+    if (isPast(showing, production)) {
+      toast.error(SHOWING_PASSED_MESSAGE);
+      return;
+    }
+
     setPurchasing(true);
     try {
       const data = await invokeFunction<{
@@ -502,6 +544,11 @@ export default function Showing() {
 
   const meta = getProductionMeta(productionType);
   const Icon = meta.icon;
+
+  // Whether this page can still sell anything. Computed after the loading
+  // guard above so the film's runtime is in hand: the cutoff is the end of the
+  // show, and for a film that end depends on production.duration_minutes.
+  const hasPassed = isPast(showing, production);
   // Trailer/poster come from the production row we already fetched — no extra
   // query. When neither exists we keep the small type-icon tile instead of
   // reserving a media column for nothing.
@@ -614,6 +661,12 @@ export default function Showing() {
         </div>
       </div>
 
+      {/* Everything below is the buy flow, and a past showing has none. The
+          block is left at its original indentation rather than shifted a level
+          to keep this change legible as the one-line rule it is. */}
+      {hasPassed ? (
+        <PassedNotice startTime={showing.start_time} />
+      ) : (
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Seating Map or GA Quantity */}
         {/* min-w-0: a grid item defaults to min-width:auto, so this column
@@ -883,11 +936,12 @@ export default function Showing() {
           </Card>
         </div>
       </div>
+      )}
 
       {/* Mobile order bar. On phones the summary column stacks below the seat
           map, so the running total and the way to checkout would otherwise be
           a full screen of scrolling away from the seat the buyer just tapped. */}
-      {ticketCount > 0 && !soldOut && (
+      {ticketCount > 0 && !soldOut && !hasPassed && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-accent/20 glass px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div className="min-w-0">

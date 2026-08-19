@@ -59,7 +59,7 @@ function fixture(overrides: Partial<Rows> = {}): Rows {
       event_id: null,
       live_performance_id: null,
     }],
-    movies: [{ id: 'movie-1', title: 'Rear Window', pass_processing_fee: false }],
+    movies: [{ id: 'movie-1', title: 'Rear Window', pass_processing_fee: false, duration_minutes: 112 }],
     showing_price_tiers: [
       { id: 'tier-adult', showing_id: SHOWING_ID, tier_name: 'Adult', price: 20, is_active: true },
       { id: 'tier-student', showing_id: SHOWING_ID, tier_name: 'Student', price: 8.25, is_active: true },
@@ -69,6 +69,82 @@ function fixture(overrides: Partial<Rows> = {}): Rows {
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// A showing that has already happened cannot be priced, and so cannot be sold.
+//
+// This is the server side of the rule — the layer a stale browser tab, a
+// cached page or a hand-rolled POST all land on. The fixture's showing is
+// dated in the future, so these build their own past ones rather than relying
+// on the clock staying kind to the rest of this file.
+// ---------------------------------------------------------------------------
+
+/** A showing that started `minutesAgo` ago, with the given runtime. */
+function agedFixture(minutesAgo: number, durationMinutes: number | null = null): Rows {
+  const rows = fixture();
+  rows.showings[0].start_time = new Date(Date.now() - minutesAgo * 60_000).toISOString();
+  rows.showings[0].duration_minutes = durationMinutes;
+  return rows;
+}
+
+Deno.test('refuses to price a showing that has already ended', async () => {
+  // 112-minute film, started three hours ago.
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(agedFixture(180)), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing has passed.',
+  );
+});
+
+Deno.test('still prices a showing that is under way — the cutoff is the end, not the start', async () => {
+  // 7:20 into a 112-minute film. This is the case the "at start_time" cutoff
+  // would have refused, and the reason it was not chosen.
+  const order = await priceTicketOrder(stubAdmin(agedFixture(20)), SHOWING_ID, [{}]);
+  assertEquals(order.subtotal, 10);
+});
+
+Deno.test("uses the showing's own duration over the film's when one is set", async () => {
+  // A 112-minute film in a 300-minute slot — a double bill, say. Two and a
+  // half hours in, the film's runtime says over and the showing says not.
+  const order = await priceTicketOrder(stubAdmin(agedFixture(150, 300)), SHOWING_ID, [{}]);
+  assertEquals(order.subtotal, 10);
+
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(agedFixture(150, 60)), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing has passed.',
+  );
+});
+
+Deno.test('falls back to two hours for an event, which carries no runtime at all', async () => {
+  const eventRows = agedFixture(150);
+  eventRows.showings[0].movie_id = null;
+  eventRows.showings[0].event_id = 'event-1';
+  eventRows.events = [{ id: 'event-1', title: 'Centenary Gala', pass_processing_fee: false }];
+
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(eventRows), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing has passed.',
+  );
+
+  const stillOn = agedFixture(90);
+  stillOn.showings[0].movie_id = null;
+  stillOn.showings[0].event_id = 'event-1';
+  stillOn.events = [{ id: 'event-1', title: 'Centenary Gala', pass_processing_fee: false }];
+  const order = await priceTicketOrder(stubAdmin(stillOn), SHOWING_ID, [{}]);
+  assertEquals(order.subtotal, 10);
+});
+
+Deno.test('falls back to two hours for a movie whose runtime is missing', async () => {
+  const rows = agedFixture(150);
+  rows.movies = [{ id: 'movie-1', title: 'Rear Window', pass_processing_fee: false }];
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing has passed.',
+  );
+});
 
 Deno.test('falls back to the showing price when no tier is named', async () => {
   const order = await priceTicketOrder(stubAdmin(fixture()), SHOWING_ID, [{}, {}]);

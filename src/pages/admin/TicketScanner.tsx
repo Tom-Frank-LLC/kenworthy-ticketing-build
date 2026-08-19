@@ -393,6 +393,20 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
                   : 'This pass is not valid.',
         };
 
+      // The screening is over by more than the door's grace window. Almost
+      // always the selector at the top of this page is still pointing at
+      // yesterday, so the message names the screening rather than just
+      // refusing — and says the pass is untouched, because "did that just cost
+      // them $6?" is the question staff will otherwise ask.
+      case 'showing_over':
+        return {
+          status: 'invalid',
+          message: title
+            ? `That screening of ${title} is over — check which showing is selected. Nothing was deducted.`
+            : 'That screening is over — check which showing is selected. Nothing was deducted.',
+          pass: { title, remaining_balance: remaining },
+        };
+
       case 'sold_out':
         return {
           status: 'invalid',

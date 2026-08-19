@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime, venueDayKey } from '@/lib/datetime';
+import { isPast } from '@/lib/purchasable';
 import type { FeedItem } from './TrailerFeed';
 
 /**
@@ -106,8 +107,13 @@ export function ShowingPreview({
               {/* Straight to the ticket page. Previously the only route out of
                   this panel was the drawer, which then made the reader pick the
                   showing a second time — for a preview of one specific showing
-                  that is a step with nothing in it. */}
-              {item.showingId && (
+                  that is a step with nothing in it.
+
+                  Gone entirely once the showing is over: "All showings" below
+                  still gets the reader somewhere useful, so a past preview is
+                  a readable panel rather than a dead button. The rule is
+                  src/lib/purchasable.ts. */}
+              {item.showingId && !isPast({ start_time: item.startTime }) && (
                 <Button asChild className={cn('gap-2', GREEN_CTA)}>
                   <Link to={`/showing/${item.showingId}`}>
                     <Ticket className="h-4 w-4" />

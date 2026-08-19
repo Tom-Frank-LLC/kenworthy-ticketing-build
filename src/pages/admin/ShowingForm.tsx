@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
 import { SeatTierEditor, type SeatTierEditorHandle } from '@/components/admin/SeatTierEditor';
 import { instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
+import { DEFAULT_SHOWING_MINUTES } from '@/lib/purchasable';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import {
   STANDARD_MOVIE_TICKET_PRICE,
@@ -52,6 +53,10 @@ export default function ShowingForm() {
   const [venueId, setVenueId] = useState('');
   const [startTime, setStartTime] = useState('');
   const [ticketPrice, setTicketPrice] = useState('8.00');
+  // How long this showing runs. Blank means "ask the production", which is the
+  // right answer for almost every film and no answer at all for an event — see
+  // the field itself, below, and showing_ends_at() in the database.
+  const [durationMinutes, setDurationMinutes] = useState('');
   // Which passes may be redeemed at the door for this screening.
   //
   // This used to be one boolean that could only speak for every pass at once,
@@ -93,7 +98,7 @@ export default function ShowingForm() {
       fetchAllRows((from, to) =>
         supabase
           .from('movies')
-          .select('id, title, is_active, release_year')
+          .select('id, title, is_active, release_year, duration_minutes')
           .order('title')
           .order('id')
           .range(from, to)
@@ -155,6 +160,7 @@ export default function ShowingForm() {
           // late — and saving then wrote that wrong hour back.
           setStartTime(instantToVenueLocalInput(data.start_time));
           setTicketPrice(String(data.ticket_price));
+          setDurationMinutes(data.duration_minutes ? String(data.duration_minutes) : '');
           setRequiresSeatSelection(data.requires_seat_selection ?? false);
         }
 
@@ -206,6 +212,17 @@ export default function ShowingForm() {
 
   const selectedVenue = venues.find((v: any) => v.id === venueId);
   const venueHasSeatMap = !!selectedVenue?.has_assigned_seating;
+
+  // What a blank duration field will actually mean. Mirrors the fallback chain
+  // in showing_ends_at() and in resolveDurationMinutes(): the film's own
+  // runtime if there is one, otherwise the default. Shown as the placeholder
+  // so the admin can see the assumption rather than having to know it.
+  const selectedMovieRuntime =
+    category === 'movie'
+      ? Number(movies.find((m: any) => m.id === itemId)?.duration_minutes) || null
+      : null;
+  const durationInheritedFrom: 'movie' | 'default' = selectedMovieRuntime ? 'movie' : 'default';
+  const inheritedDuration = selectedMovieRuntime ?? DEFAULT_SHOWING_MINUTES;
 
   /**
    * Editing the price re-applies the pass default for a movie.
@@ -302,6 +319,10 @@ export default function ShowingForm() {
       // machine the admin happened to use.
       start_time: venueLocalToInstant(startTime).toISOString(),
       ticket_price: parseFloat(ticketPrice),
+      // Blank clears the override rather than storing 0 — NULL is what makes
+      // showing_ends_at() fall through to the film's own runtime, and the
+      // column's CHECK constraint refuses a zero or negative anyway.
+      duration_minutes: durationMinutes.trim() === '' ? null : parseInt(durationMinutes, 10),
       // Only claim reserved seating when there is a seat map to reserve from.
       // A showing flagged reserved with no seats behind it renders an empty
       // picker the buyer cannot get past.
@@ -519,6 +540,29 @@ export default function ShowingForm() {
                 Theatre local time (Pacific), whatever your computer is set to
               </p>
             </div>
+            {/* Duration decides when this showing stops being sellable: the
+                rule is that sales close when the show ends, so something has
+                to say when that is. A film answers for itself. An event or a
+                live performance has no runtime column anywhere in the schema,
+                so leaving this blank gives it the two-hour default — fine for
+                most, worth setting for a festival or a double bill. */}
+            <div className="space-y-2">
+              <Label>Runs For (minutes)</Label>
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                placeholder={String(inheritedDuration)}
+                value={durationMinutes}
+                onChange={e => setDurationMinutes(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {durationInheritedFrom === 'movie'
+                  ? `Leave blank to use this film's runtime (${inheritedDuration} min). Set it for a double bill, an intermission, or a Q&A after.`
+                  : `Leave blank to assume ${inheritedDuration} minutes. Tickets stop being sold once the showing ends.`}
+              </p>
+            </div>
+
             <div className="space-y-2">
               <Label>Base Ticket Price ($)</Label>
               <Input type="number" step="0.01" value={ticketPrice} onChange={e => handleTicketPriceChange(e.target.value)} />
