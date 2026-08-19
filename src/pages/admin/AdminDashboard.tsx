@@ -667,7 +667,7 @@ export default function AdminDashboard() {
               )}
             </div>
             <TabsContent value="movies">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <h2 className="font-display text-xl font-bold">Movies</h2>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" asChild>
@@ -757,7 +757,7 @@ export default function AdminDashboard() {
           </div>
             </TabsContent>
             <TabsContent value="live-events">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <h2 className="font-display text-xl font-bold">Live Events</h2>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" asChild>
@@ -839,7 +839,7 @@ export default function AdminDashboard() {
                 which is why the theatre ran for months with no venue row at all
                 and an empty venue picker on every showing. */}
             <TabsContent value="venues">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <h2 className="font-display text-xl font-bold">Venues</h2>
             <Button size="sm" asChild>
               <Link to="/admin/venues/new"><Plus className="h-4 w-4 mr-1" /> Add Venue</Link>

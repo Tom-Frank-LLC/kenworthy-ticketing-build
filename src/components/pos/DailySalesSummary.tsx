@@ -9,8 +9,11 @@ interface DailySalesProps {
 }
 
 export function DailySalesSummary({ revenue, ticketCount, refundCount }: DailySalesProps) {
+  // Stacked on a phone: three icon+text cards cannot share 375px, and the
+  // third one spilled past the viewport. The box office does open this on a
+  // small screen, so it wraps rather than overflowing.
   return (
-    <div className="grid grid-cols-3 gap-4 mb-8">
+    <div className="grid grid-cols-1 gap-4 mb-8 sm:grid-cols-3">
       <Card className="glass">
         <CardContent className="pt-5 pb-4 flex items-center gap-3">
           <div className="rounded-full bg-primary/10 p-2.5">
