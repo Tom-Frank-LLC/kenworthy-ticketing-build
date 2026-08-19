@@ -68,6 +68,9 @@ import {
 // Deno globals
 declare const Deno: any;
 
+/** Idaho sales tax, the same rate _shared/pricing.ts applies to a ticket. */
+const FILM_PASS_TAX_RATE = 0.06;
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -741,8 +744,21 @@ Deno.serve(async (req: Request) => {
     mailingAddress = parsed.address;
   }
 
-  const total = Math.round(unitPrice * quantity * 100) / 100;
-  const amountCents = Math.round(total * 100);
+  // Sales tax, added on top of the listed price. film_pass_types.price is the
+  // pre-tax figure, the way showings.ticket_price is.
+  //
+  // This used to charge price x quantity flat, which meant the theatre collected
+  // no tax on a pass while recording 6% on every admission redeemed against it
+  // — tax owed on money nobody paid, and none on the money it took. Redemptions
+  // are $0 now (migration 20260819040000); the tax belongs here, at the sale.
+  //
+  // Rounded PER PASS, matching how enforce_ticket_pricing rounds a ticket, so
+  // two passes cost exactly twice one pass and the arithmetic never depends on
+  // quantity.
+  const unitPriceCents = Math.round(unitPrice * 100);
+  const unitTaxCents = Math.round(unitPriceCents * FILM_PASS_TAX_RATE);
+  const amountCents = (unitPriceCents + unitTaxCents) * quantity;
+  const total = amountCents / 100;
   const idempotencyKey = normaliseKey(body.idempotency_key);
 
   // -------------------------------------------------------------------------
@@ -838,14 +854,10 @@ Deno.serve(async (req: Request) => {
       tierKey: '__film_pass',
       displayName: passType.name,
       variationId: (passType as any).square_variation_id ?? null,
-      unitPriceCents: Math.round(unitPrice * 100),
-      unitTaxCents: 0,
+      unitPriceCents,
+      unitTaxCents,
       count: quantity,
-      // Our arithmetic charges price x quantity and adds no tax, so the line
-      // must not be taxed either — Square would otherwise add 6% that the
-      // buyer never agreed to. Whether a film pass SHOULD be taxed is a
-      // question for the box office, not something to change quietly here.
-      taxable: false,
+      // Taxed at the sale. The redemption that spends this pass records $0.
     }]);
 
     if (!(passType as any).square_variation_id) {

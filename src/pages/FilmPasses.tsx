@@ -89,7 +89,17 @@ export default function FilmPasses() {
   }, []);
 
   const selected = passTypes.find(p => p.id === selectedId) ?? null;
-  const total = selected ? Math.round(Number(selected.price) * quantity * 100) / 100 : 0;
+  // Sales tax is added on top of the listed price, and film-pass-checkout
+  // computes exactly this on the server — rounded PER PASS, so two passes cost
+  // twice one pass. The server's number is what Square charges; this display
+  // has to agree with it or the buyer sees one figure and their card takes
+  // another.
+  const PASS_TAX_RATE = 0.06;
+  const unitCents = selected ? Math.round(Number(selected.price) * 100) : 0;
+  const unitTaxCents = Math.round(unitCents * PASS_TAX_RATE);
+  const subtotal = (unitCents * quantity) / 100;
+  const taxDue = (unitTaxCents * quantity) / 100;
+  const total = selected ? ((unitCents + unitTaxCents) * quantity) / 100 : 0;
   const admissions = selected
     ? Math.floor(Number(selected.initial_balance) / Number(selected.redemption_price || 1))
     : 0;
@@ -468,7 +478,11 @@ export default function FilmPasses() {
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span>{selected.name} × {quantity}</span>
-                  <span>{money(total)}</span>
+                  <span>{money(subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Sales tax</span>
+                  <span>{money(taxDue)}</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Each carries {money(Number(selected.initial_balance))} — about {admissions}{' '}
