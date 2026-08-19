@@ -176,15 +176,27 @@ npm run build:production && npx wrangler deploy
 Before pushing: `npm run lint` and `npm test` should pass, and the build for the
 target environment must complete clean.
 
-> **⚠️ TODO — unverified: is Cloudflare Workers Builds connected?** If the Worker
-> is connected to the GitHub repo (dashboard → the Worker → **Builds**), the
-> `git push` lines above deploy on their own and the `wrangler deploy` lines are a
-> confirm/fallback. If it is not connected, `wrangler deploy` is the *only* thing
-> that ships code and a push alone changes nothing live. The stale
-> `cloudflare/workers-autoconfig` branch on the remote suggests the connect flow
-> was started at some point, but that is not proof it is still active. **Check the
-> Builds tab and replace this note with the answer** — running `wrangler deploy`
-> explicitly is correct and harmless either way.
+> **Answered, 2026-08-18: Workers Builds is connected, and it does not deploy.**
+> The Worker *is* connected to the repo — that is why two `Workers Builds:` checks
+> run on every PR — but the build's deploy step does not ship: neither a PR nor a
+> push to `main` deployed the **production** worker. **`wrangler deploy` is the
+> only thing that puts code in front of a patron.**
+>
+> Scope of the measurement, so nobody over-reads it: this was measured on the
+> *production* worker only. The staging worker is configured the same way and is
+> assumed to behave the same, but that was not tested — staging was being
+> deployed by hand throughout, which would have masked an automatic deploy. If it
+> matters, measure it the same way on the next merge.
+>
+> Measured rather than read off a settings page: PR #91 was squash-merged to
+> `main` at 23:12:55Z with both checks green, and the production worker stayed on
+> version `71281430-6b0e-4dd5-a7d1-c9220b251f6a` — deployed by hand at 22:40:23Z,
+> *before* the merge — for at least six minutes afterwards, at 100% of traffic.
+>
+> The practical consequence, worth saying plainly because it has bitten before: a
+> **merged PR is not a shipped PR**, and `main` is not what the box office is
+> running. See `RUNBOOK-deploy-staging-prod.md` → "Deploy-on-push" for how to
+> re-measure this if the Cloudflare build settings are ever changed.
 
 ### 4.3 Backend runbook (Supabase)
 
@@ -293,7 +305,7 @@ Standing themes as of August 2026:
 - [ ] SMS provider decided (Twilio vs. Mailchimp) and configured, or phone-only purchase disabled
 - [ ] Custom SMTP configured for Supabase auth email
 - [ ] Custom domain — decide the hostname (`kenworthy.org` or a subdomain), add the Worker route and DNS record, then document it in §2.3
-- [ ] Cloudflare Workers Builds status confirmed and §4.2 updated to state it plainly
+- [x] Cloudflare Workers Builds status confirmed (2026-08-18): builds run on PRs and on `main`, and **neither deploys production** — it ships only by a manual `npx wrangler deploy`. Measured by comparing the production worker's version id across the #91 merge. Staging is assumed to match but was not measured; see `RUNBOOK-deploy-staging-prod.md`, "Deploy-on-push".
 - [ ] Production build deployed from `main` with `npm run build:production` (never a bare `npm run build`)
 - [ ] Supabase production project confirmed on a paid plan (backups and scale)
 - [ ] Tax rate confirmed with client

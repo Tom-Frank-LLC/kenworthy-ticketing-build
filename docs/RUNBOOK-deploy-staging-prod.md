@@ -105,8 +105,25 @@ control governs automatic production-branch deployments, and Build configuration
 holds the build command, the deploy command (defaults to `npx wrangler deploy`)
 and build variables. Deploys are meant to be manual and verified — the whole
 point of the checks above — so the deploy command should be neutered on both
-workers. Verified 2026-08-17: a green build on a **PR branch** deploys nothing;
-a push to the **production branch** is the case this setting governs.
+workers. Verified 2026-08-17: a green build on a **PR branch** deploys nothing.
+Note that only the production worker has been measured on a merge (below); the
+staging worker is assumed to match, not confirmed.
+
+**A push to `main` does not deploy production either — measured, 2026-08-18.**
+This was the open half of the note above, and it is now closed. PR #91 was
+squash-merged to `main` at 23:12:55Z with both Workers Builds checks green. The
+production worker (`kenworthy-ticketing-build`) was on version
+`71281430-6b0e-4dd5-a7d1-c9220b251f6a`, deployed by hand at 22:40:23Z, **before**
+the merge; `npx wrangler deployments list` still showed that same version as
+100% of traffic six minutes after it. The build runs on a merge to `main` and
+its deploy step is a no-op.
+
+So `main` is not production. Nothing reaches patrons until someone runs the
+Production deploy section above by hand — which is the intent, but it means a
+merged PR is **not** a shipped PR, and a green check on `main` says nothing
+about what the box office is running. Re-measure this the same way if the
+Cloudflare build settings are ever touched: capture the version id before the
+merge, and compare after.
 
 ### What actually decides which environment gets baked in
 
