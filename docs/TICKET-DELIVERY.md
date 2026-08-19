@@ -369,32 +369,37 @@ supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
 > evidence that submission asks for, which is exactly why the field ships ahead
 > of the texts.
 >
-> Two secrets are also still wrong or missing, on **both** projects:
+> **The secrets are done, and both were misnamed before they were.** As of
+> 2026-08-18 22:00Z staging and production each hold `TWILIO_ACCOUNT_SID`,
+> `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET` and
+> `TWILIO_MESSAGING_SERVICE_SID`, with matching digests — one live Twilio
+> account shared by both, no sandbox. Production still carries a stale, unread
+> `TWILIO_API_KEY`.
 >
-> 1. **The API key SID is stored under the wrong name.** `TWILIO_ACCOUNT_SID`,
->    `TWILIO_API_KEY` and `TWILIO_API_KEY_SECRET` are all set (identical
->    digests on staging and production — one Twilio account, no sandbox). But
->    `deliver.ts` reads `TWILIO_API_KEY_SID`, and `TWILIO_API_KEY` is a
->    different name, so `twilioAuth()` sees no credential at all and returns
->    "Configure TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET (preferred), or
->    TWILIO_AUTH_TOKEN". Re-set the same `SK…` value under
->    `TWILIO_API_KEY_SID`. (Noted in `DONATIONS.md` on 2026-08-13 and still
->    true.)
-> 2. **No sender is configured.** Neither `TWILIO_MESSAGING_SERVICE_SID` nor
->    `TWILIO_FROM_NUMBER` is set on either project, so even with auth fixed the
->    send fails with "TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID must
->    be set". Use the Messaging Service (`MG…`) the approved campaign is
->    attached to — the consent line on the checkout form promises "Reply STOP
->    to opt out", and a Messaging Service is what honours that automatically. A
->    bare `TWILIO_FROM_NUMBER` makes STOP/HELP handling ours to build.
+> Getting there took two rounds of the same mistake, which is the part worth
+> remembering. The API key SID was first set as `TWILIO_API_KEY`, and the
+> Messaging Service SID was first set on staging as
+> `TWILIO_MESSAGING_SERVICE`. Both looked present in `secrets list`; neither
+> was a name `deliver.ts` reads, so `twilioAuth()` saw no credential and
+> `sendViaTwilio()` saw no sender. A digest proves a value is set, never that
+> it is set under the right key — diff the names against the `Deno.env.get`
+> calls before believing an integration is configured.
 >
-> Flip `SMS_DELIVERY_LIVE` only once all three are true — both secrets set and
-> the campaign approved — and only after a phone-only test purchase has
-> actually arrived. Flipping it early is the exact regression the original flag
-> was added for on 2026-08-15: the buyer is charged and delivered nothing,
-> silently, because delivery is fire-and-forget and the only trace is
-> `orders.confirmation_error`. Test to your own mobile — staging carries the
-> same live Twilio credentials as production, so that send is real and billed.
+> **Advanced Opt-Out is enabled** on the Messaging Service (2026-08-18), with
+> HELP, STOP and START responses that name the theatre and give its phone and
+> email. That is what makes the `/sms` page and the checkout consent line
+> truthful about STOP and HELP — nothing in this repo answers an inbound text,
+> and there is no webhook here to add one. It is also close to one-way: Twilio
+> can only disable it via a support request, so treat it as a standing
+> commitment rather than a setting.
+>
+> Flip `SMS_DELIVERY_LIVE` only once the campaign is approved too, and only
+> after a phone-only test purchase has actually arrived. Flipping it early is
+> the exact regression the original flag was added for on 2026-08-15: the buyer
+> is charged and delivered nothing, silently, because delivery is
+> fire-and-forget and the only trace is `orders.confirmation_error`. Test to
+> your own mobile — staging carries the same live Twilio credentials as
+> production, so that send is real and billed.
 
 `ticket-access` must deploy with `verify_jwt = false`. That is set in
 `supabase/config.toml`; confirm it took, because the QR images and the ticket
