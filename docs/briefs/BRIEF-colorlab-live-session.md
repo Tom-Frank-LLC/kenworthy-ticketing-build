@@ -1,3 +1,13 @@
+---
+brief: colorlab-live-session
+title: Color Lab as a live, session-only theme override on the real site
+status: needs-triage
+track: ux
+severity: P2
+date: 2026-08-15
+verified: false
+---
+
 # Brief (for Claude Code): Color Lab as a live, session-only theme override on the real site
 
 **Status:** 🟢 Ready — cheap because the theme is already CSS‑variable driven; temporary tool behind a flag

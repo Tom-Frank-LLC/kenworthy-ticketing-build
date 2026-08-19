@@ -1,3 +1,13 @@
+---
+brief: showing-movie-search
+title: Searchable movie picker when creating a showing
+status: needs-triage
+track: feature
+severity: P2
+date: 2026-08-13
+verified: false
+---
+
 # Brief (for Claude Code): Searchable movie picker when creating a showing
 
 **Status:** 🟢 Ready to implement

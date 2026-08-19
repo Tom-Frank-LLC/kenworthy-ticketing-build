@@ -1,3 +1,13 @@
+---
+brief: disable-phone-until-sms
+title: Temporarily hide phone fields on purchases; require email (until SMS is wired)
+status: shipped
+track: ops
+date: 2026-08-15
+shipped_in: ["#84", "3f186ad"]
+verified: true
+---
+
 # Brief (for Claude Code): Temporarily hide phone fields on purchases; require email (until SMS is wired)
 
 **Status:** ✅ Shipped — `3f186ad` (PR #84). Superseded by `BRIEF-reactivate-phone-sms.md`, which turned phone capture back on.

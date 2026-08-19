@@ -1,3 +1,13 @@
+---
+brief: add-to-calendar
+title: "Add to calendar" on the ticket page, email, and SMS
+status: needs-triage
+track: ops
+severity: P2
+date: 2026-08-13
+verified: false
+---
+
 # Brief (for Claude Code): "Add to calendar" on the ticket page, email, and SMS
 
 **Status:** 🟢 Implemented in a cloud session; delivered as `add-to-calendar.patch`. This brief lets Claude Code apply that patch (fast path) or rebuild it from spec.

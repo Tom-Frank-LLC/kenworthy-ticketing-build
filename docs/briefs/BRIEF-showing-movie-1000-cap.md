@@ -1,3 +1,12 @@
+---
+brief: showing-movie-1000-cap
+title: The 1000-row cap on the movie picker — fix and data audit
+status: shipped
+track: data
+date: 2026-08-14
+verified: false
+---
+
 # The 1000-row cap on the movie picker — fix and data audit
 
 **Status:** ✅ Fixed in code. Data audit complete: **no rows need correcting** —

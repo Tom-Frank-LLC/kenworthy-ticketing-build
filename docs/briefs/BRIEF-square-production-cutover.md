@@ -1,3 +1,13 @@
+---
+brief: square-production-cutover
+title: Square production cutover — audit + fix the sandbox-locked functions
+status: needs-triage
+track: ops
+severity: P0
+date: 2026-08-13
+verified: false
+---
+
 # Brief (for Claude Code): Square production cutover — audit + fix the sandbox-locked functions
 
 **Status:** 🔴 Time-sensitive — production Square cutover planned for tomorrow

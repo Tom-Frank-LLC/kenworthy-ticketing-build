@@ -1,3 +1,13 @@
+---
+brief: ticket-email
+title: Missing Ticket Confirmation & Account Emails
+status: needs-triage
+track: ops
+severity: P0
+date: 2026-08-11
+verified: false
+---
+
 # Brief: Missing Ticket Confirmation & Account Emails
 
 **Status:** 🔴 Launch blocker — **code complete Aug 11 2026, blocked on provider credentials**

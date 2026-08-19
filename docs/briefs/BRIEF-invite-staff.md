@@ -1,3 +1,14 @@
+---
+brief: invite-staff
+title: In-app "Invite / Add staff member" (create account + assign role)
+status: shipped
+track: ops
+date: 2026-08-14
+shipped_in: ["#62", "481772b"]
+verified: true
+findings: BRIEF-invite-staff-OUTCOME.md
+---
+
 # Brief (for Claude Code): In-app "Invite / Add staff member" (create account + assign role)
 
 **Status:** ✅ Shipped — `481772b` (PR #62), `supabase/functions/invite-staff`. See `BRIEF-invite-staff-OUTCOME.md`.

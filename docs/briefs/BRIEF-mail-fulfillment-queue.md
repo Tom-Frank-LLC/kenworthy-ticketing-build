@@ -1,3 +1,13 @@
+---
+brief: mail-fulfillment-queue
+title: Mail fulfilment queue — a posted pass is not a mailed pass
+status: shipped
+track: feature
+date: 2026-08-13
+shipped_in: ["999d5bb"]
+verified: true
+---
+
 # Brief: Mail fulfilment queue — a posted pass is not a mailed pass
 
 **Status:** ✅ Shipped to production August 13 2026 — `999d5bb`, migration

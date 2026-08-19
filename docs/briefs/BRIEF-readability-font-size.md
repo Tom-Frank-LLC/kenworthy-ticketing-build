@@ -1,3 +1,14 @@
+---
+brief: readability-font-size
+title: Raise default readability & font size across the platform (older patron base)
+status: shipped
+track: ux
+date: 2026-08-15
+shipped_in: ["#100", "#101", "36203da", "ac3e857", "fc2765d8"]
+verified: true
+findings: FINDINGS-readability-font-size.md
+---
+
 # Brief (for Claude Code): Raise default readability & font size across the platform (older patron base)
 
 **Status:** ✅ Shipped to production August 19 2026 — `ac3e857` (PR #100) and `36203da` (PR #101), deployed as `fc2765d8`. See `FINDINGS-readability-font-size.md`, including two things this brief got wrong.

@@ -1,3 +1,13 @@
+---
+brief: press-page
+title: Press page + admin Press tab
+status: shipped
+track: ux
+date: 2026-08-14
+shipped_in: ["42cda95"]
+verified: true
+---
+
 # Brief (for Claude Code): Press page + admin Press tab
 
 **Status:** ✅ Shipped to staging and production, August 14, 2026, from `42cda95`. See **Results** at the end of this file for the decisions taken and how each claim was verified.

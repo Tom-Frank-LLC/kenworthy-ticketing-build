@@ -1,3 +1,13 @@
+---
+brief: calendar-listings-hiring
+title: Calendar/listings polish + admin Hiring
+status: needs-triage
+track: ux
+severity: P2
+date: 2026-08-13
+verified: false
+---
+
 # Brief (for Claude Code): Calendar/listings polish + admin Hiring
 
 **Status:** 🟢 Draft for review

@@ -1,3 +1,12 @@
+---
+brief: scanner-filmpass-pos
+title: Scanner + film-pass redemption refinements, purchase type, POS scanner
+status: shipped
+track: feature
+date: 2026-08-13
+verified: false
+---
+
 # Brief (for Claude Code): Scanner + film-pass redemption refinements, purchase type, POS scanner
 
 **Status:** ✅ Built — August 14, 2026

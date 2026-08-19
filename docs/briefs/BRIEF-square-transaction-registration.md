@@ -1,3 +1,13 @@
+---
+brief: square-transaction-registration
+title: Register platform transactions in Square correctly — cash tenders + ticket/pass attribution
+status: shipped
+track: ops
+date: 2026-08-15
+shipped_in: ["#103", "9d5876a"]
+verified: true
+---
+
 # Brief (for Claude Code): Register platform transactions in Square correctly — cash tenders + ticket/pass attribution
 
 **Status:** ✅ Shipped — `9d5876a` (PR #103). Part 1 cash tenders (`square-cash-sale`), Part 2 order line items (`_shared/square-order.ts`), Part 3 redemption migrations.

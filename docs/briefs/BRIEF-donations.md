@@ -1,3 +1,13 @@
+---
+brief: donations
+title: Donation wiring — verify, fix the missing email, add checkout donations (tax-free)
+status: needs-triage
+track: ops
+severity: P2
+date: 2026-08-13
+verified: false
+---
+
 # Brief (for Claude Code): Donation wiring — verify, fix the missing email, add checkout donations (tax-free)
 
 **Status:** 🟢 Draft for review · LGL `LGL_API_KEY` set on staging + prod (Aug 13, 2026)

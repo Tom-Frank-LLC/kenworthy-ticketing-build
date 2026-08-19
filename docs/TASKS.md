@@ -1,46 +1,98 @@
-# Kenworthy Ticketing — Tasks & Refactor Log
+# Kenworthy Ticketing — Task catalogue
 
-> Living document. Known issues, planned refactors, and technical debt found during and after the launch push. Update as items are added, started, or completed.
->
-> **Legend:** 🔴 Launch blocker · 🟡 Soon after launch · 🟢 Backlog · ✅ Done
+> **Generated** by `scripts/generate-tasks.mjs` from the frontmatter in
+> `docs/briefs/`. Do not hand-edit above the hand-maintained block —
+> change a brief's frontmatter and re-run the script. Schema:
+> [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
+
+**50 briefs** — 31 shipped, 2 built, 0 open, 17 needs triage, 0 closed.
+
+## Needs triage
+
+Status is what the document claims, not something anyone checked. This has
+gone wrong before: nineteen briefs sat marked open while all nineteen were in
+production, and one was flagged as an architectural gap by the very PR that
+fixed it. Confirm each against the repo, record `shipped_in`, set
+`verified: true` — or correct the status.
+
+- `P0` **Admin Dashboard — Listings Section Improvements**<br>`ux` — [brief](briefs/BRIEF-admin-listings.md)
+- `P0` **Listings Show Times One Hour Off — Diagnose & Fix**<br>`bug` — [brief](briefs/BRIEF-listings-time-offset.md) · [notes](briefs/FINDINGS-listings-time-offset.md)
+- `P0` **Square production cutover — audit + fix the sandbox-locked functions**<br>`ops` — [brief](briefs/BRIEF-square-production-cutover.md)
+- `P0` **Missing Ticket Confirmation & Account Emails**<br>`ops` — [brief](briefs/BRIEF-ticket-email.md)
+- `P1` **Seating is per-showing, venue owns the map — fix + seed the venue**<br>`bug` — [brief](briefs/BRIEF-seating-per-showing.md)
+- `P1` **Enrich the Showing / Ticketing Page with Drawer Elements**<br>`ux` — [brief](briefs/BRIEF-showing-page-media.md)
+- `P1` **Square Labor — end-to-end functionality & wiring test**<br>`ops` — [brief](briefs/BRIEF-square-labor-testing.md) · [notes](briefs/FINDINGS-square-labor-testing.md)
+- `P2` **"Add to calendar" on the ticket page, email, and SMS**<br>`ops` — [brief](briefs/BRIEF-add-to-calendar.md)
+- `P2` **Calendar/listings polish + admin Hiring**<br>`ux` — [brief](briefs/BRIEF-calendar-listings-hiring.md)
+- `P2` **Color Lab as a live, session-only theme override on the real site**<br>`ux` — [brief](briefs/BRIEF-colorlab-live-session.md)
+- `P2` **Publish the Color Lab team tool at /colorlab.html**<br>`ux` — [brief](briefs/BRIEF-colorlab-page.md)
+- `P2` **Donation wiring — verify, fix the missing email, add checkout donations (tax-free)**<br>`ops` — [brief](briefs/BRIEF-donations.md)
+- `P2` **Film Passes — physical, activated-on-handoff, in-person only**<br>`feature` — [brief](briefs/BRIEF-film-passes.md) · [notes](briefs/FINDINGS-film-passes.md)
+- `P2` **Make the listing preview pane a vertical two-column split (portrait artwork + info)**<br>`ux` — [brief](briefs/BRIEF-listing-preview-vertical-split.md)
+- `P2` **Stop blank pages after deploy — serve the app shell NetworkFirst**<br>`ops` — [brief](briefs/BRIEF-pwa-shell-networkfirst.md) · [notes](briefs/FINDINGS-pwa-shell-networkfirst.md)
+- `P2` **Searchable movie picker when creating a showing**<br>`feature` — [brief](briefs/BRIEF-showing-movie-search.md)
+- `P2` **Staff bios — admin management + "Kenworthy Staff" on About Us**<br>`ux` — [brief](briefs/BRIEF-staff-bios.md)
+
+## Built, not deployed
+
+Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
+
+- `P1` **Film-pass admin — search, status filter/sort, delete cancelled**<br>`feature` — [brief](briefs/BRIEF-film-pass-admin-search.md)
+- `P1` **Online Ticket & Film-Pass Purchases Take No Payment**<br>`ops` — [brief](briefs/BRIEF-square-ticket-payments.md)
+
+## Shipped, but unverified
+
+These say shipped without citing a commit or PR. Probably right; not evidence.
+
+- **Fix staging password-reset "email rate limit" — wire the Send Email hook to Resend** ⚠️ unverified<br>`ops` — [brief](briefs/BRIEF-staging-auth-email-hook.md)
+- **Fix the footer newsletter signup + switch ticket-checkout marketing to opt-OUT** ⚠️ unverified<br>`ops` — [brief](briefs/BRIEF-mailchimp-signup-optout.md)
+- **Temporarily remove the screened-films Archive — preserve for post-launch** ⚠️ unverified<br>`feature` — [brief](briefs/BRIEF-remove-archive-section.md)
+- **Full RLS / permissions audit before launch** ⚠️ unverified<br>`security` — [brief](briefs/BRIEF-rls-security-audit.md) · [notes](briefs/FINDINGS-rls-security-audit.md)
+- **The 1000-row cap on the movie picker — fix and data audit** ⚠️ unverified<br>`data` — [brief](briefs/BRIEF-showing-movie-1000-cap.md)
+- **Turn off patron login (staff/admin-only auth), keep the data model** ⚠️ unverified<br>`security` — [brief](briefs/BRIEF-disable-member-login.md)
+- **Restore the DVD inventory** ⚠️ unverified<br>`data` — [brief](briefs/BRIEF-dvd-inventory-import.md)
+- **Brand the default email template — logo, site colors, correct name** ⚠️ unverified<br>`ops` — [brief](briefs/BRIEF-email-branding.md)
+- **Scanner + film-pass redemption refinements, purchase type, POS scanner** ⚠️ unverified<br>`feature` — [brief](briefs/BRIEF-scanner-filmpass-pos.md)
+- **Restore Per-Year Movies on the History Page** ⚠️ unverified<br>`ux` — [brief](briefs/BRIEF-restore-history-movies.md)
+- **Update the Handoff Doc (`PLATFORM.md`) to Match Reality** ⚠️ unverified<br>`feature` — [brief](briefs/BRIEF-update-handoff-doc.md)
+
+## Shipped
+
+- **Send a ticket confirmation for box-office (StaffPOS) sales**<br>`feature` — `#91`, `bb9a506` — [brief](briefs/BRIEF-pos-ticket-delivery.md)
+- **Re-activate phone capture and connect Twilio SMS**<br>`ops` — `#86`, `#90`, `070efee`, `dd1dc71` — [brief](briefs/BRIEF-reactivate-phone-sms.md)
+- **Make ticket / event / MET / film-pass sales write catalogued line items in Square**<br>`data` — `#103`, `9d5876a` — [brief](briefs/BRIEF-square-line-items.md)
+- **Restore venue + event date/time to film/event/MET items via the Square API — safely**<br>`ops` — `#85`, `3b26771`, `c095abd` — [brief](briefs/BRIEF-square-venue-date-api.md)
+- **Temporarily hide phone fields on purchases; require email (until SMS is wired)**<br>`ops` — `#84`, `3f186ad` — [brief](briefs/BRIEF-disable-phone-until-sms.md)
+- **System-wide rule — no ticket/purchase for a past showing (hide the button, enforce on the server)**<br>`bug` — `#102`, `c551357` — [brief](briefs/BRIEF-past-no-purchase.md)
+- **Add the Privacy Policy + Terms of Use pages + footer links**<br>`ux` — `#82`, `2c70348` — [brief](briefs/BRIEF-privacy-page-footer.md)
+- **Raise default readability & font size across the platform (older patron base)**<br>`ux` — `#100`, `#101`, `36203da`, `ac3e857`, `fc2765d8` — [brief](briefs/BRIEF-readability-font-size.md) · [notes](briefs/FINDINGS-readability-font-size.md)
+- **Register platform transactions in Square correctly — cash tenders + ticket/pass attribution**<br>`ops` — `#103`, `9d5876a` — [brief](briefs/BRIEF-square-transaction-registration.md)
+- **Activity log — make it admin-only + close coverage gaps (it already exists)**<br>`security` — `f697800` — [brief](briefs/BRIEF-activity-log-admin-only.md) · [notes](briefs/BRIEF-activity-log-admin-only-OUTCOME.md)
+- **Calendar view — drop the redundant per-entry date/time line so titles get more room**<br>`ux` — `99cc1d8` — [brief](briefs/BRIEF-calendar-entry-date-declutter.md)
+- **🚨 EMERGENCY — Square catalog over-pull flooded concessions on the LIVE site**<br>`bug` — `#78`, `20e5d3f`, `5b5ab23` — [brief](briefs/BRIEF-concessions-square-overpull.md)
+- **Generalize pass eligibility (festival passes + per-showing use limits)**<br>`feature` — `#52`, `e216dfa` — [brief](briefs/BRIEF-film-passes-eligibility-architecture.md)
+- **Gate the DVD page + nav entries to logged-in users only**<br>`security` — `c90637c` — [brief](briefs/BRIEF-gate-dvds-login.md)
+- **In-app "Invite / Add staff member" (create account + assign role)**<br>`ops` — `#62`, `481772b` — [brief](briefs/BRIEF-invite-staff.md) · [notes](briefs/BRIEF-invite-staff-OUTCOME.md)
+- **Press page + admin Press tab**<br>`ux` — `42cda95` — [brief](briefs/BRIEF-press-page.md)
+- **Fill in About / Hiring / Volunteer from kenworthy.org, remove Plan a Visit**<br>`ux` — `53ad127` — [brief](briefs/BRIEF-content-pages.md)
+- **Mail fulfilment queue — a posted pass is not a mailed pass**<br>`feature` — `999d5bb` — [brief](briefs/BRIEF-mail-fulfillment-queue.md)
+- **Rental requests — multi-day dates + "Generate Invoice" (Square)**<br>`ops` — `a8ee428` — [brief](briefs/BRIEF-rental-multiday-invoice.md)
+- **Rename "Get Tickets" → "Tickets" and add a "Film Pass" button beside it**<br>`feature` — `a046ca3` — [brief](briefs/BRIEF-tickets-filmpass-buttons.md)
 
 ---
 
-## Active / Launch Blockers
+## Tracked outside the brief system
 
-### ✅ Pass eligibility is per pass, not per screening (see `BRIEF-film-passes-eligibility-architecture.md`)
-`showings.film_pass_eligible` — one boolean, forced false for anything without a movie — is gone. A pass is good at a screening iff a `pass_type_showings` row exists for (its type, that showing), so a festival pass covers its own run across films, events and live performances and **nothing else**, while the standard pass keeps the screenings it always had. `film_pass_types` gains `per_showing_use_limit` (NULL = unlimited, N = cap, restoring the guard #49 removed as a per-type choice) and `is_default_for_movies` (pre-ticks the standard passes on a new $8 movie, which is what stops the old default vanishing silently).
-**Shipped to staging and production 2026-08-14** — PR #52 (`e216dfa`); migrations `20260814093200`, `20260814093250`, `20260814093300`. Prod backfill: **1,109** eligibility rows against the real `10-film pass`. Staging verified through the real door scanner — admit at the discounted rate, both cross-pass refusals with balances intact, and the per-screening limit. 148 vitest tests, 17 database-level checks.
-**Note for the box office:** production has no festival pass yet — create the type under Admin → Film Passes, then tag its run in **Screenings & Passes**.
-**Deploy note:** the two migrations must straddle the frontend deploy (apply `093200`, deploy, then `093300`), and the branch must be merged to `main` first — a concurrent deploy of an older bundle breaks the door scanner, which happened three times on staging.
+Hand-maintained. The generator copies this block through untouched, so
+anything here survives regeneration. Give an item a brief when it grows one,
+then delete it from here.
 
-
-### 🔴 Film passes → physical, activated on handoff (see `BRIEF-film-passes.md`, `FINDINGS-film-passes.md`)
-A film pass is now a paper card with a stickered QR. Kenworthy prints blank batches; a sticker becomes a funded pass only when staff scan it at handoff; it is redeemed **in person only**, deducting a configured amount (default $6) from the balance at an eligible standard movie. Buying online creates a `film_pass_orders` obligation — collect at the box office or have it posted — and issues **no** digital pass. Online redemption is gone: `Showing.tsx` and `MyPasses.tsx` no longer offer it and `ticket-checkout` returns 400 for `payment_method='film_pass'`.
-**Shipped to staging 2026-08-12** — migration `20260813000000_film_passes_physical.sql`, functions `film-pass-batch` / `film-pass-checkout` / `ticket-checkout`, Worker deployed. 21 database-level lifecycle checks, 14 Deno tests, 43 vitest tests, all passing; every deployed function curl-verified to boot and enforce its own rules.
-**Remaining before production:**
-- Merge `fix/staff-attendee-names` (carries `20260812190000`, applied to staging but not on `main`) — `supabase db push` refuses while a remote migration has no local file. **Do not** `migration repair --status reverted` it; it is a live RLS fix.
-- One sandbox purchase of each fulfilment kind (pickup, post) end-to-end through Square.
-- Print a sticker sheet and scan it with a real phone camera — the one check that cannot be faked.
-- Configure the real pass type(s) on production (`redemption_price` defaults to 6.00) and decide which upcoming screenings are `film_pass_eligible`.
-Also fixed, not in the brief: film-pass tickets were about to be counted as ticket income on top of the pass sale (double count), and pass income was booked from `status='active'` rows only — silently dropping any pass sold and fully spent in the same period. Both corrected in `QboExportTab`.
+<!-- HAND-MAINTAINED:START -->
 
 ### 🔴 History page images broken (Lovable asset stubs)
 The 10 archival photos in `src/assets/history/*.jpg.asset.json` are **Lovable CDN pointers**, not real files — their `url` fields are Lovable-internal (`/__l5e/...`) paths that don't resolve on Cloudflare. Unlike movie posters, there is no WordPress source to rehost from; the actual JPEGs live only on Lovable's R2 storage.
 **Fix (do while Lovable is still accessible):** retrieve the 10 originals from the Lovable project (preview page or asset export), drop real `.jpg` files into `src/assets/history/`, and change `History.tsx` imports from `*.jpg.asset.json` + `imgX.url` to direct `*.jpg` + `imgX` (same pattern as the logo and hero fixes). Fallback sources: kenworthy.org/history, or originals from KPAC.
 **Urgency:** the retrieval window closes when Lovable is disconnected.
-
-### 🔴 Ticket delivery — confirmation email + SMS (see `BRIEF-ticket-email.md`)
-`guest-checkout` never delivers the ticket. It creates the account and stores the ticket, then only fires Mailchimp *marketing* sync — no transactional confirmation. Confirmed via prod test: email purchase → nothing; phone purchase → nothing; account created silently.
-Required: transactional email (likely Resend) with QR; **SMS delivery for phone purchases** (Twilio vs. Mailchimp SMS — see decision note below); account-access path for guest-created accounts; custom SMTP on both Supabase projects for auth email at scale; a public mobile-friendly QR ticket page for the SMS link.
-**Shipped to production 2026-08-11** (`a72aabe`, `23d6bd3`) — full write-up, setup runbook and test plan in `docs/TICKET-DELIVERY.md`.
-Live on prod: migration applied (`order_token` + `confirmation_*` on `tickets`); `ticket-access` and `send-ticket-confirmation` deployed; `guest-checkout` redeployed. Verified end to end against prod — the deployed endpoint serves the ticket page unauthenticated, 404s unknown and cross-order tokens, and the PNG it returns decodes back to the exact `tickets.qr_code` the door scanner matches.
-Also fixed, not in the brief: the **signed-in** checkout path had the same no-delivery gap, and the My Tickets "QR code" was decorative — a grid coloured from `charCodeAt` of the ticket UUID, which could never scan. Both now issue real QRs.
-**Remaining:** set `RESEND_API_KEY` (+ `SITE_URL`) as edge function secrets — until then email records `confirmation_error` and purchases still succeed. Twilio not set up yet, so phone-only purchases still have no delivery path. Scanning and QR issuing are testable now without either.
-**Note on the SMS decision below:** the code is written against Twilio, behind `TWILIO_*` secrets. If Colin's answer points to Mailchimp SMS instead, only the `sendViaTwilio` function in `send-ticket-confirmation` changes — the branching, ticket page and QR work are provider-agnostic.
-Cleanup: remove test purchase data created in production during diagnosis — reviewed script ready at `supabase/scripts/cleanup_test_purchases.sql` (read-only inspection first, DELETEs commented out). Prod currently holds 2 such tickets.
-
-**SMS provider decision (pending Colin):** Mailchimp now offers transactional SMS, but it requires an existing paid SMS marketing plan and shares SMS credits between marketing and transactional (a marketing blast could starve ticket delivery). Twilio is purpose-built, isolates ticket delivery from marketing volume, cheaper to start. **Decision hinges on one question for Colin: does Kenworthy's Mailchimp plan already include SMS credits?** If yes → Mailchimp SMS is the pragmatic consolidation. If no → Twilio.
 
 ### 🔴 SMTP for Supabase auth emails
 No custom SMTP configured on either project. Password resets currently squeak through Supabase's rate-limited built-in service; won't hold at production volume. Awaiting Kenworthy's email provider details.
@@ -82,32 +134,6 @@ Note both projects already have full `service_role` CRUD on `tickets` independen
 
 Deploy to a specific project without disturbing the shared CLI link with `supabase functions deploy <fn> --project-ref <ref>`. `db push` has no such flag — it needs `--linked` (re-link, then restore) or `--db-url`.
 
-### ✅ Press page + admin Press tab — shipped to production 2026-08-14 (see `BRIEF-press-page.md`)
-`/press` was a `ComingSoon` stub while being linked from the header and the mobile menu — a page visitors already reached that told them nothing. It is now DB-driven: `press_articles` (link metadata for third-party coverage — headline, outlet, date, a staff-written blurb, thumbnail; **never the article body**, every card links out to the outlet) plus a single-row `press_page_content` for the page's own banner photo and intro paragraph. Up to two articles pin to the top; the rest run newest→oldest. New admin **Press** tab (`isAdmin`, next to Hiring).
-**Live on staging (`66ce7bbc`) and production (`fdf043bd`, rollback `3c3dd77b`) from `42cda95`** — migration `20260814020000_press_page.sql` applied to both, anon reads work and anon writes return 401 on both, and the deployed production chunk was fetched and checked to be the real page rather than a cached stub. No edge functions involved.
-Worth carrying forward: `published_date` is a Postgres DATE, and `new Date('2026-08-01')` parses as **UTC** midnight — July 31 in Pacific — so use the new `formatPlainDate` in `src/lib/datetime.ts` for any date-only column, never `formatShowtime` (that one is for TIMESTAMPTZ instants). Same trap as the Boise/Pacific import bug, different mechanism.
-**Remaining:** the manual test plan hasn't been run in a browser — verification so far is API- and bundle-level, and both environments' Press tabs are still empty.
-
-### ✅ Square Labor — tested for the first time, then fixed — shipped to production 2026-08-14 (see `BRIEF-square-labor-testing.md`, `FINDINGS-square-labor-testing.md`)
-The suite had never worked, and not because the sandbox was unseeded: **five Square requests were malformed**, and every failure was returned as `200 {simulated:true, note:"…sandbox…"}`. So the tabs read "no data yet" instead of broken, and scheduled-shift create and delete showed **success toasts while writing nothing**. Wrong shapes (each replayed against live Square to confirm): shift search nested a TimeRange inside `start_at` (400); wages came from `/labor/team-member-wages/search`, which doesn't exist (404); scheduled search asked for `limit 200` against a cap of 50 (400); create sent flat fields instead of `draft_shift_details` and omitted the required `job_id`; delete used `DELETE`, which doesn't exist. `publish_week` wrote a `draft:false` field Square has no concept of — now `bulk-publish`.
-`square-labor` also answered **500 to every request on production**, because it hardcoded the sandbox host and read only `SQUARE_SANDBOX_*` while prod holds the unprefixed secrets. It now resolves through `_shared/square.ts`, so Labor follows `SQUARE_ENV` exactly like ticket payments, and the LaborTab banner no longer promises a switchover that could not happen.
-Errors now throw and surface as 502 with Square's own message — which immediately exposed two more live defects: **breaks were impossible** (`break_type_id` is required and was never sent) and **scheduling fails for any member with no job assigned** (now resolved from their wage record). Also fixed a live crash: `TimeClockWidget` read `start_at` off the nested scheduled-shift payload and called `format(new Date(undefined))`, throwing `RangeError` for any linked staffer with an upcoming shift.
-**Live on staging (`5b0dc7bc`, bundle `index-nCExKFm7.js`) and production (`1dc853de`, bundle `index-l4K9NmuB.js`) from `e4958f6`** — `square-labor` deployed to both projects, no migrations. Verified end to end against the sandbox: a seeded 5h shift with a 30-minute unpaid break at $18.50/hr reports 4.5 hours and **$83.25**. Role gates re-checked with a purpose-made staff-only account (403 "Admin required") and a non-staff account (403 "Staff access required"). The deployed production chunk was fetched and confirmed to carry the fix.
-**Remaining, none of it code:**
-- `qbo-sync` is deployed to **neither** project, so Payroll Export's preview computes but has no push target. Deploy it or hide the tab.
-- **No break types are configured in Square** — staff cannot take breaks until one is added (Team → Settings → Breaks).
-- Every real team member needs a **job assigned** in Square, or they cannot be scheduled.
-- Square refuses to schedule **more than 10 days ahead without Team Plus**. A plan question, not a code one.
-- Labor now reads whichever Square account `SQUARE_ENV` selects. The Timecards tab says so on screen when it is reading the sandbox — worth a glance on prod to confirm which account is live.
-
----
-
-## Planned Refactors
-
-### 🟡 Rental invoices — first Square call has still not been made (see `BRIEF-rental-multiday-invoice.md`)
-Shipped to staging and production 2026-08-14 from `a8ee428`: multi-day rental dates (`end_date` + range display through the form, admin listing and contract), a `square-invoice` edge function that builds a **draft** Square invoice from `rental_invoice_lines`, and the contract restyled as a black-on-white document. Migrations applied to both projects; the function boots on both; production serves the new admin chunk.
-**Nothing has ever called Square from this path.** The request shapes for Customers / Orders / Invoices are reasoned from the API, not observed. Production's `SQUARE_ENV` points at the live account, so the first `Generate Invoice` there creates a draft in the real Square account — it sends and charges nothing, but do the first run on **staging** and compare it line for line against a real Kenworthy event invoice (tax, terms, wording) first. The contract restyle is done and confirmed — Tom checked the deployed `/contract/:token` on 2026-08-14 both on screen and through the "Draft PDF" export; both render black on white.
-
 ### 🟡 Comprehensive grants audit + single authoritative migration
 We have now hit **three separate grant-inconsistency bugs** from Lovable's migrations:
 1. `anon` missing SELECT on many tables (fixed)
@@ -123,13 +149,6 @@ Admin **Listings** (operational: now/soon) and superadmin **Archive** (history-p
 
 ### 🟡 Pricing tiers for ticketed events
 Import captured a single `ticket_price` and missed price ranges (e.g. `$12–27`). ~11 events, mostly APOD theatrical productions and comedy shows. Schema supports tiers via `showing_price_tiers`; enter accurately via admin, verified against Square. Not a candidate for automated text scraping.
-
-### 🟡 Showing / ticketing page media parity (see `BRIEF-showing-page-media.md`)
-`/showing/:id` already fetches poster, trailer, rating, genre, duration but renders only the description. Add the drawer's media block (trailer/poster + rating/genre/runtime badges). Display-only change; ideally extract a shared `ProductionMedia` component used by both the drawer and the Showing page.
-
----
-
-## Post-Launch Integrations (client-requested, tracked for later)
 
 ### 🟢 Letterboxd sync — log Kenworthy attendance to members' Letterboxd diaries
 **Client goal:** Kenworthy members who also use Letterboxd opt in to have their attendance auto-logged — ideally when a ticket is **scanned at the door** (confirmed attendance), a diary entry is written to their Letterboxd account.
@@ -187,3 +206,5 @@ Separate from Letterboxd. TMDB (The Movie Database) has an open, free, well-docu
 | Hero image fix (bundled, compressed) | ✅ |
 | Calendar defaults to month view | ✅ |
 | Home page layout restructure | ✅ |
+
+<!-- HAND-MAINTAINED:END -->

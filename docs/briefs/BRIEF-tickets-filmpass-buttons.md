@@ -1,3 +1,13 @@
+---
+brief: tickets-filmpass-buttons
+title: Rename "Get Tickets" → "Tickets" and add a "Film Pass" button beside it
+status: shipped
+track: feature
+date: 2026-08-13
+shipped_in: ["a046ca3"]
+verified: true
+---
+
 # Brief (for Claude Code): Rename "Get Tickets" → "Tickets" and add a "Film Pass" button beside it
 
 **Status:** ✅ Shipped and verified in production August 13 2026 — `a046ca3`

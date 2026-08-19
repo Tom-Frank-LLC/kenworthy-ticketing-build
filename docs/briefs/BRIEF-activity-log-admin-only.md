@@ -1,3 +1,14 @@
+---
+brief: activity-log-admin-only
+title: Activity log — make it admin-only + close coverage gaps (it already exists)
+status: shipped
+track: security
+date: 2026-08-14
+shipped_in: ["f697800"]
+verified: true
+findings: BRIEF-activity-log-admin-only-OUTCOME.md
+---
+
 # Brief (for Claude Code): Activity log — make it admin-only + close coverage gaps (it already exists)
 
 **Status:** ✅ Shipped — admin-only activity log, `f697800`. See `BRIEF-activity-log-admin-only-OUTCOME.md` for what changed.

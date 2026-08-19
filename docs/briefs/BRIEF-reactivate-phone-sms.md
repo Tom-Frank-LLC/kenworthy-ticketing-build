@@ -1,3 +1,13 @@
+---
+brief: reactivate-phone-sms
+title: Re-activate phone capture and connect Twilio SMS
+status: shipped
+track: ops
+date: 2026-08-18
+shipped_in: ["#86", "#90", "070efee", "dd1dc71"]
+verified: true
+---
+
 # Brief (for Claude Code + Tom): Re-activate phone capture and connect Twilio SMS
 
 **Status:** ✅ Shipped — `070efee` (PR #86); consent made an explicit checkbox in `dd1dc71` (PR #90).

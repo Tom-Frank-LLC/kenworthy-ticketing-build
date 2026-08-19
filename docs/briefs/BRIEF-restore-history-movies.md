@@ -1,3 +1,12 @@
+---
+brief: restore-history-movies
+title: Restore Per-Year Movies on the History Page
+status: shipped
+track: ux
+date: 2026-08-12
+verified: false
+---
+
 # Brief: Restore Per-Year Movies on the History Page
 
 **Status:** ✅ **Done — imported to production and staging (Aug 13, 2026)**

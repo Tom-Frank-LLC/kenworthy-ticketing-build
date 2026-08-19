@@ -1,3 +1,14 @@
+---
+brief: film-passes
+title: Film Passes — physical, activated-on-handoff, in-person only
+status: needs-triage
+track: feature
+severity: P2
+date: 2026-08-13
+verified: false
+findings: FINDINGS-film-passes.md
+---
+
 # Brief: Film Passes — physical, activated-on-handoff, in-person only
 
 **Status:** 🟢 Draft for review — supersedes and merges `BRIEF-hybrid-film-passes.md` + `BRIEF-film-pass-as-ticket.md`

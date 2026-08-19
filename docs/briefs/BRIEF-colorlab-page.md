@@ -1,3 +1,13 @@
+---
+brief: colorlab-page
+title: Publish the Color Lab team tool at /colorlab.html
+status: needs-triage
+track: ux
+severity: P2
+date: 2026-08-13
+verified: false
+---
+
 # Brief (for Claude Code): Publish the Color Lab team tool at /colorlab.html
 
 **Status:** 🟢 Ready — the page is built and verified; delivered as `colorlab.html`.

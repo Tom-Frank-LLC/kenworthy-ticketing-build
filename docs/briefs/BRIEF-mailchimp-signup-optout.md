@@ -1,3 +1,12 @@
+---
+brief: mailchimp-signup-optout
+title: Fix the footer newsletter signup + switch ticket-checkout marketing to opt-OUT
+status: shipped
+track: ops
+date: 2026-08-14
+verified: false
+---
+
 # Brief (for Claude Code): Fix the footer newsletter signup + switch ticket-checkout marketing to opt-OUT
 
 **Status:** ✅ Shipped — confirmed by Tom, August 19 2026; the Mailchimp subscribe/webhook functions carry it.

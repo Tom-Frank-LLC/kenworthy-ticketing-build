@@ -1,3 +1,13 @@
+---
+brief: square-venue-date-api
+title: Restore venue + event date/time to film/event/MET items via the Square API — safely
+status: shipped
+track: ops
+date: 2026-08-17
+shipped_in: ["#85", "3b26771", "c095abd"]
+verified: true
+---
+
 # Brief (for Claude Code): Restore venue + event date/time to film/event/MET items via the Square API — safely
 
 **Status:** ✅ Shipped — PR #85 (`3b26771`); venue on 484 listings and dates on 259 (`c095abd`).

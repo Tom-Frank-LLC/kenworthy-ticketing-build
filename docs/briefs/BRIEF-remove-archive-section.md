@@ -1,3 +1,12 @@
+---
+brief: remove-archive-section
+title: Temporarily remove the screened-films Archive — preserve for post-launch
+status: shipped
+track: feature
+date: 2026-08-14
+verified: false
+---
+
 # Brief (for Claude Code): Temporarily remove the screened-films Archive — preserve for post-launch
 
 **Status:** ✅ Shipped — no `archive` section remains in `AdminDashboard.tsx`.

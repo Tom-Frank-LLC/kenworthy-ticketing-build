@@ -1,3 +1,13 @@
+---
+brief: film-passes-eligibility-architecture
+title: Generalize pass eligibility (festival passes + per-showing use limits)
+status: shipped
+track: feature
+date: 2026-08-14
+shipped_in: ["#52", "e216dfa"]
+verified: true
+---
+
 # Brief (for Claude Code): Generalize pass eligibility (festival passes + per-showing use limits)
 
 **Status:** ✅ Shipped to **staging and production**, August 14, 2026 (PR #52, merged as `e216dfa`). Verified end to end on staging through the real UI, and on production by row counts and the live scanner query. See **Results** at the end of this file for the decisions taken, what changed, how each claim was verified, and the deploy ordering this change requires.

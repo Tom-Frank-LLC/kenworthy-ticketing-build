@@ -1,3 +1,13 @@
+---
+brief: concessions-square-overpull
+title: 🚨 EMERGENCY — Square catalog over-pull flooded concessions on the LIVE site
+status: shipped
+track: bug
+date: 2026-08-14
+shipped_in: ["#78", "20e5d3f", "5b5ab23"]
+verified: true
+---
+
 # Brief (for Claude Code): 🚨 EMERGENCY — Square catalog over-pull flooded concessions on the LIVE site
 
 **Status:** ✅ Shipped — the Concessions tab was hidden until it could take payment (`20e5d3f`, PR #78) and the push disabled (`5b5ab23`).
