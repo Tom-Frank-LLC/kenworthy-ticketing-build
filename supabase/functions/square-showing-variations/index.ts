@@ -129,7 +129,7 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { /* none */ }
 
   const action: string = payload.action ?? "plan";
-  if (!["plan", "apply", "ensure_showing", "map_donation", "link_item"].includes(action)) {
+  if (!["plan", "apply", "ensure_showing", "map_donation", "link_item", "plan_film_passes", "link_pass_type"].includes(action)) {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
 
@@ -148,6 +148,106 @@ Deno.serve(async (req: Request) => {
   const maxBatch = isEnsure ? Number(payload.max_batch ?? 8) : Number(payload.max_batch ?? 1);
   if (action === "apply" && !dryRun && payload.confirm !== "WRITE") {
     return json({ error: 'a real write requires confirm:"WRITE"' }, 400);
+  }
+
+  // ---- film pass types ------------------------------------------------------
+  //
+  // Simpler than a showing: a pass is one REGULAR item filed under
+  // '9 Film Passes' with no showtime dimension, so the mapping is one-to-one and
+  // there is nothing to append. It either exists in the catalog or somebody
+  // makes it.
+  //
+  // Linked by VARIATION id rather than item id, because that is what a checkout
+  // line item actually sends. An item with several variations — a 5-admission
+  // and a 10-admission pass on one item — would otherwise leave the choice
+  // ambiguous at exactly the wrong moment.
+  if (action === "plan_film_passes") {
+    try {
+      const { data: types } = await admin
+        .from("film_pass_types")
+        .select("id, name, price, is_active, square_item_id, square_variation_id")
+        .eq("is_active", true)
+        .order("price");
+
+      const items = await listItems(config);
+      const byVariation = new Map<string, { item: any; variation: any }>();
+      for (const i of items) {
+        for (const v of i.item_data?.variations ?? []) byVariation.set(v.id, { item: i, variation: v });
+      }
+      // Passes are REGULAR items; an EVENT item is a screening and never a pass.
+      const candidates = items
+        .filter((i) => i.item_data?.product_type !== "EVENT")
+        .map((i) => ({ id: i.id, name: i.item_data?.name ?? "" }));
+
+      const rows = (types ?? []).map((t: any) => {
+        const linked = t.square_variation_id ? byVariation.get(t.square_variation_id) : null;
+        const exact = items.find((i) =>
+          normalizeTitle(i.item_data?.name ?? "") === normalizeTitle(t.name) &&
+          i.item_data?.product_type !== "EVENT"
+        );
+        const source = linked?.item ?? exact ?? null;
+        return {
+          pass_type_id: t.id,
+          name: t.name,
+          price_cents: Math.round(Number(t.price) * 100),
+          status: linked ? "linked" : exact ? "match_found" : "needs_item",
+          square_variation_id: t.square_variation_id ?? null,
+          square_item_name: source?.item_data?.name ?? null,
+          // Every variation on the candidate item, so a human picks the right
+          // one rather than us assuming the first is correct.
+          variations: (source?.item_data?.variations ?? []).map((v: any) => ({
+            id: v.id,
+            name: v.item_variation_data?.name ?? null,
+            price_cents: v.item_variation_data?.price_money?.amount ?? null,
+          })),
+          possible_matches: linked || exact ? [] : suggestTitleMatches(t.name, candidates),
+        };
+      });
+
+      return json({
+        ok: true, action, environment: config.environment,
+        catalog_items: items.length,
+        counts: rows.reduce((a: any, r: any) => ({ ...a, [r.status]: (a[r.status] ?? 0) + 1 }), {}),
+        pass_types: rows,
+        note: "Read-only. Nothing was written to Square.",
+      });
+    } catch (e: any) {
+      return json({ error: e.message ?? String(e) }, 500);
+    }
+  }
+
+  if (action === "link_pass_type") {
+    const passTypeId = String(payload.pass_type_id ?? "").trim();
+    const variationId = String(payload.square_variation_id ?? "").trim();
+    if (!passTypeId || !variationId) {
+      return json({ error: "pass_type_id and square_variation_id are both required" }, 400);
+    }
+    try {
+      // Resolve the variation to its parent item and confirm it is real before
+      // pointing sales at it. A wrong id here bills film passes against somebody
+      // else's product for as long as nobody notices.
+      const res = await sq(config, `/catalog/object/${variationId}?include_related_objects=false`);
+      const obj = res.object;
+      if (!obj || obj.type !== "ITEM_VARIATION") {
+        return json({ error: "That id is not a catalog ITEM_VARIATION." }, 400);
+      }
+      const itemId = obj.item_variation_data?.item_id;
+      if (!itemId) return json({ error: "That variation has no parent item." }, 400);
+
+      const { error } = await admin
+        .from("film_pass_types")
+        .update({ square_item_id: itemId, square_variation_id: variationId })
+        .eq("id", passTypeId);
+      if (error) return json({ error: `Could not save the link: ${error.message}` }, 500);
+
+      return json({
+        ok: true, action, pass_type_id: passTypeId,
+        square_item_id: itemId, square_variation_id: variationId,
+        variation_name: obj.item_variation_data?.name ?? null,
+      });
+    } catch (e: any) {
+      return json({ error: e.message ?? String(e) }, 500);
+    }
   }
 
   // ---- link_item ----------------------------------------------------------

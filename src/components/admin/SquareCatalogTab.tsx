@@ -20,6 +20,17 @@ import { Loader2, RefreshCw, Link2, AlertTriangle } from 'lucide-react';
  * person confirms.
  */
 
+type PassRow = {
+  pass_type_id: string;
+  name: string;
+  price_cents: number;
+  status: 'linked' | 'match_found' | 'needs_item';
+  square_variation_id: string | null;
+  square_item_name: string | null;
+  variations: Array<{ id: string; name: string | null; price_cents: number | null }>;
+  possible_matches?: Array<{ id: string; name: string; why: string }>;
+};
+
 type Plan = {
   showings: number;
   catalog_items: number;
@@ -41,6 +52,7 @@ const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
 export default function SquareCatalogTab() {
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [passes, setPasses] = useState<PassRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -54,7 +66,12 @@ export default function SquareCatalogTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setPlan(await call({ action: 'plan', horizon_days: 120 }));
+      const [p, fp] = await Promise.all([
+        call({ action: 'plan', horizon_days: 120 }),
+        call({ action: 'plan_film_passes' }),
+      ]);
+      setPlan(p);
+      setPasses(fp.pass_types ?? []);
     } catch (e: any) {
       toast.error(e.message || 'Could not read the Square catalog');
     } finally {
@@ -92,6 +109,17 @@ export default function SquareCatalogTab() {
       await load();
     } catch (e: any) {
       toast.error(e.message || 'Could not create them');
+    } finally { setBusy(null); }
+  };
+
+  const linkPass = async (passTypeId: string, variationId: string, name: string) => {
+    setBusy(passTypeId);
+    try {
+      await call({ action: 'link_pass_type', pass_type_id: passTypeId, square_variation_id: variationId });
+      toast.success(`Linked to ${name}.`);
+      await load();
+    } catch (e: any) {
+      toast.error(e.message || 'Could not link that pass');
     } finally { setBusy(null); }
   };
 
@@ -213,6 +241,52 @@ export default function SquareCatalogTab() {
                   <strong> Event</strong> item under <strong>{n.category}</strong>, then refresh.
                   Only Event items can hold a venue and showtimes, and the type
                   cannot be changed afterwards.
+                </p>
+              )}
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {(passes ?? []).length > 0 && (
+        <Card className="p-4 space-y-3">
+          <div className="font-medium">Film passes</div>
+          <p className="text-sm text-muted-foreground">
+            A pass is one item in Square with no showtimes, so it is linked once
+            and then stays linked. Pick the variation, not just the item — that is
+            what a sale actually charges against.
+          </p>
+          {(passes ?? []).map((pt) => (
+            <div key={pt.pass_type_id} className="rounded-md border border-border p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-sm">{pt.name} · {money(pt.price_cents)}</span>
+                <Badge variant={pt.status === 'linked' ? 'default' : 'outline'} className="text-xs">
+                  {pt.status === 'linked' ? 'linked' : pt.status === 'match_found' ? 'match found' : 'no item'}
+                </Badge>
+              </div>
+              {pt.status !== 'linked' && pt.variations.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">In Square as {pt.square_item_name}:</p>
+                  {pt.variations.map((v) => (
+                    <div key={v.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground">
+                        {v.name || 'Regular'}{v.price_cents != null && ` · ${money(v.price_cents)}`}
+                      </span>
+                      <Button size="sm" variant="outline" disabled={!!busy}
+                        onClick={() => linkPass(pt.pass_type_id, v.id, v.name || pt.name)}>
+                        {busy === pt.pass_type_id
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <><Link2 className="h-3 w-3 mr-1" /> Use this</>}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pt.status === 'needs_item' && !pt.variations.length && (
+                <p className="text-xs text-muted-foreground">
+                  {(pt.possible_matches ?? []).length
+                    ? <>Similar in Square: {(pt.possible_matches ?? []).map(m => m.name).join(', ')}. Open it in Square to check, then refresh.</>
+                    : <>Nothing similar in the catalog. Create it in Square under <strong>9 Film Passes</strong>, then refresh. Passes are ordinary items, not Event items.</>}
                 </p>
               )}
             </div>
