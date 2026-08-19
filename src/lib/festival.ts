@@ -137,3 +137,48 @@ export function stripLeadingShowtime(description: string | null | undefined): st
   const stripped = trimmed.replace(LEADING_SHOWTIME, '').trim();
   return stripped.length > 0 ? stripped : trimmed;
 }
+
+export interface FestivalYear {
+  year: number;
+  /** The slides, in reading order. */
+  pages: FestivalProgram[];
+  /** The whole booklet as a single file, offered for download. */
+  booklet: FestivalProgram | null;
+  /** Storage path of the image to represent this year in the list. */
+  coverPath: string | null;
+}
+
+/**
+ * A year's worth of rows, arranged the way the archive presents it.
+ *
+ * The table stores one row per file because that is what was uploaded. The page
+ * shows one entry per *festival*, because "the 2024 programme" is the thing a
+ * reader came for — a list of thirteen rows, twelve of them called "Page N", is
+ * a filesystem rather than an archive.
+ *
+ * The booklet PDF stops being something to display and becomes something to
+ * download. Embedding it meant handing the reader the browser's PDF viewer,
+ * complete with a toolbar offering to rotate, annotate and summarise a museum
+ * piece. The pages are images, so the slideshow that shows them is read-only by
+ * construction rather than by suppressing someone else's controls.
+ *
+ * A year with no page images falls back to its cover as a single slide. That
+ * happens when a PDF was uploaded by hand rather than imported, and it is
+ * deliberately not treated as an error: one slide and a download still beats an
+ * empty pane.
+ */
+export function describeYear(group: ProgramYear): FestivalYear {
+  const pages = group.programs.filter(p => p.file_type === 'image');
+  const booklet = group.programs.find(p => p.file_type === 'pdf') ?? null;
+  const coverPath =
+    pages[0]?.file_path ?? booklet?.thumbnail_path ?? null;
+
+  return {
+    year: group.year,
+    // Without pages the cover is the only thing to show, and showing it beats
+    // showing nothing. It is already a FestivalProgram row, so no shim needed.
+    pages: pages.length > 0 ? pages : (booklet?.thumbnail_path ? [booklet] : []),
+    booklet,
+    coverPath,
+  };
+}

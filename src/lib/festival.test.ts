@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupProgramsByYear, selectFestivalLineup, stripLeadingShowtime, type FestivalProgram } from '@/lib/festival';
+import { describeYear, groupProgramsByYear, selectFestivalLineup, stripLeadingShowtime, type FestivalProgram } from '@/lib/festival';
 
 const program = (over: Partial<FestivalProgram> & { id: string; year: number }): FestivalProgram => ({
   title: null, file_path: `${over.id}.pdf`, file_type: 'pdf', display_order: 0, ...over,
@@ -97,5 +97,41 @@ describe('stripLeadingShowtime', () => {
 
   it('handles a missing description', () => {
     expect(stripLeadingShowtime(null)).toBe('');
+  });
+});
+
+describe('describeYear', () => {
+  const page = (id: string, order: number) =>
+    program({ id, year: 2024, display_order: order, file_type: 'image', title: `Page ${order}` });
+  const pdf = (id: string, thumb: string | null) =>
+    program({ id, year: 2024, display_order: 500, file_type: 'pdf', thumbnail_path: thumb });
+
+  it('treats the image rows as the slides, in order', () => {
+    const y = describeYear({ year: 2024, programs: [page('a', 1), page('b', 2), pdf('z', 'c.jpg')] });
+    expect(y.pages.map(p => p.id)).toEqual(['a', 'b']);
+  });
+
+  it('keeps the booklet as a download rather than a slide', () => {
+    const y = describeYear({ year: 2024, programs: [page('a', 1), pdf('z', 'c.jpg')] });
+    expect(y.booklet?.id).toBe('z');
+    expect(y.pages.some(p => p.file_type === 'pdf')).toBe(false);
+  });
+
+  it('covers the year with its first page when there is one', () => {
+    const y = describeYear({ year: 2024, programs: [page('a', 1), pdf('z', 'c.jpg')] });
+    expect(y.coverPath).toBe('a.pdf');
+  });
+
+  it('falls back to the booklet cover when only a PDF was uploaded', () => {
+    const y = describeYear({ year: 2024, programs: [pdf('z', 'cover.jpg')] });
+    expect(y.coverPath).toBe('cover.jpg');
+    expect(y.pages.map(p => p.id)).toEqual(['z']);
+    expect(y.booklet?.id).toBe('z');
+  });
+
+  it('has no cover and no slides for a PDF with no cover', () => {
+    const y = describeYear({ year: 2024, programs: [pdf('z', null)] });
+    expect(y.coverPath).toBeNull();
+    expect(y.pages).toEqual([]);
   });
 });

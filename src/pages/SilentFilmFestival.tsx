@@ -4,17 +4,20 @@ import { supabase } from '@/integrations/supabase/client';
 import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ChevronRight, Download, FileText, Ticket } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, FileText, Ticket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
+import { useIsSplitLayout } from '@/hooks/use-mobile';
 import {
   FESTIVAL_SLUG,
+  describeYear,
   groupProgramsByYear,
   selectFestivalLineup,
   stripLeadingShowtime,
   type FestivalProgram,
+  type FestivalYear,
 } from '@/lib/festival';
 
 /**
@@ -85,7 +88,11 @@ export default function SilentFilmFestival() {
   const [screenings, setScreenings] = useState<Screening[]>([]);
   const [programs, setPrograms] = useState<FestivalProgram[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  // Which side of the split we are on decides where the slideshow *mounts*,
+  // not just where it shows. Rendering both and hiding one with `lg:hidden`
+  // put two copies in the DOM, and each one fetched its own page images.
+  const isSplitLayout = useIsSplitLayout();
 
   useEffect(() => {
     let cancelled = false;
@@ -144,17 +151,22 @@ export default function SilentFilmFestival() {
   }, []);
 
   const lineup = useMemo(() => selectFestivalLineup(screenings), [screenings]);
-  const archive = useMemo(() => groupProgramsByYear(programs), [programs]);
+  // One entry per festival rather than one per file: "the 2024 programme" is
+  // what a reader came for, not twelve rows called Page N.
+  const archive = useMemo(
+    () => groupProgramsByYear(programs).map(describeYear),
+    [programs],
+  );
 
-  // The newest year's first page, so the pane is never an empty box on arrival.
-  const firstProgram = archive[0]?.programs[0] ?? null;
+  // The newest festival, so the pane is never an empty box on arrival.
+  const newestYear = archive[0]?.year ?? null;
   useEffect(() => {
-    if (!selectedId && firstProgram) setSelectedId(firstProgram.id);
-  }, [selectedId, firstProgram]);
+    if (selectedYear === null && newestYear !== null) setSelectedYear(newestYear);
+  }, [selectedYear, newestYear]);
 
   const selected = useMemo(
-    () => programs.find(p => p.id === selectedId) ?? null,
-    [programs, selectedId],
+    () => archive.find(a => a.year === selectedYear) ?? null,
+    [archive, selectedYear],
   );
   const festivalYear = lineup.length
     ? new Date(lineup[0].start_time).getFullYear()
@@ -174,56 +186,111 @@ export default function SilentFilmFestival() {
     }).data.publicUrl;
 
   /**
-   * The little image on a row. An image program is its own thumbnail; a PDF
-   * borrows the cover rendered for it at import. A PDF with no cover returns
-   * null and the row draws a glyph instead — a missing cover must not cost the
-   * reader the row.
+   * A year's programme, one page at a time.
+   *
+   * Images rather than an embedded PDF, and that is the whole point. The
+   * browser's PDF viewer arrives with a toolbar offering to rotate, annotate,
+   * download and summarise, none of which belongs on a scanned museum piece,
+   * and it cannot be reliably suppressed — `#toolbar=0` is an Adobe convention
+   * Chrome happens to honour and Firefox ignores. A slideshow of images has no
+   * controls except the ones written here, so it is read-only because of what
+   * it is rather than because something was hidden.
    */
-  const tileUrl = (program: FestivalProgram): string | null => {
-    if (program.file_type === 'image') return thumbUrl(program.file_path, 160);
-    return program.thumbnail_path ? thumbUrl(program.thumbnail_path, 160) : null;
-  };
+  const YearSlideshow = ({ entry }: { entry: FestivalYear }) => {
+    const [page, setPage] = useState(0);
+    const total = entry.pages.length;
 
-  /** The preview pane. Renders in place — nothing here opens a new tab. */
-  const ProgramPreview = ({ program }: { program: FestivalProgram }) => {
-    const label = program.title ?? `${program.year} program`;
-    const alt = `${program.title ? `${program.title} — ` : ''}${program.year} Silent Film Festival program`;
+    // A new year opens at its cover, not at whatever page the last one reached.
+    useEffect(() => { setPage(0); }, [entry.year]);
+
+    if (total === 0) {
+      return (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50" aria-hidden="true" />
+            <p className="font-serif text-muted-foreground">
+              This programme has no scanned pages yet.
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    const index = Math.min(page, total - 1);
+    const current = entry.pages[index];
+    const go = (delta: number) =>
+      setPage(p => Math.min(total - 1, Math.max(0, p + delta)));
+
     return (
       <Card className="overflow-hidden">
         <CardContent className="p-0">
-          {program.file_type === 'image' ? (
+          <div
+            className="relative bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            role="group"
+            aria-roledescription="carousel"
+            aria-label={`${entry.year} Silent Film Festival programme`}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+              if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+            }}
+          >
             <img
-              src={thumbUrl(program.file_path, 1200)}
-              alt={alt}
+              key={current.id}
+              src={thumbUrl(current.file_path, 1400)}
+              alt={`Page ${index + 1} of the ${entry.year} Silent Film Festival programme`}
               loading="lazy"
               decoding="async"
-              className="w-full max-h-[70vh] object-contain bg-background"
+              className="w-full max-h-[72vh] object-contain"
             />
-          ) : (
-            /* The booklet, readable where it sits. The browser's own PDF
-               viewer already gives page turning and zoom, so embedding it
-               beats sending the reader somewhere else to get the same thing. */
-            <iframe
-              src={`${publicUrl(program.file_path)}#view=FitH`}
-              title={alt}
-              className="w-full h-[70vh] bg-background border-0"
-            />
-          )}
+
+            {total > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => go(-1)}
+                  disabled={index === 0}
+                  aria-label="Previous page"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 border border-border p-2 text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => go(1)}
+                  disabled={index >= total - 1}
+                  aria-label="Next page"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 border border-border p-2 text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </>
+            )}
+          </div>
+
           <div className="flex items-center justify-between gap-3 p-4 border-t border-border">
             <div className="min-w-0">
               <p className="font-display uppercase tracking-[0.15em] text-xs text-primary">
-                {program.year}
+                {entry.year}
               </p>
-              <p className="font-serif text-foreground truncate">{label}</p>
+              <p className="font-serif text-foreground" aria-live="polite">
+                {total > 1 ? `Page ${index + 1} of ${total}` : 'Programme'}
+              </p>
             </div>
-            {/* The one link that still leaves the page, because saving a file
-                is the thing a new tab is actually for. */}
-            <Button asChild variant="outline" size="sm" className="shrink-0">
-              <a href={publicUrl(program.file_path)} target="_blank" rel="noopener noreferrer">
-                <Download className="h-4 w-4 mr-1" aria-hidden="true" />
-                {program.file_type === 'pdf' ? 'Download PDF' : 'Full size'}
-              </a>
-            </Button>
+            {entry.booklet && (
+              /* The one link that still leaves the page, because saving a file
+                 is what a new tab is actually for. */
+              <Button asChild variant="outline" size="sm" className="shrink-0">
+                <a
+                  href={publicUrl(entry.booklet.file_path)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Download className="h-4 w-4 mr-1" aria-hidden="true" />
+                  Download PDF
+                </a>
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -386,79 +453,70 @@ export default function SilentFilmFestival() {
                under the selected row instead, because a sticky column with no
                room to sit is just a page you have to scroll past. */
             <div className="grid lg:grid-cols-[1fr_1.8fr] gap-6 lg:gap-10">
-              <div className="min-w-0 space-y-6 lg:max-h-[620px] lg:overflow-y-auto lg:pr-2">
-                {archive.map((group) => (
-                  <div key={group.year}>
-                    <h3 className="font-display uppercase tracking-[0.25em] text-sm text-primary mb-3">
-                      {group.year}
-                    </h3>
-                    <ul className="space-y-2">
-                      {group.programs.map((program) => {
-                        const isSelected = selected?.id === program.id;
-                        const thumb = tileUrl(program);
-                        return (
-                          <li key={program.id}>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedId(program.id)}
-                              aria-current={isSelected ? 'true' : undefined}
-                              className={cn(
-                                'w-full text-left rounded-md border p-3 transition-colors flex items-center gap-3 group',
-                                isSelected
-                                  ? 'border-primary bg-primary/10'
-                                  : 'border-accent/20 bg-card hover:border-primary/60 hover:bg-primary/5',
-                              )}
-                            >
-                              {thumb ? (
-                                <img
-                                  src={thumb}
-                                  alt=""
-                                  loading="lazy"
-                                  decoding="async"
-                                  className="w-12 h-16 object-cover rounded border border-border shrink-0 bg-background"
-                                />
-                              ) : (
-                                <span className="w-12 h-16 shrink-0 rounded border border-border flex items-center justify-center text-muted-foreground">
-                                  <FileText className="h-5 w-5" aria-hidden="true" />
-                                </span>
-                              )}
-                              <span className="flex-1 min-w-0">
-                                <span
-                                  className={cn(
-                                    'block font-serif text-base leading-snug truncate',
-                                    isSelected ? 'text-primary' : 'group-hover:text-primary',
-                                  )}
-                                >
-                                  {program.title ?? `${group.year} program`}
-                                </span>
-                                <span className="block text-xs uppercase tracking-widest text-muted-foreground mt-0.5">
-                                  {program.file_type === 'pdf' ? 'Full programme · PDF' : 'Page'}
-                                </span>
-                              </span>
-                              <ChevronRight
-                                className="h-5 w-5 shrink-0 text-muted-foreground lg:hidden"
-                                aria-hidden="true"
-                              />
-                            </button>
-
-                            {/* Below lg the preview belongs with the row that
-                                opened it, not in a column that is not there. */}
-                            {isSelected && (
-                              <div className="lg:hidden mt-3">
-                                <ProgramPreview program={program} />
-                              </div>
+              <ul className="min-w-0 space-y-2 lg:max-h-[620px] lg:overflow-y-auto lg:pr-2">
+                {archive.map((entry) => {
+                  const isSelected = selected?.year === entry.year;
+                  const cover = entry.coverPath ? thumbUrl(entry.coverPath, 160) : null;
+                  return (
+                    <li key={entry.year}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedYear(entry.year)}
+                        aria-current={isSelected ? 'true' : undefined}
+                        className={cn(
+                          'w-full text-left rounded-md border p-3 transition-colors flex items-center gap-3 group',
+                          isSelected
+                            ? 'border-primary bg-primary/10'
+                            : 'border-accent/20 bg-card hover:border-primary/60 hover:bg-primary/5',
+                        )}
+                      >
+                        {cover ? (
+                          <img
+                            src={cover}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className="w-12 h-16 object-cover rounded border border-border shrink-0 bg-background"
+                          />
+                        ) : (
+                          <span className="w-12 h-16 shrink-0 rounded border border-border flex items-center justify-center text-muted-foreground">
+                            <FileText className="h-5 w-5" aria-hidden="true" />
+                          </span>
+                        )}
+                        <span className="flex-1 min-w-0">
+                          <span
+                            className={cn(
+                              'block font-display uppercase tracking-[0.15em] text-base',
+                              isSelected ? 'text-primary' : 'group-hover:text-primary',
                             )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+                          >
+                            {entry.year}
+                          </span>
+                          <span className="block text-xs uppercase tracking-widest text-muted-foreground mt-0.5">
+                            {entry.pages.length > 1 ? `${entry.pages.length} pages` : 'Programme'}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          className="h-5 w-5 shrink-0 text-muted-foreground lg:hidden"
+                          aria-hidden="true"
+                        />
+                      </button>
 
-              {selected && (
-                <div className="hidden min-w-0 lg:block lg:sticky lg:top-4 lg:self-start">
-                  <ProgramPreview program={selected} />
+                      {/* Below lg the slideshow belongs with the year that
+                          opened it, not in a column that is not there. */}
+                      {!isSplitLayout && isSelected && (
+                        <div className="mt-3">
+                          <YearSlideshow entry={entry} />
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {isSplitLayout && selected && (
+                <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+                  <YearSlideshow entry={selected} />
                 </div>
               )}
             </div>
