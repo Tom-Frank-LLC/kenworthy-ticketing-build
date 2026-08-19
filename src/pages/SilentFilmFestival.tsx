@@ -4,17 +4,20 @@ import { supabase } from '@/integrations/supabase/client';
 import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { FileText, Ticket } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, FileText, Ticket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
+import { useIsSplitLayout } from '@/hooks/use-mobile';
 import {
   FESTIVAL_SLUG,
+  describeYear,
   groupProgramsByYear,
   selectFestivalLineup,
   stripLeadingShowtime,
   type FestivalProgram,
+  type FestivalYear,
 } from '@/lib/festival';
 
 /**
@@ -75,9 +78,166 @@ interface FestivalPass {
   redemption_price: number;
 }
 
+const publicUrl = (path: string) =>
+  supabase.storage.from('festival-programs').getPublicUrl(path).data.publicUrl;
+
+const thumbUrl = (path: string, width: number) =>
+  supabase.storage.from('festival-programs').getPublicUrl(path, {
+    transform: { width, quality: 70 },
+  }).data.publicUrl;
+
+/** What a slide is actually fetched at. Kept here so preloading asks for the
+ *  identical URL the <img> will ask for — a different width is a different
+ *  object and the preload would warm the wrong one. */
+const SLIDE_WIDTH = 1400;
+
 /** A screening's production, whichever of the three tables it lives in. */
 function productionOf(screening: Screening): Production | null {
   return screening.movies ?? screening.events ?? screening.live_performances ?? null;
+}
+
+/**
+ * A year's programme, one page at a time.
+ *
+ * Images rather than an embedded PDF, and that is the whole point. The
+ * browser's PDF viewer arrives with a toolbar offering to rotate, annotate,
+ * download and summarise, none of which belongs on a scanned programme, and it
+ * cannot be reliably suppressed — `#toolbar=0` is an Adobe convention Chrome
+ * happens to honour and Firefox ignores. A slideshow of images has no controls
+ * except the ones written here, so it is read-only because of what it is rather
+ * than because something was hidden.
+ *
+ * Declared at module scope, not inside the page component. A component defined
+ * inside another is a new function on every parent render, which React reads as
+ * a different component type — it unmounts the old tree and mounts a fresh one,
+ * so the slideshow would silently lose its page and reload its image any time
+ * anything else on the page changed.
+ */
+function YearSlideshow({ entry }: { entry: FestivalYear }) {
+  const [page, setPage] = useState(0);
+  const total = entry.pages.length;
+
+  // A new year opens at its cover, not at whatever page the last one reached.
+  useEffect(() => { setPage(0); }, [entry.year]);
+
+  const index = Math.min(page, Math.max(0, total - 1));
+
+  // Warm the neighbours. Without this every click blanked the pane while the
+  // next scan downloaded, which reads as the page reloading rather than as a
+  // page turning. Browser cache does the rest: by the time the src changes the
+  // bytes are already there, so the swap is immediate.
+  useEffect(() => {
+    if (total === 0) return;
+    for (const offset of [1, -1]) {
+      const neighbour = entry.pages[index + offset];
+      if (neighbour) {
+        const img = new Image();
+        img.src = thumbUrl(neighbour.file_path, SLIDE_WIDTH);
+      }
+    }
+  }, [entry, index, total]);
+
+  if (total === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50" aria-hidden="true" />
+          <p className="font-serif text-muted-foreground">
+            This programme has no scanned pages yet.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const current = entry.pages[index];
+  const go = (delta: number) =>
+    setPage(p => Math.min(total - 1, Math.max(0, p + delta)));
+
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-0">
+        <div
+          className="relative bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          role="group"
+          aria-roledescription="carousel"
+          aria-label={`${entry.year} Silent Film Festival programme`}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+          }}
+        >
+          {/* The box keeps its height whatever the page is doing. Sizing to the
+              image instead let the pane collapse for the moment between one
+              scan going and the next arriving, and a pane that jumps is the
+              other half of why this looked like a reload. */}
+          <div className="h-[60vh] lg:h-[72vh] flex items-center justify-center">
+            <img
+              /* Deliberately no key: a key per page throws the element away and
+                 builds a new one, so the browser starts from nothing every
+                 click. Reusing one <img> and changing src lets a preloaded page
+                 appear at once. */
+              src={thumbUrl(current.file_path, SLIDE_WIDTH)}
+              alt={`Page ${index + 1} of the ${entry.year} Silent Film Festival programme`}
+              /* The slide is the content, not something below the fold. */
+              loading="eager"
+              decoding="async"
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
+
+          {total > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => go(-1)}
+                disabled={index === 0}
+                aria-label="Previous page"
+                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 border border-border p-2 text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => go(1)}
+                disabled={index >= total - 1}
+                aria-label="Next page"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 border border-border p-2 text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronRight className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 p-4 border-t border-border">
+          <div className="min-w-0">
+            <p className="font-display uppercase tracking-[0.15em] text-xs text-primary">
+              {entry.year}
+            </p>
+            <p className="font-serif text-foreground" aria-live="polite">
+              {total > 1 ? `Page ${index + 1} of ${total}` : 'Programme'}
+            </p>
+          </div>
+          {entry.booklet && (
+            /* The one link that still leaves the page, because saving a file
+               is what a new tab is actually for. */
+            <Button asChild variant="outline" size="sm" className="shrink-0">
+              <a
+                href={publicUrl(entry.booklet.file_path)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Download className="h-4 w-4 mr-1" aria-hidden="true" />
+                Download PDF
+              </a>
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function SilentFilmFestival() {
@@ -85,6 +245,11 @@ export default function SilentFilmFestival() {
   const [screenings, setScreenings] = useState<Screening[]>([]);
   const [programs, setPrograms] = useState<FestivalProgram[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  // Which side of the split we are on decides where the slideshow *mounts*,
+  // not just where it shows. Rendering both and hiding one with `lg:hidden`
+  // put two copies in the DOM, and each one fetched its own page images.
+  const isSplitLayout = useIsSplitLayout();
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +267,7 @@ export default function SilentFilmFestival() {
 
       const programQuery = supabase
         .from('festival_programs')
-        .select('id, year, title, file_path, file_type, display_order')
+        .select('id, year, title, file_path, file_type, display_order, thumbnail_path')
         .eq('festival_slug', FESTIVAL_SLUG)
         .eq('is_published', true);
 
@@ -143,7 +308,23 @@ export default function SilentFilmFestival() {
   }, []);
 
   const lineup = useMemo(() => selectFestivalLineup(screenings), [screenings]);
-  const archive = useMemo(() => groupProgramsByYear(programs), [programs]);
+  // One entry per festival rather than one per file: "the 2024 programme" is
+  // what a reader came for, not twelve rows called Page N.
+  const archive = useMemo(
+    () => groupProgramsByYear(programs).map(describeYear),
+    [programs],
+  );
+
+  // The newest festival, so the pane is never an empty box on arrival.
+  const newestYear = archive[0]?.year ?? null;
+  useEffect(() => {
+    if (selectedYear === null && newestYear !== null) setSelectedYear(newestYear);
+  }, [selectedYear, newestYear]);
+
+  const selected = useMemo(
+    () => archive.find(a => a.year === selectedYear) ?? null,
+    [archive, selectedYear],
+  );
   const festivalYear = lineup.length
     ? new Date(lineup[0].start_time).getFullYear()
     : null;
@@ -153,13 +334,7 @@ export default function SilentFilmFestival() {
   // — thirty of them is tens of megabytes — so the tile asks Supabase's image
   // transform endpoint for a thumbnail off the same object. One stored file
   // serves both sizes; nothing is uploaded twice.
-  const publicUrl = (path: string) =>
-    supabase.storage.from('festival-programs').getPublicUrl(path).data.publicUrl;
 
-  const thumbUrl = (path: string) =>
-    supabase.storage.from('festival-programs').getPublicUrl(path, {
-      transform: { width: 500, quality: 70 },
-    }).data.publicUrl;
 
   return (
     <>
@@ -312,53 +487,77 @@ export default function SilentFilmFestival() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-10">
-              {archive.map((group) => (
-                <div key={group.year}>
-                  <h3 className="font-display uppercase tracking-[0.25em] text-sm text-primary mb-4">
-                    {group.year}
-                  </h3>
-                  <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {group.programs.map((program) => {
-                      const href = publicUrl(program.file_path);
-                      const label = program.title
-                        ? `${program.title} — ${group.year} Silent Film Festival program`
-                        : `${group.year} Silent Film Festival program`;
-                      return (
-                        <li key={program.id}>
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block rounded border border-border hover:border-primary focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors overflow-hidden bg-card"
-                          >
-                            {program.file_type === 'image' ? (
-                              <img
-                                src={thumbUrl(program.file_path)}
-                                alt={label}
-                                loading="lazy"
-                                decoding="async"
-                                className="w-full aspect-[3/4] object-cover"
-                              />
-                            ) : (
-                              <span className="flex flex-col items-center justify-center gap-2 w-full aspect-[3/4] text-muted-foreground">
-                                <FileText className="h-8 w-8" aria-hidden="true" />
-                                <span className="font-display uppercase tracking-[0.15em] text-xs">
-                                  PDF
-                                </span>
-                                <span className="sr-only">{label}</span>
-                              </span>
+            /* Same instrument the home page uses for showings: a list you pick
+               from and a pane that fills in beside it. Below lg the pane moves
+               under the selected row instead, because a sticky column with no
+               room to sit is just a page you have to scroll past. */
+            <div className="grid lg:grid-cols-[1fr_1.8fr] gap-6 lg:gap-10">
+              <ul className="min-w-0 space-y-2 lg:max-h-[620px] lg:overflow-y-auto lg:pr-2">
+                {archive.map((entry) => {
+                  const isSelected = selected?.year === entry.year;
+                  const cover = entry.coverPath ? thumbUrl(entry.coverPath, 160) : null;
+                  return (
+                    <li key={entry.year}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedYear(entry.year)}
+                        aria-current={isSelected ? 'true' : undefined}
+                        className={cn(
+                          'w-full text-left rounded-md border p-3 transition-colors flex items-center gap-3 group',
+                          isSelected
+                            ? 'border-primary bg-primary/10'
+                            : 'border-accent/20 bg-card hover:border-primary/60 hover:bg-primary/5',
+                        )}
+                      >
+                        {cover ? (
+                          <img
+                            src={cover}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className="w-12 h-16 object-cover rounded border border-border shrink-0 bg-background"
+                          />
+                        ) : (
+                          <span className="w-12 h-16 shrink-0 rounded border border-border flex items-center justify-center text-muted-foreground">
+                            <FileText className="h-5 w-5" aria-hidden="true" />
+                          </span>
+                        )}
+                        <span className="flex-1 min-w-0">
+                          <span
+                            className={cn(
+                              'block font-display uppercase tracking-[0.15em] text-base',
+                              isSelected ? 'text-primary' : 'group-hover:text-primary',
                             )}
-                            <span className="block px-3 py-2 font-serif text-sm text-foreground truncate">
-                              {program.title ?? `${group.year} program`}
-                            </span>
-                          </a>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                          >
+                            {entry.year}
+                          </span>
+                          <span className="block text-xs uppercase tracking-widest text-muted-foreground mt-0.5">
+                            {entry.pages.length > 1 ? `${entry.pages.length} pages` : 'Programme'}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          className="h-5 w-5 shrink-0 text-muted-foreground lg:hidden"
+                          aria-hidden="true"
+                        />
+                      </button>
+
+                      {/* Below lg the slideshow belongs with the year that
+                          opened it, not in a column that is not there. */}
+                      {!isSplitLayout && isSelected && (
+                        <div className="mt-3">
+                          <YearSlideshow entry={entry} />
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {isSplitLayout && selected && (
+                <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+                  <YearSlideshow entry={selected} />
                 </div>
-              ))}
+              )}
             </div>
           )}
         </section>

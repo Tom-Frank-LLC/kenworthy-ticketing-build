@@ -41,12 +41,17 @@ export default function FestivalProgramsTab() {
   const [title, setTitle] = useState('');
   const [displayOrder, setDisplayOrder] = useState('0');
   const [file, setFile] = useState<File | null>(null);
+  // Only meaningful for a PDF, which cannot be its own thumbnail. The import
+  // script renders this automatically with pdftoppm; a hand upload has no such
+  // luxury, so it is offered here rather than left as a gap only the script
+  // can fill.
+  const [cover, setCover] = useState<File | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('festival_programs')
-      .select('id, year, title, file_path, file_type, display_order, is_published')
+      .select('id, year, title, file_path, file_type, display_order, is_published, thumbnail_path')
       .eq('festival_slug', FESTIVAL_SLUG);
     if (error) toast.error(error.message);
     const rows = (data ?? []) as Array<FestivalProgram & { is_published: boolean }>;
@@ -88,6 +93,18 @@ export default function FestivalProgramsTab() {
         .upload(path, file, { contentType: file.type, upsert: false });
       if (upErr) throw upErr;
 
+      // Uploaded before the row that points at it, so a row never references
+      // an object that does not exist yet.
+      let thumbnailPath: string | null = null;
+      if (cover && file.type === 'application/pdf') {
+        const coverPath = `${FESTIVAL_SLUG}/${parsedYear}/cover-${Date.now()}_${cover.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const { error: covErr } = await supabase.storage
+          .from(BUCKET)
+          .upload(coverPath, cover, { contentType: cover.type, upsert: false });
+        if (covErr) toast.warning('Cover image failed to upload — the program will list without one.');
+        else thumbnailPath = coverPath;
+      }
+
       // Admin writes go through RLS; without .select() a blocked insert is a
       // silent 204 and the upload looks like it worked.
       const { data: inserted, error: insErr } = await supabase
@@ -101,6 +118,7 @@ export default function FestivalProgramsTab() {
           display_order: parseInt(displayOrder, 10) || 0,
           is_published: false,
           uploaded_by: userData.user?.id ?? null,
+          thumbnail_path: thumbnailPath,
         })
         .select('id');
       if (insErr) throw insErr;
@@ -110,7 +128,7 @@ export default function FestivalProgramsTab() {
       }
 
       toast.success('Uploaded — publish it when the year is ready to show');
-      setTitle(''); setFile(null); setDisplayOrder('0');
+      setTitle(''); setFile(null); setCover(null); setDisplayOrder('0');
       setUploadOpen(false);
       await load();
     } catch (e) {
@@ -150,7 +168,9 @@ export default function FestivalProgramsTab() {
       toast.error(error?.message ?? 'Nothing was deleted — you may not have admin rights.');
       return;
     }
-    const { error: rmErr } = await supabase.storage.from(BUCKET).remove([program.file_path]);
+    const { error: rmErr } = await supabase.storage
+      .from(BUCKET)
+      .remove([program.file_path, program.thumbnail_path].filter((p): p is string => !!p));
     if (rmErr) toast.warning('Listing removed, but the file is still in storage.');
     else toast.success('Program deleted');
     await load();
@@ -271,6 +291,19 @@ export default function FestivalProgramsTab() {
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
             </div>
+            {file?.type === 'application/pdf' && (
+              <div>
+                <Label htmlFor="program-cover">Cover image (optional)</Label>
+                <Input
+                  id="program-cover" type="file" accept="image/png,image/jpeg,image/webp"
+                  onChange={(e) => setCover(e.target.files?.[0] || null)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Shown as this program&rsquo;s thumbnail in the archive. Without one the
+                  listing falls back to a document icon — the programme still opens fine.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setUploadOpen(false)} disabled={uploading}>

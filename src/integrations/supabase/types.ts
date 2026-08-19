@@ -670,6 +670,7 @@ export type Database = {
           file_type: string
           id: string
           is_published: boolean
+          thumbnail_path: string | null
           title: string | null
           uploaded_by: string | null
           year: number
@@ -682,6 +683,7 @@ export type Database = {
           file_type: string
           id?: string
           is_published?: boolean
+          thumbnail_path?: string | null
           title?: string | null
           uploaded_by?: string | null
           year: number
@@ -694,6 +696,7 @@ export type Database = {
           file_type?: string
           id?: string
           is_published?: boolean
+          thumbnail_path?: string | null
           title?: string | null
           uploaded_by?: string | null
           year?: number
