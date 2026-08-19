@@ -213,9 +213,9 @@ export default function Donate() {
                 onChange={(e) => { setCustomAmount(e.target.value); setSelectedTier(null); }}
                 className="bg-background"
               />
-              <span className="font-serif text-xs text-muted-foreground">USD</span>
+              <span className="font-serif text-sm text-muted-foreground">USD</span>
             </div>
-            <p className="text-xs text-muted-foreground mt-2 font-serif italic">
+            <p className="text-sm text-muted-foreground mt-2 font-serif italic">
               Please enter an amount between $1 and $100,000.
             </p>
           </div>
@@ -308,7 +308,7 @@ export default function Donate() {
             )}
           </Button>
 
-          <p className="font-serif italic text-xs text-muted-foreground text-center">
+          <p className="font-serif italic text-sm text-muted-foreground text-center">
             The Kenworthy Performing Arts Centre is a 501(c)(3) non-profit. Tax ID 82-0519693.
           </p>
         </form>

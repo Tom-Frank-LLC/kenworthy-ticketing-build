@@ -135,7 +135,7 @@ export default function MyPasses() {
                         </Badge>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground pt-1">
+                    <div className="flex flex-wrap gap-3 text-sm text-muted-foreground pt-1">
                       {pass.activated_at && (
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />

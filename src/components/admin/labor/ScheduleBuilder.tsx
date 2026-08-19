@@ -192,7 +192,7 @@ export function ScheduleBuilder() {
                                 <span className="flex-1">
                                   {format(parseISO(s.start_at), 'h:mm a')}–{format(parseISO(s.end_at), 'h:mm a')}
                                 </span>
-                                {s.draft && <Badge variant="outline" className="text-[10px]">draft</Badge>}
+                                {s.draft && <Badge variant="outline" className="text-xs">draft</Badge>}
                                 <button className="text-muted-foreground hover:text-destructive" onClick={() => removeShift(s)}>
                                   <Trash2 className="h-3 w-3" />
                                 </button>

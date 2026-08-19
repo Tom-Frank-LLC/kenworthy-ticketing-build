@@ -154,7 +154,7 @@ export default function MyTickets() {
                           ) : (
                             <p className="text-muted-foreground">General Admission</p>
                           )}
-                          <p className="text-xs text-muted-foreground font-mono mt-2 break-all">
+                          <p className="text-sm text-muted-foreground font-mono mt-2 break-all">
                             {ticket.qr_code}
                           </p>
                         </div>

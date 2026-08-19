@@ -126,12 +126,12 @@ export function UpcomingList({
                   >
                     <div className="font-display text-base md:text-lg text-accent w-20 shrink-0 tabular-nums leading-tight">
                       <div>{formatShowtime(it.startTime, 'MMM d')}</div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-sm text-muted-foreground">
                         {formatShowtime(it.startTime, 'h:mm a')}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-1">
                         <Icon className="w-3 h-3" />
                         {TYPE_LABEL[it.type]}
                       </div>

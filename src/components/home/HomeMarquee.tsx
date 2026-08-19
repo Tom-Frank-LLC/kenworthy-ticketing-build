@@ -60,7 +60,7 @@ export function HomeMarquee() {
 
       <div className="container relative w-full flex flex-col justify-between py-8 sm:py-10 md:py-12">
         {/* Top eyebrow — small, sits in the upper scrim above the marquee */}
-        <p className="font-display uppercase tracking-[0.3em] text-[10px] sm:text-[11px] text-accent flex items-center gap-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+        <p className="font-display uppercase tracking-[0.3em] text-xs sm:text-sm text-accent flex items-center gap-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
           <Sparkles className="h-3.5 w-3.5 shrink-0" />
           Now Playing on Main Street
         </p>

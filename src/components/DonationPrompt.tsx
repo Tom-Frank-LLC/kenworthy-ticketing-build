@@ -71,7 +71,7 @@ export function DonationPrompt({
         <Heart className="h-4 w-4 text-primary" />
         {variant === 'staff' ? 'Add a donation?' : 'Add a donation to support the Kenworthy?'}
       </p>
-      <p className="text-xs text-muted-foreground mb-3">
+      <p className="text-sm text-muted-foreground mb-3">
         {variant === 'staff'
           ? 'Tax-deductible, no sales tax, added to this charge.'
           : 'Every gift helps keep the marquee lit. Tax-deductible, and not taxed.'}
@@ -127,7 +127,7 @@ export function DonationPrompt({
       </div>
 
       {valueCents >= MAX_BUNDLED_DONATION_CENTS && !isPreset && (
-        <p className="text-xs text-muted-foreground mt-2">
+        <p className="text-sm text-muted-foreground mt-2">
           For a gift larger than ${MAX_BUNDLED_DONATION_CENTS / 100}, visit our{' '}
           <a href="/donate" className="underline underline-offset-2">
             donation page

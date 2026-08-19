@@ -124,7 +124,7 @@ export const SquareCardForm = forwardRef<SquareCardFormHandle, SquareCardFormPro
           className="min-h-[90px] bg-background border border-input rounded-md p-2"
         />
         {config?.environment === 'sandbox' && (
-          <p className="text-xs text-muted-foreground mt-2">{SANDBOX_CARD_HINT}</p>
+          <p className="text-sm text-muted-foreground mt-2">{SANDBOX_CARD_HINT}</p>
         )}
       </div>
     );

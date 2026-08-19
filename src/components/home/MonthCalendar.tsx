@@ -145,9 +145,9 @@ export function MonthCalendar({
                       }
                     }}
                     className={cn(
-                      'relative h-[112px] md:h-[168px] rounded-md border text-left p-1.5 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
+                      'relative h-[112px] md:h-[168px] rounded-md border text-left p-1 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
                       'hover:border-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      inMonth ? 'border-accent/20 bg-card' : 'border-transparent bg-muted/20 text-muted-foreground/60',
+                      inMonth ? 'border-accent/20 bg-card' : 'border-transparent bg-muted/20 text-muted-foreground/75',
                       selected && 'border-primary bg-primary/10 ring-1 ring-primary',
                       today && !selected && 'border-accent/60',
                     )}
@@ -160,7 +160,7 @@ export function MonthCalendar({
                         {format(day, 'd')}
                       </span>
                       {hasItems && (
-                        <span className="text-[10px] font-semibold px-1.5 rounded-full bg-primary text-primary-foreground">
+                        <span className="hidden md:inline-block text-xs font-semibold px-1.5 rounded-full bg-primary text-primary-foreground">
                           {dayItems.length}
                         </span>
                       )}
@@ -181,7 +181,7 @@ export function MonthCalendar({
                           />
                         ))}
                         {dayItems.length > 4 && (
-                          <span className="text-[10px] text-muted-foreground leading-none">+{dayItems.length - 4}</span>
+                          <span className="text-xs text-muted-foreground leading-none">+{dayItems.length - 4}</span>
                         )}
                       </div>
                     )}
@@ -211,13 +211,13 @@ export function MonthCalendar({
                               it.type === 'concert' && 'border-foreground',
                             )}
                           >
-                            <div className="font-serif text-xs leading-tight line-clamp-3 group-hover/ev:text-primary transition-colors">
+                            <div className="font-serif text-sm leading-tight line-clamp-3 group-hover/ev:text-primary transition-colors">
                               {it.title}
                             </div>
                           </button>
                         ))}
                         {dayItems.length > 2 && (
-                          <span className="text-[10px] italic text-muted-foreground pl-1.5">
+                          <span className="text-sm italic text-muted-foreground pl-1.5">
                             +{dayItems.length - 2} more
                           </span>
                         )}
@@ -228,7 +228,7 @@ export function MonthCalendar({
               })}
             </div>
             {/* Legend shows only the types actually on the calendar. */}
-            <div className="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
+            <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
               {([
                 ['movie', 'Film', 'bg-primary'],
                 ['event', 'Event', 'bg-accent'],
@@ -282,7 +282,7 @@ export function MonthCalendar({
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground mb-0.5">
+                            <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-0.5">
                               <Icon className="w-3 h-3" />
                               {TYPE_LABEL[it.type]}
                             </div>
@@ -293,7 +293,7 @@ export function MonthCalendar({
                               {it.title}
                             </div>
                             {typeof it.ticketPrice === 'number' && it.ticketPrice > 0 && (
-                              <div className="text-xs text-muted-foreground mt-1">
+                              <div className="text-sm text-muted-foreground mt-1">
                                 ${it.ticketPrice.toFixed(2)}
                               </div>
                             )}

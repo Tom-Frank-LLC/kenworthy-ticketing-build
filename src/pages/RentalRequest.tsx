@@ -290,7 +290,7 @@ export default function RentalRequest() {
         </Section>
 
         <div className="flex items-center justify-between gap-4 pt-4 border-t border-border/40">
-          <p className="text-xs font-serif text-muted-foreground italic">This form is not your contract.</p>
+          <p className="text-sm font-serif text-muted-foreground italic">This form is not your contract.</p>
           <Button type="submit" size="lg" disabled={submitting}>
             {submitting ? 'Sending…' : 'Send Request'}
           </Button>
@@ -306,7 +306,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
     <section className="space-y-4">
       <div>
         <h2 className="font-display text-xl uppercase tracking-wide text-accent">{title}</h2>
-        {hint && <p className="font-serif text-xs text-muted-foreground mt-1">{hint}</p>}
+        {hint && <p className="font-serif text-sm text-muted-foreground mt-1">{hint}</p>}
       </div>
       <div className="space-y-4">{children}</div>
     </section>
@@ -318,7 +318,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     <div className="space-y-2">
       <Label className="font-serif">{label}</Label>
       {children}
-      {hint && <p className="font-serif text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="font-serif text-sm text-muted-foreground">{hint}</p>}
     </div>
   );
 }

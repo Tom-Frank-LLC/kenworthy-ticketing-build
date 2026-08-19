@@ -616,7 +616,12 @@ export default function Showing() {
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Seating Map or GA Quantity */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* min-w-0: a grid item defaults to min-width:auto, so this column
+            refused to shrink below the seat map's intrinsic width and dragged
+            the whole page sideways on a phone (~740px of horizontal overflow).
+            It also starved SeatMap's fit-to-container zoom, which measures this
+            element -- given an unconstrained width it never scaled down. */}
+        <div className="lg:col-span-2 space-y-6 min-w-0">
           {isAssignedSeating ? (
             <>
               {hasTiers && (
@@ -638,7 +643,7 @@ export default function Showing() {
                         );
                       })}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-3">
+                    <p className="text-sm text-muted-foreground mt-3">
                       Each seat is colored by its tier. Hover or tap a seat to see its tier and price.
                     </p>
                   </CardContent>
@@ -860,7 +865,7 @@ export default function Showing() {
                             ? `Reserve ${ticketCount} Ticket(s)`
                             : `Pay $${chargeTotal.toFixed(2)}`}
                       </Button>
-                      <p className="text-xs text-muted-foreground text-center">
+                      <p className="text-sm text-muted-foreground text-center">
                         Payments are processed securely by Square. Your card details never reach our servers.
                       </p>
                     </>
@@ -901,7 +906,7 @@ export default function Showing() {
                   </span>
                 )}
               </p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-sm text-muted-foreground">
                 Total <span className="text-primary font-semibold">${chargeTotal.toFixed(2)}</span>
               </p>
             </div>

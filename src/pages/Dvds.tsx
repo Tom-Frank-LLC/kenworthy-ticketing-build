@@ -131,7 +131,7 @@ export default function Dvds() {
     // it is the reservation, not the stock count, that needs an account.
     if (!MEMBER_ACCOUNTS_ENABLED) {
       return (
-        <span className="text-xs font-serif text-muted-foreground">
+        <span className="text-sm font-serif text-muted-foreground">
           {out ? 'All copies out' : 'Ask at the box office'}
         </span>
       );
@@ -176,7 +176,7 @@ export default function Dvds() {
                     <Disc className="h-5 w-5 text-primary" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{r.dvds?.title}</p>
-                      <p className="text-xs font-serif text-muted-foreground capitalize">
+                      <p className="text-sm font-serif text-muted-foreground capitalize">
                         {r.status.replace('_', ' ')}
                         {r.due_at && ` • due ${new Date(r.due_at).toLocaleDateString()}`}
                       </p>
@@ -232,7 +232,7 @@ export default function Dvds() {
                 <X className="h-4 w-4 mr-1" /> Clear
               </Button>
             )}
-            <span className="text-xs font-serif text-muted-foreground ml-auto">{filtered.length} of {dvds.length}</span>
+            <span className="text-sm font-serif text-muted-foreground ml-auto">{filtered.length} of {dvds.length}</span>
           </div>
         </div>
 
@@ -256,14 +256,14 @@ export default function Dvds() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-display uppercase text-sm leading-tight truncate">{d.title}</p>
-                      <p className="text-xs text-muted-foreground font-serif truncate">
+                      <p className="text-sm text-muted-foreground font-serif truncate">
                         {[d.year, d.director].filter(Boolean).join(' • ')}
                       </p>
-                      {d.genre && <p className="text-xs text-accent font-serif italic truncate">{d.genre}</p>}
+                      {d.genre && <p className="text-sm text-accent font-serif italic truncate">{d.genre}</p>}
                     </div>
                     <div className="hidden sm:flex items-center gap-2 shrink-0">
-                      {fmt && <Badge variant="outline" className="text-[10px] font-serif">{fmt}</Badge>}
-                      {out && <Badge variant="outline" className="text-[10px] bg-background/90">Checked out</Badge>}
+                      {fmt && <Badge variant="outline" className="text-xs font-serif">{fmt}</Badge>}
+                      {out && <Badge variant="outline" className="text-xs bg-background/90">Checked out</Badge>}
                     </div>
                     <span className="font-display text-primary shrink-0 w-14 text-right">
                       ${Number(d.rental_price).toFixed(2)}

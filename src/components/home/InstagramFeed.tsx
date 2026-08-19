@@ -83,7 +83,7 @@ export function InstagramFeed({ className = '' }: { className?: string }) {
   return (
     <aside className={`flex flex-col ${className}`}>
       <header className="px-4 pt-6 pb-3 border-b border-accent/15">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-accent/70 font-display">
+        <p className="text-xs uppercase tracking-[0.2em] text-accent/70 font-display">
           From the lobby
         </p>
         <a
@@ -107,7 +107,7 @@ export function InstagramFeed({ className = '' }: { className?: string }) {
         ) : (
           <>
             <PlaceholderFeed />
-            <p className="mt-4 font-serif text-xs italic text-muted-foreground leading-relaxed">
+            <p className="mt-4 font-serif text-sm italic text-muted-foreground leading-relaxed">
               Instagram feed loading soon. Until then, visit us on Instagram
               for marquee shots, trailers, and lobby photos.
             </p>
@@ -121,7 +121,7 @@ export function InstagramFeed({ className = '' }: { className?: string }) {
             href={`https://instagram.com/${INSTAGRAM_HANDLE}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-serif text-xs italic text-muted-foreground hover:text-primary transition-colors"
+            className="font-serif text-sm italic text-muted-foreground hover:text-primary transition-colors"
           >
             Follow on Instagram →
           </a>

@@ -431,7 +431,7 @@ export const SeatTierEditor = forwardRef<SeatTierEditorHandle, SeatTierEditorPro
         onClick={() => paintSeat(seat.id)}
         onContextMenu={(e) => { e.preventDefault(); clearSeat(seat.id); }}
         className={cn(
-          'h-6 w-6 shrink-0 rounded-t text-[9px] font-medium border transition-colors',
+          'h-6 w-6 shrink-0 rounded-t text-xs font-medium border transition-colors',
           tier ? 'border-transparent text-white' : 'border-border bg-secondary text-foreground hover:bg-primary/20',
         )}
         style={tier ? { backgroundColor: bg } : undefined}

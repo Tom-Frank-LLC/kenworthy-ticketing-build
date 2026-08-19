@@ -134,7 +134,7 @@ export function HistorySearch({
               >
                 <Bookmark className="h-4 w-4 shrink-0 text-accent" />
                 <span className="truncate">{r.label}</span>
-                <span className="ml-auto text-[11px] uppercase tracking-wide text-muted-foreground shrink-0">
+                <span className="ml-auto text-xs uppercase tracking-wide text-muted-foreground shrink-0">
                   Milestone
                 </span>
               </button>

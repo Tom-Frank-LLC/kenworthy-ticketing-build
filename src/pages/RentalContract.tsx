@@ -201,7 +201,7 @@ export default function RentalContract() {
             <div>
               <h1 className="font-display uppercase">Contract Editor — {request.event_title}</h1>
               {request.signed_at && (
-                <p className="font-serif text-xs text-accent flex items-center gap-1 mt-1">
+                <p className="font-serif text-sm text-accent flex items-center gap-1 mt-1">
                   <BadgeCheck className="h-3.5 w-3.5" />
                   Signed {format(new Date(request.signed_at), 'PPp')} by {request.signed_by_name}
                   {' • '}
@@ -241,7 +241,7 @@ export default function RentalContract() {
               <NumField label="LCD/DVD/DCP fee" value={data.av_fee} onChange={v => setData({ ...data, av_fee: v })} />
               <NumField label="Max attendees" value={data.max_attendees} onChange={v => setData({ ...data, max_attendees: v })} />
               <div className="space-y-1">
-                <Label className="text-xs">Alcohol addendum</Label>
+                <Label className="text-sm">Alcohol addendum</Label>
                 <select
                   className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
                   value={data.alcohol_addendum}
@@ -252,7 +252,7 @@ export default function RentalContract() {
                 </select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Agreement date</Label>
+                <Label className="text-sm">Agreement date</Label>
                 <Input
                   type="date"
                   value={data.agreement_date || ''}
@@ -275,7 +275,7 @@ export default function RentalContract() {
         one on screen, in Print, and in the export, with fixed neutrals rather
         than theme tokens so no future theme change can wash it out again.
       */}
-      <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-white text-neutral-900 font-serif text-[15px] leading-relaxed print:py-0">
+      <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-white text-neutral-900 font-serif text-base leading-relaxed print:py-0">
         <header className="text-center mb-8">
           <h1 className="font-display text-3xl uppercase tracking-wider">License Agreement</h1>
           <p className="text-neutral-600 text-sm mt-2">{agreementDate}</p>
@@ -478,7 +478,7 @@ function Row({ label, value }: { label: string; value: number }) {
 function NumField({ label, value, onChange }: { label: string; value: number | undefined; onChange: (v: number) => void }) {
   return (
     <div className="space-y-1">
-      <Label className="text-xs">{label}</Label>
+      <Label className="text-sm">{label}</Label>
       <Input
         type="number"
         value={value ?? ''}

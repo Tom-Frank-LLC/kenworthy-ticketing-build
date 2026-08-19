@@ -40,7 +40,7 @@ export function RedeemedQr({
           <span className="text-base font-bold uppercase tracking-widest text-neutral-800">
             Used
           </span>
-          <span className="text-[11px] leading-tight text-neutral-600">
+          <span className="text-sm leading-tight text-neutral-600">
             Scanned {format(new Date(scannedAt!), 'MMM d, h:mm a')}
           </span>
         </div>

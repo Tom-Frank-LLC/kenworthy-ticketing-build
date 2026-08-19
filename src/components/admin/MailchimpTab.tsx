@@ -195,7 +195,7 @@ export default function MailchimpTab() {
                 <div className="min-w-0 flex-1">
                   <div className="font-medium truncate">{prod.title || 'Untitled'}</div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px]">{kind}</Badge>
+                    <Badge variant="outline" className="text-xs">{kind}</Badge>
                     {s.show_datetime && format(new Date(s.show_datetime), 'EEE MMM d, h:mm a')}
                   </div>
                 </div>

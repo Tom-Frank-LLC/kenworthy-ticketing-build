@@ -284,7 +284,7 @@ export default function FilmPasses() {
                 );
               })}
             </div>
-            {errors.pass && <p className="text-xs text-destructive">{errors.pass}</p>}
+            {errors.pass && <p className="text-sm text-destructive">{errors.pass}</p>}
           </div>
 
           {/* How many */}
@@ -344,7 +344,7 @@ export default function FilmPasses() {
                       <p className="font-medium flex items-center gap-2">
                         <Icon className="h-4 w-4 text-primary" /> {opt.title}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">{opt.blurb}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{opt.blurb}</p>
                     </CardContent>
                   </Card>
                 );
@@ -354,17 +354,17 @@ export default function FilmPasses() {
             {fulfillment === 'mail' && (
               <div className="grid gap-3 sm:grid-cols-2 pt-1">
                 <div className="sm:col-span-2">
-                  <Label htmlFor="addr1" className="text-xs">Street address *</Label>
+                  <Label htmlFor="addr1" className="text-sm">Street address *</Label>
                   <Input
                     id="addr1"
                     value={address.line1}
                     onChange={e => setAddress(a => ({ ...a, line1: e.target.value }))}
                     maxLength={120}
                   />
-                  {errors.line1 && <p className="text-xs text-destructive mt-1">{errors.line1}</p>}
+                  {errors.line1 && <p className="text-sm text-destructive mt-1">{errors.line1}</p>}
                 </div>
                 <div className="sm:col-span-2">
-                  <Label htmlFor="addr2" className="text-xs">Apartment, suite (optional)</Label>
+                  <Label htmlFor="addr2" className="text-sm">Apartment, suite (optional)</Label>
                   <Input
                     id="addr2"
                     value={address.line2}
@@ -373,27 +373,27 @@ export default function FilmPasses() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="addr-city" className="text-xs">City *</Label>
+                  <Label htmlFor="addr-city" className="text-sm">City *</Label>
                   <Input
                     id="addr-city"
                     value={address.city}
                     onChange={e => setAddress(a => ({ ...a, city: e.target.value }))}
                   />
-                  {errors.city && <p className="text-xs text-destructive mt-1">{errors.city}</p>}
+                  {errors.city && <p className="text-sm text-destructive mt-1">{errors.city}</p>}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label htmlFor="addr-state" className="text-xs">State *</Label>
+                    <Label htmlFor="addr-state" className="text-sm">State *</Label>
                     <Input
                       id="addr-state"
                       value={address.state}
                       onChange={e => setAddress(a => ({ ...a, state: e.target.value }))}
                       maxLength={2}
                     />
-                    {errors.state && <p className="text-xs text-destructive mt-1">{errors.state}</p>}
+                    {errors.state && <p className="text-sm text-destructive mt-1">{errors.state}</p>}
                   </div>
                   <div>
-                    <Label htmlFor="addr-zip" className="text-xs">ZIP *</Label>
+                    <Label htmlFor="addr-zip" className="text-sm">ZIP *</Label>
                     <Input
                       id="addr-zip"
                       value={address.postal_code}
@@ -401,7 +401,7 @@ export default function FilmPasses() {
                       maxLength={10}
                     />
                     {errors.postal_code && (
-                      <p className="text-xs text-destructive mt-1">{errors.postal_code}</p>
+                      <p className="text-sm text-destructive mt-1">{errors.postal_code}</p>
                     )}
                   </div>
                 </div>
@@ -414,17 +414,17 @@ export default function FilmPasses() {
             <h2 className="font-display text-lg font-bold">Your details</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <Label htmlFor="pass-name" className="text-xs">Name *</Label>
+                <Label htmlFor="pass-name" className="text-sm">Name *</Label>
                 <Input
                   id="pass-name"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   maxLength={100}
                 />
-                {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
+                {errors.name && <p className="text-sm text-destructive mt-1">{errors.name}</p>}
               </div>
               <div>
-                <Label htmlFor="pass-email" className="text-xs">Email *</Label>
+                <Label htmlFor="pass-email" className="text-sm">Email *</Label>
                 <Input
                   id="pass-email"
                   type="email"
@@ -432,7 +432,7 @@ export default function FilmPasses() {
                   onChange={e => setEmail(e.target.value)}
                   maxLength={255}
                 />
-                {errors.email && <p className="text-xs text-destructive mt-1">{errors.email}</p>}
+                {errors.email && <p className="text-sm text-destructive mt-1">{errors.email}</p>}
               </div>
               {/* Shown with COLLECT_PHONE (see @/lib/flags), but deliberately
                   without the SMS consent line ticket checkout carries. Pass
@@ -441,7 +441,7 @@ export default function FilmPasses() {
                   promising a text here would be a promise nothing keeps. */}
               {COLLECT_PHONE && (
                 <div className="sm:col-span-2">
-                  <Label htmlFor="pass-phone" className="text-xs">Phone (optional)</Label>
+                  <Label htmlFor="pass-phone" className="text-sm">Phone (optional)</Label>
                   <Input
                     id="pass-phone"
                     type="tel"
@@ -452,7 +452,7 @@ export default function FilmPasses() {
                 </div>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               We use your name to find your pass at the counter, and your email to confirm the
               order.{COLLECT_PHONE ? ' A phone number is optional, and only so we can reach you about this order.' : ''}
             </p>
@@ -470,7 +470,7 @@ export default function FilmPasses() {
                   <span>{selected.name} × {quantity}</span>
                   <span>{money(total)}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Each carries {money(Number(selected.initial_balance))} — about {admissions}{' '}
                   films at {money(Number(selected.redemption_price))} each.
                 </p>
@@ -490,7 +490,7 @@ export default function FilmPasses() {
                 source="film-pass-checkout"
                 onReadyChange={setCardReady}
               />
-              {errors.card && <p className="text-xs text-destructive mt-1">{errors.card}</p>}
+              {errors.card && <p className="text-sm text-destructive mt-1">{errors.card}</p>}
             </div>
 
             <Button
@@ -506,13 +506,13 @@ export default function FilmPasses() {
               )}
             </Button>
 
-            <p className="text-xs text-muted-foreground text-center">
+            <p className="text-sm text-muted-foreground text-center">
               Payments are processed securely by Square. Your card details never reach our
               servers.
             </p>
 
             {/* The two rules people otherwise discover at the door. */}
-            <div className="text-xs text-muted-foreground border-t border-border pt-3 space-y-1">
+            <div className="text-sm text-muted-foreground border-t border-border pt-3 space-y-1">
               <p>Passes are used in person — they cannot book tickets online.</p>
               <p>Valid on standard movies. Not on special events or premium screenings.</p>
             </div>

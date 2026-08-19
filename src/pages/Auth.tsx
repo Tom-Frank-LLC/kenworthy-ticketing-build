@@ -203,7 +203,7 @@ export default function Auth() {
               {/* Someone who followed an old "sign in to see your tickets" link
                   lands here with no way in and no idea why. Say where the
                   tickets actually are. */}
-              <p className="mt-6 border-t border-border pt-4 text-center text-xs text-muted-foreground">
+              <p className="mt-6 border-t border-border pt-4 text-center text-sm text-muted-foreground">
                 Buying tickets? You don't need an account — we email your tickets and QR
                 codes straight to you.
               </p>

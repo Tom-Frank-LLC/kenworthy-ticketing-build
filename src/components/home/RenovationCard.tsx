@@ -6,7 +6,7 @@
 export function RenovationCard() {
   return (
     <section className="border-t border-accent/15 px-4 py-6">
-      <p className="text-[10px] uppercase tracking-[0.2em] text-accent/70 font-display mb-2">
+      <p className="text-xs uppercase tracking-[0.2em] text-accent/70 font-display mb-2">
         On Main Street
       </p>
       <h3 className="font-display text-lg uppercase tracking-wide text-foreground leading-snug">

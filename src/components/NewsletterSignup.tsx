@@ -30,7 +30,7 @@ export function NewsletterSignup({ className = '' }: { className?: string }) {
   return (
     <form onSubmit={onSubmit} className={`space-y-2 ${className}`}>
       <p className="font-display uppercase tracking-wide text-foreground">Stay in the loop</p>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Upcoming films, performances, and Kenworthy news. No spam, unsubscribe anytime.
       </p>
       <div className="flex gap-2">

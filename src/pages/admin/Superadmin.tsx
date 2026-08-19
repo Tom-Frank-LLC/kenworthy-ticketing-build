@@ -267,7 +267,7 @@ export default function Superadmin() {
               </Button>
             </div>
             {refetchSummary && (
-              <pre className="text-[10px] font-mono bg-muted/40 rounded p-2 max-h-64 overflow-auto whitespace-pre-wrap">
+              <pre className="text-xs font-mono bg-muted/40 rounded p-2 max-h-64 overflow-auto whitespace-pre-wrap">
                 {refetchSummary}
               </pre>
             )}
