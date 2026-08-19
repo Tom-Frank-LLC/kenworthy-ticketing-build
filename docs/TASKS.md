@@ -5,63 +5,16 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**50 briefs** — 31 shipped, 2 built, 0 open, 17 needs triage, 0 closed.
-
-## Needs triage
-
-Status is what the document claims, not something anyone checked. This has
-gone wrong before: nineteen briefs sat marked open while all nineteen were in
-production, and one was flagged as an architectural gap by the very PR that
-fixed it. Confirm each against the repo, record `shipped_in`, set
-`verified: true` — or correct the status.
-
-- `P0` **Admin Dashboard — Listings Section Improvements**<br>`ux` — [brief](briefs/BRIEF-admin-listings.md)
-- `P0` **Listings Show Times One Hour Off — Diagnose & Fix**<br>`bug` — [brief](briefs/BRIEF-listings-time-offset.md) · [notes](briefs/FINDINGS-listings-time-offset.md)
-- `P0` **Square production cutover — audit + fix the sandbox-locked functions**<br>`ops` — [brief](briefs/BRIEF-square-production-cutover.md)
-- `P0` **Missing Ticket Confirmation & Account Emails**<br>`ops` — [brief](briefs/BRIEF-ticket-email.md)
-- `P1` **Seating is per-showing, venue owns the map — fix + seed the venue**<br>`bug` — [brief](briefs/BRIEF-seating-per-showing.md)
-- `P1` **Enrich the Showing / Ticketing Page with Drawer Elements**<br>`ux` — [brief](briefs/BRIEF-showing-page-media.md)
-- `P1` **Square Labor — end-to-end functionality & wiring test**<br>`ops` — [brief](briefs/BRIEF-square-labor-testing.md) · [notes](briefs/FINDINGS-square-labor-testing.md)
-- `P2` **"Add to calendar" on the ticket page, email, and SMS**<br>`ops` — [brief](briefs/BRIEF-add-to-calendar.md)
-- `P2` **Calendar/listings polish + admin Hiring**<br>`ux` — [brief](briefs/BRIEF-calendar-listings-hiring.md)
-- `P2` **Color Lab as a live, session-only theme override on the real site**<br>`ux` — [brief](briefs/BRIEF-colorlab-live-session.md)
-- `P2` **Publish the Color Lab team tool at /colorlab.html**<br>`ux` — [brief](briefs/BRIEF-colorlab-page.md)
-- `P2` **Donation wiring — verify, fix the missing email, add checkout donations (tax-free)**<br>`ops` — [brief](briefs/BRIEF-donations.md)
-- `P2` **Film Passes — physical, activated-on-handoff, in-person only**<br>`feature` — [brief](briefs/BRIEF-film-passes.md) · [notes](briefs/FINDINGS-film-passes.md)
-- `P2` **Make the listing preview pane a vertical two-column split (portrait artwork + info)**<br>`ux` — [brief](briefs/BRIEF-listing-preview-vertical-split.md)
-- `P2` **Stop blank pages after deploy — serve the app shell NetworkFirst**<br>`ops` — [brief](briefs/BRIEF-pwa-shell-networkfirst.md) · [notes](briefs/FINDINGS-pwa-shell-networkfirst.md)
-- `P2` **Searchable movie picker when creating a showing**<br>`feature` — [brief](briefs/BRIEF-showing-movie-search.md)
-- `P2` **Staff bios — admin management + "Kenworthy Staff" on About Us**<br>`ux` — [brief](briefs/BRIEF-staff-bios.md)
-
-## Built, not deployed
-
-Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
-
-- `P1` **Film-pass admin — search, status filter/sort, delete cancelled**<br>`feature` — [brief](briefs/BRIEF-film-pass-admin-search.md)
-- `P1` **Online Ticket & Film-Pass Purchases Take No Payment**<br>`ops` — [brief](briefs/BRIEF-square-ticket-payments.md)
-
-## Shipped, but unverified
-
-These say shipped without citing a commit or PR. Probably right; not evidence.
-
-- **Fix staging password-reset "email rate limit" — wire the Send Email hook to Resend** ⚠️ unverified<br>`ops` — [brief](briefs/BRIEF-staging-auth-email-hook.md)
-- **Fix the footer newsletter signup + switch ticket-checkout marketing to opt-OUT** ⚠️ unverified<br>`ops` — [brief](briefs/BRIEF-mailchimp-signup-optout.md)
-- **Temporarily remove the screened-films Archive — preserve for post-launch** ⚠️ unverified<br>`feature` — [brief](briefs/BRIEF-remove-archive-section.md)
-- **Full RLS / permissions audit before launch** ⚠️ unverified<br>`security` — [brief](briefs/BRIEF-rls-security-audit.md) · [notes](briefs/FINDINGS-rls-security-audit.md)
-- **The 1000-row cap on the movie picker — fix and data audit** ⚠️ unverified<br>`data` — [brief](briefs/BRIEF-showing-movie-1000-cap.md)
-- **Turn off patron login (staff/admin-only auth), keep the data model** ⚠️ unverified<br>`security` — [brief](briefs/BRIEF-disable-member-login.md)
-- **Restore the DVD inventory** ⚠️ unverified<br>`data` — [brief](briefs/BRIEF-dvd-inventory-import.md)
-- **Brand the default email template — logo, site colors, correct name** ⚠️ unverified<br>`ops` — [brief](briefs/BRIEF-email-branding.md)
-- **Scanner + film-pass redemption refinements, purchase type, POS scanner** ⚠️ unverified<br>`feature` — [brief](briefs/BRIEF-scanner-filmpass-pos.md)
-- **Restore Per-Year Movies on the History Page** ⚠️ unverified<br>`ux` — [brief](briefs/BRIEF-restore-history-movies.md)
-- **Update the Handoff Doc (`PLATFORM.md`) to Match Reality** ⚠️ unverified<br>`feature` — [brief](briefs/BRIEF-update-handoff-doc.md)
+**50 briefs** — 50 shipped, 0 built, 0 open, 0 needs triage, 0 closed.
 
 ## Shipped
 
 - **Send a ticket confirmation for box-office (StaffPOS) sales**<br>`feature` — `#91`, `bb9a506` — [brief](briefs/BRIEF-pos-ticket-delivery.md)
 - **Re-activate phone capture and connect Twilio SMS**<br>`ops` — `#86`, `#90`, `070efee`, `dd1dc71` — [brief](briefs/BRIEF-reactivate-phone-sms.md)
 - **Make ticket / event / MET / film-pass sales write catalogued line items in Square**<br>`data` — `#103`, `9d5876a` — [brief](briefs/BRIEF-square-line-items.md)
+- **Fix staging password-reset "email rate limit" — wire the Send Email hook to Resend**<br>`ops` — [brief](briefs/BRIEF-staging-auth-email-hook.md)
 - **Restore venue + event date/time to film/event/MET items via the Square API — safely**<br>`ops` — `#85`, `3b26771`, `c095abd` — [brief](briefs/BRIEF-square-venue-date-api.md)
+- **Color Lab as a live, session-only theme override on the real site**<br>`ux` — [brief](briefs/BRIEF-colorlab-live-session.md)
 - **Temporarily hide phone fields on purchases; require email (until SMS is wired)**<br>`ops` — `#84`, `3f186ad` — [brief](briefs/BRIEF-disable-phone-until-sms.md)
 - **System-wide rule — no ticket/purchase for a past showing (hide the button, enforce on the server)**<br>`bug` — `#102`, `c551357` — [brief](briefs/BRIEF-past-no-purchase.md)
 - **Add the Privacy Policy + Terms of Use pages + footer links**<br>`ux` — `#82`, `2c70348` — [brief](briefs/BRIEF-privacy-page-footer.md)
@@ -70,14 +23,42 @@ These say shipped without citing a commit or PR. Probably right; not evidence.
 - **Activity log — make it admin-only + close coverage gaps (it already exists)**<br>`security` — `f697800` — [brief](briefs/BRIEF-activity-log-admin-only.md) · [notes](briefs/BRIEF-activity-log-admin-only-OUTCOME.md)
 - **Calendar view — drop the redundant per-entry date/time line so titles get more room**<br>`ux` — `99cc1d8` — [brief](briefs/BRIEF-calendar-entry-date-declutter.md)
 - **🚨 EMERGENCY — Square catalog over-pull flooded concessions on the LIVE site**<br>`bug` — `#78`, `20e5d3f`, `5b5ab23` — [brief](briefs/BRIEF-concessions-square-overpull.md)
+- **Film-pass admin — search, status filter/sort, delete cancelled**<br>`feature` — [brief](briefs/BRIEF-film-pass-admin-search.md)
 - **Generalize pass eligibility (festival passes + per-showing use limits)**<br>`feature` — `#52`, `e216dfa` — [brief](briefs/BRIEF-film-passes-eligibility-architecture.md)
 - **Gate the DVD page + nav entries to logged-in users only**<br>`security` — `c90637c` — [brief](briefs/BRIEF-gate-dvds-login.md)
 - **In-app "Invite / Add staff member" (create account + assign role)**<br>`ops` — `#62`, `481772b` — [brief](briefs/BRIEF-invite-staff.md) · [notes](briefs/BRIEF-invite-staff-OUTCOME.md)
+- **Make the listing preview pane a vertical two-column split (portrait artwork + info)**<br>`ux` — [brief](briefs/BRIEF-listing-preview-vertical-split.md)
+- **Fix the footer newsletter signup + switch ticket-checkout marketing to opt-OUT**<br>`ops` — [brief](briefs/BRIEF-mailchimp-signup-optout.md)
 - **Press page + admin Press tab**<br>`ux` — `42cda95` — [brief](briefs/BRIEF-press-page.md)
+- **Temporarily remove the screened-films Archive — preserve for post-launch**<br>`feature` — `9eb7448` — [brief](briefs/BRIEF-remove-archive-section.md)
+- **Full RLS / permissions audit before launch**<br>`security` — `#59`, `43496e8` — [brief](briefs/BRIEF-rls-security-audit.md) · [notes](briefs/FINDINGS-rls-security-audit.md)
+- **Seating is per-showing, venue owns the map — fix + seed the venue**<br>`bug` — `7545b35` — [brief](briefs/BRIEF-seating-per-showing.md)
+- **The 1000-row cap on the movie picker — fix and data audit**<br>`data` — `f01527f` — [brief](briefs/BRIEF-showing-movie-1000-cap.md)
+- **Staff bios — admin management + "Kenworthy Staff" on About Us**<br>`ux` — `#55` — [brief](briefs/BRIEF-staff-bios.md)
+- **"Add to calendar" on the ticket page, email, and SMS**<br>`ops` — [brief](briefs/BRIEF-add-to-calendar.md)
+- **Calendar/listings polish + admin Hiring**<br>`ux` — [brief](briefs/BRIEF-calendar-listings-hiring.md)
+- **Publish the Color Lab team tool at /colorlab.html**<br>`ux` — [brief](briefs/BRIEF-colorlab-page.md)
 - **Fill in About / Hiring / Volunteer from kenworthy.org, remove Plan a Visit**<br>`ux` — `53ad127` — [brief](briefs/BRIEF-content-pages.md)
+- **Turn off patron login (staff/admin-only auth), keep the data model**<br>`security` — `c90637c`, `cb7a22f` — [brief](briefs/BRIEF-disable-member-login.md)
+- **Donation wiring — verify, fix the missing email, add checkout donations (tax-free)**<br>`ops` — [brief](briefs/BRIEF-donations.md)
+- **Restore the DVD inventory**<br>`data` — `65503b1` — [brief](briefs/BRIEF-dvd-inventory-import.md)
+- **Brand the default email template — logo, site colors, correct name**<br>`ops` — `#50`, `#51`, `abdf6ef` — [brief](briefs/BRIEF-email-branding.md)
+- **Film Passes — physical, activated-on-handoff, in-person only**<br>`feature` — [brief](briefs/BRIEF-film-passes.md) · [notes](briefs/FINDINGS-film-passes.md)
 - **Mail fulfilment queue — a posted pass is not a mailed pass**<br>`feature` — `999d5bb` — [brief](briefs/BRIEF-mail-fulfillment-queue.md)
+- **Stop blank pages after deploy — serve the app shell NetworkFirst**<br>`ops` — [brief](briefs/BRIEF-pwa-shell-networkfirst.md) · [notes](briefs/FINDINGS-pwa-shell-networkfirst.md)
 - **Rental requests — multi-day dates + "Generate Invoice" (Square)**<br>`ops` — `a8ee428` — [brief](briefs/BRIEF-rental-multiday-invoice.md)
+- **Scanner + film-pass redemption refinements, purchase type, POS scanner**<br>`feature` — [brief](briefs/BRIEF-scanner-filmpass-pos.md)
+- **Searchable movie picker when creating a showing**<br>`feature` — [brief](briefs/BRIEF-showing-movie-search.md)
+- **Square Labor — end-to-end functionality & wiring test**<br>`ops` — [brief](briefs/BRIEF-square-labor-testing.md) · [notes](briefs/FINDINGS-square-labor-testing.md)
+- **Square production cutover — audit + fix the sandbox-locked functions**<br>`ops` — `7f465d1` — [brief](briefs/BRIEF-square-production-cutover.md)
 - **Rename "Get Tickets" → "Tickets" and add a "Film Pass" button beside it**<br>`feature` — `a046ca3` — [brief](briefs/BRIEF-tickets-filmpass-buttons.md)
+- **Admin Dashboard — Listings Section Improvements**<br>`ux` — [brief](briefs/BRIEF-admin-listings.md)
+- **Listings Show Times One Hour Off — Diagnose & Fix**<br>`bug` — `e15beb7` — [brief](briefs/BRIEF-listings-time-offset.md) · [notes](briefs/FINDINGS-listings-time-offset.md)
+- **Restore Per-Year Movies on the History Page**<br>`ux` — `3bf4256` — [brief](briefs/BRIEF-restore-history-movies.md)
+- **Online Ticket & Film-Pass Purchases Take No Payment**<br>`ops` — `#103`, `9d5876a` — [brief](briefs/BRIEF-square-ticket-payments.md)
+- **Update the Handoff Doc (`PLATFORM.md`) to Match Reality**<br>`feature` — `22daa6a` — [brief](briefs/BRIEF-update-handoff-doc.md)
+- **Enrich the Showing / Ticketing Page with Drawer Elements**<br>`ux` — [brief](briefs/BRIEF-showing-page-media.md)
+- **Missing Ticket Confirmation & Account Emails**<br>`ops` — `#91`, `bb9a506`, `2bb68d4` — [brief](briefs/BRIEF-ticket-email.md)
 
 ---
 

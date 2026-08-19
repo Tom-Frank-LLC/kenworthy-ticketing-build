@@ -4,7 +4,8 @@ title: Scanner + film-pass redemption refinements, purchase type, POS scanner
 status: shipped
 track: feature
 date: 2026-08-13
-verified: false
+evidence: film_pass_types in TicketScanner; Film Passes tab live on the production POS
+verified: true
 ---
 
 # Brief (for Claude Code): Scanner + film-pass redemption refinements, purchase type, POS scanner

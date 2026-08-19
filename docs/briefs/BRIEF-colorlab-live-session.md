@@ -1,11 +1,11 @@
 ---
 brief: colorlab-live-session
 title: Color Lab as a live, session-only theme override on the real site
-status: needs-triage
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-15
-verified: false
+evidence: src/components/colorlab/ColorLabProvider.tsx
+verified: true
 ---
 
 # Brief (for Claude Code): Color Lab as a live, session-only theme override on the real site

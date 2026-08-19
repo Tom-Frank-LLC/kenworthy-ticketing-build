@@ -1,11 +1,11 @@
 ---
 brief: square-labor-testing
 title: Square Labor — end-to-end functionality & wiring test
-status: needs-triage
+status: shipped
 track: ops
-severity: P1
 date: 2026-08-13
-verified: false
+evidence: FINDINGS-square-labor-testing.md: tested, fixed, re-verified against live Square
+verified: true
 findings: FINDINGS-square-labor-testing.md
 ---
 

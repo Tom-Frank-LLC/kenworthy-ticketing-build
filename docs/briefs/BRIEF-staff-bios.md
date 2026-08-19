@@ -1,11 +1,12 @@
 ---
 brief: staff-bios
 title: Staff bios — admin management + "Kenworthy Staff" on About Us
-status: needs-triage
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-14
-verified: false
+shipped_in: ["#55"]
+evidence: migration 20260814183831_staff_bios.sql
+verified: true
 ---
 
 # Brief (for Claude Code): Staff bios — admin management + "Kenworthy Staff" on About Us

@@ -1,11 +1,11 @@
 ---
 brief: pwa-shell-networkfirst
 title: Stop blank pages after deploy — serve the app shell NetworkFirst
-status: needs-triage
+status: shipped
 track: ops
-severity: P2
 date: 2026-08-13
-verified: false
+evidence: NetworkFirst shell strategy in vite.config.ts
+verified: true
 findings: FINDINGS-pwa-shell-networkfirst.md
 ---
 

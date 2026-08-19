@@ -4,7 +4,8 @@ title: Fix staging password-reset "email rate limit" — wire the Send Email hoo
 status: shipped
 track: ops
 date: 2026-08-18
-verified: false
+evidence: no code change needed; hook already wired (see FINDINGS)
+verified: true
 ---
 
 > ## ⚠️ SUPERSEDED — do not execute

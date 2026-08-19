@@ -4,7 +4,8 @@ title: The 1000-row cap on the movie picker — fix and data audit
 status: shipped
 track: data
 date: 2026-08-14
-verified: false
+shipped_in: ["f01527f"]
+verified: true
 ---
 
 # The 1000-row cap on the movie picker — fix and data audit

@@ -4,7 +4,8 @@ title: Update the Handoff Doc (`PLATFORM.md`) to Match Reality
 status: shipped
 track: feature
 date: 2026-08-12
-verified: false
+shipped_in: ["22daa6a"]
+verified: true
 ---
 
 # Brief: Update the Handoff Doc (`PLATFORM.md`) to Match Reality

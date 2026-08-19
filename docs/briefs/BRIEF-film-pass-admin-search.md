@@ -1,11 +1,11 @@
 ---
 brief: film-pass-admin-search
 title: Film-pass admin — search, status filter/sort, delete cancelled
-status: built
+status: shipped
 track: feature
-severity: P1
 date: 2026-08-14
-verified: false
+evidence: migration 20260814214812_search_film_passes.sql is on main
+verified: true
 ---
 
 # Brief (for Claude Code): Film-pass admin — search, status filter/sort, delete cancelled

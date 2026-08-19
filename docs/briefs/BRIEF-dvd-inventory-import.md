@@ -4,7 +4,8 @@ title: Restore the DVD inventory
 status: shipped
 track: data
 date: 2026-08-13
-verified: false
+shipped_in: ["65503b1"]
+verified: true
 ---
 
 # Brief (for Claude Code): Restore the DVD inventory

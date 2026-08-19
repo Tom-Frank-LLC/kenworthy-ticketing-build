@@ -1,11 +1,11 @@
 ---
 brief: showing-movie-search
 title: Searchable movie picker when creating a showing
-status: needs-triage
+status: shipped
 track: feature
-severity: P2
 date: 2026-08-13
-verified: false
+evidence: SearchableSelect in ShowingForm.tsx
+verified: true
 ---
 
 # Brief (for Claude Code): Searchable movie picker when creating a showing

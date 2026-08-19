@@ -4,7 +4,8 @@ title: Brand the default email template — logo, site colors, correct name
 status: shipped
 track: ops
 date: 2026-08-13
-verified: false
+shipped_in: ["#50", "#51", "abdf6ef"]
+verified: true
 ---
 
 # Brief (for Claude Code): Brand the default email template — logo, site colors, correct name

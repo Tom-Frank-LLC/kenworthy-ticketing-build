@@ -1,11 +1,11 @@
 ---
 brief: colorlab-page
 title: Publish the Color Lab team tool at /colorlab.html
-status: needs-triage
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-13
-verified: false
+evidence: public/colorlab.html
+verified: true
 ---
 
 # Brief (for Claude Code): Publish the Color Lab team tool at /colorlab.html

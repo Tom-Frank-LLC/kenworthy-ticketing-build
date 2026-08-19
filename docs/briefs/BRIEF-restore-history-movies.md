@@ -4,7 +4,8 @@ title: Restore Per-Year Movies on the History Page
 status: shipped
 track: ux
 date: 2026-08-12
-verified: false
+shipped_in: ["3bf4256"]
+verified: true
 ---
 
 # Brief: Restore Per-Year Movies on the History Page

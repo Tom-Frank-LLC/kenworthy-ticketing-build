@@ -1,11 +1,11 @@
 ---
 brief: listing-preview-vertical-split
 title: Make the listing preview pane a vertical two-column split (portrait artwork + info)
-status: needs-triage
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-14
-verified: false
+evidence: UpcomingList preview grid is lg:grid-cols-[1fr_1.8fr]
+verified: true
 ---
 
 # Brief (for Claude Code): Make the listing preview pane a vertical two-column split (portrait artwork + info)

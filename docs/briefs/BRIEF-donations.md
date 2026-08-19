@@ -1,11 +1,11 @@
 ---
 brief: donations
 title: Donation wiring — verify, fix the missing email, add checkout donations (tax-free)
-status: needs-triage
+status: shipped
 track: ops
-severity: P2
 date: 2026-08-13
-verified: false
+evidence: square-donation and lgl-sync-donation functions
+verified: true
 ---
 
 # Brief (for Claude Code): Donation wiring — verify, fix the missing email, add checkout donations (tax-free)
