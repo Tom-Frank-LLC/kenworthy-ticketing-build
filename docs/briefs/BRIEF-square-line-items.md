@@ -1,3 +1,13 @@
+---
+brief: square-line-items
+title: Make ticket / event / MET / film-pass sales write catalogued line items in Square
+status: shipped
+track: data
+date: 2026-08-18
+shipped_in: ["#103", "9d5876a"]
+verified: true
+---
+
 # Brief (for Claude Code): Make ticket / event / MET / film-pass sales write catalogued line items in Square
 
 **Status:** ✅ Shipped — `9d5876a` (PR #103), "order-then-pay across every sale, and a front door for the catalog mapping".

@@ -1,3 +1,13 @@
+---
+brief: staff-bios
+title: Staff bios — admin management + "Kenworthy Staff" on About Us
+status: needs-triage
+track: ux
+severity: P2
+date: 2026-08-14
+verified: false
+---
+
 # Brief (for Claude Code): Staff bios — admin management + "Kenworthy Staff" on About Us
 
 **Status:** 🟢 Ready — the About page already exists (no dependency to wait on)

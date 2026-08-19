@@ -1,3 +1,12 @@
+---
+brief: staging-auth-email-hook
+title: Fix staging password-reset "email rate limit" — wire the Send Email hook to Resend
+status: shipped
+track: ops
+date: 2026-08-18
+verified: false
+---
+
 > ## ⚠️ SUPERSEDED — do not execute
 >
 > Investigated 2026-08-18. **The diagnosis in this brief is wrong.** The Send

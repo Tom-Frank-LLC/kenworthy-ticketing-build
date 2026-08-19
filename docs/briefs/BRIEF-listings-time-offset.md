@@ -1,3 +1,14 @@
+---
+brief: listings-time-offset
+title: Listings Show Times One Hour Off — Diagnose & Fix
+status: needs-triage
+track: bug
+severity: P0
+date: 2026-08-12
+verified: false
+findings: FINDINGS-listings-time-offset.md
+---
+
 # Brief: Listings Show Times One Hour Off — Diagnose & Fix
 
 **Status:** 🔴 Correctness bug, customer-facing (wrong showtimes)

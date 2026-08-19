@@ -1,3 +1,12 @@
+---
+brief: update-handoff-doc
+title: Update the Handoff Doc (`PLATFORM.md`) to Match Reality
+status: shipped
+track: feature
+date: 2026-08-12
+verified: false
+---
+
 # Brief: Update the Handoff Doc (`PLATFORM.md`) to Match Reality
 
 **Status:** ✅ Applied to the repo 2026-08-12 — two items deferred, tracked below

@@ -1,3 +1,13 @@
+---
+brief: rls-security-audit
+title: Full RLS / permissions audit before launch
+status: shipped
+track: security
+date: 2026-08-14
+verified: false
+findings: FINDINGS-rls-security-audit.md
+---
+
 # Brief (for Claude Code): Full RLS / permissions audit before launch
 
 **Status:** ✅ Shipped — corrective migration `20260814214233_rls_permissions_hardening.sql`. See `FINDINGS-rls-security-audit.md` for the full role x table audit.

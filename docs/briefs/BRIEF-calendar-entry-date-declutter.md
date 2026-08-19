@@ -1,3 +1,13 @@
+---
+brief: calendar-entry-date-declutter
+title: Calendar view — drop the redundant per-entry date/time line so titles get more room
+status: shipped
+track: ux
+date: 2026-08-14
+shipped_in: ["99cc1d8"]
+verified: true
+---
+
 # Brief (for Claude Code): Calendar view — drop the redundant per-entry date/time line so titles get more room
 
 **Status:** ✅ Shipped — `99cc1d8` ("stop the month grid from repeating the day it already shows").

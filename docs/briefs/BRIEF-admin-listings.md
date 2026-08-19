@@ -1,3 +1,13 @@
+---
+brief: admin-listings
+title: Admin Dashboard — Listings Section Improvements
+status: needs-triage
+track: ux
+severity: P0
+date: 2026-08-12
+verified: false
+---
+
 # Brief: Admin Dashboard — Listings Section Improvements
 
 **Status:** 🔴 Launch-important (staff's most-used surface)

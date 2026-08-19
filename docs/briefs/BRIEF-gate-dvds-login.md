@@ -1,3 +1,13 @@
+---
+brief: gate-dvds-login
+title: Gate the DVD page + nav entries to logged-in users only
+status: shipped
+track: security
+date: 2026-08-14
+shipped_in: ["c90637c"]
+verified: true
+---
+
 # Brief (for Claude Code): Gate the DVD page + nav entries to logged-in users only
 
 **Status:** ✅ Shipped — `c90637c`, closing audit item #7 of `BRIEF-disable-member-login.md`.

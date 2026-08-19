@@ -1,3 +1,12 @@
+---
+brief: email-branding
+title: Brand the default email template — logo, site colors, correct name
+status: shipped
+track: ops
+date: 2026-08-13
+verified: false
+---
+
 # Brief (for Claude Code): Brand the default email template — logo, site colors, correct name
 
 **Status:** 🟢 Draft for review

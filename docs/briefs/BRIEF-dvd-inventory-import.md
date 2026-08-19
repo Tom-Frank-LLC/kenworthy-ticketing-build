@@ -1,3 +1,12 @@
+---
+brief: dvd-inventory-import
+title: Restore the DVD inventory
+status: shipped
+track: data
+date: 2026-08-13
+verified: false
+---
+
 # Brief (for Claude Code): Restore the DVD inventory
 
 **Status:** ✅ Shipped and verified 2026-08-13 — 1,550 rows in `dvds` on both projects. See [Result](#result) for two things the brief did not anticipate.

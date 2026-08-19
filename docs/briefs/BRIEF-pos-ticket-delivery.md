@@ -1,3 +1,13 @@
+---
+brief: pos-ticket-delivery
+title: Send a ticket confirmation for box-office (StaffPOS) sales
+status: shipped
+track: feature
+date: 2026-08-18
+shipped_in: ["#91", "bb9a506"]
+verified: true
+---
+
 # Brief (for Claude Code): Send a ticket confirmation for box-office (StaffPOS) sales
 
 **Status:** ✅ Shipped — `bb9a506` (PR #91), "the box office sends the patron their tickets".

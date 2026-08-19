@@ -1,3 +1,13 @@
+---
+brief: past-no-purchase
+title: System-wide rule — no ticket/purchase for a past showing (hide the button, enforce on the server)
+status: shipped
+track: bug
+date: 2026-08-15
+shipped_in: ["#102", "c551357"]
+verified: true
+---
+
 # Brief (for Claude Code): System-wide rule — no ticket/purchase for a past showing (hide the button, enforce on the server)
 
 **Status:** ✅ Shipped — `c551357` (PR #102), plus migration `20260819143722_showing_end_and_past_sales_rules.sql`.

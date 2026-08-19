@@ -1,3 +1,13 @@
+---
+brief: film-pass-admin-search
+title: Film-pass admin — search, status filter/sort, delete cancelled
+status: built
+track: feature
+severity: P1
+date: 2026-08-14
+verified: false
+---
+
 # Brief (for Claude Code): Film-pass admin — search, status filter/sort, delete cancelled
 
 **Status:** 🔵 Built on `feat/film-pass-admin-search`, not yet deployed

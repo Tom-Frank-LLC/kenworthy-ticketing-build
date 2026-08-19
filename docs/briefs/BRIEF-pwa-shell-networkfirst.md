@@ -1,3 +1,14 @@
+---
+brief: pwa-shell-networkfirst
+title: Stop blank pages after deploy — serve the app shell NetworkFirst
+status: needs-triage
+track: ops
+severity: P2
+date: 2026-08-13
+verified: false
+findings: FINDINGS-pwa-shell-networkfirst.md
+---
+
 # Brief (for Claude Code): Stop blank pages after deploy — serve the app shell NetworkFirst
 
 **Status:** 🟢 Ready — pre-launch hardening (affects real patrons once live)

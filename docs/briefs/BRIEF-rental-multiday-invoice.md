@@ -1,3 +1,13 @@
+---
+brief: rental-multiday-invoice
+title: Rental requests — multi-day dates + "Generate Invoice" (Square)
+status: shipped
+track: ops
+date: 2026-08-13
+shipped_in: ["a8ee428"]
+verified: true
+---
+
 # Brief (for Claude Code): Rental requests — multi-day dates + "Generate Invoice" (Square)
 
 **Status:** ✅ Shipped to staging and production, August 14, 2026, from `a8ee428`. See **Results** and **Shipped** at the end of this file — including what is still unverified (no Square call has been made yet).

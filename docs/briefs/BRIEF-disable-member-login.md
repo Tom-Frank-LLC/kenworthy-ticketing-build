@@ -1,3 +1,12 @@
+---
+brief: disable-member-login
+title: Turn off patron login (staff/admin-only auth), keep the data model
+status: shipped
+track: security
+date: 2026-08-13
+verified: false
+---
+
 # Brief: Turn off patron login (staff/admin-only auth), keep the data model
 
 **Status:** ✅ Shipped to staging and production, August 14, 2026. Nothing outstanding. See **Results** at the end of this file for what changed, what the code contradicted, and how each claim was verified.

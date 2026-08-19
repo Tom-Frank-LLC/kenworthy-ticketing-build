@@ -1,3 +1,13 @@
+---
+brief: square-ticket-payments
+title: Online Ticket & Film-Pass Purchases Take No Payment
+status: built
+track: ops
+severity: P1
+date: 2026-08-12
+verified: false
+---
+
 # Brief: Online Ticket & Film-Pass Purchases Take No Payment
 
 **Status:** 🟡 Implemented, not yet deployed — see [`docs/SQUARE-PAYMENTS.md`](../SQUARE-PAYMENTS.md)

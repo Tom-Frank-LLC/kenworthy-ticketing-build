@@ -1,3 +1,13 @@
+---
+brief: showing-page-media
+title: Enrich the Showing / Ticketing Page with Drawer Elements
+status: needs-triage
+track: ux
+severity: P1
+date: 2026-08-11
+verified: false
+---
+
 # Brief: Enrich the Showing / Ticketing Page with Drawer Elements
 
 **Status:** 🟡 Enhancement (customer-facing, pre-launch desirable)

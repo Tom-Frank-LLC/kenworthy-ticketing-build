@@ -1,3 +1,13 @@
+---
+brief: seating-per-showing
+title: Seating is per-showing, venue owns the map — fix + seed the venue
+status: needs-triage
+track: bug
+severity: P1
+date: 2026-08-14
+verified: false
+---
+
 # Brief (for Claude Code): Seating is per-showing, venue owns the map — fix + seed the venue
 
 **Status:** 🟠 Draft for review — fixes a currently-broken assigned-seating path

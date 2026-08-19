@@ -1,3 +1,14 @@
+---
+brief: square-labor-testing
+title: Square Labor — end-to-end functionality & wiring test
+status: needs-triage
+track: ops
+severity: P1
+date: 2026-08-13
+verified: false
+findings: FINDINGS-square-labor-testing.md
+---
+
 # Brief (for Claude Code / QA): Square Labor — end-to-end functionality & wiring test
 
 **Status:** 🟡 Test plan — to run tomorrow alongside the Square production cutover

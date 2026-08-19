@@ -1,3 +1,13 @@
+---
+brief: listing-preview-vertical-split
+title: Make the listing preview pane a vertical two-column split (portrait artwork + info)
+status: needs-triage
+track: ux
+severity: P2
+date: 2026-08-14
+verified: false
+---
+
 # Brief (for Claude Code): Make the listing preview pane a vertical two-column split (portrait artwork + info)
 
 **Status:** 🟢 Ready — CSS/layout change, one component

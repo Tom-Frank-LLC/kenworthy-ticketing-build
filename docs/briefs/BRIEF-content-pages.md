@@ -1,3 +1,13 @@
+---
+brief: content-pages
+title: Fill in About / Hiring / Volunteer from kenworthy.org, remove Plan a Visit
+status: shipped
+track: ux
+date: 2026-08-13
+shipped_in: ["53ad127"]
+verified: true
+---
+
 # Brief (for Claude Code): Fill in About / Hiring / Volunteer from kenworthy.org, remove Plan a Visit
 
 **Status:** ✅ Shipped and verified in production August 13 2026 — `53ad127`

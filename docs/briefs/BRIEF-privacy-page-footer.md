@@ -1,3 +1,13 @@
+---
+brief: privacy-page-footer
+title: Add the Privacy Policy + Terms of Use pages + footer links
+status: shipped
+track: ux
+date: 2026-08-15
+shipped_in: ["#82", "2c70348"]
+verified: true
+---
+
 # Brief (for Claude Code): Add the Privacy Policy + Terms of Use pages + footer links
 
 **Status:** ✅ Shipped — `2c70348` (PR #82); `/privacy` and `/terms` are live routes.
