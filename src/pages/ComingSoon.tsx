@@ -40,14 +40,6 @@ export function ComingSoon({
   );
 }
 
-export const SilentFilmFestivalPage = () => (
-  <ComingSoon
-    title="Silent Film Festival"
-    path="/silent-film-festival"
-    blurb="Live scores, silent classics, and a full weekend on Main Street. Dates and lineup will land here soon."
-  />
-);
-
 export const AccessibilityPage = () => (
   <ComingSoon
     title="Accessibility"

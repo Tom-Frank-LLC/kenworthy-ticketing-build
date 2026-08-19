@@ -14,6 +14,7 @@ import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
 import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
+import FestivalProgramsTab from '@/components/admin/FestivalProgramsTab';
 import FilmPassesTab from '@/components/admin/FilmPassesTab';
 import HostManagementTab from '@/components/admin/HostManagementTab';
 import AccountingTab from '@/components/admin/AccountingTab';
@@ -469,6 +470,7 @@ export default function AdminDashboard() {
             { value: 'listings', label: 'Listings', icon: Calendar, show: true },
             { value: 'concessions', label: 'Concessions', icon: UtensilsCrossed, show: true },
             { value: 'passes', label: 'Passes', icon: CreditCard, show: true },
+            { value: 'festival', label: 'Festival', icon: Film, show: isAdmin },
             { value: 'dvds', label: 'DVDs', icon: Disc, show: true },
             { value: 'rentals', label: 'Rentals', icon: KeyRound, show: true },
             { value: 'labor', label: 'Staff', icon: Clock, show: isAdmin },
@@ -925,6 +927,12 @@ export default function AdminDashboard() {
         {/* Film Passes Tab */}
         <TabsContent value="passes">
           <FilmPassesTab />
+        </TabsContent>
+
+        {/* Festival Tab — the program archive behind /silent-film-festival.
+            Admin-only, matching the RLS on festival_programs. */}
+        <TabsContent value="festival">
+          <FestivalProgramsTab />
         </TabsContent>
 
         {/* DVDs Tab */}

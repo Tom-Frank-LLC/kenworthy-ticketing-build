@@ -661,6 +661,53 @@ export type Database = {
         }
         Relationships: []
       }
+      festival_programs: {
+        Row: {
+          created_at: string
+          display_order: number
+          festival_slug: string
+          file_path: string
+          file_type: string
+          id: string
+          is_published: boolean
+          title: string | null
+          uploaded_by: string | null
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          festival_slug?: string
+          file_path: string
+          file_type: string
+          id?: string
+          is_published?: boolean
+          title?: string | null
+          uploaded_by?: string | null
+          year: number
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          festival_slug?: string
+          file_path?: string
+          file_type?: string
+          id?: string
+          is_published?: boolean
+          title?: string | null
+          uploaded_by?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "festival_programs_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       film_pass_orders: {
         Row: {
           amount_paid: number | null
@@ -831,6 +878,7 @@ export type Database = {
         Row: {
           created_at: string
           expiration_days: number | null
+          festival_slug: string | null
           id: string
           initial_balance: number
           is_active: boolean
@@ -844,6 +892,7 @@ export type Database = {
         Insert: {
           created_at?: string
           expiration_days?: number | null
+          festival_slug?: string | null
           id?: string
           initial_balance?: number
           is_active?: boolean
@@ -857,6 +906,7 @@ export type Database = {
         Update: {
           created_at?: string
           expiration_days?: number | null
+          festival_slug?: string | null
           id?: string
           initial_balance?: number
           is_active?: boolean

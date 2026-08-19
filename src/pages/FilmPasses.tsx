@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -74,6 +75,13 @@ export default function FilmPasses() {
   // failure, or Square replays the old decline at a corrected card.
   const idempotencyKeyRef = useRef(crypto.randomUUID());
 
+  // Which pass a link asked for. The festival page sends people here with its
+  // own pass named, so they land on the pass they clicked rather than on the
+  // cheapest one and have to find it again. Ignored if it names a pass that is
+  // not on sale, which is what an old link does after a pass is retired.
+  const [searchParams] = useSearchParams();
+  const requestedPassId = searchParams.get('pass');
+
   useEffect(() => {
     supabase
       .from('film_pass_types')
@@ -83,10 +91,12 @@ export default function FilmPasses() {
       .then(({ data }) => {
         const types = (data || []) as PassType[];
         setPassTypes(types);
-        if (types.length > 0) setSelectedId(types[0].id);
+        const requested = types.find(t => t.id === requestedPassId);
+        if (requested) setSelectedId(requested.id);
+        else if (types.length > 0) setSelectedId(types[0].id);
         setLoading(false);
       });
-  }, []);
+  }, [requestedPassId]);
 
   const selected = passTypes.find(p => p.id === selectedId) ?? null;
   // Sales tax is added on top of the listed price, and film-pass-checkout

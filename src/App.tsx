@@ -41,6 +41,7 @@ const AboutPage = lazyWithRecovery(() => import("./pages/About"));
 const HiringPage = lazyWithRecovery(() => import("./pages/Hiring"));
 const VolunteerPage = lazyWithRecovery(() => import("./pages/Volunteer"));
 const PressPage = lazyWithRecovery(() => import("./pages/Press"));
+const SilentFilmFestivalPage = lazyWithRecovery(() => import("./pages/SilentFilmFestival"));
 const Privacy = lazyWithRecovery(() => import("./pages/Privacy"));
 const Terms = lazyWithRecovery(() => import("./pages/Terms"));
 
@@ -57,11 +58,10 @@ const SponsorshipForm = lazyWithRecovery(() => import("./pages/admin/Sponsorship
 const AuditLog = lazyWithRecovery(() => import("./pages/admin/AuditLog"));
 const Superadmin = lazyWithRecovery(() => import("./pages/admin/Superadmin"));
 
-// The ComingSoon pages are named exports sharing one module, so they also
-// share one chunk.
-const comingSoon = () => import("./pages/ComingSoon");
-const SilentFilmFestivalPage = lazyWithRecovery(() => comingSoon().then(m => ({ default: m.SilentFilmFestivalPage })));
-const AccessibilityPage = lazyWithRecovery(() => comingSoon().then(m => ({ default: m.AccessibilityPage })));
+// ComingSoon is a named export rather than a default, so the import has to be
+// unwrapped by hand.
+const AccessibilityPage = lazyWithRecovery(() =>
+  import("./pages/ComingSoon").then(m => ({ default: m.AccessibilityPage })));
 
 const queryClient = new QueryClient();
 
