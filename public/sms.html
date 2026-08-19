@@ -22,6 +22,11 @@
 
   Keep it in sync with the checkbox label in `src/components/GuestCheckoutForm.tsx`
   and the message body in `supabase/functions/_shared/notify.ts` (buildSmsBody).
+  `sms-optin.png` is a real screenshot of that form and has to be retaken
+  whenever the contact step changes — an out-of-date shot is worse than no shot,
+  because it is offered as evidence. It was already stale once inside a day:
+  the first capture showed a required name and a required email, both of which
+  had gone by the time it was used.
   A disclosure that no longer matches what the form says, or samples that no
   longer match what we send, is worse than none — the first campaign submission
   was rejected partly for quoting copy the form had stopped showing.
@@ -124,6 +129,25 @@
     margin:0 0 1rem;
     overflow-wrap:anywhere;
   }
+  /* The screenshot of the live checkout form. Bordered and captioned so it
+     reads as evidence rather than decoration, and width-capped because it is a
+     narrow phone-shaped crop that would otherwise stretch on desktop. */
+  figure{margin:0 0 1.5rem}
+  figure img{
+    display:block;
+    width:100%;
+    max-width:22rem;
+    height:auto;
+    border:1px solid hsl(var(--border));
+    border-radius:var(--radius);
+  }
+  figcaption{
+    margin-top:.6rem;
+    color:hsl(var(--muted-foreground));
+    font-size:.9rem;
+    max-width:32rem;
+  }
+
   footer{
     margin-top:3rem;
     padding-top:1.5rem;
@@ -187,6 +211,30 @@
     Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help. Optional
     &mdash; your tickets come by email either way.
   </div>
+
+  <figure>
+    <img
+      src="/sms-optin.png"
+      width="636"
+      height="1270"
+      alt="Screenshot of the Kenworthy ticket checkout form. Fields for Name,
+           Email and Phone, none of them marked required. Below the phone field
+           is an unchecked checkbox reading: Text me my tickets. I agree to
+           receive ticket confirmations and updates about this order by text
+           message from the Kenworthy Performing Arts Centre at the number
+           above. Message frequency varies, usually one message per order. Msg
+           and data rates may apply. Reply STOP to cancel, HELP for help.
+           Optional, your tickets come by email either way. Beneath it: Provide
+           email or phone so we can send your tickets and QR codes. Below that,
+           a separate and separately ticked checkbox for email newsletter
+           sign-up.">
+    <figcaption>
+      The contact step of the ticket checkout form, as it stands today. The SMS
+      box is unticked and stays unticked unless the buyer ticks it; the email
+      newsletter box below it is a different consent, asked separately. Neither
+      is required to complete a purchase.
+    </figcaption>
+  </figure>
 
   <h2>How often</h2>
   <p>
