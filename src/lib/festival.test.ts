@@ -154,3 +154,27 @@ describe('slidePath', () => {
       .toBeNull();
   });
 });
+
+describe('describeYear — trailers', () => {
+  const pdf = (id: string) => program({ id, year: 2024, file_type: 'pdf', thumbnail_path: 'c.jpg' });
+
+  it('has no trailer when nothing is recorded for the year', () => {
+    expect(describeYear({ year: 2024, programs: [pdf('z')] }).trailerUrl).toBeNull();
+  });
+
+  it('carries the trailer recorded for that year', () => {
+    const trailers = new Map([[2024, 'https://youtu.be/abc']]);
+    expect(describeYear({ year: 2024, programs: [pdf('z')] }, trailers).trailerUrl)
+      .toBe('https://youtu.be/abc');
+  });
+
+  it('does not borrow another year’s trailer', () => {
+    const trailers = new Map([[2023, 'https://youtu.be/other']]);
+    expect(describeYear({ year: 2024, programs: [pdf('z')] }, trailers).trailerUrl).toBeNull();
+  });
+
+  it('treats an explicitly null trailer as none', () => {
+    const trailers = new Map<number, string | null>([[2024, null]]);
+    expect(describeYear({ year: 2024, programs: [pdf('z')] }, trailers).trailerUrl).toBeNull();
+  });
+});

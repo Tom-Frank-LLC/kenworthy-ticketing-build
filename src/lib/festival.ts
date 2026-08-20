@@ -140,6 +140,8 @@ export function stripLeadingShowtime(description: string | null | undefined): st
 
 export interface FestivalYear {
   year: number;
+  /** Whatever an admin pasted for this year, or null. Parsed at render time. */
+  trailerUrl: string | null;
   /** The slides, in reading order. */
   pages: FestivalProgram[];
   /** The whole booklet as a single file, offered for download. */
@@ -179,7 +181,11 @@ export function slidePath(program: FestivalProgram): string | null {
   return program.thumbnail_path ?? null;
 }
 
-export function describeYear(group: ProgramYear): FestivalYear {
+export function describeYear(
+  group: ProgramYear,
+  /** year -> trailer url, from festival_years. Absent years simply have none. */
+  trailers: ReadonlyMap<number, string | null> = new Map(),
+): FestivalYear {
   const pages = group.programs.filter(p => p.file_type === 'image');
   const booklet = group.programs.find(p => p.file_type === 'pdf') ?? null;
   const coverPath =
@@ -187,6 +193,7 @@ export function describeYear(group: ProgramYear): FestivalYear {
 
   return {
     year: group.year,
+    trailerUrl: trailers.get(group.year) ?? null,
     // Without pages the cover is the only thing to show, and showing it beats
     // showing nothing. It is already a FestivalProgram row, so no shim needed.
     pages: pages.length > 0 ? pages : (booklet?.thumbnail_path ? [booklet] : []),
