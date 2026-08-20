@@ -32,6 +32,11 @@ const ACCEPTED = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
  */
 export default function FestivalProgramsTab() {
   const [programs, setPrograms] = useState<FestivalProgram[]>([]);
+  // year -> trailer url, as stored. Edits are held separately so a half-typed
+  // URL never looks saved.
+  const [trailers, setTrailers] = useState<Record<number, string>>({});
+  const [trailerDraft, setTrailerDraft] = useState<Record<number, string>>({});
+  const [savingYear, setSavingYear] = useState<number | null>(null);
   const [published, setPublished] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -57,10 +62,50 @@ export default function FestivalProgramsTab() {
     const rows = (data ?? []) as Array<FestivalProgram & { is_published: boolean }>;
     setPrograms(rows);
     setPublished(Object.fromEntries(rows.map(r => [r.id, r.is_published])));
+
+    const { data: yearRows } = await supabase
+      .from('festival_years')
+      .select('year, trailer_url')
+      .eq('festival_slug', FESTIVAL_SLUG);
+    const map: Record<number, string> = {};
+    for (const r of (yearRows ?? []) as Array<{ year: number; trailer_url: string | null }>) {
+      if (r.trailer_url) map[r.year] = r.trailer_url;
+    }
+    setTrailers(map);
+    setTrailerDraft(map);
+
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const saveTrailer = async (year: number) => {
+    const url = (trailerDraft[year] ?? '').trim();
+    setSavingYear(year);
+    try {
+      // Upsert on (festival_slug, year): the year may have had programmes for
+      // ages without ever having a row of its own.
+      const { data, error } = await supabase
+        .from('festival_years')
+        .upsert(
+          { festival_slug: FESTIVAL_SLUG, year, trailer_url: url || null },
+          { onConflict: 'festival_slug,year' },
+        )
+        .select('year');
+      if (error) throw error;
+      if (!data?.length) throw new Error('Nothing saved — you may not have admin rights.');
+      setTrailers(prev => {
+        const next = { ...prev };
+        if (url) next[year] = url; else delete next[year];
+        return next;
+      });
+      toast.success(url ? `Trailer saved for ${year}` : `Trailer cleared for ${year}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save that trailer');
+    } finally {
+      setSavingYear(null);
+    }
+  };
 
   const publicUrl = (path: string) =>
     supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
@@ -209,6 +254,32 @@ export default function FestivalProgramsTab() {
               <h4 className="font-display uppercase tracking-[0.2em] text-sm text-primary mb-3">
                 {group.year}
               </h4>
+
+              {/* One trailer per year, not per file. A year has eight scanned
+                  pages and one trailer, so hanging it off a page would leave
+                  seven empty boxes and no answer to which one counts. */}
+              <div className="flex items-end gap-2 mb-3">
+                <div className="flex-1 min-w-0">
+                  <Label htmlFor={`trailer-${group.year}`} className="text-xs">
+                    Trailer for {group.year} (optional)
+                  </Label>
+                  <Input
+                    id={`trailer-${group.year}`}
+                    placeholder="Paste a YouTube, Vimeo or video file link"
+                    value={trailerDraft[group.year] ?? ''}
+                    onChange={e => setTrailerDraft(d => ({ ...d, [group.year]: e.target.value }))}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={savingYear === group.year ||
+                    (trailerDraft[group.year] ?? '') === (trailers[group.year] ?? '')}
+                  onClick={() => saveTrailer(group.year)}
+                >
+                  {savingYear === group.year ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
               <div className="grid gap-3">
                 {group.programs.map(program => (
                   <Card key={program.id}>

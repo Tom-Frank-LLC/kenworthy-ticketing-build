@@ -711,6 +711,33 @@ export type Database = {
           },
         ]
       }
+      festival_years: {
+        Row: {
+          created_at: string
+          festival_slug: string
+          id: string
+          trailer_url: string | null
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          festival_slug?: string
+          id?: string
+          trailer_url?: string | null
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          created_at?: string
+          festival_slug?: string
+          id?: string
+          trailer_url?: string | null
+          updated_at?: string
+          year?: number
+        }
+        Relationships: []
+      }
       film_pass_orders: {
         Row: {
           amount_paid: number | null

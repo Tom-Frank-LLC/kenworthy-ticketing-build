@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { SEO } from '@/components/SEO';
+import { ProductionMedia } from '@/components/ProductionMedia';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ChevronLeft, ChevronRight, Download, FileText, Ticket } from 'lucide-react';
@@ -157,6 +158,19 @@ function YearSlideshow({ entry }: { entry: FestivalYear }) {
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
+        {/* The year's own trailer, above its pages. Only when there is one: an
+            empty 16:9 well above every programme would be worse than none. */}
+        {entry.trailerUrl && (
+          <div className="border-b border-border">
+            <ProductionMedia
+              title={`Silent Film Festival ${entry.year}`}
+              type="event"
+              trailerUrl={entry.trailerUrl}
+              fallback="none"
+            />
+          </div>
+        )}
+
         {/* A year with no scanned pages still has a booklet to hand over, so
             the footer below is outside this branch rather than inside it.
             Returning early here is what made the one programme in production
@@ -263,6 +277,7 @@ export default function SilentFilmFestival() {
   const [pass, setPass] = useState<FestivalPass | null>(null);
   const [screenings, setScreenings] = useState<Screening[]>([]);
   const [programs, setPrograms] = useState<FestivalProgram[]>([]);
+  const [trailers, setTrailers] = useState<ReadonlyMap<number, string | null>>(new Map());
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   // Which side of the split we are on decides where the slideshow *mounts*,
@@ -290,11 +305,22 @@ export default function SilentFilmFestival() {
         .eq('festival_slug', FESTIVAL_SLUG)
         .eq('is_published', true);
 
-      const [{ data: passRow }, { data: programRows }] = await Promise.all([
+      const yearQuery = supabase
+        .from('festival_years')
+        .select('year, trailer_url')
+        .eq('festival_slug', FESTIVAL_SLUG);
+
+      const [{ data: passRow }, { data: programRows }, { data: yearRows }] = await Promise.all([
         passQuery,
         programQuery,
+        yearQuery,
       ]);
       if (cancelled) return;
+
+      setTrailers(new Map(
+        ((yearRows ?? []) as Array<{ year: number; trailer_url: string | null }>)
+          .map(r => [r.year, r.trailer_url] as const),
+      ));
 
       setPass((passRow as FestivalPass) ?? null);
       setPrograms((programRows as FestivalProgram[]) ?? []);
@@ -329,10 +355,20 @@ export default function SilentFilmFestival() {
   const lineup = useMemo(() => selectFestivalLineup(screenings), [screenings]);
   // One entry per festival rather than one per file: "the 2024 programme" is
   // what a reader came for, not twelve rows called Page N.
-  const archive = useMemo(
-    () => groupProgramsByYear(programs).map(describeYear),
-    [programs],
-  );
+  const archive = useMemo(() => {
+    const grouped = groupProgramsByYear(programs);
+    // A year may have a trailer and no scans yet. Grouping only over programme
+    // files would drop that year entirely, so years carrying a trailer are
+    // folded in as empty groups; the slideshow then shows its "not scanned
+    // yet" state beneath the trailer.
+    const seen = new Set(grouped.map(g => g.year));
+    const extra = [...trailers.entries()]
+      .filter(([year, url]) => url && !seen.has(year))
+      .map(([year]) => ({ year, programs: [] as FestivalProgram[] }));
+    return [...grouped, ...extra]
+      .sort((a, b) => b.year - a.year)
+      .map(g => describeYear(g, trailers));
+  }, [programs, trailers]);
 
   // The newest festival, so the pane is never an empty box on arrival.
   const newestYear = archive[0]?.year ?? null;
@@ -377,6 +413,21 @@ export default function SilentFilmFestival() {
           <p className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed mt-5 max-w-2xl">
             {FESTIVAL_BLURB}
           </p>
+
+          {/* This year's trailer, when the year being sold has one. Rendered by
+              the block the production drawer and ticketing page already use, so
+              a pasted YouTube or Vimeo link behaves here exactly as it does
+              everywhere else instead of needing its own parser. */}
+          {festivalYear && trailers.get(festivalYear) && (
+            <div className="mt-8 max-w-3xl">
+              <ProductionMedia
+                title={`${FESTIVAL_NAME} ${festivalYear}`}
+                type="event"
+                trailerUrl={trailers.get(festivalYear) ?? null}
+                fallback="none"
+              />
+            </div>
+          )}
         </header>
 
         {/* ------------------------------------------------- This year */}
