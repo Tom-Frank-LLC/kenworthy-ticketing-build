@@ -883,6 +883,7 @@ export type Database = {
           expiration_days: number | null
           festival_slug: string | null
           id: string
+          image_path: string | null
           initial_balance: number
           is_active: boolean
           is_default_for_movies: boolean
@@ -897,6 +898,7 @@ export type Database = {
           expiration_days?: number | null
           festival_slug?: string | null
           id?: string
+          image_path?: string | null
           initial_balance?: number
           is_active?: boolean
           is_default_for_movies?: boolean
@@ -911,6 +913,7 @@ export type Database = {
           expiration_days?: number | null
           festival_slug?: string | null
           id?: string
+          image_path?: string | null
           initial_balance?: number
           is_active?: boolean
           is_default_for_movies?: boolean
