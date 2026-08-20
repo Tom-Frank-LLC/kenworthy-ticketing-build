@@ -245,6 +245,28 @@ export default function AnalyticsTab() {
             <KPI icon={<Users className="h-5 w-5 text-destructive" />} label="Refunds" value={`${t!.refundCount} · ${dollars(t!.refundCents)}`} />
           </div>
 
+          {/* Known-wrong, and said out loud.
+              Measured against Square's own Reporting API on 20 Aug, these
+              figures come out about a third low — concessions agree to within a
+              percent, ticket categories are out by 2x. The cause is not yet
+              found (see FINDINGS-square-reporting-api.md). Until it is, a
+              number on this screen must not be read as the theatre's takings,
+              and the honest thing is to say so on the screen rather than in a
+              document nobody has open. Remove this the moment the figures
+              reconcile. */}
+          <Card className="glass border-destructive/40">
+            <CardContent className="p-4">
+              <p className="text-destructive font-medium">
+                These figures are under-reporting — do not use them for accounting yet.
+              </p>
+              <p className="text-muted-foreground mt-1">
+                Checked against Square's own reports on 20 August, revenue here came out
+                roughly a third low. Concessions are close; ticket categories are out by
+                about half. Square's Dashboard is the number to trust until this is fixed.
+              </p>
+            </CardContent>
+          </Card>
+
           {/* A silently short total is the failure mode worth shouting about. */}
           {data.meta.truncated && (
             <p className="text-destructive">

@@ -1,10 +1,12 @@
 ---
 brief: analytics-square
 title: The admin Overview reads the theatre's real revenue, from Square
-status: built
+status: needs-triage
 track: bug
 severity: P2
 date: 2026-08-18
+shipped_in: ["#142", "#144"]
+shipped_at: 2026-08-20
 findings: FINDINGS-analytics-square.md
 verified: false
 ---
@@ -82,8 +84,20 @@ Two cards don't map cleanly and need a decision:
    response, so a tender-mix card can be added later with no extra Square call.
 5. **Caching** — 10-minute in-isolate cache, `refresh: true` bypasses it.
 
-**Not yet done: the acceptance test.** "Matches Square Dashboard → Reports"
-can only be run against the production Square account, which needs the function
-deployed to production. Until that comparison is made this is `built`, not
-`shipped`. See `FINDINGS-analytics-square.md` for the two Square reporting bases
-the comparison has to keep straight.
+**Shipped 2026-08-20.** Edge function deployed to staging and production;
+frontend deployed (worker version `0a07041a`, rollback `65d43c47`). Verified
+against the live account: 2,377 orders, $45,421.69 collected, 754 tickets.
+
+**The reconciliation FAILED.** Measured against Square's own Reporting API on
+20 Aug, these figures are ~35% low (concessions agree; ticket categories are out
+2x). Status is `needs-triage`, not `shipped`, because the feature is deployed
+and wrong. The tab now says so on screen. Cause not yet found — see
+`FINDINGS-square-reporting-api.md` §2 for the three suspects.
+
+**Original note on the reconciliation:** Nobody has yet opened Square
+Dashboard → Reports for the same range and confirmed those figures. See
+`FINDINGS-analytics-square.md` §4 for the two Square reporting bases the
+comparison has to keep straight, and §7 for what the live run exposed.
+
+**Follow-up filed:** the 40-page cap on `/orders/search` is a deferred failure,
+not a fix. See `FINDINGS-square-reporting-api.md`.
