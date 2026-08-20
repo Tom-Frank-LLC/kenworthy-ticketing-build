@@ -39,9 +39,11 @@ import {
   type SquareConfig,
 } from "../_shared/square.ts";
 import {
+  CATEGORY,
   diffPaths,
   isNoisyPath,
   normalizeTitle,
+  storedCategoryId,
   sameVariation,
   suggestTitleMatches,
   desiredVariations,
@@ -80,6 +82,20 @@ async function sq(
 }
 
 /** Every ITEM in the catalog, following the cursor. Includes archived items. */
+/** Every CATEGORY object, so an item's category id can be given a name. */
+async function listCategories(config: SquareConfig) {
+  let cursor: string | undefined = undefined;
+  const out: any[] = [];
+  do {
+    const q = new URLSearchParams({ types: "CATEGORY" });
+    if (cursor) q.set("cursor", cursor);
+    const res: any = await sq(config, `/catalog/list?${q}`);
+    for (const o of res.objects ?? []) if (o.type === "CATEGORY") out.push(o);
+    cursor = res.cursor;
+  } while (cursor);
+  return out;
+}
+
 async function listItems(config: SquareConfig) {
   let cursor: string | undefined = undefined;
   const items: any[] = [];
@@ -170,6 +186,31 @@ Deno.serve(async (req: Request) => {
         .order("price");
 
       const items = await listItems(config);
+
+      // Widen the search by changing its axis. Matching on the name alone missed
+      // the standard film pass entirely: ours is called "10-film pass" and
+      // Square's is not, and no amount of fuzzier string comparison makes that
+      // reliable — it either stays too strict to help or gets loose enough to
+      // propose the wrong item confidently.
+      //
+      // A pass's category is the better key. The taxonomy already puts every
+      // pass under "9 Film Passes", and that is a handful of items out of ~890,
+      // so scoping to it is simultaneously wider than an exact name (it finds a
+      // pass whatever it is called) and far narrower than the catalog (nothing
+      // else can appear). Clutter comes from searching the whole catalog, not
+      // from searching the right corner of it.
+      const categories = await listCategories(config);
+      const passCategoryId = categories.find((c: any) =>
+        normalizeTitle(c.category_data?.name ?? "") === normalizeTitle(CATEGORY.filmPass)
+      )?.id ?? null;
+
+      const inPassCategory = passCategoryId
+        ? items.filter((i: any) =>
+            storedCategoryId(i.item_data) === passCategoryId &&
+            i.item_data?.product_type !== "EVENT"
+          )
+        : [];
+
       const byVariation = new Map<string, { item: any; variation: any }>();
       for (const i of items) {
         for (const v of i.item_data?.variations ?? []) byVariation.set(v.id, { item: i, variation: v });
@@ -219,12 +260,30 @@ Deno.serve(async (req: Request) => {
           matching_items: sources.length,
           variations,
           possible_matches: linked || exactAll.length ? [] : suggestTitleMatches(t.name, candidates),
+          // Everything filed as a pass in Square, minus whatever the name
+          // already matched. Offered as real choices rather than a list of
+          // names to go and look up, because a name the operator has to
+          // reconcile by hand is the manual step this was meant to remove.
+          category_options: linked ? [] : inPassCategory
+            .filter((i: any) => !sources.some((sx: any) => sx.id === i.id))
+            .flatMap((i: any) =>
+              (i.item_data?.variations ?? []).map((v: any) => ({
+                id: v.id,
+                name: v.item_variation_data?.name ?? null,
+                price_cents: v.item_variation_data?.price_money?.amount ?? null,
+                item_id: i.id,
+                item_name: i.item_data?.name ?? null,
+                archived: !!i.is_deleted || !!v.is_deleted,
+              }))
+            ),
         };
       });
 
       return json({
         ok: true, action, environment: config.environment,
         catalog_items: items.length,
+        pass_category: passCategoryId ? CATEGORY.filmPass : null,
+        pass_category_items: inPassCategory.length,
         counts: rows.reduce((a: any, r: any) => ({ ...a, [r.status]: (a[r.status] ?? 0) + 1 }), {}),
         pass_types: rows,
         note: "Read-only. Nothing was written to Square.",
