@@ -84,7 +84,11 @@ const publicUrl = (path: string) =>
 
 const thumbUrl = (path: string, width: number) =>
   supabase.storage.from('festival-programs').getPublicUrl(path, {
-    transform: { width, quality: 70 },
+    // `resize: 'contain'` is not decoration. Supabase defaults to 'cover', and
+    // cover given only a width does not scale the image — it squashes it to
+    // that width and keeps the original height. A 1980x3060 page came back
+    // 1400x3060, so every programme rendered horizontally compressed.
+    transform: { width, resize: 'contain', quality: 70 },
   }).data.publicUrl;
 
 /** What a slide is actually fetched at. Kept here so preloading asks for the
