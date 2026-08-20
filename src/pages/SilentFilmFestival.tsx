@@ -47,7 +47,7 @@ import {
 // EDITABLE COPY — Tom supplies the final wording.
 // Nothing below this block reads these values; change them freely.
 // ---------------------------------------------------------------------------
-const FESTIVAL_NAME = 'The Kenworthy Silent Film Festival';
+const FESTIVAL_NAME = 'Kenworthy Silent Film Festival';
 const FESTIVAL_BLURB =
   'Silent cinema as it was meant to be seen — on a big screen, in a full room, ' +
   'with live music. Each night pairs a restored classic with an original score ' +
@@ -489,6 +489,27 @@ export default function SilentFilmFestival() {
           </Card>
   ) : null;
 
+  /**
+   * The title, and the year it speaks for.
+   *
+   * Defined once because it appears in one of two places and never both: laid
+   * over the foot of the photograph when there is one, and at the top of the
+   * header when there is not. Two copies of a page's own <h1> is the kind of
+   * duplication that ends with the two disagreeing.
+   */
+  const titleBlock = (
+    <>
+      <h1 className="font-display uppercase text-3xl md:text-5xl tracking-[0.1em] text-foreground">
+        {FESTIVAL_NAME}
+      </h1>
+      {festivalYear && (
+        <p className="font-display uppercase tracking-[0.25em] text-sm text-primary mt-3">
+          {festivalYear}
+        </p>
+      )}
+    </>
+  );
+
   return (
     <>
       <SEO
@@ -498,32 +519,32 @@ export default function SilentFilmFestival() {
       />
 
       <div className="container mx-auto px-4 py-10 md:py-16 max-w-5xl">
-        {/* ---------------------------------------------- Hero / about */}
-        {/* The room, before any words about it. Wide-cropped on purpose: the
-            photograph is 4:3 and its lower half is mostly empty seating, so
-            letting it keep its proportions would push the title off a laptop
-            screen. Sized through the transform endpoint, not served at 4080px. */}
-        {heroImage && (
-          <div className="-mx-4 mb-8 md:mb-10 md:mx-0 md:rounded-lg overflow-hidden">
+        {/* The room, with the festival's name laid over the foot of it.
+            Wide-cropped on purpose: the photograph is 4:3 and its lower half is
+            mostly empty seating, so keeping its proportions would push everything
+            else off a laptop screen — and cropping to the action leaves the darkest
+            part of the frame exactly where the words go.
+        
+            The scrim is not decoration. The bottom of this photograph is dark but
+            not uniformly so, and a title set straight onto it would be legible in
+            this image and illegible in whichever one replaces it. */}
+        {heroImage ? (
+          <div className="relative -mx-4 mb-8 md:mb-10 md:mx-0 md:rounded-lg overflow-hidden">
             <img
               src={thumbUrl(heroImage, 1800)}
               alt=""
               loading="eager"
               decoding="async"
-              className="w-full h-[38vh] md:h-[46vh] object-cover"
+              className="w-full h-[46vh] md:h-[56vh] object-cover"
             />
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/85 to-transparent pt-20 pb-6 px-4 md:px-8">
+              {titleBlock}
+            </div>
           </div>
-        )}
+        ) : null}
 
         <header className="mb-12 md:mb-16">
-          <h1 className="font-display uppercase text-3xl md:text-5xl tracking-[0.1em] text-foreground">
-            {FESTIVAL_NAME}
-          </h1>
-          {festivalYear && (
-            <p className="font-display uppercase tracking-[0.25em] text-sm text-primary mt-3">
-              {festivalYear}
-            </p>
-          )}
+          {!heroImage && titleBlock}
           {/* Words and trailer side by side once there is room for both, and only
               then: the two-column grid is conditional on a trailer existing,
               because splitting the row when nothing fills the other half would
