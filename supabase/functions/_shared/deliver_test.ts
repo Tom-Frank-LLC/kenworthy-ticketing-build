@@ -45,6 +45,9 @@ function ticketRows(overrides: Record<string, unknown> = {}) {
       order_token: ORDER_TOKEN,
       user_id: 'user-1',
       confirmation_sent_at: null,
+      // The buyer's stored answer. Most tests pass consent explicitly and this
+      // is ignored; the ones that do not are testing exactly this fallback.
+      sms_consent: true,
       seats: null,
       showing_price_tiers: null,
       showings: {
@@ -286,12 +289,56 @@ Deno.test('a decline also blocks the number we already had on file', async () =>
   });
 });
 
-Deno.test('no consent signal at all leaves the old behaviour alone', async () => {
-  // An operator resend through send-ticket-confirmation carries no consent
-  // field. Treating that silence as a decline would quietly break resends.
-  const admin = stubAdmin(ticketRows());
+Deno.test('a caller with nothing to say defers to a consenting order', async () => {
+  // The happy resend: no consent field on the call, `sms_consent` true on the
+  // order, so the text goes. Paired with the two tests below it — the same
+  // silent caller against a declining order and against no record at all —
+  // this is what pins the fallback to the order rather than to the phone field.
+  const admin = stubAdmin(ticketRows({ sms_consent: true }));
   await withStubFetch(() => ok(), async (sent) => {
     const result = await deliverConfirmation(admin, ORDER_TOKEN, contact);
+
+    assertEquals((result as { channel: string }).channel, 'email+sms');
+    assertEquals(sent.twilio, 1);
+  });
+});
+
+Deno.test('a resend with no consent field uses what the buyer answered', async () => {
+  // send-ticket-confirmation carries no consent field. Before tickets.sms_consent
+  // that meant "no signal", and the number on file got texted regardless of what
+  // the buyer had said. It now means "ask the order".
+  const admin = stubAdmin(ticketRows({ sms_consent: false }));
+  await withStubFetch(() => ok(), async (sent) => {
+    const result = await deliverConfirmation(admin, ORDER_TOKEN, contact);
+
+    assertEquals(result.status, 'delivered');
+    assertEquals((result as { channel: string }).channel, 'email');
+    assertEquals(sent.twilio, 0, 'the order says no, and a resend has to honour it');
+    assertEquals(admin.updates.at(-1)!.confirmation_error, null);
+  });
+});
+
+Deno.test('an order with no consent on record is not texted', async () => {
+  // Every order placed before the column, and any path that never asks. No
+  // record is not permission — the absence of a "no" is not a "yes".
+  const admin = stubAdmin(ticketRows({ sms_consent: null }));
+  await withStubFetch(() => ok(), async (sent) => {
+    const result = await deliverConfirmation(admin, ORDER_TOKEN, contact);
+
+    assertEquals((result as { channel: string }).channel, 'email');
+    assertEquals(sent.twilio, 0);
+  });
+});
+
+Deno.test('an explicit consent from the caller overrides the stored answer', async () => {
+  // The caller is the more specific statement: ticket-checkout relaying a live
+  // answer, or an operator asserting one on a resend.
+  const admin = stubAdmin(ticketRows({ sms_consent: false }));
+  await withStubFetch(() => ok(), async (sent) => {
+    const result = await deliverConfirmation(admin, ORDER_TOKEN, {
+      ...contact,
+      smsConsent: true,
+    });
 
     assertEquals((result as { channel: string }).channel, 'email+sms');
     assertEquals(sent.twilio, 1);
