@@ -68,7 +68,17 @@ type Plan = {
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
-export default function SquareCatalogTab() {
+interface SquareCatalogTabProps {
+  /**
+   * Passes now have their own panel on the Passes tab, so this screen suppresses
+   * its pass section when mounted beside it. What is left is the showtime work —
+   * variations to append, prices that disagree with Square — which has no other
+   * home yet.
+   */
+  showPasses?: boolean;
+}
+
+export default function SquareCatalogTab({ showPasses = true }: SquareCatalogTabProps) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [passes, setPasses] = useState<PassRow[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -285,7 +295,7 @@ export default function SquareCatalogTab() {
         </Card>
       )}
 
-      {(passes ?? []).length > 0 && (
+      {showPasses && (passes ?? []).length > 0 && (
         <Card className="p-4 space-y-3">
           <div className="font-medium">Film passes</div>
           <p className="text-sm text-muted-foreground">
