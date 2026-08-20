@@ -5,7 +5,11 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**50 briefs** — 50 shipped, 0 built, 0 open, 0 needs triage, 0 closed.
+**51 briefs** — 50 shipped, 0 built, 1 open, 0 needs triage, 0 closed.
+
+## Open
+
+- **Capture SMS consent at the box office**<br>`feature` — [brief](briefs/BRIEF-counter-sms-optin.md)
 
 ## Shipped
 
