@@ -248,11 +248,30 @@ a one-line edit in an obvious place, and puts the rule in a
 `COMMENT ON TABLE storage.buckets` — which is the row somebody is looking at
 when they copy the statement above it.
 
-*Caveat on the evidence:* this finding is derived from the migrations, which are
-the repo's source of truth for bucket creation and which no later migration
-touches. I could not read the live bucket config — that needs credentials this
-session does not hold. The migration is an idempotent `UPDATE`, so it is correct
-either way; if the buckets were already constrained it is a no-op restatement.
+*Evidence caveat, now closed.* When first written this finding was derived from
+the migrations rather than from the live buckets, because reading bucket config
+needs credentials this session does not hold. That gap is closed, by a route
+that needs no credentials at all: **Supabase Storage checks the mime type before
+it checks RLS**, so the two refusals are distinguishable with nothing but the
+anon key.
+
+```
+POST /storage/v1/object/posters/…        Content-Type: image/svg+xml
+  415 invalid_mime_type  "mime type image/svg+xml is not supported"   <- the bucket
+POST /storage/v1/object/posters/…        Content-Type: image/png
+  403 Unauthorized       "new row violates row-level security policy" <- past the bucket
+```
+
+Verified on staging after the migration, across all four:
+
+| bucket | `image/svg+xml` | `image/png` |
+| --- | --- | --- |
+| `posters` | rejected at bucket | mime accepted → RLS refuses |
+| `pass-images` | rejected at bucket | mime accepted → RLS refuses |
+| `festival-programs` | rejected at bucket | mime accepted → RLS refuses |
+| `concession-menus` | rejected at bucket | rejected at bucket (PDF only) |
+
+Every finding in this report is now reproduced by a probe, with no exceptions.
 
 ---
 
@@ -391,5 +410,5 @@ Three passes, as the brief specifies.
 Nothing was written to production. Every row the probes created on staging —
 15 `rental_requests` — was deleted afterwards; verified zero remaining.
 
-A finding is listed only where a probe reproduced it, except M4, whose evidence
-limits are stated inline.
+A finding is listed only where a probe reproduced it. M4 was the one exception
+when this was written; it is no longer — see the mime-before-RLS check under M4.
