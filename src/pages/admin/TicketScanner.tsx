@@ -204,7 +204,23 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
    * valid.
    */
   const validateTicket = useCallback(async (qrCode: string): Promise<ScanResult> => {
-    const { data, error } = await supabase.rpc('check_in_ticket', { p_qr_code: qrCode });
+    // The selected screening scopes the scan. Until this was passed, a ticket
+    // for *any* screening scanned green here and was stamped used in the
+    // process — so arriving on the wrong night both got you in and cost you the
+    // ticket you actually held. The server does the comparison (see
+    // 20260819191247) because by the time this code sees an answer the row has
+    // already been written.
+    //
+    // Read from the ref, not the state: this callback is captured by the QR
+    // reader for the life of the session, so the state it closed over is the
+    // one from mount. Empty means no screening is selected, and the server
+    // treats NULL as "don't scope" — the behaviour that existed before.
+    const currentShowing = showingIdRef.current || null;
+
+    const { data, error } = await supabase.rpc('check_in_ticket', {
+      p_qr_code: qrCode,
+      p_showing_id: currentShowing,
+    });
 
     if (error || !data) {
       console.error('[TicketScanner] check_in_ticket failed', error);
@@ -212,7 +228,13 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
     }
 
     const result = data as {
-      verdict: 'valid' | 'already_scanned' | 'not_confirmed' | 'not_found' | 'forbidden';
+      verdict:
+        | 'valid'
+        | 'wrong_showing'
+        | 'already_scanned'
+        | 'not_confirmed'
+        | 'not_found'
+        | 'forbidden';
       ticket: {
         id: string;
         production_title: string | null;
@@ -245,6 +267,19 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
           patron_status: t.status,
         }
       : undefined;
+
+    // A different screening. The ticket has NOT been consumed, which is the
+    // whole point — so name the night it is actually for, and the patron either
+    // comes back then or hands over the right ticket now.
+    if (result.verdict === 'wrong_showing') {
+      return {
+        status: 'invalid',
+        ticket,
+        message: t?.start_time
+          ? `Wrong screening — this ticket is for ${t.production_title || 'another show'} on ${formatShowtime(t.start_time, 'EEE MMM d, h:mm a')}. It has not been used.`
+          : 'Wrong screening — this ticket is for a different show. It has not been used.',
+      };
+    }
 
     if (result.verdict === 'not_confirmed') {
       return {

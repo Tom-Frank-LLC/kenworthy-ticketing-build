@@ -16,7 +16,50 @@ const corsHeaders = {
  * On POST, forms come as application/x-www-form-urlencoded with fields like
  *   type=subscribe|unsubscribe|profile|upemail|cleaned
  *   data[email]=..., data[list_id]=..., data[new_email]=...
+ *
+ * ---------------------------------------------------------------------------
+ * What this endpoint is allowed to change, and why it is so little
+ * ---------------------------------------------------------------------------
+ *
+ * A query-string secret is a weaker credential than a signature, and it is the
+ * strongest one available: Mailchimp will not sign a webhook body. A secret in
+ * a URL is written to proxy logs, browser history and referrer headers in a way
+ * a signature header never is, and — because there is no timestamp to bound —
+ * a captured request can be replayed forever.
+ *
+ * So the credential is treated as one that may leak, and the blast radius is
+ * kept to what a leak can survive. This endpoint sets `marketing_opt_in` and
+ * nothing else.
+ *
+ * It used to do more. On `type=upemail` it took two addresses out of the
+ * request body and rewrote `profiles.email` from one to the other, which is a
+ * stranger changing the identity on an account. `profiles.email` is not
+ * decorative: `invite-staff` resolves an invitation to an existing account by
+ * looking it up there *first*, and `_shared/buyers.ts` matches a guest buyer to
+ * an account the same way. Rewriting it desynchronises the profile from
+ * `auth.users`, which is the actual source of truth for signing in, and leaves
+ * both of those lookups pointing at the wrong person.
+ *
+ * Mailchimp is a mailing list. It does not get to decide who someone is here,
+ * so the address rewrite is gone and an `upemail` now only ensures the old
+ * address stops receiving marketing. Changing an account's email is a job for
+ * the account holder, through auth.
  */
+
+/**
+ * Length-independent comparison, so a mismatch leaks no timing information.
+ *
+ * `!==` on a secret returns as soon as two characters differ, and the time that
+ * takes is a function of how many leading characters were right. Over a network
+ * with a database round trip in front of it that signal is deep in the noise —
+ * but the fix is four lines and does not depend on that staying true.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
 async function readFormData(req: Request): Promise<Record<string, string>> {
   const ct = req.headers.get("content-type") || "";
@@ -53,7 +96,7 @@ Deno.serve(async (req) => {
   const { data: cfg } = await admin
     .from("app_config").select("value").eq("key", "mailchimp_webhook").maybeSingle();
   const expected = cfg?.value?.secret;
-  if (!expected || providedSecret.length < 16 || providedSecret !== expected) {
+  if (!expected || providedSecret.length < 16 || !timingSafeEqual(providedSecret, expected)) {
     return new Response("forbidden", { status: 403, headers: corsHeaders });
   }
 
@@ -66,7 +109,6 @@ Deno.serve(async (req) => {
 
   const type = form["type"];
   const email = (form["data[email]"] || "").toLowerCase().trim();
-  const newEmail = (form["data[new_email]"] || "").toLowerCase().trim();
 
   try {
     if (type === "unsubscribe" || type === "cleaned") {
@@ -78,8 +120,13 @@ Deno.serve(async (req) => {
         await admin.from("profiles").update({ marketing_opt_in: true }).eq("email", email);
       }
     } else if (type === "upemail") {
-      if (email && newEmail) {
-        await admin.from("profiles").update({ email: newEmail }).eq("email", email);
+      // The subscriber changed their address *in Mailchimp*. All that means
+      // here is that the old address is no longer one we should market to —
+      // see the header comment for why the account's own email is left alone.
+      // The new address arrives with its own subscribe event if it is one of
+      // ours.
+      if (email) {
+        await admin.from("profiles").update({ marketing_opt_in: false }).eq("email", email);
       }
     }
     // 'profile' updates are informational only

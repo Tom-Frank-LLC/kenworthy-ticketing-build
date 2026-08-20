@@ -24,6 +24,20 @@ Edge functions (Supabase secrets, per project):
   - `npx supabase secrets set SITE_URL="https://kenworthy-ticketing-staging.mrtomfrank.workers.dev" --project-ref rpqzrpboyhshdrfdwayk`
   - `npx supabase secrets set SITE_URL="https://kenworthy-ticketing-build.mrtomfrank.workers.dev" --project-ref vlmslygnimfbamrtwvyo` (→ `https://kenworthy.org` at cutover)
 
+Turnstile — **set the pair together or not at all**:
+- `VITE_TURNSTILE_SITE_KEY` (frontend, `.env.*`) and `TURNSTILE_SECRET_KEY`
+  (Supabase secret) come from one widget created in the Cloudflare dashboard
+  (Turnstile → Add widget; add both Worker hostnames).
+- They gate the bot check on the public rental form. Both ends treat *unset* as
+  "skip the check", so the form keeps working before the widget exists — which
+  is why the halfway states are the ones to avoid. A site key with no secret is
+  a widget the server ignores; a secret with no site key rejects every
+  submission for a missing token.
+  - `npx supabase secrets set TURNSTILE_SECRET_KEY="..." --project-ref rpqzrpboyhshdrfdwayk`
+  - `npx supabase secrets set TURNSTILE_SECRET_KEY="..." --project-ref vlmslygnimfbamrtwvyo`
+- The secret key is a **secret** — it goes in `supabase secrets set`, never in
+  `.env.*`, which are committed. The site key is public by design.
+
 ---
 
 ## Staging deploy
