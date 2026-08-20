@@ -5,7 +5,7 @@ import { SEO } from '@/components/SEO';
 import { ProductionMedia } from '@/components/ProductionMedia';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ChevronLeft, ChevronRight, Download, FileText, Ticket } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, FileText, PlayCircle, Ticket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { passImageUrl } from '@/lib/passImage';
@@ -123,10 +123,15 @@ function productionOf(screening: Screening): Production | null {
  */
 function YearSlideshow({ entry }: { entry: FestivalYear }) {
   const [page, setPage] = useState(0);
+  // The pane shows one thing at a time. A trailer permanently pinned above the
+  // pages pushed the programme down on every year that had one, for a video
+  // most readers will watch once; as a toggle it costs a click and no space.
+  const [showTrailer, setShowTrailer] = useState(false);
   const total = entry.pages.length;
 
-  // A new year opens at its cover, not at whatever page the last one reached.
-  useEffect(() => { setPage(0); }, [entry.year]);
+  // A new year opens at its cover, not at whatever page the last one reached —
+  // and on the programme, not on whatever the last year was left showing.
+  useEffect(() => { setPage(0); setShowTrailer(false); }, [entry.year]);
 
   const index = Math.min(page, Math.max(0, total - 1));
 
@@ -158,10 +163,12 @@ function YearSlideshow({ entry }: { entry: FestivalYear }) {
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
-        {/* The year's own trailer, above its pages. Only when there is one: an
-            empty 16:9 well above every programme would be worse than none. */}
-        {entry.trailerUrl && (
-          <div className="border-b border-border">
+        {/* A year with no scanned pages still has a booklet to hand over, so
+            the footer below is outside this branch rather than inside it.
+            Returning early here is what made the one programme in production
+            unreachable: the message replaced the download alongside it. */}
+        {showTrailer && entry.trailerUrl ? (
+          <div className="bg-background">
             <ProductionMedia
               title={`Silent Film Festival ${entry.year}`}
               type="event"
@@ -169,13 +176,7 @@ function YearSlideshow({ entry }: { entry: FestivalYear }) {
               fallback="none"
             />
           </div>
-        )}
-
-        {/* A year with no scanned pages still has a booklet to hand over, so
-            the footer below is outside this branch rather than inside it.
-            Returning early here is what made the one programme in production
-            unreachable: the message replaced the download alongside it. */}
-        {!current ? (
+        ) : !current ? (
           <div className="h-[60vh] lg:h-[72vh] flex flex-col items-center justify-center text-center px-6">
             <FileText className="h-10 w-10 mb-3 text-muted-foreground opacity-50" aria-hidden="true" />
             <p className="font-serif text-muted-foreground">
@@ -243,16 +244,33 @@ function YearSlideshow({ entry }: { entry: FestivalYear }) {
         </div>
         )}
 
-        <div className="flex items-center justify-between gap-3 p-4 border-t border-border">
+        <div className="flex items-center justify-between gap-2 p-4 border-t border-border flex-wrap">
           <div className="min-w-0">
             <p className="font-display uppercase tracking-[0.15em] text-xs text-primary">
               {entry.year}
             </p>
             <p className="font-serif text-foreground" aria-live="polite">
-              {total > 1 ? `Page ${index + 1} of ${total}` : 'Programme'}
+              {showTrailer && entry.trailerUrl
+                ? 'Trailer'
+                : total > 1 ? `Page ${index + 1} of ${total}` : 'Programme'}
             </p>
 
           </div>
+          {/* One pane, two things to put in it. Swapping beats stacking: a
+              trailer pinned above the pages pushed the programme down on every
+              year that had one, for a video most readers watch once. */}
+          {entry.trailerUrl && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              onClick={() => setShowTrailer(v => !v)}
+            >
+              {showTrailer
+                ? <><FileText className="h-4 w-4 mr-1" aria-hidden="true" /> View programme</>
+                : <><PlayCircle className="h-4 w-4 mr-1" aria-hidden="true" /> View trailer</>}
+            </Button>
+          )}
           {entry.booklet && (
             /* The one link that still leaves the page, because saving a file
                is what a new tab is actually for. */
@@ -279,6 +297,7 @@ export default function SilentFilmFestival() {
   const [programs, setPrograms] = useState<FestivalProgram[]>([]);
   const [trailers, setTrailers] = useState<ReadonlyMap<number, string | null>>(new Map());
   const [blurbs, setBlurbs] = useState<ReadonlyMap<number, string | null>>(new Map());
+  const [heroImages, setHeroImages] = useState<ReadonlyMap<number, string | null>>(new Map());
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   // Which side of the split we are on decides where the slideshow *mounts*,
@@ -308,7 +327,7 @@ export default function SilentFilmFestival() {
 
       const yearQuery = supabase
         .from('festival_years')
-        .select('year, trailer_url, blurb')
+        .select('year, trailer_url, blurb, hero_image_path')
         .eq('festival_slug', FESTIVAL_SLUG);
 
       const [{ data: passRow }, { data: programRows }, { data: yearRows }] = await Promise.all([
@@ -320,9 +339,11 @@ export default function SilentFilmFestival() {
 
       const years = (yearRows ?? []) as Array<{
         year: number; trailer_url: string | null; blurb: string | null;
+        hero_image_path: string | null;
       }>;
       setTrailers(new Map(years.map(r => [r.year, r.trailer_url] as const)));
       setBlurbs(new Map(years.map(r => [r.year, r.blurb] as const)));
+      setHeroImages(new Map(years.map(r => [r.year, r.hero_image_path] as const)));
 
       setPass((passRow as FestivalPass) ?? null);
       setPrograms((programRows as FestivalProgram[]) ?? []);
@@ -372,16 +393,6 @@ export default function SilentFilmFestival() {
       .map(g => describeYear(g, trailers));
   }, [programs, trailers]);
 
-  // The newest festival, so the pane is never an empty box on arrival.
-  const newestYear = archive[0]?.year ?? null;
-  useEffect(() => {
-    if (selectedYear === null && newestYear !== null) setSelectedYear(newestYear);
-  }, [selectedYear, newestYear]);
-
-  const selected = useMemo(
-    () => archive.find(a => a.year === selectedYear) ?? null,
-    [archive, selectedYear],
-  );
   const festivalYear = lineup.length
     ? new Date(lineup[0].start_time).getFullYear()
     : null;
@@ -405,6 +416,33 @@ export default function SilentFilmFestival() {
 
   /** Resolved once, so the grid and the render cannot disagree about it. */
   const heroTrailer = heroYear ? trailers.get(heroYear) ?? null : null;
+  const heroImage = heroYear ? heroImages.get(heroYear) ?? null : null;
+
+  /**
+   * This year's programme, and the ones before it, kept apart.
+   *
+   * A year that has not happened yet was appearing under "Past Programs", which
+   * is simply untrue and reads as a mistake — the festival is a fortnight away.
+   * It gets its own place above them instead. The split is by heroYear rather
+   * than by the calendar, so it follows the same year the top of the page is
+   * already speaking for.
+   */
+  const currentEntry = heroYear != null
+    ? archive.find(a => a.year === heroYear) ?? null
+    : null;
+  const pastYears = archive.filter(a => a.year !== currentEntry?.year);
+
+  // The newest PAST festival, so the pane is never an empty box on arrival and
+  // never opens on the year that now has its own section above.
+  const newestYear = pastYears[0]?.year ?? null;
+  useEffect(() => {
+    if (selectedYear === null && newestYear !== null) setSelectedYear(newestYear);
+  }, [selectedYear, newestYear]);
+
+  const selected = useMemo(
+    () => pastYears.find(a => a.year === selectedYear) ?? null,
+    [pastYears, selectedYear],
+  );
 
   // The stored page is a ~2000px-wide scan, because a reader who clicks a
   // thumbnail wants a page they can actually read. The grid must not fetch that
@@ -461,6 +499,22 @@ export default function SilentFilmFestival() {
 
       <div className="container mx-auto px-4 py-10 md:py-16 max-w-5xl">
         {/* ---------------------------------------------- Hero / about */}
+        {/* The room, before any words about it. Wide-cropped on purpose: the
+            photograph is 4:3 and its lower half is mostly empty seating, so
+            letting it keep its proportions would push the title off a laptop
+            screen. Sized through the transform endpoint, not served at 4080px. */}
+        {heroImage && (
+          <div className="-mx-4 mb-8 md:mb-10 md:mx-0 md:rounded-lg overflow-hidden">
+            <img
+              src={thumbUrl(heroImage, 1800)}
+              alt=""
+              loading="eager"
+              decoding="async"
+              className="w-full h-[38vh] md:h-[46vh] object-cover"
+            />
+          </div>
+        )}
+
         <header className="mb-12 md:mb-16">
           <h1 className="font-display uppercase text-3xl md:text-5xl tracking-[0.1em] text-foreground">
             {FESTIVAL_NAME}
@@ -600,6 +654,24 @@ export default function SilentFilmFestival() {
           )}
         </section>
 
+        {/* ------------------------------------ This year's programme */}
+        {/* Its own section rather than the top of the archive. A festival a
+            fortnight away is not a past programme, and filing it under one
+            read as a mistake. */}
+        {currentEntry && (currentEntry.pages.length > 0 || currentEntry.booklet) && (
+          <section className="mb-14 md:mb-20" aria-labelledby="this-programme">
+            <h2
+              id="this-programme"
+              className="font-display uppercase text-2xl md:text-3xl tracking-[0.15em] text-foreground mb-6"
+            >
+              This Year&rsquo;s Programme
+            </h2>
+            <div className="max-w-3xl">
+              <YearSlideshow entry={currentEntry} />
+            </div>
+          </section>
+        )}
+
         {/* --------------------------------------------------- Archive */}
         <section aria-labelledby="archive">
           <h2
@@ -612,7 +684,7 @@ export default function SilentFilmFestival() {
 
           {loading ? (
             <p className="font-serif text-muted-foreground py-8">Loading…</p>
-          ) : archive.length === 0 ? (
+          ) : pastYears.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50" aria-hidden="true" />
@@ -628,7 +700,7 @@ export default function SilentFilmFestival() {
                room to sit is just a page you have to scroll past. */
             <div className="grid lg:grid-cols-[1fr_1.8fr] gap-6 lg:gap-10">
               <ul className="min-w-0 space-y-2 lg:max-h-[620px] lg:overflow-y-auto lg:pr-2">
-                {archive.map((entry) => {
+                {pastYears.map((entry) => {
                   const isSelected = selected?.year === entry.year;
                   const cover = entry.coverPath ? thumbUrl(entry.coverPath, 160) : null;
                   return (
