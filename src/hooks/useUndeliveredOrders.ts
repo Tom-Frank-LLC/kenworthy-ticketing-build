@@ -47,6 +47,10 @@ export function useUndeliveredOrders() {
         `)
         .eq('status', 'confirmed')
         .lt('purchased_at', cutoff)
+        // Dismissed orders are still undelivered and the columns still say so;
+        // an admin has just decided no further send is coming. See the
+        // migration for why this hides rather than rewrites.
+        .is('confirmation_dismissed_at', null)
         .or('confirmation_error.not.is.null,confirmation_sent_at.is.null')
         .order('purchased_at', { ascending: false })
         .range(from, to),
@@ -78,7 +82,37 @@ export function useUndeliveredOrders() {
     setLoading(false);
   }, []);
 
+  /**
+   * Take an order off the card without pretending it was delivered.
+   *
+   * Only admins hold UPDATE on `tickets`. A policy-blocked update is not an
+   * error in PostgREST — it matches no rows, returns 204, and supabase-js
+   * reports success — so this selects the ids back and treats an empty result
+   * as the failure it is. Without that a staff member would click Dismiss, see
+   * nothing happen, and click again.
+   */
+  const dismiss = useCallback(async (orderToken: string) => {
+    const { data: auth } = await supabase.auth.getUser();
+    const actor = auth?.user?.id;
+    if (!actor) throw new Error('Not signed in');
+
+    const { data, error: err } = await supabase
+      .from('tickets')
+      .update({
+        confirmation_dismissed_at: new Date().toISOString(),
+        confirmation_dismissed_by: actor,
+      })
+      .eq('order_token', orderToken)
+      .select('id');
+
+    if (err) throw new Error(err.message);
+    if (!data?.length) {
+      throw new Error('Nothing was updated — dismissing needs an admin account.');
+    }
+    await reload();
+  }, [reload]);
+
   useEffect(() => { void reload(); }, [reload]);
 
-  return { orders, loading, error, reload };
+  return { orders, loading, error, reload, dismiss };
 }

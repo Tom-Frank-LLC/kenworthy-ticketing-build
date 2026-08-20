@@ -2307,7 +2307,10 @@ export type Database = {
           comp_recipient_email: string | null
           comp_recipient_name: string | null
           confirmation_channel: string | null
+          confirmation_dismissed_at: string | null
+          confirmation_dismissed_by: string | null
           confirmation_error: string | null
+          sms_consent: boolean | null
           confirmation_sent_at: string | null
           id: string
           issued_by_user_id: string | null
@@ -2337,7 +2340,10 @@ export type Database = {
           comp_recipient_email?: string | null
           comp_recipient_name?: string | null
           confirmation_channel?: string | null
+          confirmation_dismissed_at?: string | null
+          confirmation_dismissed_by?: string | null
           confirmation_error?: string | null
+          sms_consent?: boolean | null
           confirmation_sent_at?: string | null
           id?: string
           issued_by_user_id?: string | null
@@ -2367,7 +2373,10 @@ export type Database = {
           comp_recipient_email?: string | null
           comp_recipient_name?: string | null
           confirmation_channel?: string | null
+          confirmation_dismissed_at?: string | null
+          confirmation_dismissed_by?: string | null
           confirmation_error?: string | null
+          sms_consent?: boolean | null
           confirmation_sent_at?: string | null
           id?: string
           issued_by_user_id?: string | null
