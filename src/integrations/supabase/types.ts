@@ -882,6 +882,7 @@ export type Database = {
           created_at: string
           expiration_days: number | null
           festival_slug: string | null
+          fine_print: string | null
           id: string
           image_path: string | null
           initial_balance: number
@@ -897,6 +898,7 @@ export type Database = {
           created_at?: string
           expiration_days?: number | null
           festival_slug?: string | null
+          fine_print?: string | null
           id?: string
           image_path?: string | null
           initial_balance?: number
@@ -912,6 +914,7 @@ export type Database = {
           created_at?: string
           expiration_days?: number | null
           festival_slug?: string | null
+          fine_print?: string | null
           id?: string
           image_path?: string | null
           initial_balance?: number

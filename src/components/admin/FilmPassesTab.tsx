@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { Textarea } from '@/components/ui/textarea';
 import { PASS_IMAGE_BUCKET, passImageUrl } from '@/lib/passImage';
 import {
   Plus, Trash2, CreditCard, DollarSign, Printer, Loader2, Ban, QrCode,
@@ -43,6 +44,8 @@ interface FilmPassType {
   festival_slug: string | null;
   /** Artwork in the pass-images bucket, shown beside the pass when it sells. */
   image_path: string | null;
+  /** Where this pass is and is not valid, printed on the purchase page. */
+  fine_print: string | null;
 }
 
 const BLANK_FORM = {
@@ -54,6 +57,7 @@ const BLANK_FORM = {
   per_showing_use_limit: '',
   is_default_for_movies: true,
   festival_slug: '',
+  fine_print: '',
 };
 
 /**
@@ -384,6 +388,7 @@ export default function FilmPassesTab() {
         pt.per_showing_use_limit === null ? '' : String(pt.per_showing_use_limit),
       is_default_for_movies: pt.is_default_for_movies,
       festival_slug: pt.festival_slug ?? '',
+      fine_print: pt.fine_print ?? '',
     });
     setShowForm(true);
   }
@@ -440,6 +445,9 @@ export default function FilmPassesTab() {
       // blank box would collide with the first instead of being unconstrained.
       festival_slug: form.festival_slug.trim() || null,
       image_path: imagePath,
+      // Empty means the purchase page prints no validity line for this pass,
+      // which is safer than inheriting another pass's claim.
+      fine_print: form.fine_print.trim() || null,
     };
 
 
@@ -883,6 +891,25 @@ export default function FilmPassesTab() {
                 Leave blank for an ordinary pass. Enter{' '}
                 <code className="font-mono">silent-film-festival</code> to make this the pass
                 sold on the Silent Film Festival page. One pass per festival.
+              </p>
+            </div>
+
+            {/* Printed under the order summary for whichever pass is selected.
+                It used to be one sentence hard-coded into the page, which meant
+                the festival pass was sold beneath a line saying it was not
+                valid at special events. */}
+            <div className="border-t border-border pt-4">
+              <Label htmlFor="pass-fine-print">Validity note on the purchase page</Label>
+              <Textarea
+                id="pass-fine-print"
+                rows={2}
+                placeholder="Valid on standard movies. Not on special events or premium screenings."
+                value={form.fine_print}
+                onChange={e => setForm(f => ({ ...f, fine_print: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                One line saying where this pass is and is not valid. Leave blank to
+                print nothing — better than a sentence that is wrong for this pass.
               </p>
             </div>
 
