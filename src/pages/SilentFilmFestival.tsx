@@ -413,6 +413,44 @@ export default function SilentFilmFestival() {
   // serves both sizes; nothing is uploaded twice.
 
 
+  /**
+   * The pass, wherever it ends up. It sits under the trailer when there is
+   * one and at the head of This Year when there is not, and defining it once
+   * is what stops those two copies drifting into different offers.
+   *
+   * Present only once someone has created the pass type and marked it with
+   * this festival's slug; until then the page simply does not advertise a
+   * pass, which beats advertising one that cannot be bought.
+   */
+  const passCard = pass ? (
+          <Card className="mb-8 border-success/40">
+            <CardContent className="p-5 md:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
+              {pass.image_path ? (
+                <img
+                  src={passImageUrl(pass.image_path)}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="w-16 h-20 shrink-0 rounded object-cover border border-border bg-background"
+                />
+              ) : (
+                <Ticket className="h-8 w-8 text-success shrink-0" aria-hidden="true" />
+              )}
+              <div className="flex-1 min-w-0">
+                <h3 className="font-display uppercase text-xl tracking-[0.1em]">
+                  {pass.name}
+                </h3>
+                <p className="font-serif text-muted-foreground mt-1">
+                  ${Number(pass.price).toFixed(2)} — good at every screening below.
+                </p>
+              </div>
+              <Button asChild className={cn('h-11 shrink-0', GREEN_CTA)}>
+                <Link to={`/film-passes?pass=${pass.id}`}>Buy the festival pass</Link>
+              </Button>
+            </CardContent>
+          </Card>
+  ) : null;
+
   return (
     <>
       <SEO
@@ -456,14 +494,23 @@ export default function SilentFilmFestival() {
             {/* Rendered by the block the production drawer and ticketing page
                 already use, so a pasted YouTube or Vimeo link behaves here exactly
                 as it does everywhere else. */}
+            {/* The left column: the trailer, and the pass directly beneath it.
+            
+                lg:mt-2 is an optical correction, not a gap. Aligning the boxes
+                exactly put the video above the first line of text, because a line
+                of type carries half its leading above the cap height while a video
+                starts at its own edge. Eight pixels is roughly that half-leading at
+                this size, and it reads level. */}
             {heroTrailer && (
-              <ProductionMedia
-                title={`${FESTIVAL_NAME} ${heroYear}`}
-                type="event"
-                trailerUrl={heroTrailer}
-                fallback="none"
-                className="lg:order-1"
-              />
+              <div className="lg:order-1 lg:mt-2 space-y-6">
+                <ProductionMedia
+                  title={`${FESTIVAL_NAME} ${heroYear}`}
+                  type="event"
+                  trailerUrl={heroTrailer}
+                  fallback="none"
+                />
+                {passCard}
+              </div>
             )}
           </div>
         </header>
@@ -477,38 +524,8 @@ export default function SilentFilmFestival() {
             This Year
           </h2>
 
-          {/* The pass. Present only once someone has created the pass type and
-              marked it with this festival's slug; until then the page simply
-              does not advertise a pass, which is better than advertising one
-              that cannot be bought. */}
-          {pass && (
-            <Card className="mb-8 border-success/40">
-              <CardContent className="p-5 md:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
-                {pass.image_path ? (
-                  <img
-                    src={passImageUrl(pass.image_path)}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="w-16 h-20 shrink-0 rounded object-cover border border-border bg-background"
-                  />
-                ) : (
-                  <Ticket className="h-8 w-8 text-success shrink-0" aria-hidden="true" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-display uppercase text-xl tracking-[0.1em]">
-                    {pass.name}
-                  </h3>
-                  <p className="font-serif text-muted-foreground mt-1">
-                    ${Number(pass.price).toFixed(2)} — good at every screening below.
-                  </p>
-                </div>
-                <Button asChild className={cn('h-11 shrink-0', GREEN_CTA)}>
-                  <Link to={`/film-passes?pass=${pass.id}`}>Buy the festival pass</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+          {/* Shown here only when the hero has no trailer to sit it under. */}
+          {!heroTrailer && passCard}
 
           {/* The lineup. */}
           {loading ? (
