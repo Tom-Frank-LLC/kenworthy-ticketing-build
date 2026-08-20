@@ -154,10 +154,13 @@ export const COLLECT_PHONE = true;
  *
  * It was `true` for two days before that was so, deliberately and with the
  * trade stated: carriers were rejecting our sends with error 30034, so a
- * phone-only buyer who ticked the SMS box was charged and delivered nothing.
- * That window is closed. It is recorded because `orders.confirmation_error` is
- * where those failures landed and nothing in the admin surfaces that column —
- * if a buyer from 18–20 August says they never got their ticket, that is why.
+ * phone-only buyer who ticked the SMS box would be charged and delivered
+ * nothing.
+ * That window is closed and it cost nothing: the site was not yet live to
+ * customers, so the only purchases in it were staff testing. Recorded because
+ * the exposure was zero for reasons of timing, not because the decision
+ * contained it — flipping this early on a live site would have charged real
+ * people for tickets they never received.
  *
  * What has to stay true for this to keep being honest:
  *   1. `TWILIO_ACCOUNT_SID` on the deployed functions.
