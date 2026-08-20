@@ -10,7 +10,7 @@
 ## Shipped
 
 - **Send a ticket confirmation for box-office (StaffPOS) sales**<br>`feature` — `#91`, `bb9a506` — [brief](briefs/BRIEF-pos-ticket-delivery.md)
-- **Re-activate phone capture and connect Twilio SMS**<br>`ops` — `#86`, `#90`, `#96`, `#98`, `#104`, `#105`, `#118`, `070efee`, `dd1dc71`, `b3dfb97`, `62c6559`, `4354dbc`, `ba2d03c`, `1f63153` — [brief](briefs/BRIEF-reactivate-phone-sms.md)
+- **Re-activate phone capture and connect Twilio SMS**<br>`ops` — `#86`, `#90`, `#96`, `#98`, `#104`, `#105`, `#118`, `#119`, `#122`, `#124`, `070efee`, `dd1dc71`, `b3dfb97`, `62c6559`, `4354dbc`, `ba2d03c`, `1f63153`, `da670a8`, `1ea3a23` — [brief](briefs/BRIEF-reactivate-phone-sms.md)
 - **Make ticket / event / MET / film-pass sales write catalogued line items in Square**<br>`data` — `#103`, `9d5876a` — [brief](briefs/BRIEF-square-line-items.md)
 - **Fix staging password-reset "email rate limit" — wire the Send Email hook to Resend**<br>`ops` — [brief](briefs/BRIEF-staging-auth-email-hook.md)
 - **Restore venue + event date/time to film/event/MET items via the Square API — safely**<br>`ops` — `#85`, `3b26771`, `c095abd` — [brief](briefs/BRIEF-square-venue-date-api.md)

@@ -4,7 +4,7 @@ title: Re-activate phone capture and connect Twilio SMS
 status: shipped
 track: ops
 date: 2026-08-18
-shipped_in: ["#86", "#90", "#96", "#98", "#104", "#105", "#118", "070efee", "dd1dc71", "b3dfb97", "62c6559", "4354dbc", "ba2d03c", "1f63153"]
+shipped_in: ["#86", "#90", "#96", "#98", "#104", "#105", "#118", "#119", "#122", "#124", "070efee", "dd1dc71", "b3dfb97", "62c6559", "4354dbc", "ba2d03c", "1f63153", "da670a8", "1ea3a23"]
 verified: true
 verified_on: 2026-08-20
 ---
@@ -209,13 +209,35 @@ so those columns are the only evidence there is.
   exposure was zero because of when it happened, not because of anything the
   decision did to limit it.
 
+### Closed since, in follow-on work
+
+- **Delivery failures have a screen now** (#122, refined in #124). An
+  undelivered-orders card on the admin dashboard, reading back the
+  `confirmation_*` columns nothing had ever read. It separates the three
+  failures that look alike in the data — reported, partial, and the silent one
+  where nothing was sent and nothing recorded — and offers a resend, forcing
+  past the double-send guard only for the partial case. It renders nothing when
+  there is nothing wrong, stays one line when there is, and an admin can
+  dismiss an order that will never deliver: recorded as
+  `confirmation_dismissed_at`/`_by`, never as a delivery. "Watch
+  `confirmation_error`" is no longer advice that requires SQL.
+
+- **Consent is stored** (#122). `tickets.sms_consent`, written with the order
+  and read back through `loadOrder`. `deliverConfirmation` resolves caller →
+  order → no, so a resend carrying no consent field now consults the buyer's
+  actual answer instead of texting whatever number was on file. Nullable on
+  purpose: NULL means never asked, which is not the same as asked and declined,
+  and backfilling it to false would have put words in thousands of mouths.
+
 ### Open, and deliberately not closed here
 
-- **No admin view of delivery failures.** `confirmation_error` is the only
-  record of a failed send and nothing surfaces it, so "watch
-  `confirmation_error`" is advice that currently requires SQL.
-- **Consent is per-request, not stored.** An operator resend carries no consent
-  field and can still text a number on file. Closing it means an `sms_consent`
-  column on `tickets`, read back through `loadOrder`.
-- **A stale `TWILIO_API_KEY`** remains on production. Unread, but it makes the
-  misnaming look live.
+- **A stale `TWILIO_API_KEY`** remains on production — still there as of
+  2026-08-20. Unread by anything (`deliver.ts` wants `TWILIO_API_KEY_SID`), so
+  it is untidiness rather than risk, but it makes the misnaming that cost most
+  of this fortnight look like it is still live. Staging is already clean.
+
+- **The box office captures no SMS consent.** `deliverPos` sends
+  `sms_consent: false` and emails only, which is correct and is why enabling
+  SMS did not start texting walk-ups. A counter opt-in — a checkbox the staff
+  member ticks after asking, with the disclosures on screen — is what would let
+  the counter text a patron who wants it. Nobody has asked for that yet.
