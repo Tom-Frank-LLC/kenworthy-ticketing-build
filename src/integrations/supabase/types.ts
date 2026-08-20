@@ -2122,6 +2122,33 @@ export type Database = {
           },
         ]
       }
+      square_link_dismissals: {
+        Row: {
+          created_at: string
+          dismissed_by: string | null
+          entity_id: string
+          entity_type: string
+          id: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          dismissed_by?: string | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          dismissed_by?: string | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
       showings: {
         Row: {
           created_at: string

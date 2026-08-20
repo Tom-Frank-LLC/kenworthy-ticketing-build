@@ -16,6 +16,8 @@ import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
 import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
 import FestivalProgramsTab from '@/components/admin/FestivalProgramsTab';
+import { SquareLinkPanel } from '@/components/admin/SquareLinkPanel';
+import SquareCatalogTab from '@/components/admin/SquareCatalogTab';
 import { DEFAULT_PAGES_TAB, resolveAdminSection } from '@/lib/adminSections';
 import FilmPassesTab from '@/components/admin/FilmPassesTab';
 import HostManagementTab from '@/components/admin/HostManagementTab';
@@ -23,7 +25,6 @@ import AccountingTab from '@/components/admin/AccountingTab';
 import ChartOfAccountsTab from '@/components/admin/accounting/ChartOfAccountsTab';
 import AccountMappingsTab from '@/components/admin/accounting/AccountMappingsTab';
 import QboExportTab from '@/components/admin/accounting/QboExportTab';
-import SquareCatalogTab from '@/components/admin/SquareCatalogTab';
 import RentalRequestsTab from '@/components/admin/RentalRequestsTab';
 import BoxOfficeReceiptsTab from '@/components/admin/BoxOfficeReceiptsTab';
 import LaborTab from '@/components/admin/LaborTab';
@@ -558,6 +559,7 @@ export default function AdminDashboard() {
                 <TabsTrigger value="movies">Movies</TabsTrigger>
                 <TabsTrigger value="live-events">Live Events</TabsTrigger>
                 <TabsTrigger value="venues">Venues</TabsTrigger>
+                <TabsTrigger value="square">Showtimes in Square</TabsTrigger>
               </TabsList>
               {/* Title search, ratings and showtime sorting have nothing to
                   filter on the Venues list. */}
@@ -684,6 +686,7 @@ export default function AdminDashboard() {
               )}
             </div>
             <TabsContent value="movies">
+            <SquareLinkPanel scope="movies" title="Square catalog — movies" />
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <h2 className="font-display text-xl font-bold">Movies</h2>
             <div className="flex gap-2">
@@ -774,6 +777,7 @@ export default function AdminDashboard() {
           </div>
             </TabsContent>
             <TabsContent value="live-events">
+            <SquareLinkPanel scope="live_performances" title="Square catalog — live events" />
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <h2 className="font-display text-xl font-bold">Live Events</h2>
             <div className="flex gap-2">
@@ -919,6 +923,14 @@ export default function AdminDashboard() {
             )}
           </div>
             </TabsContent>
+
+            {/* The showtime half of the old Analytics screen. Passes moved to
+                their own panel on the Passes tab; variations to append and
+                prices that disagree with Square are a listings concern and
+                keep a home here rather than vanishing with that tab. */}
+            <TabsContent value="square">
+              <SquareCatalogTab showPasses={false} />
+            </TabsContent>
           </Tabs>
         </TabsContent>
 
@@ -938,8 +950,11 @@ export default function AdminDashboard() {
           </Tabs>
         </TabsContent>
 
-        {/* Film Passes Tab */}
-        <TabsContent value="passes">
+        {/* Film Passes Tab.
+            The Square panel sits with the thing it is about rather than under
+            Analytics, where someone editing a pass had to know to look. */}
+        <TabsContent value="passes" className="space-y-4">
+          <SquareLinkPanel scope="passes" title="Square catalog — passes" />
           <FilmPassesTab />
         </TabsContent>
 
@@ -958,7 +973,6 @@ export default function AdminDashboard() {
               <TabsTrigger value="coa">Chart of Accounts</TabsTrigger>
               <TabsTrigger value="mappings">Mappings</TabsTrigger>
               <TabsTrigger value="qbo-export">QBO Export</TabsTrigger>
-              <TabsTrigger value="square-catalog">Square catalog</TabsTrigger>
             </TabsList>
             <TabsContent value="overview">
               <AnalyticsTab />
@@ -969,7 +983,6 @@ export default function AdminDashboard() {
             <TabsContent value="coa"><ChartOfAccountsTab /></TabsContent>
             <TabsContent value="mappings"><AccountMappingsTab /></TabsContent>
             <TabsContent value="qbo-export"><QboExportTab /></TabsContent>
-            <TabsContent value="square-catalog"><SquareCatalogTab /></TabsContent>
           </Tabs>
         </TabsContent>
         )}
