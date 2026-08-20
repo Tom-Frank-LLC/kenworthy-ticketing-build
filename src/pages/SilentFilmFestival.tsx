@@ -527,7 +527,13 @@ export default function SilentFilmFestival() {
         
             The scrim is not decoration. The bottom of this photograph is dark but
             not uniformly so, and a title set straight onto it would be legible in
-            this image and illegible in whichever one replaces it. */}
+            this image and illegible in whichever one replaces it..
+
+            46/56vh cropped 15% to 39/47.5vh. Only the height moves: object-cover
+            keeps the full width and takes a shallower band from the middle, so the
+            room stays as wide as it was and less of the empty seating shows. The
+            heading needs no change of its own — it hangs off the container's bottom
+            edge, so it rises with the crop. */}
         {heroImage ? (
           <div className="relative -mx-4 mb-8 md:mb-10 md:mx-0 md:rounded-lg overflow-hidden">
             <img
@@ -535,7 +541,7 @@ export default function SilentFilmFestival() {
               alt=""
               loading="eager"
               decoding="async"
-              className="w-full h-[46vh] md:h-[56vh] object-cover"
+              className="w-full h-[39vh] md:h-[47.5vh] object-cover"
             />
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/85 to-transparent pt-20 pb-6 px-4 md:px-8">
               {titleBlock}
