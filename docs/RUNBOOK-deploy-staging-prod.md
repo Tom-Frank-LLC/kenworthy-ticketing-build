@@ -24,6 +24,23 @@ Edge functions (Supabase secrets, per project):
   - `npx supabase secrets set SITE_URL="https://kenworthy-ticketing-staging.mrtomfrank.workers.dev" --project-ref rpqzrpboyhshdrfdwayk`
   - `npx supabase secrets set SITE_URL="https://kenworthy-ticketing-build.mrtomfrank.workers.dev" --project-ref vlmslygnimfbamrtwvyo` (→ `https://kenworthy.org` at cutover)
 
+Creating a storage bucket — **a public bucket needs two more columns**:
+- `INSERT INTO storage.buckets (id, name, public)` is the shape every existing
+  bucket used, and it leaves `allowed_mime_types` and `file_size_limit` NULL —
+  meaning *anything, any size*. A client-side `accept=""` attribute is a form
+  validation, not a control: it is skipped by calling
+  `storage.from(...).upload()` directly, and `file.type` is whatever the client
+  claims anyway.
+- An unconstrained **public** bucket will take an SVG carrying `<script>` and
+  serve it from our own Supabase origin. That is a phishing primitive with no
+  upside; posters and pass artwork are raster images.
+- Add the new bucket to the list in
+  `20260820164402_new_public_buckets_accept_only_their_own_media.sql`. The rule
+  cannot be a `COMMENT ON TABLE storage.buckets` — Supabase owns that table and
+  the migration role is not its owner (`42501`).
+- This has already recurred once: `festival-programs` and `pass-images` were
+  both created unconstrained the day after the first two were fixed.
+
 Turnstile — **set the pair together or not at all**:
 - `VITE_TURNSTILE_SITE_KEY` (frontend, `.env.*`) and `TURNSTILE_SECRET_KEY`
   (Supabase secret) come from one widget created in the Cloudflare dashboard
