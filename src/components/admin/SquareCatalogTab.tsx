@@ -37,6 +37,15 @@ type PassRow = {
   }>;
   /** Distinct Square items carrying this name. Above 1 means duplicate SKUs. */
   matching_items?: number;
+  /** Everything filed under 9 Film Passes that the name did not already match. */
+  category_options?: Array<{
+    id: string;
+    name: string | null;
+    price_cents: number | null;
+    item_id?: string;
+    item_name?: string | null;
+    archived?: boolean;
+  }>;
   possible_matches?: Array<{ id: string; name: string; why: string }>;
 };
 
@@ -327,12 +336,39 @@ export default function SquareCatalogTab() {
                   ))}
                 </div>
               )}
+              {/* Passes whose Square name is nothing like ours — the standard
+                  pass is "10-film pass" here and "KENWORTHY FILM PASS" there.
+                  Filed under the same category though, which is a handful of
+                  items rather than the whole 887-item catalog. */}
+              {pt.status !== 'linked' && (pt.category_options ?? []).length > 0 && (
+                <div className="space-y-1 border-t border-border pt-2">
+                  <p className="text-xs text-muted-foreground">
+                    Also filed under <strong>9 Film Passes</strong> in Square:
+                  </p>
+                  {(pt.category_options ?? []).map((v) => (
+                    <div key={v.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground">
+                        {v.item_name} · {v.name || 'Regular'}
+                        {v.price_cents != null && ` · ${money(v.price_cents)}`}
+                        {v.archived && <Badge variant="outline" className="ml-1 text-[10px]">archived</Badge>}
+                      </span>
+                      <Button size="sm" variant="outline" disabled={!!busy}
+                        onClick={() => linkPass(pt.pass_type_id, v.id, v.item_name || pt.name)}>
+                        {busy === pt.pass_type_id
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <><Link2 className="h-3 w-3 mr-1" /> Use this</>}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {pt.status === 'needs_item' && !pt.variations.length && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">
                     {(pt.possible_matches ?? []).length
                       ? <>Similar in Square: {(pt.possible_matches ?? []).map(m => m.name).join(', ')}. Check those first — creating another item when one of these is the same pass is how duplicates start.</>
-                      : <>Nothing in the catalog matches this pass.</>}
+                      : <>Nothing in the catalog matches this pass by name.</>}
                   </p>
                   <Button size="sm" variant="outline" disabled={!!busy}
                     onClick={() => createPassItem(pt.pass_type_id, pt.name)}>
