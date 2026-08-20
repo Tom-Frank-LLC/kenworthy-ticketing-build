@@ -5,7 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**50 briefs** — 50 shipped, 0 built, 0 open, 0 needs triage, 0 closed.
+**51 briefs** — 50 shipped, 1 built, 0 open, 0 needs triage, 0 closed.
+
+## Built, not deployed
+
+Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
+
+- `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
 
 ## Shipped
 
@@ -59,6 +65,12 @@
 - **Update the Handoff Doc (`PLATFORM.md`) to Match Reality**<br>`feature` — `22daa6a` — [brief](briefs/BRIEF-update-handoff-doc.md)
 - **Enrich the Showing / Ticketing Page with Drawer Elements**<br>`ux` — [brief](briefs/BRIEF-showing-page-media.md)
 - **Missing Ticket Confirmation & Account Emails**<br>`ops` — `#91`, `bb9a506`, `2bb68d4` — [brief](briefs/BRIEF-ticket-email.md)
+
+## Briefs with no frontmatter
+
+The generator cannot place these. Add frontmatter per the schema.
+
+- `BRIEF-security-audit-e2e.md`
 
 ---
 

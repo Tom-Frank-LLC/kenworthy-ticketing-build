@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper } from 'lucide-react';
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
@@ -34,6 +34,7 @@ import MailchimpTab from '@/components/admin/MailchimpTab';
 import LglTab from '@/components/admin/LglTab';
 import HiringTab from '@/components/admin/HiringTab';
 import PressTab from '@/components/admin/PressTab';
+import BackstageTab from '@/components/admin/BackstageTab';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
@@ -1032,6 +1033,9 @@ export default function AdminDashboard() {
                 <TabsTrigger value="press">
                   <Newspaper className="h-4 w-4 mr-1 inline" />Press
                 </TabsTrigger>
+                <TabsTrigger value="backstage">
+                  <Martini className="h-4 w-4 mr-1 inline" />Backstage
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="festival">
                 <FestivalProgramsTab />
@@ -1041,6 +1045,9 @@ export default function AdminDashboard() {
               </TabsContent>
               <TabsContent value="press">
                 <PressTab />
+              </TabsContent>
+              <TabsContent value="backstage">
+                <BackstageTab />
               </TabsContent>
             </Tabs>
           </TabsContent>
