@@ -53,8 +53,21 @@ BEGIN
   END LOOP;
 END $$;
 
--- A standing note for whoever adds the next one. Bucket comments are not a
--- constraint, but this is the row a person is looking at when they create a
--- sibling bucket by copying the statement above it.
-COMMENT ON TABLE storage.buckets IS
-  'Storage buckets. A PUBLIC bucket must also set allowed_mime_types and file_size_limit — a client-side accept="" attribute is a form validation, not a control, and an unconstrained public bucket will take an SVG carrying <script> and serve it from our own origin. See 20260820164402 for the current list; add new public buckets to it.';
+-- The standing note wanted to live on the table itself:
+--
+--   COMMENT ON TABLE storage.buckets IS '...'
+--
+-- It cannot. `storage.buckets` is owned by Supabase, not by the migration role,
+-- so that statement fails with `must be owner of table buckets` (42501) and
+-- takes the whole migration down with it — which is exactly what happened on
+-- the first push of this file. Worth recording, because it looks like it should
+-- work and a throwaway Postgres will happily run it: there, the test role owns
+-- the table.
+--
+-- So the rule lives in the two places a person is actually standing when they
+-- need it: here, and in docs/RUNBOOK-deploy-staging-prod.md.
+--
+--   A PUBLIC bucket must also set allowed_mime_types and file_size_limit.
+--   A client-side accept="" attribute is a form validation, not a control.
+--   An unconstrained public bucket will take an SVG carrying <script> and
+--   serve it from our own origin.
