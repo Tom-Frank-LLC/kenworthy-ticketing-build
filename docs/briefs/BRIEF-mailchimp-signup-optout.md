@@ -4,7 +4,7 @@ title: Fix the footer newsletter signup + switch ticket-checkout marketing to op
 status: shipped
 track: ops
 date: 2026-08-14
-evidence: unsubscribe handling in mailchimp-webhook and mailchimp-subscribe
+evidence: outbound opt-out only — mailchimp-subscribe is deployed on both projects; the inbound mailchimp-webhook is 404 on both, so unsubscribes made inside Mailchimp do not sync back
 verified: true
 ---
 

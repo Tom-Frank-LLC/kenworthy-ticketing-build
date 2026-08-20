@@ -661,6 +661,83 @@ export type Database = {
         }
         Relationships: []
       }
+      festival_programs: {
+        Row: {
+          created_at: string
+          display_order: number
+          festival_slug: string
+          file_path: string
+          file_type: string
+          id: string
+          is_published: boolean
+          thumbnail_path: string | null
+          title: string | null
+          uploaded_by: string | null
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          festival_slug?: string
+          file_path: string
+          file_type: string
+          id?: string
+          is_published?: boolean
+          thumbnail_path?: string | null
+          title?: string | null
+          uploaded_by?: string | null
+          year: number
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          festival_slug?: string
+          file_path?: string
+          file_type?: string
+          id?: string
+          is_published?: boolean
+          thumbnail_path?: string | null
+          title?: string | null
+          uploaded_by?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "festival_programs_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      festival_years: {
+        Row: {
+          created_at: string
+          festival_slug: string
+          id: string
+          trailer_url: string | null
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          festival_slug?: string
+          id?: string
+          trailer_url?: string | null
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          created_at?: string
+          festival_slug?: string
+          id?: string
+          trailer_url?: string | null
+          updated_at?: string
+          year?: number
+        }
+        Relationships: []
+      }
       film_pass_orders: {
         Row: {
           amount_paid: number | null
@@ -831,7 +908,10 @@ export type Database = {
         Row: {
           created_at: string
           expiration_days: number | null
+          festival_slug: string | null
+          fine_print: string | null
           id: string
+          image_path: string | null
           initial_balance: number
           is_active: boolean
           is_default_for_movies: boolean
@@ -844,7 +924,10 @@ export type Database = {
         Insert: {
           created_at?: string
           expiration_days?: number | null
+          festival_slug?: string | null
+          fine_print?: string | null
           id?: string
+          image_path?: string | null
           initial_balance?: number
           is_active?: boolean
           is_default_for_movies?: boolean
@@ -857,7 +940,10 @@ export type Database = {
         Update: {
           created_at?: string
           expiration_days?: number | null
+          festival_slug?: string | null
+          fine_print?: string | null
           id?: string
+          image_path?: string | null
           initial_balance?: number
           is_active?: boolean
           is_default_for_movies?: boolean
@@ -2248,7 +2334,10 @@ export type Database = {
           comp_recipient_email: string | null
           comp_recipient_name: string | null
           confirmation_channel: string | null
+          confirmation_dismissed_at: string | null
+          confirmation_dismissed_by: string | null
           confirmation_error: string | null
+          sms_consent: boolean | null
           confirmation_sent_at: string | null
           id: string
           issued_by_user_id: string | null
@@ -2278,7 +2367,10 @@ export type Database = {
           comp_recipient_email?: string | null
           comp_recipient_name?: string | null
           confirmation_channel?: string | null
+          confirmation_dismissed_at?: string | null
+          confirmation_dismissed_by?: string | null
           confirmation_error?: string | null
+          sms_consent?: boolean | null
           confirmation_sent_at?: string | null
           id?: string
           issued_by_user_id?: string | null
@@ -2308,7 +2400,10 @@ export type Database = {
           comp_recipient_email?: string | null
           comp_recipient_name?: string | null
           confirmation_channel?: string | null
+          confirmation_dismissed_at?: string | null
+          confirmation_dismissed_by?: string | null
           confirmation_error?: string | null
+          sms_consent?: boolean | null
           confirmation_sent_at?: string | null
           id?: string
           issued_by_user_id?: string | null

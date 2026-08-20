@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCa
 import { SEO } from '@/components/SEO';
 import { invokeFunction } from '@/lib/functions';
 import { COLLECT_PHONE } from '@/lib/flags';
+import { passImageUrl } from '@/lib/passImage';
 
 /**
  * Buying a film pass online.
@@ -35,6 +37,10 @@ interface PassType {
   initial_balance: number;
   redemption_price: number;
   expiration_days: number | null;
+  /** Artwork in the pass-images bucket. Null on a pass nobody has given one. */
+  image_path: string | null;
+  /** Where this pass is and is not valid. Staff-edited; null prints nothing. */
+  fine_print: string | null;
 }
 
 type Fulfillment = 'pickup' | 'mail';
@@ -47,6 +53,7 @@ interface Placed {
 }
 
 const MAX_QUANTITY = 10;
+
 
 export default function FilmPasses() {
   const [passTypes, setPassTypes] = useState<PassType[]>([]);
@@ -74,19 +81,28 @@ export default function FilmPasses() {
   // failure, or Square replays the old decline at a corrected card.
   const idempotencyKeyRef = useRef(crypto.randomUUID());
 
+  // Which pass a link asked for. The festival page sends people here with its
+  // own pass named, so they land on the pass they clicked rather than on the
+  // cheapest one and have to find it again. Ignored if it names a pass that is
+  // not on sale, which is what an old link does after a pass is retired.
+  const [searchParams] = useSearchParams();
+  const requestedPassId = searchParams.get('pass');
+
   useEffect(() => {
     supabase
       .from('film_pass_types')
-      .select('id, name, price, initial_balance, redemption_price, expiration_days')
+      .select('id, name, price, initial_balance, redemption_price, expiration_days, image_path, fine_print')
       .eq('is_active', true)
       .order('price')
       .then(({ data }) => {
         const types = (data || []) as PassType[];
         setPassTypes(types);
-        if (types.length > 0) setSelectedId(types[0].id);
+        const requested = types.find(t => t.id === requestedPassId);
+        if (requested) setSelectedId(requested.id);
+        else if (types.length > 0) setSelectedId(types[0].id);
         setLoading(false);
       });
-  }, []);
+  }, [requestedPassId]);
 
   const selected = passTypes.find(p => p.id === selectedId) ?? null;
   // Sales tax is added on top of the listed price, and film-pass-checkout
@@ -257,7 +273,11 @@ export default function FilmPasses() {
           {/* Which pass */}
           <div className="space-y-3">
             <h2 className="font-display text-lg font-bold">Choose a pass</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
+            {/* One per row rather than two. The artwork needs about 64px, and at two
+                columns inside this layout each card was ~190px wide — the name wrapped
+                mid-word and the price clipped off the edge, on the page where the price
+                matters most. There are only ever a handful of passes. */}
+            <div className="grid gap-3">
               {passTypes.map(pt => {
                 const films = Math.floor(
                   Number(pt.initial_balance) / Number(pt.redemption_price || 1),
@@ -273,10 +293,27 @@ export default function FilmPasses() {
                       selectedId === pt.id ? 'ring-2 ring-primary' : 'hover:glow-primary'
                     }`}
                   >
-                    <CardContent className="p-5">
+                    <CardContent className="p-5 flex gap-4">
+                      {/* Artwork where there is any. A pass without it keeps the
+                          layout it has always had rather than reserving a gap
+                          for a picture that is not coming. */}
+                      {pt.image_path ? (
+                        <img
+                          src={passImageUrl(pt.image_path)}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="w-16 h-20 shrink-0 rounded object-cover border border-border bg-background"
+                        />
+                      ) : (
+                        <span className="w-16 h-20 shrink-0 rounded border border-border flex items-center justify-center text-muted-foreground bg-background">
+                          <Ticket className="h-6 w-6" aria-hidden="true" />
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <h3 className="font-display text-lg font-bold">{pt.name}</h3>
-                        <span className="text-xl font-bold text-primary">
+                        <span className="text-xl font-bold text-primary shrink-0">
                           {money(Number(pt.price))}
                         </span>
                       </div>
@@ -289,6 +326,7 @@ export default function FilmPasses() {
                           Valid {pt.expiration_days} days from activation
                         </Badge>
                       )}
+                      </div>
                     </CardContent>
                   </Card>
                 );
@@ -525,10 +563,16 @@ export default function FilmPasses() {
               servers.
             </p>
 
-            {/* The two rules people otherwise discover at the door. */}
+            {/* The rules people otherwise discover at the door.
+                The first is true of every pass here, so it stays in the page.
+                The second is a claim about one product — the standard pass is
+                not valid at special events, the festival pass is valid at
+                nothing else — so it comes from the pass being bought. A pass
+                with nothing to say prints nothing rather than inheriting
+                another pass's wording. */}
             <div className="text-sm text-muted-foreground border-t border-border pt-3 space-y-1">
               <p>Passes are used in person — they cannot book tickets online.</p>
-              <p>Valid on standard movies. Not on special events or premium screenings.</p>
+              {selected?.fine_print && <p>{selected.fine_print}</p>}
             </div>
           </CardContent>
         </Card>

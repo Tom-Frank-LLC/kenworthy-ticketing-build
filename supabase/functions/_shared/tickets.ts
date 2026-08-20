@@ -40,6 +40,15 @@ export interface Order {
   user_id: string;
   purchased_at: string;
   confirmation_sent_at: string | null;
+  /**
+   * The buyer's own answer to the SMS opt-in, kept so a *resend* can honour it.
+   *
+   * `true` agreed, `false` asked and declined, `null` never asked — orders
+   * predating the column, and paths with no opt-in of their own. Null is not a
+   * refusal, but it is not permission either, and `deliverConfirmation` treats
+   * it as no.
+   */
+  sms_consent: boolean | null;
   title: string;
   start_time: string;
   start_time_display: string;
@@ -89,7 +98,7 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
     .from('tickets')
     .select(`
       id, qr_code, status, scanned_at, total_price, purchased_at, order_token, user_id,
-      confirmation_sent_at,
+      confirmation_sent_at, sms_consent,
       seats(seat_row, seat_number),
       showing_price_tiers(tier_name),
       showings(
@@ -139,6 +148,8 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
     user_id: first.user_id,
     purchased_at: first.purchased_at,
     confirmation_sent_at: first.confirmation_sent_at ?? null,
+    // Every row in an order is written together, so the first carries it.
+    sms_consent: first.sms_consent ?? null,
     title,
     start_time: showing?.start_time ?? '',
     start_time_display: showing?.start_time ? formatShowtime(showing.start_time) : '',

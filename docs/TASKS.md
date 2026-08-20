@@ -10,7 +10,7 @@
 ## Shipped
 
 - **Send a ticket confirmation for box-office (StaffPOS) sales**<br>`feature` — `#91`, `bb9a506` — [brief](briefs/BRIEF-pos-ticket-delivery.md)
-- **Re-activate phone capture and connect Twilio SMS**<br>`ops` — `#86`, `#90`, `070efee`, `dd1dc71` — [brief](briefs/BRIEF-reactivate-phone-sms.md)
+- **Re-activate phone capture and connect Twilio SMS**<br>`ops` — `#86`, `#90`, `#96`, `#98`, `#104`, `#105`, `#118`, `#119`, `#122`, `#124`, `070efee`, `dd1dc71`, `b3dfb97`, `62c6559`, `4354dbc`, `ba2d03c`, `1f63153`, `da670a8`, `1ea3a23` — [brief](briefs/BRIEF-reactivate-phone-sms.md)
 - **Make ticket / event / MET / film-pass sales write catalogued line items in Square**<br>`data` — `#103`, `9d5876a` — [brief](briefs/BRIEF-square-line-items.md)
 - **Fix staging password-reset "email rate limit" — wire the Send Email hook to Resend**<br>`ops` — [brief](briefs/BRIEF-staging-auth-email-hook.md)
 - **Restore venue + event date/time to film/event/MET items via the Square API — safely**<br>`ops` — `#85`, `3b26771`, `c095abd` — [brief](briefs/BRIEF-square-venue-date-api.md)
@@ -75,10 +75,6 @@ The 10 archival photos in `src/assets/history/*.jpg.asset.json` are **Lovable CD
 **Fix (do while Lovable is still accessible):** retrieve the 10 originals from the Lovable project (preview page or asset export), drop real `.jpg` files into `src/assets/history/`, and change `History.tsx` imports from `*.jpg.asset.json` + `imgX.url` to direct `*.jpg` + `imgX` (same pattern as the logo and hero fixes). Fallback sources: kenworthy.org/history, or originals from KPAC.
 **Urgency:** the retrieval window closes when Lovable is disconnected.
 
-### 🔴 SMTP for Supabase auth emails
-No custom SMTP configured on either project. Password resets currently squeak through Supabase's rate-limited built-in service; won't hold at production volume. Awaiting Kenworthy's email provider details.
-**Scope reduced:** ticket delivery no longer depends on this. The "set your password" link in the confirmation email is generated with `generateLink({type:'recovery'})` and sent by us via Resend, so guest account access works without SMTP. This now covers only auth-initiated email — password resets started from the login page, and magic links.
-
 ### ✅ `sign-contract` boot error — fixed 2026-08-11
 `POST /functions/v1/sign-contract` was returning `BOOT_ERROR` (503) on prod, so **rental contract signing was broken**. Found while deploying ticket delivery. Fixed and deployed to production; it now returns its own `{"error":"Not authenticated"}` for an unauthenticated call.
 **Cause (isolated, not guessed):** it imported `createClient` from `npm:@supabase/supabase-js@2.45.0` and `corsHeaders` from `npm:@supabase/supabase-js@2/cors`. Deno dedupes npm packages by name, so the `@2/cors` import resolved against the pinned 2.45.0 — and `./cors` was not added to that package's exports until after 2.50.0 (verified: absent in 2.45.0/2.50.0, present in 2.96.0). Both now come from `https://esm.sh/@supabase/supabase-js@2`, matching `guest-checkout`.
@@ -86,44 +82,46 @@ No custom SMTP configured on either project. Password resets currently squeak th
 **Still to verify:** only the boot was tested. A real signature run needs an admin session and a live rental request, so signing, PDF stamping and Ed25519 are unverified since the change — worth one manual contract signature before launch.
 **Lesson worth keeping:** `deno check`/`deno test` passing says nothing about whether a function boots. Curl every function after deploy — and note that `verify_jwt = true` functions return a gateway 401 *before* booting, so an auth error can hide a dead function. Pass a valid anon key.
 
-### 🔴 Four edge functions not deployed to production
-`mailchimp-subscribe`, `mailchimp-ecommerce`, `qbo-sync` and `lgl-sync-donation` return 404 on prod — they exist in the repo but were never deployed there. `guest-checkout` calls the two Mailchimp functions fire-and-forget, so ticket-buyer tagging and e-commerce sync have been silent no-ops on production. Decide whether to deploy them or accept marketing sync as staging-only for now.
+### 🟡 Three functions in the repo are deployed nowhere
+`mailchimp-subscribe`, `mailchimp-ecommerce` and `lgl-sync-donation` — the three
+this entry used to name — **are now live on both projects.** Re-measured
+2026-08-19 by HTTP, not by the function list alone. What is actually missing:
+
+- **`qbo-sync`** — 404 on both. A whole QuickBooks surface calls it:
+  `QboExportTab` at three call sites, `PayrollExport` for `?action=status`, and
+  the Chart of Accounts / Mappings / QBO Export tabs all render in
+  `AdminDashboard.tsx:942-955`. In progress by intent — see
+  [`briefs/FINDINGS-quickbooks-integration-state.md`](briefs/FINDINGS-quickbooks-integration-state.md)
+  for what exists, what does not, and the staged path with the risk mitigated.
+- **`mailchimp-webhook`** — 404 on both. This is the *inbound* endpoint Mailchimp
+  calls on unsubscribe/cleaned. Outbound opt-out works (the UI calls the deployed
+  `mailchimp-subscribe`); what is missing is the sync back when someone
+  unsubscribes from the footer link in an email, so our opt-out state can drift
+  from Mailchimp's.
+- **`mailchimp-bootstrap`** — 404 on both. It is what registers the webhook URL
+  and its shared secret with Mailchimp, so the webhook above was never set up.
+
+Also undeployed but expected: `poster-identify`, `square-event-create-probe`,
+`square-order-probe` — one-off tools and diagnostics, not wired to any UI.
 
 ### 🔴 Finish poster migration to production
 Staging poster migration is progressing (~200/click due to Edge Function timeout). Production not yet run. Click "Run re-fetch" on each site's Superadmin page until `total: 0`. Confirm with:
 `SELECT (SELECT COUNT(*) FROM movies WHERE poster_url LIKE '%kenworthy.org%') AS m, (SELECT COUNT(*) FROM events WHERE poster_url LIKE '%kenworthy.org%') AS e, (SELECT COUNT(*) FROM live_performances WHERE poster_url LIKE '%kenworthy.org%') AS p;`
 **Improvement (optional):** add self-batching to `refetch-posters` so each invocation reports progress and needs fewer clicks (or a loop script). Currently manual and tedious.
 
-### 🔴 Reconcile migrations between staging and production — they drift both ways
-Before launch, deliberately apply to production: the missing-showings fix (`kenworthy_showings_fix.sql`) and the poster migration. Verify counts match staging.
+### ✅ Comprehensive grants audit + single authoritative migration — done 2026-08-14
+Delivered by PR #59 (`43496e8`), migration
+`20260814214233_rls_permissions_hardening.sql`, with the role x table audit in
+[`briefs/FINDINGS-rls-security-audit.md`](briefs/FINDINGS-rls-security-audit.md).
+It states the intended privilege set per table explicitly rather than copying one
+environment onto the other, and the audit records both projects as "now identical
+in both grants and policies — which means the next drift shows up in a diff
+instead of hiding."
 
-**Measured 2026-08-11/12 (`supabase migration list` against each project) — the drift runs in both directions, so "staging is ahead" is not the whole picture:**
-
-| Migration | prod | staging |
-|---|---|---|
-| `20260810165116_grant_public_read_access` | ✅ applied | ❌ **missing** |
-| `20260811120000_ticket_delivery` | ✅ applied | ✅ applied |
-| `20260811190137_grant_service_role_crud` | ❌ pending | ❌ pending |
-| `20260811214728_grant_authenticated_content_writes` | ❌ pending | ❌ missing |
-| `20260812063211_has_role_hierarchy` | ❌ pending | ✅ applied |
-
-So **staging is missing the `anon` public-read grant that production has**, which is a likely cause of "works on prod, broken on staging" reports. And `20260811190137_grant_service_role_crud` is applied nowhere and **is not committed to git** — it exists only in one working tree, so it will be lost if that tree is cleaned. Commit it before relying on it.
-
-Note both projects already have full `service_role` CRUD on `tickets` independently of that migration (verified directly), so it is less urgent than it looks.
-
-**Also: staging had no edge functions deployed at all** until 2026-08-11. `ticket-access`, `send-ticket-confirmation`, `guest-checkout` and `sign-contract` are now deployed there; the other 13 are still absent, so anything calling them from the staging site 404s. Production is missing 7 (all `mailchimp-*`, `qbo-sync`, `lgl-sync-donation`).
-
-Deploy to a specific project without disturbing the shared CLI link with `supabase functions deploy <fn> --project-ref <ref>`. `db push` has no such flag — it needs `--linked` (re-link, then restore) or `--db-url`.
-
-### 🟡 Comprehensive grants audit + single authoritative migration
-We have now hit **three separate grant-inconsistency bugs** from Lovable's migrations:
-1. `anon` missing SELECT on many tables (fixed)
-2. `service_role` missing CRUD (fixed)
-3. `authenticated` missing writes on content tables — movies/events/showings/etc. (fixed 2026-08-11)
-This pattern means grants were set up table-by-table and inconsistently throughout. Post-launch, do one comprehensive audit across all roles (anon, authenticated, service_role) × all tables × all privileges, reconcile against the RLS policies that should gate them, and consolidate into a single authoritative grants migration so this never surprises us again.
-
-### 🟡 `profiles` table — authenticated has SELECT only
-Users typically need to UPDATE their own profile row (RLS gating to `auth.uid() = id`). `profiles` currently grants authenticated SELECT only. Was deliberately excluded from the content-writes migration because it needs its own RLS verification (own-row-only), not the admin-gated pattern. If a "can't edit profile" error appears, this is the cause — grant UPDATE once the own-row RLS policy is confirmed present and correct.
+### ✅ `profiles` table — authenticated can UPDATE — done 2026-08-14
+The same hardening migration grants it: `GRANT UPDATE ON public.profiles TO
+authenticated`. INSERT and DELETE stay revoked on purpose — rows are created by
+the SECURITY DEFINER `handle_new_user()` and are never deleted by a client.
 
 ### 🟡 Merge Listings + Archive onto one paginated source of truth
 Admin **Listings** (operational: now/soon) and superadmin **Archive** (history-page timeline) both draw on `movies`/`showings` but were separated to keep historical data out of screening analytics. Interim: Listings filters `is_active = true` (small, uncapped) and stats use `COUNT(*)`. Target: both share the tables via a server-side paginated hook (`useAdminListings.ts`, already written) with different query lenses; analytics documents how it excludes archival data. Deferred because it touches history page, archive tab, and analytics at once — unsafe pre-launch, not customer-facing.

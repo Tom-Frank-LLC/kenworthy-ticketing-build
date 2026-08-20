@@ -39,9 +39,11 @@ import {
   type SquareConfig,
 } from "../_shared/square.ts";
 import {
+  CATEGORY,
   diffPaths,
   isNoisyPath,
   normalizeTitle,
+  storedCategoryId,
   sameVariation,
   suggestTitleMatches,
   desiredVariations,
@@ -80,6 +82,20 @@ async function sq(
 }
 
 /** Every ITEM in the catalog, following the cursor. Includes archived items. */
+/** Every CATEGORY object, so an item's category id can be given a name. */
+async function listCategories(config: SquareConfig) {
+  let cursor: string | undefined = undefined;
+  const out: any[] = [];
+  do {
+    const q = new URLSearchParams({ types: "CATEGORY" });
+    if (cursor) q.set("cursor", cursor);
+    const res: any = await sq(config, `/catalog/list?${q}`);
+    for (const o of res.objects ?? []) if (o.type === "CATEGORY") out.push(o);
+    cursor = res.cursor;
+  } while (cursor);
+  return out;
+}
+
 async function listItems(config: SquareConfig) {
   let cursor: string | undefined = undefined;
   const items: any[] = [];
@@ -129,7 +145,7 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { /* none */ }
 
   const action: string = payload.action ?? "plan";
-  if (!["plan", "apply", "ensure_showing", "map_donation", "link_item", "plan_film_passes", "link_pass_type"].includes(action)) {
+  if (!["plan", "apply", "ensure_showing", "map_donation", "link_item", "plan_film_passes", "link_pass_type", "create_pass_item"].includes(action)) {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
 
@@ -170,6 +186,31 @@ Deno.serve(async (req: Request) => {
         .order("price");
 
       const items = await listItems(config);
+
+      // Widen the search by changing its axis. Matching on the name alone missed
+      // the standard film pass entirely: ours is called "10-film pass" and
+      // Square's is not, and no amount of fuzzier string comparison makes that
+      // reliable — it either stays too strict to help or gets loose enough to
+      // propose the wrong item confidently.
+      //
+      // A pass's category is the better key. The taxonomy already puts every
+      // pass under "9 Film Passes", and that is a handful of items out of ~890,
+      // so scoping to it is simultaneously wider than an exact name (it finds a
+      // pass whatever it is called) and far narrower than the catalog (nothing
+      // else can appear). Clutter comes from searching the whole catalog, not
+      // from searching the right corner of it.
+      const categories = await listCategories(config);
+      const passCategoryId = categories.find((c: any) =>
+        normalizeTitle(c.category_data?.name ?? "") === normalizeTitle(CATEGORY.filmPass)
+      )?.id ?? null;
+
+      const inPassCategory = passCategoryId
+        ? items.filter((i: any) =>
+            storedCategoryId(i.item_data) === passCategoryId &&
+            i.item_data?.product_type !== "EVENT"
+          )
+        : [];
+
       const byVariation = new Map<string, { item: any; variation: any }>();
       for (const i of items) {
         for (const v of i.item_data?.variations ?? []) byVariation.set(v.id, { item: i, variation: v });
@@ -181,32 +222,68 @@ Deno.serve(async (req: Request) => {
 
       const rows = (types ?? []).map((t: any) => {
         const linked = t.square_variation_id ? byVariation.get(t.square_variation_id) : null;
-        const exact = items.find((i) =>
+
+        // EVERY item with this name, not the first one found. The catalog holds
+        // three separate items called SILENT FILM FESTIVAL PASS, and taking the
+        // first meant the other two never reached the screen — so the human
+        // "choosing" was choosing from a list already narrowed for them, by
+        // nothing more principled than catalog order.
+        const exactAll = items.filter((i) =>
           normalizeTitle(i.item_data?.name ?? "") === normalizeTitle(t.name) &&
           i.item_data?.product_type !== "EVENT"
         );
-        const source = linked?.item ?? exact ?? null;
+        const sources = linked?.item ? [linked.item] : exactAll;
+
+        // Flattened across every matching item, each variation carrying the item
+        // it belongs to and whether that item is archived. Two SKUs of the same
+        // name at the same price are otherwise indistinguishable on screen, and
+        // linking to the archived one loses the sale in Square's reporting.
+        const variations = sources.flatMap((item: any) =>
+          (item.item_data?.variations ?? []).map((v: any) => ({
+            id: v.id,
+            name: v.item_variation_data?.name ?? null,
+            price_cents: v.item_variation_data?.price_money?.amount ?? null,
+            item_id: item.id,
+            item_name: item.item_data?.name ?? null,
+            archived: !!item.is_deleted || !!v.is_deleted,
+          }))
+        );
+
         return {
           pass_type_id: t.id,
           name: t.name,
           price_cents: Math.round(Number(t.price) * 100),
-          status: linked ? "linked" : exact ? "match_found" : "needs_item",
+          status: linked ? "linked" : exactAll.length ? "match_found" : "needs_item",
           square_variation_id: t.square_variation_id ?? null,
-          square_item_name: source?.item_data?.name ?? null,
-          // Every variation on the candidate item, so a human picks the right
-          // one rather than us assuming the first is correct.
-          variations: (source?.item_data?.variations ?? []).map((v: any) => ({
-            id: v.id,
-            name: v.item_variation_data?.name ?? null,
-            price_cents: v.item_variation_data?.price_money?.amount ?? null,
-          })),
-          possible_matches: linked || exact ? [] : suggestTitleMatches(t.name, candidates),
+          square_item_name: sources[0]?.item_data?.name ?? null,
+          /** Distinct Square items carrying this name. Above 1 means duplicates. */
+          matching_items: sources.length,
+          variations,
+          possible_matches: linked || exactAll.length ? [] : suggestTitleMatches(t.name, candidates),
+          // Everything filed as a pass in Square, minus whatever the name
+          // already matched. Offered as real choices rather than a list of
+          // names to go and look up, because a name the operator has to
+          // reconcile by hand is the manual step this was meant to remove.
+          category_options: linked ? [] : inPassCategory
+            .filter((i: any) => !sources.some((sx: any) => sx.id === i.id))
+            .flatMap((i: any) =>
+              (i.item_data?.variations ?? []).map((v: any) => ({
+                id: v.id,
+                name: v.item_variation_data?.name ?? null,
+                price_cents: v.item_variation_data?.price_money?.amount ?? null,
+                item_id: i.id,
+                item_name: i.item_data?.name ?? null,
+                archived: !!i.is_deleted || !!v.is_deleted,
+              }))
+            ),
         };
       });
 
       return json({
         ok: true, action, environment: config.environment,
         catalog_items: items.length,
+        pass_category: passCategoryId ? CATEGORY.filmPass : null,
+        pass_category_items: inPassCategory.length,
         counts: rows.reduce((a: any, r: any) => ({ ...a, [r.status]: (a[r.status] ?? 0) + 1 }), {}),
         pass_types: rows,
         note: "Read-only. Nothing was written to Square.",
@@ -215,6 +292,128 @@ Deno.serve(async (req: Request) => {
       return json({ error: e.message ?? String(e) }, 500);
     }
   }
+
+  // Create the Square item a pass has no match for, then link it.
+  //
+  // The only path here that ADDS an object to the live catalog, so it carries
+  // the same ritual as `apply`: dry run by default, confirm:"WRITE" to mean it,
+  // and a read-back afterwards because a 2xx is not evidence.
+  //
+  // It creates and never updates. The August 14 incident was an upsert built
+  // from our own columns landing on an existing object and flattening it;
+  // nothing here is given an existing id to land on, so the worst case is a
+  // surplus item rather than a destroyed one.
+  //
+  // It also refuses when the catalog already has that name. A pass with no
+  // match is the case this exists for; a pass with three matches needs a human
+  // to choose, and quietly adding a fourth is how that mess was made.
+  if (action === "create_pass_item") {
+    const passTypeId = String(payload.pass_type_id ?? "").trim();
+    if (!passTypeId) return json({ error: "pass_type_id is required" }, 400);
+
+    const { data: t } = await admin
+      .from("film_pass_types")
+      .select("id, name, price, square_variation_id")
+      .eq("id", passTypeId)
+      .maybeSingle();
+    if (!t) return json({ error: "No such pass type" }, 404);
+    if (t.square_variation_id) {
+      return json({ error: "That pass is already linked. Unlink it first." }, 409);
+    }
+
+    try {
+      const items = await listItems(config);
+      const clashes = items.filter((i: any) =>
+        normalizeTitle(i.item_data?.name ?? "") === normalizeTitle(t.name) &&
+        i.item_data?.product_type !== "EVENT"
+      );
+      if (clashes.length && payload.force !== true) {
+        return json({
+          error: `Square already has ${clashes.length} item(s) named "${t.name}". Link one of those instead, or pass force:true to add another.`,
+          existing: clashes.map((i: any) => ({ id: i.id, name: i.item_data?.name })),
+        }, 409);
+      }
+
+      const priceCents = Math.round(Number(t.price) * 100);
+      const object = {
+        type: "ITEM",
+        id: "#pass",
+        item_data: {
+          name: t.name,
+          // REGULAR, never EVENT: an EVENT item is a screening, and a pass has
+          // no showtime dimension.
+          product_type: "REGULAR",
+          variations: [{
+            type: "ITEM_VARIATION",
+            id: "#pass-variation",
+            item_variation_data: {
+              item_id: "#pass",
+              name: "Regular",
+              pricing_type: "FIXED_PRICING",
+              price_money: { amount: priceCents, currency: "USD" },
+            },
+          }],
+        },
+      };
+
+      const dry = payload.dry_run !== false;
+      if (dry || payload.confirm !== "WRITE") {
+        return json({
+          ok: true, action, dry_run: true, environment: config.environment,
+          would_create: { name: t.name, price_cents: priceCents },
+          note: dry
+            ? 'Read-only. Pass dry_run:false and confirm:"WRITE" to create it.'
+            : 'A real write requires confirm:"WRITE". Nothing was created.',
+        });
+      }
+
+      const res: any = await sq(config, "/catalog/object", {
+        method: "POST",
+        body: { idempotency_key: crypto.randomUUID(), object },
+      });
+      const createdId = res?.catalog_object?.id;
+      if (!createdId) return json({ error: "Square returned no object" }, 502);
+
+      // A 2xx is not evidence. Read it back and take the variation id from what
+      // Square actually stored, not from what we hoped it stored.
+      const after: any = await sq(config, `/catalog/object/${createdId}?include_related_objects=false`);
+      const created = after?.object;
+      const variation = created?.item_data?.variations?.[0];
+      if (!variation?.id) {
+        return json({
+          error: "Created, but the read-back showed no variation. Check Square before retrying.",
+          square_item_id: createdId,
+        }, 502);
+      }
+
+      const { data: saved, error: saveErr } = await admin
+        .from("film_pass_types")
+        .update({ square_item_id: createdId, square_variation_id: variation.id })
+        .eq("id", passTypeId)
+        .select("id");
+      if (saveErr || !saved?.length) {
+        return json({
+          error: `Created in Square but could not save the link: ${saveErr?.message ?? "no row updated"}`,
+          square_item_id: createdId,
+          square_variation_id: variation.id,
+        }, 500);
+      }
+
+      return json({
+        ok: true, action, dry_run: false, environment: config.environment,
+        created: {
+          square_item_id: createdId,
+          square_variation_id: variation.id,
+          name: created?.item_data?.name ?? null,
+          price_cents: variation.item_variation_data?.price_money?.amount ?? null,
+        },
+        note: "Created and linked. Check it appears under 9 Film Passes in Square.",
+      });
+    } catch (e: any) {
+      return json({ error: squareErrorMessage(e, e?.message ?? String(e)) }, 500);
+    }
+  }
+
 
   if (action === "link_pass_type") {
     const passTypeId = String(payload.pass_type_id ?? "").trim();

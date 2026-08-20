@@ -551,3 +551,25 @@ export function suggestTitleMatches(
     .slice(0, limit)
     .map(({ id, name, why }) => ({ id, name, why }));
 }
+
+/**
+ * Which field Square actually stored an item's category in.
+ *
+ * There are three representations and which one is populated depends on the
+ * pinned API version: on 2024-01-18 the legacy `category_id` is the one that
+ * takes, while `categories` and `reporting_category` are derived. Reading has
+ * to accept all three, because an item written by a different client — or by
+ * the Square dashboard — may carry any of them.
+ *
+ * square-catalog-sync has its own copy of this from before it was shared; the
+ * two agree, and that file is delicate enough that adopting this one belongs in
+ * a change of its own.
+ */
+export function storedCategoryId(itemData: any): string | null {
+  return (
+    itemData?.category_id ??
+    itemData?.categories?.[0]?.id ??
+    itemData?.reporting_category?.id ??
+    null
+  );
+}

@@ -234,9 +234,14 @@ export interface DeliverOptions {
    * the SMS outright — including the number this function would otherwise
    * recover from auth or `profiles`, which is the case that matters: a
    * returning buyer whose number we already hold has not consented merely by
-   * having bought before. `undefined` means the caller has no consent signal
-   * (an operator resend, an older client) and leaves the previous behaviour
-   * alone.
+   * having bought before.
+   *
+   * `undefined` means the caller has nothing to say, and the order's own
+   * `sms_consent` is used instead — which is the whole reason that column
+   * exists. A resend through `send-ticket-confirmation` carries no consent
+   * field, and before the column it fell back to texting whatever number was on
+   * file. It now falls back to the buyer's actual answer, and to no if there
+   * isn't one.
    *
    * A2P 10DLC treats consent as per-number and affirmative, so the absence of
    * a "no" is not a "yes" — but neither is a number in a database.
@@ -385,10 +390,25 @@ export async function deliverConfirmation(
   }
 
   // ---- SMS ----------------------------------------------------------------
-  // Consent first, and before the number is even considered. Declining is not
-  // a delivery failure and must not be recorded as one — there is nothing
-  // wrong, the buyer simply did not ask to be texted.
-  if (opts.smsConsent === false) phone = '';
+  // Consent first, and before the number is even considered.
+  //
+  // Resolved from the caller if it said anything, otherwise from what the buyer
+  // answered when they placed the order. The caller wins because it is the more
+  // specific statement: ticket-checkout is relaying a live answer, and a
+  // service-role resend passing `smsConsent` explicitly is an operator
+  // asserting one.
+  //
+  // Anything that is not an affirmative `true` means no SMS. That covers the
+  // decline, and it covers the silence — an order placed before this column
+  // existed, or through a path that never asks, has no consent on record, and
+  // no record is not permission. It is why `send-ticket-confirmation` can no
+  // longer text a number it recovered from `profiles` just because a resend
+  // carried no consent field of its own.
+  //
+  // Declining is not a delivery failure and is never recorded as one. Nothing
+  // went wrong; the buyer did not ask to be texted.
+  const consent = opts.smsConsent ?? order.sms_consent;
+  if (consent !== true) phone = '';
 
   // Unreachable-number errors are 400 (nothing to retry — the number is not
   // dialable) and provider errors 502 (ours or Twilio's, and worth retrying),
