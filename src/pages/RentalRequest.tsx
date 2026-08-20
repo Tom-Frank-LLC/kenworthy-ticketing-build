@@ -310,12 +310,24 @@ export default function RentalRequest() {
               the Cloudflare site key is set, and gating on the token alone
               would then disable the button forever.
             */}
+            {/*
+              The label has to say which of the two waits this is. A managed
+              Turnstile widget usually renders nothing at all, so on a first
+              visit the only thing a person sees is a Send button that does not
+              work — for a second or two normally, longer on a slow network.
+              "Send Request" sitting there greyed out reads as a broken form;
+              naming the check turns the same wait into something legible.
+            */}
             <Button
               type="submit"
               size="lg"
               disabled={submitting || (turnstileConfigured && !turnstileToken)}
             >
-              {submitting ? 'Sending…' : 'Send Request'}
+              {submitting
+                ? 'Sending…'
+                : turnstileConfigured && !turnstileToken
+                  ? 'Checking your browser…'
+                  : 'Send Request'}
             </Button>
           </div>
         </div>
