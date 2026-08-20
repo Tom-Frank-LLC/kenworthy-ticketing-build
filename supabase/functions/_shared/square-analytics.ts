@@ -113,6 +113,17 @@ export interface AnalyticsAggregate {
     lineItems: number;
     /** Lines whose category could not be resolved — see `bucketFor`. */
     uncategorizedLineItems: number;
+    /**
+     * What those unresolved lines actually are, biggest first.
+     *
+     * Without this the Uncategorised wedge is unfalsifiable: you can see that
+     * revenue went somewhere unnamed but not whether that is a bug in the
+     * variation lookup or a genuine uncatalogued sale. `hadCatalogId`
+     * distinguishes the two — false means the line never referenced the
+     * catalog (a CUSTOM_AMOUNT keyed in at the POS), true means it did and our
+     * lookup failed, which IS a bug.
+     */
+    uncategorizedSamples: Array<{ name: string; hadCatalogId: boolean; amountCents: number; lines: number }>;
     /** True if paging stopped at the page cap before Square ran out of orders. */
     truncated: boolean;
   };
@@ -238,6 +249,7 @@ export function aggregate(params: {
   let concessionRevenueCents = 0;
   let lineItems = 0;
   let uncategorized = 0;
+  const unresolved = new Map<string, { name: string; hadCatalogId: boolean; amountCents: number; lines: number }>();
 
   for (const order of orders ?? []) {
     totalCollectedCents += money(order?.total_money);
@@ -258,7 +270,15 @@ export function aggregate(params: {
       grossSalesCents += gross;
 
       const category = li?.catalog_object_id ? lookup.get(li.catalog_object_id) : undefined;
-      if (!category) uncategorized++;
+      if (!category) {
+        uncategorized++;
+        const key = `${li?.name ?? "(unnamed)"}|${li?.catalog_object_id ? "id" : "no-id"}`;
+        const row = unresolved.get(key) ??
+          { name: li?.name ?? "(unnamed)", hadCatalogId: Boolean(li?.catalog_object_id), amountCents: 0, lines: 0 };
+        row.amountCents += gross;
+        row.lines++;
+        unresolved.set(key, row);
+      }
       const bucket = bucketFor(category);
 
       // A line's quantity is a decimal string ("2", "1.5" for weighed goods).
@@ -322,7 +342,15 @@ export function aggregate(params: {
       .map(([title, v]) => ({ title, ...v }))
       .sort((a, b) => b.revenueCents - a.revenueCents)
       .slice(0, 8),
-    meta: { orders: (orders ?? []).length, lineItems, uncategorizedLineItems: uncategorized, truncated },
+    meta: {
+      orders: (orders ?? []).length,
+      lineItems,
+      uncategorizedLineItems: uncategorized,
+      uncategorizedSamples: [...unresolved.values()]
+        .sort((a, b) => b.amountCents - a.amountCents)
+        .slice(0, 15),
+      truncated,
+    },
   };
 }
 

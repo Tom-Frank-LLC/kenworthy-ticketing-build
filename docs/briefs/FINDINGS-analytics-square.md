@@ -131,22 +131,67 @@ The replacement formats in `America/Los_Angeles` via `Intl.DateTimeFormat`
 This was invisible while the tables were empty. It would not have stayed
 invisible once real money flowed through it.
 
-## 7. What is NOT verified
+## 7. Measured against the live account, 2026-08-20
 
-**The acceptance test has not been run.** "Total Revenue and Tickets Sold match
-Square Dashboard → Reports for the same range" requires the function deployed
-against the *production* Square account — staging holds `SQUARE_SANDBOX_*`, and
-the sandbox has no sales history to compare. Until that comparison is made, the
-numbers are correct by construction and by unit test, not by reconciliation.
+Deployed to production and called with an admin session, 30-day range
+(21 Jul – 20 Aug 2026). It works, in ~12 s uncached:
 
-The brief's status is therefore `built`, not `shipped`.
+| | |
+|---|---|
+| orders | 2,377 |
+| line items | 4,070 |
+| distinct variations resolved | 96 |
+| total collected | $45,421.69 |
+| gross sales | $44,355.52 |
+| tickets sold | 754 |
+| avg / ticket | $9.38 |
+| concessions | $14,829.50 |
+| refunds | 4, $63.21 |
 
-Two things to watch when it is run:
+The gap between collected and gross is $1,066.17 — tax and tips, as expected.
 
-- `meta.uncategorizedLineItems` should be near zero. If it is large, the
-  variation → category join is missing a shape.
-- `meta.truncated` must be false, or the totals are short. It trips at 20,000
-  orders in a range.
+**Two things this exposed.**
+
+**a) "Uncategorised" is the largest single category: $8,117.52, ~18% of gross.**
+194 of 4,070 lines. The conventions doc measured 99.7% of line items as
+catalogued over a 5–10k order sample; over this 30-day window it is 95.2%. The
+doc's figure is not wrong, but it should not be relied on as "essentially all".
+
+A wedge that large cannot ship unexplained, so `meta.uncategorizedSamples` now
+breaks it down and the tab renders it. The column that matters is
+`hadCatalogId`:
+
+- `false` — the line never referenced the catalog. A CUSTOM_AMOUNT keyed in at
+  the POS. Genuinely uncategorisable, and nothing to fix.
+- `true` — the line *did* point at a variation and our lookup failed to resolve
+  it. **That is a bug**, and the number should be zero.
+
+Whoever next opens this: read that breakdown first. It is the difference between
+"the theatre keys a lot of sales in by hand" and "the category join is broken".
+
+**b) `Theater Rental` is a real category that the conventions doc does not
+list.** It took $7,827.50 in the window — the second largest after the
+Uncategorised wedge. The numbered taxonomy in
+`SQUARE-TRANSACTION-CONVENTIONS.md` is therefore **incomplete**, not merely
+ordered. It is correctly bucketed as neither a ticket nor a concession (it is
+the venue hire fee, distinct from `6 Rental Tickets`), so no figure is wrong —
+but any future work that assumes the documented list is exhaustive will be.
+
+## 8. What is NOT verified
+
+**The numbers above have not been reconciled against Square's own reports.**
+The function returns plausible, internally consistent figures from the live
+account, but nobody has yet opened Square Dashboard → Reports for 21 Jul – 20 Aug
+and checked that $45,421.69 and 754 tickets are what Square says.
+
+That comparison is the brief's actual acceptance criterion and it is the one
+step still outstanding. **Compare like with like** (§4): Total Revenue against
+"Total collected", Revenue by Category against the Category Sales report's gross
+figures.
+
+**The frontend is not deployed.** The edge function is live on staging and
+production; the rewired tab is on `main` but not shipped, so the Overview an
+admin sees today is still the old build-sourced one.
 
 ## Checks
 
