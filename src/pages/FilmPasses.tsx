@@ -39,6 +39,8 @@ interface PassType {
   expiration_days: number | null;
   /** Artwork in the pass-images bucket. Null on a pass nobody has given one. */
   image_path: string | null;
+  /** Where this pass is and is not valid. Staff-edited; null prints nothing. */
+  fine_print: string | null;
 }
 
 type Fulfillment = 'pickup' | 'mail';
@@ -89,7 +91,7 @@ export default function FilmPasses() {
   useEffect(() => {
     supabase
       .from('film_pass_types')
-      .select('id, name, price, initial_balance, redemption_price, expiration_days, image_path')
+      .select('id, name, price, initial_balance, redemption_price, expiration_days, image_path, fine_print')
       .eq('is_active', true)
       .order('price')
       .then(({ data }) => {
@@ -561,10 +563,16 @@ export default function FilmPasses() {
               servers.
             </p>
 
-            {/* The two rules people otherwise discover at the door. */}
+            {/* The rules people otherwise discover at the door.
+                The first is true of every pass here, so it stays in the page.
+                The second is a claim about one product — the standard pass is
+                not valid at special events, the festival pass is valid at
+                nothing else — so it comes from the pass being bought. A pass
+                with nothing to say prints nothing rather than inheriting
+                another pass's wording. */}
             <div className="text-sm text-muted-foreground border-t border-border pt-3 space-y-1">
               <p>Passes are used in person — they cannot book tickets online.</p>
-              <p>Valid on standard movies. Not on special events or premium screenings.</p>
+              {selected?.fine_print && <p>{selected.fine_print}</p>}
             </div>
           </CardContent>
         </Card>
