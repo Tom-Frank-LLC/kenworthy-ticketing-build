@@ -234,6 +234,20 @@ phishing primitive with no upside.
 **Fix.** Bucket-level mime allowlist (raster only, no SVG) and a 10 MiB cap;
 `concession-menus` restricted to PDF. Applied to staging.
 
+**It recurred within a day, which is the more useful finding.** Between writing
+that migration and deploying it, two more public buckets were created —
+`festival-programs` (`20260819151204`) and `pass-images` (`20260820094512`) —
+both with no `allowed_mime_types` and no `file_size_limit`, both guarded only by
+a client-side `accept=""` attribute. Neither author did anything wrong:
+`INSERT INTO storage.buckets (id, name, public)` is the shape every previous
+bucket used, and the missing columns are the ones nobody knows to add.
+
+Fixing two instances did not fix the pattern. `20260820164402` restates it as a
+list of every public bucket with its permitted media, so adding the next one is
+a one-line edit in an obvious place, and puts the rule in a
+`COMMENT ON TABLE storage.buckets` — which is the row somebody is looking at
+when they copy the statement above it.
+
 *Caveat on the evidence:* this finding is derived from the migrations, which are
 the repo's source of truth for bucket creation and which no later migration
 touches. I could not read the live bucket config — that needs credentials this
