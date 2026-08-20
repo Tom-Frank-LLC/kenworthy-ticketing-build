@@ -58,7 +58,13 @@ interface Analytics {
   revenueByDay: Array<{ date: string; ticketsCents: number; concessionsCents: number; otherCents: number; totalCents: number }>;
   revenueByCategory: Array<{ name: string; amountCents: number }>;
   topPerformers: Array<{ title: string; revenueCents: number; count: number }>;
-  meta: { orders: number; lineItems: number; uncategorizedLineItems: number; truncated: boolean };
+  meta: {
+    orders: number;
+    lineItems: number;
+    uncategorizedLineItems: number;
+    uncategorizedSamples?: Array<{ name: string; hadCatalogId: boolean; amountCents: number; lines: number }>;
+    truncated: boolean;
+  };
   cached?: boolean;
 }
 
@@ -316,6 +322,42 @@ export default function AnalyticsTab() {
               </CardContent>
             </Card>
           </div>
+
+          {/* What is in the Uncategorised wedge.
+              On the live account this is real money — roughly a fifth of gross
+              in a typical month — so leaving it as an unexplained slice would
+              make the whole pie untrustworthy. `hadCatalogId` is the important
+              column: "keyed in" is a sale that never referenced the catalog and
+              is genuinely uncategorisable, while "catalog item" means the line
+              DID point at a variation our lookup failed to resolve — that is a
+              bug, not a data-entry habit. */}
+          {(data.meta.uncategorizedSamples?.length ?? 0) > 0 && (
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="text-base">What's in "Uncategorised"</CardTitle>
+                <p className="text-muted-foreground">
+                  {data.meta.uncategorizedLineItems} of {data.meta.lineItems.toLocaleString()} line
+                  items carry no reporting category. Largest first.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-1">
+                  {data.meta.uncategorizedSamples!.map((u, i) => (
+                    <li key={i} className="flex items-baseline justify-between gap-4">
+                      <span className="truncate">
+                        {u.name}
+                        <span className="text-muted-foreground">
+                          {' · '}{u.lines}&times;{' · '}
+                          {u.hadCatalogId ? 'catalog item, category unresolved' : 'keyed in at the POS'}
+                        </span>
+                      </span>
+                      <span className="tabular-nums shrink-0">{dollars(u.amountCents)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Top performers */}
           <Card className="glass">
