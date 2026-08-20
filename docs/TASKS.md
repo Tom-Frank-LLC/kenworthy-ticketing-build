@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**51 briefs** — 50 shipped, 0 built, 0 open, 1 needs triage, 0 closed.
+**52 briefs** — 50 shipped, 0 built, 1 open, 1 needs triage, 0 closed.
 
 ## Needs triage
 
@@ -16,6 +16,10 @@ fixed it. Confirm each against the repo, record `shipped_in`, set
 `verified: true` — or correct the status.
 
 - `P2` **The admin Overview reads the theatre's real revenue, from Square**<br>`bug` — `#142`, `#144` — [brief](briefs/BRIEF-analytics-square.md) · [notes](briefs/FINDINGS-analytics-square.md)
+
+## Open
+
+- `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)
 
 ## Shipped
 
