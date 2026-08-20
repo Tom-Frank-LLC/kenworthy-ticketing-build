@@ -14,6 +14,7 @@ import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCa
 import { SEO } from '@/components/SEO';
 import { invokeFunction } from '@/lib/functions';
 import { COLLECT_PHONE } from '@/lib/flags';
+import { passImageUrl } from '@/lib/passImage';
 
 /**
  * Buying a film pass online.
@@ -36,6 +37,8 @@ interface PassType {
   initial_balance: number;
   redemption_price: number;
   expiration_days: number | null;
+  /** Artwork in the pass-images bucket. Null on a pass nobody has given one. */
+  image_path: string | null;
 }
 
 type Fulfillment = 'pickup' | 'mail';
@@ -48,6 +51,7 @@ interface Placed {
 }
 
 const MAX_QUANTITY = 10;
+
 
 export default function FilmPasses() {
   const [passTypes, setPassTypes] = useState<PassType[]>([]);
@@ -85,7 +89,7 @@ export default function FilmPasses() {
   useEffect(() => {
     supabase
       .from('film_pass_types')
-      .select('id, name, price, initial_balance, redemption_price, expiration_days')
+      .select('id, name, price, initial_balance, redemption_price, expiration_days, image_path')
       .eq('is_active', true)
       .order('price')
       .then(({ data }) => {
@@ -267,7 +271,11 @@ export default function FilmPasses() {
           {/* Which pass */}
           <div className="space-y-3">
             <h2 className="font-display text-lg font-bold">Choose a pass</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
+            {/* One per row rather than two. The artwork needs about 64px, and at two
+                columns inside this layout each card was ~190px wide — the name wrapped
+                mid-word and the price clipped off the edge, on the page where the price
+                matters most. There are only ever a handful of passes. */}
+            <div className="grid gap-3">
               {passTypes.map(pt => {
                 const films = Math.floor(
                   Number(pt.initial_balance) / Number(pt.redemption_price || 1),
@@ -283,10 +291,27 @@ export default function FilmPasses() {
                       selectedId === pt.id ? 'ring-2 ring-primary' : 'hover:glow-primary'
                     }`}
                   >
-                    <CardContent className="p-5">
+                    <CardContent className="p-5 flex gap-4">
+                      {/* Artwork where there is any. A pass without it keeps the
+                          layout it has always had rather than reserving a gap
+                          for a picture that is not coming. */}
+                      {pt.image_path ? (
+                        <img
+                          src={passImageUrl(pt.image_path)}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="w-16 h-20 shrink-0 rounded object-cover border border-border bg-background"
+                        />
+                      ) : (
+                        <span className="w-16 h-20 shrink-0 rounded border border-border flex items-center justify-center text-muted-foreground bg-background">
+                          <Ticket className="h-6 w-6" aria-hidden="true" />
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <h3 className="font-display text-lg font-bold">{pt.name}</h3>
-                        <span className="text-xl font-bold text-primary">
+                        <span className="text-xl font-bold text-primary shrink-0">
                           {money(Number(pt.price))}
                         </span>
                       </div>
@@ -299,6 +324,7 @@ export default function FilmPasses() {
                           Valid {pt.expiration_days} days from activation
                         </Badge>
                       )}
+                      </div>
                     </CardContent>
                   </Card>
                 );

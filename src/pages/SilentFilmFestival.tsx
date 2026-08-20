@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ChevronLeft, ChevronRight, Download, FileText, Ticket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
+import { passImageUrl } from '@/lib/passImage';
 import { formatShowtime } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
 import { useIsSplitLayout } from '@/hooks/use-mobile';
@@ -77,6 +78,7 @@ interface FestivalPass {
   price: number;
   initial_balance: number;
   redemption_price: number;
+  image_path: string | null;
 }
 
 const publicUrl = (path: string) =>
@@ -277,7 +279,7 @@ export default function SilentFilmFestival() {
       // of programs to show.
       const passQuery = supabase
         .from('film_pass_types')
-        .select('id, name, price, initial_balance, redemption_price')
+        .select('id, name, price, initial_balance, redemption_price, image_path')
         .eq('festival_slug', FESTIVAL_SLUG)
         .eq('is_active', true)
         .maybeSingle();
@@ -393,7 +395,17 @@ export default function SilentFilmFestival() {
           {pass && (
             <Card className="mb-8 border-success/40">
               <CardContent className="p-5 md:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
-                <Ticket className="h-8 w-8 text-success shrink-0" aria-hidden="true" />
+                {pass.image_path ? (
+                  <img
+                    src={passImageUrl(pass.image_path)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="w-16 h-20 shrink-0 rounded object-cover border border-border bg-background"
+                  />
+                ) : (
+                  <Ticket className="h-8 w-8 text-success shrink-0" aria-hidden="true" />
+                )}
                 <div className="flex-1 min-w-0">
                   <h3 className="font-display uppercase text-xl tracking-[0.1em]">
                     {pass.name}

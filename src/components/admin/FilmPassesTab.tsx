@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { PASS_IMAGE_BUCKET, passImageUrl } from '@/lib/passImage';
 import {
   Plus, Trash2, CreditCard, DollarSign, Printer, Loader2, Ban, QrCode,
   Package, Mail, Store, ScanLine, Pencil, Search, X,
@@ -40,6 +41,8 @@ interface FilmPassType {
   is_default_for_movies: boolean;
   /** Set on the pass a festival page advertises; NULL on an ordinary pass. */
   festival_slug: string | null;
+  /** Artwork in the pass-images bucket, shown beside the pass when it sells. */
+  image_path: string | null;
 }
 
 const BLANK_FORM = {
@@ -190,6 +193,10 @@ export default function FilmPassesTab() {
   // which would have made the feature reachable only by deleting and
   // recreating a pass patrons already hold.
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Artwork is uploaded to storage before the row is saved, so the row never
+  // points at an object that is not there yet.
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [existingImage, setExistingImage] = useState<string | null>(null);
   const [form, setForm] = useState({ ...BLANK_FORM });
 
   // Outstanding orders — paid online, physical pass not yet handed over
@@ -365,6 +372,8 @@ export default function FilmPassesTab() {
 
   function startEdit(pt: FilmPassType) {
     setEditingId(pt.id);
+    setImageFile(null);
+    setExistingImage(pt.image_path ?? null);
     setForm({
       name: pt.name,
       price: String(pt.price),
@@ -382,6 +391,8 @@ export default function FilmPassesTab() {
   function closeForm() {
     setShowForm(false);
     setEditingId(null);
+    setImageFile(null);
+    setExistingImage(null);
     setForm({ ...BLANK_FORM });
   }
 
@@ -400,6 +411,22 @@ export default function FilmPassesTab() {
       }
     }
 
+    // The picture first: a row must never reference an object that has not
+    // finished uploading. A failed upload keeps whatever artwork was there
+    // before rather than dropping it.
+    let imagePath: string | null = existingImage;
+    if (imageFile) {
+      const safe = imageFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${Date.now()}_${safe}`;
+      const { error: upErr } = await supabase.storage
+        .from(PASS_IMAGE_BUCKET)
+        .upload(path, imageFile, { contentType: imageFile.type, upsert: false });
+      if (upErr) {
+        toast.error(`Image upload failed: ${upErr.message}`);
+        return;
+      }
+      imagePath = path;
+    }
     const payload = {
       name: form.name.trim(),
       price: parseFloat(form.price) || 60,
@@ -412,7 +439,9 @@ export default function FilmPassesTab() {
       // '': the unique index only ignores NULLs, so a second pass saved with a
       // blank box would collide with the first instead of being unconstrained.
       festival_slug: form.festival_slug.trim() || null,
+      image_path: imagePath,
     };
+
 
     // RLS filters writes rather than failing them, so a blocked update comes
     // back as 204 with no error. The returned rows are the only thing that
@@ -855,6 +884,35 @@ export default function FilmPassesTab() {
                 <code className="font-mono">silent-film-festival</code> to make this the pass
                 sold on the Silent Film Festival page. One pass per festival.
               </p>
+            </div>
+
+            {/* Shown beside the pass on /film-passes and on a festival page.
+                Optional throughout — without one both surfaces draw the ticket
+                icon they always have. */}
+            <div className="border-t border-border pt-4">
+              <Label htmlFor="pass-image">Pass image (optional)</Label>
+              <div className="flex items-center gap-3 mt-1">
+                {(imageFile || existingImage) && (
+                  <img
+                    src={imageFile ? URL.createObjectURL(imageFile) : passImageUrl(existingImage!)}
+                    alt=""
+                    className="w-14 h-18 rounded object-cover border border-border bg-background shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <Input
+                    id="pass-image"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={e => setImageFile(e.target.files?.[0] || null)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {existingImage && !imageFile
+                      ? 'An image is set. Choosing a file replaces it.'
+                      : 'Portrait artwork works best — it is shown at roughly 3:4.'}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-2">
