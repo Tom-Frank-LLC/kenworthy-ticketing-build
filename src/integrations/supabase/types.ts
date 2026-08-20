@@ -716,6 +716,7 @@ export type Database = {
           blurb: string | null
           created_at: string
           festival_slug: string
+          hero_image_path: string | null
           id: string
           trailer_url: string | null
           updated_at: string
@@ -725,6 +726,7 @@ export type Database = {
           blurb?: string | null
           created_at?: string
           festival_slug?: string
+          hero_image_path?: string | null
           id?: string
           trailer_url?: string | null
           updated_at?: string
@@ -734,6 +736,7 @@ export type Database = {
           blurb?: string | null
           created_at?: string
           festival_slug?: string
+          hero_image_path?: string | null
           id?: string
           trailer_url?: string | null
           updated_at?: string

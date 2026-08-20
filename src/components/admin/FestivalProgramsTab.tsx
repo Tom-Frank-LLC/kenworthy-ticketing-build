@@ -43,6 +43,8 @@ export default function FestivalProgramsTab() {
   // Which year the "This year" card edits. Defaults to the calendar year, which
   // is right in August and wrong in January — so it is an input, not a constant.
   const [thisYear, setThisYear] = useState<number>(() => new Date().getFullYear());
+  const [heroImages, setHeroImages] = useState<Record<number, string>>({});
+  const [heroFile, setHeroFile] = useState<Record<number, File | null>>({});
   const [published, setPublished] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -71,18 +73,23 @@ export default function FestivalProgramsTab() {
 
     const { data: yearRows } = await supabase
       .from('festival_years')
-      .select('year, trailer_url, blurb')
+      .select('year, trailer_url, blurb, hero_image_path')
       .eq('festival_slug', FESTIVAL_SLUG);
     const tMap: Record<number, string> = {};
     const bMap: Record<number, string> = {};
-    for (const r of (yearRows ?? []) as Array<{ year: number; trailer_url: string | null; blurb: string | null }>) {
+    const hMap: Record<number, string> = {};
+    for (const r of (yearRows ?? []) as Array<{
+      year: number; trailer_url: string | null; blurb: string | null; hero_image_path: string | null;
+    }>) {
       if (r.trailer_url) tMap[r.year] = r.trailer_url;
       if (r.blurb) bMap[r.year] = r.blurb;
+      if (r.hero_image_path) hMap[r.year] = r.hero_image_path;
     }
     setTrailers(tMap);
     setTrailerDraft(tMap);
     setBlurbs(bMap);
     setBlurbDraft(bMap);
+    setHeroImages(hMap);
 
     setLoading(false);
   }, []);
@@ -94,12 +101,30 @@ export default function FestivalProgramsTab() {
     const blurb = (blurbDraft[year] ?? '').trim();
     setSavingYear(year);
     try {
+      // The photograph first, so the row never points at an object that has not
+      // finished uploading. A failed upload keeps whatever was there before.
+      let heroPath: string | null = heroImages[year] ?? null;
+      const file = heroFile[year];
+      if (file) {
+        const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `hero/${year}-${Date.now()}_${safe}`;
+        const { error: upErr } = await supabase.storage
+          .from(BUCKET)
+          .upload(path, file, { contentType: file.type, upsert: false });
+        if (upErr) throw upErr;
+        heroPath = path;
+      }
       // Upsert on (festival_slug, year): the year may have had programmes for
       // ages without ever having a row of its own.
       const { data, error } = await supabase
         .from('festival_years')
         .upsert(
-          { festival_slug: FESTIVAL_SLUG, year, trailer_url: url || null, blurb: blurb || null },
+          {
+            festival_slug: FESTIVAL_SLUG, year,
+            trailer_url: url || null,
+            blurb: blurb || null,
+            hero_image_path: heroPath,
+          },
           { onConflict: 'festival_slug,year' },
         )
         .select('year');
@@ -115,6 +140,8 @@ export default function FestivalProgramsTab() {
         if (blurb) next[year] = blurb; else delete next[year];
         return next;
       });
+      if (heroPath) setHeroImages(prev => ({ ...prev, [year]: heroPath! }));
+      setHeroFile(prev => ({ ...prev, [year]: null }));
       toast.success(`Saved ${year}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save that year');
@@ -151,7 +178,33 @@ export default function FestivalProgramsTab() {
             onChange={e => setBlurbDraft(d => ({ ...d, [year]: e.target.value }))}
           />
         </div>
-        <Button size="sm" variant="outline" disabled={savingYear === year || !dirty}
+        <div>
+          <Label htmlFor={`hero-${year}`} className="text-xs">
+            Hero photograph (optional)
+          </Label>
+          <div className="flex items-center gap-3 mt-1">
+            {(heroFile[year] || heroImages[year]) && (
+              <img
+                src={heroFile[year]
+                  ? URL.createObjectURL(heroFile[year]!)
+                  : publicUrl(heroImages[year])}
+                alt=""
+                className="w-24 h-14 rounded object-cover border border-border bg-background shrink-0"
+              />
+            )}
+            <Input
+              id={`hero-${year}`}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={e => setHeroFile(f => ({ ...f, [year]: e.target.files?.[0] || null }))}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Runs full width across the top of the festival page. Wide-cropped, so
+            a landscape photograph of the room works best.
+          </p>
+        </div>
+        <Button size="sm" variant="outline" disabled={savingYear === year || (!dirty && !heroFile[year])}
           onClick={() => saveYear(year)}>
           {savingYear === year ? 'Saving…' : `Save ${year}`}
         </Button>
