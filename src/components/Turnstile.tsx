@@ -100,7 +100,21 @@ export function Turnstile({ onToken }: { onToken: (token: string | null) => void
           // A token is single-use and short-lived. Both of these hand back
           // null so the submit button knows it no longer holds a valid one.
           'expired-callback': () => onTokenRef.current(null),
-          'error-callback': () => onTokenRef.current(null),
+          // A challenge that errors is not the same as a script that failed to
+          // load, and it used to be treated as if it were nothing at all: the
+          // token was nulled and the submit button went back to being disabled
+          // with no explanation and nothing on screen, because a managed widget
+          // that never completes renders no visible UI. An ad blocker refusing
+          // challenges.cloudflare.com produces exactly that — a form the
+          // visitor cannot send and cannot see a reason for.
+          //
+          // Returning true tells Turnstile we have handled it, so it does not
+          // also paint its own error state over ours.
+          'error-callback': () => {
+            onTokenRef.current(null);
+            if (!cancelled) setFailed(true);
+            return true;
+          },
         });
       })
       .catch(() => {
@@ -120,9 +134,11 @@ export function Turnstile({ onToken }: { onToken: (token: string | null) => void
   if (failed) {
     return (
       <p className="text-sm text-muted-foreground">
-        The verification check could not load. Please disable any content blocker for this page and
-        reload, or email us at{' '}
-        <a className="underline" href="mailto:events@kenworthy.org">events@kenworthy.org</a>.
+        The verification check could not run — a content blocker or a strict network will do this.
+        Please allow <code>challenges.cloudflare.com</code> for this page and reload, or send your
+        request to{' '}
+        <a className="underline" href="mailto:events@kenworthy.org">events@kenworthy.org</a> and we
+        will take it from there.
       </p>
     );
   }
