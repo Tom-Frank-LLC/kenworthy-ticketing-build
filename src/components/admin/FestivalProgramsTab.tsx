@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -36,7 +37,12 @@ export default function FestivalProgramsTab() {
   // URL never looks saved.
   const [trailers, setTrailers] = useState<Record<number, string>>({});
   const [trailerDraft, setTrailerDraft] = useState<Record<number, string>>({});
+  const [blurbs, setBlurbs] = useState<Record<number, string>>({});
+  const [blurbDraft, setBlurbDraft] = useState<Record<number, string>>({});
   const [savingYear, setSavingYear] = useState<number | null>(null);
+  // Which year the "This year" card edits. Defaults to the calendar year, which
+  // is right in August and wrong in January — so it is an input, not a constant.
+  const [thisYear, setThisYear] = useState<number>(() => new Date().getFullYear());
   const [published, setPublished] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -65,22 +71,27 @@ export default function FestivalProgramsTab() {
 
     const { data: yearRows } = await supabase
       .from('festival_years')
-      .select('year, trailer_url')
+      .select('year, trailer_url, blurb')
       .eq('festival_slug', FESTIVAL_SLUG);
-    const map: Record<number, string> = {};
-    for (const r of (yearRows ?? []) as Array<{ year: number; trailer_url: string | null }>) {
-      if (r.trailer_url) map[r.year] = r.trailer_url;
+    const tMap: Record<number, string> = {};
+    const bMap: Record<number, string> = {};
+    for (const r of (yearRows ?? []) as Array<{ year: number; trailer_url: string | null; blurb: string | null }>) {
+      if (r.trailer_url) tMap[r.year] = r.trailer_url;
+      if (r.blurb) bMap[r.year] = r.blurb;
     }
-    setTrailers(map);
-    setTrailerDraft(map);
+    setTrailers(tMap);
+    setTrailerDraft(tMap);
+    setBlurbs(bMap);
+    setBlurbDraft(bMap);
 
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const saveTrailer = async (year: number) => {
+  const saveYear = async (year: number) => {
     const url = (trailerDraft[year] ?? '').trim();
+    const blurb = (blurbDraft[year] ?? '').trim();
     setSavingYear(year);
     try {
       // Upsert on (festival_slug, year): the year may have had programmes for
@@ -88,7 +99,7 @@ export default function FestivalProgramsTab() {
       const { data, error } = await supabase
         .from('festival_years')
         .upsert(
-          { festival_slug: FESTIVAL_SLUG, year, trailer_url: url || null },
+          { festival_slug: FESTIVAL_SLUG, year, trailer_url: url || null, blurb: blurb || null },
           { onConflict: 'festival_slug,year' },
         )
         .select('year');
@@ -99,12 +110,53 @@ export default function FestivalProgramsTab() {
         if (url) next[year] = url; else delete next[year];
         return next;
       });
-      toast.success(url ? `Trailer saved for ${year}` : `Trailer cleared for ${year}`);
+      setBlurbs(prev => {
+        const next = { ...prev };
+        if (blurb) next[year] = blurb; else delete next[year];
+        return next;
+      });
+      toast.success(`Saved ${year}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not save that trailer');
+      toast.error(e instanceof Error ? e.message : 'Could not save that year');
     } finally {
       setSavingYear(null);
     }
+  };
+
+  /** Trailer + blurb for one year. The same two fields wherever a year appears. */
+  const YearFields = ({ year }: { year: number }) => {
+    const dirty =
+      (trailerDraft[year] ?? '') !== (trailers[year] ?? '') ||
+      (blurbDraft[year] ?? '') !== (blurbs[year] ?? '');
+    return (
+      <div className="space-y-2">
+        <div>
+          <Label htmlFor={`trailer-${year}`} className="text-xs">Trailer (optional)</Label>
+          <Input
+            id={`trailer-${year}`}
+            placeholder="Paste a YouTube, Vimeo or video file link"
+            value={trailerDraft[year] ?? ''}
+            onChange={e => setTrailerDraft(d => ({ ...d, [year]: e.target.value }))}
+          />
+        </div>
+        <div>
+          <Label htmlFor={`blurb-${year}`} className="text-xs">
+            About this year&rsquo;s programme (optional)
+          </Label>
+          <Textarea
+            id={`blurb-${year}`}
+            rows={3}
+            placeholder="Shown under the festival title in place of the standing description."
+            value={blurbDraft[year] ?? ''}
+            onChange={e => setBlurbDraft(d => ({ ...d, [year]: e.target.value }))}
+          />
+        </div>
+        <Button size="sm" variant="outline" disabled={savingYear === year || !dirty}
+          onClick={() => saveYear(year)}>
+          {savingYear === year ? 'Saving…' : `Save ${year}`}
+        </Button>
+      </div>
+    );
   };
 
   const publicUrl = (path: string) =>
@@ -238,6 +290,33 @@ export default function FestivalProgramsTab() {
         </Button>
       </div>
 
+      {/* This year, which has no scanned programme and therefore never appeared
+          in the list below — the list is built from uploaded files. Its trailer
+          and its copy are the two things that need setting before the festival,
+          which is exactly when there is nothing to upload yet. */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <h4 className="font-display uppercase tracking-[0.2em] text-sm text-primary">
+              This year
+            </h4>
+            <Input
+              type="number"
+              inputMode="numeric"
+              aria-label="Festival year"
+              className="w-28 h-8"
+              value={thisYear}
+              onChange={e => setThisYear(parseInt(e.target.value, 10) || thisYear)}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Shown on the festival page above the lineup. The blurb replaces the
+            standing description; leave it empty to keep that.
+          </p>
+          <YearFields year={thisYear} />
+        </CardContent>
+      </Card>
+
       {loading ? (
         <p className="text-muted-foreground text-center py-8">Loading…</p>
       ) : archive.length === 0 ? (
@@ -255,30 +334,11 @@ export default function FestivalProgramsTab() {
                 {group.year}
               </h4>
 
-              {/* One trailer per year, not per file. A year has eight scanned
-                  pages and one trailer, so hanging it off a page would leave
-                  seven empty boxes and no answer to which one counts. */}
-              <div className="flex items-end gap-2 mb-3">
-                <div className="flex-1 min-w-0">
-                  <Label htmlFor={`trailer-${group.year}`} className="text-xs">
-                    Trailer for {group.year} (optional)
-                  </Label>
-                  <Input
-                    id={`trailer-${group.year}`}
-                    placeholder="Paste a YouTube, Vimeo or video file link"
-                    value={trailerDraft[group.year] ?? ''}
-                    onChange={e => setTrailerDraft(d => ({ ...d, [group.year]: e.target.value }))}
-                  />
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={savingYear === group.year ||
-                    (trailerDraft[group.year] ?? '') === (trailers[group.year] ?? '')}
-                  onClick={() => saveTrailer(group.year)}
-                >
-                  {savingYear === group.year ? 'Saving…' : 'Save'}
-                </Button>
+              {/* One trailer and one blurb per year, not per file. A year has
+                  eight scanned pages and one of each, so hanging them off a page
+                  would leave seven empty boxes and no answer to which counts. */}
+              <div className="mb-3">
+                <YearFields year={group.year} />
               </div>
               <div className="grid gap-3">
                 {group.programs.map(program => (

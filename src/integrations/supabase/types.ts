@@ -713,6 +713,7 @@ export type Database = {
       }
       festival_years: {
         Row: {
+          blurb: string | null
           created_at: string
           festival_slug: string
           id: string
@@ -721,6 +722,7 @@ export type Database = {
           year: number
         }
         Insert: {
+          blurb?: string | null
           created_at?: string
           festival_slug?: string
           id?: string
@@ -729,6 +731,7 @@ export type Database = {
           year: number
         }
         Update: {
+          blurb?: string | null
           created_at?: string
           festival_slug?: string
           id?: string

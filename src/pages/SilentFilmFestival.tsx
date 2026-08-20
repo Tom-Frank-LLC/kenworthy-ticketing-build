@@ -278,6 +278,7 @@ export default function SilentFilmFestival() {
   const [screenings, setScreenings] = useState<Screening[]>([]);
   const [programs, setPrograms] = useState<FestivalProgram[]>([]);
   const [trailers, setTrailers] = useState<ReadonlyMap<number, string | null>>(new Map());
+  const [blurbs, setBlurbs] = useState<ReadonlyMap<number, string | null>>(new Map());
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   // Which side of the split we are on decides where the slideshow *mounts*,
@@ -307,7 +308,7 @@ export default function SilentFilmFestival() {
 
       const yearQuery = supabase
         .from('festival_years')
-        .select('year, trailer_url')
+        .select('year, trailer_url, blurb')
         .eq('festival_slug', FESTIVAL_SLUG);
 
       const [{ data: passRow }, { data: programRows }, { data: yearRows }] = await Promise.all([
@@ -317,10 +318,11 @@ export default function SilentFilmFestival() {
       ]);
       if (cancelled) return;
 
-      setTrailers(new Map(
-        ((yearRows ?? []) as Array<{ year: number; trailer_url: string | null }>)
-          .map(r => [r.year, r.trailer_url] as const),
-      ));
+      const years = (yearRows ?? []) as Array<{
+        year: number; trailer_url: string | null; blurb: string | null;
+      }>;
+      setTrailers(new Map(years.map(r => [r.year, r.trailer_url] as const)));
+      setBlurbs(new Map(years.map(r => [r.year, r.blurb] as const)));
 
       setPass((passRow as FestivalPass) ?? null);
       setPrograms((programRows as FestivalProgram[]) ?? []);
@@ -384,6 +386,23 @@ export default function SilentFilmFestival() {
     ? new Date(lineup[0].start_time).getFullYear()
     : null;
 
+  /**
+   * The year the top of the page speaks for.
+   *
+   * Normally the year being sold. But copy and a trailer get written before the
+   * lineup is tagged — that is the whole point of writing them early — and
+   * keying the hero to the lineup alone would silently withhold both until the
+   * screenings were linked to a pass. So it falls back to the newest year
+   * anyone has actually written something about.
+   */
+  const heroYear = festivalYear ?? (() => {
+    const written = [...blurbs.entries()]
+      .filter(([, v]) => v)
+      .map(([y]) => y)
+      .concat([...trailers.entries()].filter(([, v]) => v).map(([y]) => y));
+    return written.length ? Math.max(...written) : null;
+  })();
+
   // The stored page is a ~2000px-wide scan, because a reader who clicks a
   // thumbnail wants a page they can actually read. The grid must not fetch that
   // — thirty of them is tens of megabytes — so the tile asks Supabase's image
@@ -410,20 +429,23 @@ export default function SilentFilmFestival() {
               {festivalYear}
             </p>
           )}
-          <p className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed mt-5 max-w-2xl">
-            {FESTIVAL_BLURB}
+          {/* This year's own words when someone has written them, the standing
+              description when nobody has. A year with nothing written about it
+              still reads as a finished page rather than as a gap. */}
+          <p className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed mt-5 max-w-2xl whitespace-pre-line">
+            {(heroYear && blurbs.get(heroYear)) || FESTIVAL_BLURB}
           </p>
 
           {/* This year's trailer, when the year being sold has one. Rendered by
               the block the production drawer and ticketing page already use, so
               a pasted YouTube or Vimeo link behaves here exactly as it does
               everywhere else instead of needing its own parser. */}
-          {festivalYear && trailers.get(festivalYear) && (
+          {heroYear && trailers.get(heroYear) && (
             <div className="mt-8 max-w-3xl">
               <ProductionMedia
-                title={`${FESTIVAL_NAME} ${festivalYear}`}
+                title={`${FESTIVAL_NAME} ${heroYear}`}
                 type="event"
-                trailerUrl={trailers.get(festivalYear) ?? null}
+                trailerUrl={trailers.get(heroYear) ?? null}
                 fallback="none"
               />
             </div>
