@@ -147,44 +147,34 @@ export const COLLECT_PHONE = true;
 /**
  * Whether a phone number on its own is a contact we can actually deliver to.
  *
- * **On**, and read the next paragraph before trusting that. Ticket checkout's
- * server rule is "email or phone"; this makes the form match it, so a buyer may
- * give a number and nothing else. With it off, email was required — the number
- * was still collected and the disclosure still shown, but nobody could complete
- * a purchase whose only contact was one we could not reach.
+ * **On, and true.** Ticket checkout's server rule is "email or phone"; this
+ * makes the form match it, so a buyer may give a number and nothing else. The
+ * A2P 10DLC campaign was approved on 2026-08-20 and a ticket confirmation has
+ * been received by text, which is the only evidence that ever counted here.
  *
- * It is on by decision, not because the conditions below are all met. As of
- * 2026-08-18 the A2P 10DLC campaign is **not** approved, and US carriers reject
- * unregistered long-code traffic outright with error 30034 — so a phone-only
- * buyer who ticks the SMS box is charged and receives nothing, and finds out at
- * the door. Delivery is fire-and-forget, so the only trace is
- * `orders.confirmation_error`. That trade was put to Tom in those words and
- * taken deliberately; it is not an oversight to be tidied up by someone reading
- * this later. **Watch `confirmation_error` until the campaign clears.**
+ * It was `true` for two days before that was so, deliberately and with the
+ * trade stated: carriers were rejecting our sends with error 30034, so a
+ * phone-only buyer who ticked the SMS box was charged and delivered nothing.
+ * That window is closed. It is recorded because `orders.confirmation_error` is
+ * where those failures landed and nothing in the admin surfaces that column —
+ * if a buyer from 18–20 August says they never got their ticket, that is why.
  *
- * The consent gate closes the other half of it. A buyer who types a number and
- * leaves the box unticked is stopped at validation rather than charged, because
- * `smsOptIn` — not a non-empty phone field — is what counts as a contact. So
- * there is exactly one way to be charged and undelivered today: tick the box
- * while the campaign is pending.
- *
- * What it takes for this flag to be *honestly* true, rather than merely set:
- *   1. `TWILIO_ACCOUNT_SID` set on the deployed functions. **Done.**
+ * What has to stay true for this to keep being honest:
+ *   1. `TWILIO_ACCOUNT_SID` on the deployed functions.
  *   2. A credential — `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET`, or
- *      `TWILIO_AUTH_TOKEN`. **Done.** Names matter literally: `TWILIO_API_KEY`
- *      is not `TWILIO_API_KEY_SID`, and that mismatch reads as no credential at
- *      all. It was set wrong twice before it was set right.
- *   3. A sender — `TWILIO_MESSAGING_SERVICE_SID` (preferred; it answers STOP
- *      and HELP for us, which the consent copy promises) or
- *      `TWILIO_FROM_NUMBER`. **Done**, with Advanced Opt-Out enabled.
- *   4. An approved A2P 10DLC campaign attached to that Messaging Service, with
- *      the sending number in its pool. **Outstanding — this is the one.**
- *   5. An answer for consent at the box office. **Done:** `deliverPos` sends
- *      `sms_consent: false` and refuses a sale it has no email for, so the
- *      counter cannot text a walk-up whose consent nobody captured. If a
- *      counter opt-in is ever built, that is what changes.
+ *      `TWILIO_AUTH_TOKEN`. Names matter literally: `TWILIO_API_KEY` is not
+ *      `TWILIO_API_KEY_SID`. It was set wrong twice before it was set right,
+ *      and both times `secrets list` looked reassuring.
+ *   3. A sender — `TWILIO_MESSAGING_SERVICE_SID`, with Advanced Opt-Out
+ *      enabled. That is what answers STOP and HELP; nothing in this repo does,
+ *      and both the checkout consent line and /sms promise that it works.
+ *   4. The A2P 10DLC campaign, live and attached to that Messaging Service,
+ *      with the sending number in its pool. Campaigns can lapse.
+ *   5. No consent capture at the box office, so `deliverPos` keeps sending
+ *      `sms_consent: false`. If a counter opt-in is ever built, that changes.
  *
- * If Twilio is suspended or the campaign lapses after approval, set this back
- * `false` in the same breath.
+ * If Twilio is suspended or the campaign lapses, set this back `false` in the
+ * same breath. Delivery is fire-and-forget, so the failure is silent and the
+ * only trace is `orders.confirmation_error`.
  */
 export const SMS_DELIVERY_LIVE = true;

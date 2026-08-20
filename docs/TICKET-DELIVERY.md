@@ -345,61 +345,56 @@ supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
 > files aside if you mean to apply only your own. Staging needed
 > `--include-all` because a newer migration had already landed there.
 
-> **SMS activation status, 2026-08-18.** Two flags now, not one, because
-> "show the phone field" and "a phone number is a contact we can deliver to"
-> stopped being the same question:
+> **SMS is live, 2026-08-20.** The A2P 10DLC campaign is approved and a ticket
+> confirmation has arrived by text. Both flags in `src/lib/flags.ts` are `true`:
+> `COLLECT_PHONE` (the field and its consent checkbox) and `SMS_DELIVERY_LIVE`
+> (a phone number counts as a deliverable contact, so ticket checkout is back to
+> "email or phone"). `sendViaTwilio` never changed through any of it — it was
+> complete on 2026-08-12 and gated entirely on its environment.
 >
-> - `COLLECT_PHONE` is **`true`** — the field and its consent line are live on
->   ticket checkout, film passes and the box office.
-> - `SMS_DELIVERY_LIVE` is **`false`** — email is still required at ticket
->   checkout, so nobody can buy with a contact we cannot reach.
+> Four things took a fortnight, and none of them was the sending code:
 >
-> `sendViaTwilio` was complete the whole time and did not change; what did
-> change is that `deliverConfirmation` now sends on both channels rather than
-> treating SMS as the phone-only fallback, which needs the migration above
-> applied before the functions deploy.
+> 1. **Secrets under names the code does not read.** The API key SID went in as
+>    `TWILIO_API_KEY`; the Messaging Service SID went into staging as
+>    `TWILIO_MESSAGING_SERVICE`. Both showed up in `secrets list` looking
+>    correct, and neither was a name `deliver.ts` reads, so `twilioAuth()` saw
+>    no credential and `sendViaTwilio()` saw no sender. A digest proves a value
+>    is set, never that it is set under the right key.
+> 2. **Brand approval is not campaign approval.** They were conflated when this
+>    was scoped. Without a registered *campaign* attached to the Messaging
+>    Service, carriers reject every long-code send with error 30034 no matter
+>    how the credentials are set.
+> 3. **The opt-in was invisible to the vetting crawler.** A plain fetch of a
+>    showing URL returns a ~4KB SPA shell with zero `<input>` elements, and the
+>    contact step only renders after a ticket is added — so the checker reported
+>    no checkbox and no disclosures, correctly, twice. `public/sms.html` exists
+>    for that reason: plain HTML, no scripts, with the consent language quoted
+>    and a screenshot of the live form embedded.
+> 4. **The submission described a flow we do not have.** Populating the
+>    campaign's opt-in *keywords* with START/YES/UNSTOP — resubscribe keywords
+>    Advanced Opt-Out answers — read as a text-in opt-in, and the reviewer asked
+>    for proof of a keyword flow that does not exist. Opt-in type is web form,
+>    and that field belongs empty.
 >
-> **The blocker is an A2P 10DLC campaign, not the code.** Brand approval is not
-> campaign approval, and the two were conflated when this was scoped. Without a
-> registered campaign attached to the Messaging Service, US carriers reject
-> every long-code send outright with error 30034 — no credential fixes that.
-> Registration lives at Messaging → Regulatory Compliance → A2P 10DLC, wants a
-> use case, a sample message and a description of how buyers opt in, and takes
-> days rather than minutes. The consent line on the checkout form is the opt-in
-> evidence that submission asks for, which is exactly why the field ships ahead
-> of the texts.
+> **The 18–20 August window.** `SMS_DELIVERY_LIVE` was flipped on 2026-08-18,
+> two days before approval, as a deliberate decision with the trade stated: a
+> phone-only buyer who ticked the SMS box was charged and delivered nothing.
+> Those failures are in `orders.confirmation_error`, which **no admin screen
+> surfaces**. If a buyer from those two days says their ticket never arrived,
+> that is the first place to look:
 >
-> **The secrets are done, and both were misnamed before they were.** As of
-> 2026-08-18 22:00Z staging and production each hold `TWILIO_ACCOUNT_SID`,
-> `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET` and
-> `TWILIO_MESSAGING_SERVICE_SID`, with matching digests — one live Twilio
-> account shared by both, no sandbox. Production still carries a stale, unread
-> `TWILIO_API_KEY`.
+> ```sql
+> select order_token, confirmation_sent_at, confirmation_error, purchased_at
+>   from public.tickets
+>  where purchased_at >= '2026-08-18'
+>    and (confirmation_error is not null or confirmation_sent_at is null)
+>  order by purchased_at desc;
+> ```
 >
-> Getting there took two rounds of the same mistake, which is the part worth
-> remembering. The API key SID was first set as `TWILIO_API_KEY`, and the
-> Messaging Service SID was first set on staging as
-> `TWILIO_MESSAGING_SERVICE`. Both looked present in `secrets list`; neither
-> was a name `deliver.ts` reads, so `twilioAuth()` saw no credential and
-> `sendViaTwilio()` saw no sender. A digest proves a value is set, never that
-> it is set under the right key — diff the names against the `Deno.env.get`
-> calls before believing an integration is configured.
->
-> **Advanced Opt-Out is enabled** on the Messaging Service (2026-08-18), with
-> HELP, STOP and START responses that name the theatre and give its phone and
-> email. That is what makes the `/sms` page and the checkout consent line
-> truthful about STOP and HELP — nothing in this repo answers an inbound text,
-> and there is no webhook here to add one. It is also close to one-way: Twilio
-> can only disable it via a support request, so treat it as a standing
-> commitment rather than a setting.
->
-> Flip `SMS_DELIVERY_LIVE` only once the campaign is approved too, and only
-> after a phone-only test purchase has actually arrived. Flipping it early is
-> the exact regression the original flag was added for on 2026-08-15: the buyer
-> is charged and delivered nothing, silently, because delivery is
-> fire-and-forget and the only trace is `orders.confirmation_error`. Test to
-> your own mobile — staging carries the same live Twilio credentials as
-> production, so that send is real and billed.
+> Advanced Opt-Out is enabled on the Messaging Service with HELP, STOP and START
+> responses that name the theatre. Nothing in this repo answers an inbound text
+> — there is no webhook here — so both the checkout consent line and `/sms`
+> depend on that staying on, and Twilio only disables it by support request.
 
 `ticket-access` must deploy with `verify_jwt = false`. That is set in
 `supabase/config.toml`; confirm it took, because the QR images and the ticket
