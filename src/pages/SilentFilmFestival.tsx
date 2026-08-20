@@ -403,6 +403,9 @@ export default function SilentFilmFestival() {
     return written.length ? Math.max(...written) : null;
   })();
 
+  /** Resolved once, so the grid and the render cannot disagree about it. */
+  const heroTrailer = heroYear ? trailers.get(heroYear) ?? null : null;
+
   // The stored page is a ~2000px-wide scan, because a reader who clicks a
   // thumbnail wants a page they can actually read. The grid must not fetch that
   // — thirty of them is tens of megabytes — so the tile asks Supabase's image
@@ -429,27 +432,36 @@ export default function SilentFilmFestival() {
               {festivalYear}
             </p>
           )}
-          {/* This year's own words when someone has written them, the standing
-              description when nobody has. A year with nothing written about it
-              still reads as a finished page rather than as a gap. */}
-          <p className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed mt-5 max-w-2xl whitespace-pre-line">
-            {(heroYear && blurbs.get(heroYear)) || FESTIVAL_BLURB}
-          </p>
+          {/* Words and trailer side by side once there is room for both, and only
+              then: the two-column grid is conditional on a trailer existing,
+              because splitting the row when nothing fills the other half would
+              leave the paragraph at half measure beside a void. Without one it
+              keeps its full reading width. */}
+          <div
+            className={cn(
+              'mt-5',
+              heroTrailer && 'grid gap-6 lg:gap-10 lg:grid-cols-2 lg:items-center',
+            )}
+          >
+            {/* This year's own words when someone has written them, the standing
+                description when nobody has. A year with nothing written about it
+                still reads as a finished page rather than as a gap. */}
+            <p className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl whitespace-pre-line">
+              {(heroYear && blurbs.get(heroYear)) || FESTIVAL_BLURB}
+            </p>
 
-          {/* This year's trailer, when the year being sold has one. Rendered by
-              the block the production drawer and ticketing page already use, so
-              a pasted YouTube or Vimeo link behaves here exactly as it does
-              everywhere else instead of needing its own parser. */}
-          {heroYear && trailers.get(heroYear) && (
-            <div className="mt-8 max-w-3xl">
+            {/* Rendered by the block the production drawer and ticketing page
+                already use, so a pasted YouTube or Vimeo link behaves here exactly
+                as it does everywhere else. */}
+            {heroTrailer && (
               <ProductionMedia
                 title={`${FESTIVAL_NAME} ${heroYear}`}
                 type="event"
-                trailerUrl={trailers.get(heroYear) ?? null}
+                trailerUrl={heroTrailer}
                 fallback="none"
               />
-            </div>
-          )}
+            )}
+          </div>
         </header>
 
         {/* ------------------------------------------------- This year */}
