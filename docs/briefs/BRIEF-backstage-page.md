@@ -82,7 +82,9 @@ list of the things you did not want found.
 
 ## Verified on staging
 
-Migration applied to `rpqzrpboyhshdrfdwayk` only. With the anon key:
+Migration applied to `rpqzrpboyhshdrfdwayk` only.
+
+### Policies, with the anon key
 
 | check | result |
 |---|---|
@@ -93,18 +95,40 @@ Migration applied to `rpqzrpboyhshdrfdwayk` only. With the anon key:
 | `POST` a JPEG to the bucket | `403` RLS — bucket exists, anon cannot write |
 | a bucket that does not exist | `404 NoSuchBucket`, for contrast |
 
+### The full admin round trip, in a real signed-in admin session
+
+Run against staging through the dev server, with the anon key checked after
+each step to see what the public would actually get:
+
+| step | result |
+|---|---|
+| `?section=pages&page=backstage` | opens the Backstage sub-tab — the new `PAGES_SUB_TABS` path resolves |
+| two photos uploaded, captions + display order 0 and 1 | both land as **Draft** |
+| anon read with two drafts outstanding | `[]` — nothing leaks |
+| publish one | anon sees exactly that one row |
+| public page | one card, thumbnail `200` through the render endpoint |
+| lightbox | opens full size, caption below, no arrows with a single photo |
+| publish the second | two cards, in display order |
+| `→` in the lightbox | advances, then wraps back to the first |
+| unpublish one | anon drops back to one row |
+| delete | row gone **and** the storage object gone (`400` on its public URL) while the other one still `200`s |
+| the prose editor | Save disabled until dirty, saves, `updated_at` advances, restores |
+
+Staging was left clean: no rows, no objects, and the seeded copy byte-identical
+to what the migration wrote.
+
+One property worth stating rather than discovering later: **an unpublished
+photo's bytes are still reachable by direct URL.** The bucket is public, so
+`is_published` controls listing, not access — which is why upload paths carry a
+timestamp prefix. Unlisted, not private, at both levels. If a photo is ever
+genuinely sensitive, it does not belong in this bucket.
+
 `tsc -p tsconfig.app.json --noEmit` clean; `vitest` 28 files / 282 passing;
-`build:staging` clean. `/backstage` renders correctly against staging in the
-browser (header, copy, booking CTA, empty gallery, address).
+`build:staging` clean.
 
 ## Still to do
 
-1. **The admin round trip has not been exercised against a live admin
-   session** — upload two photos, confirm they appear publicly only once
-   published, unpublish, delete. It needs an admin login, which this session
-   did not have. The write path is a copy of `FestivalProgramsTab`, which
-   works, but that is an argument rather than a test.
-2. **Tom's real copy**, replacing the placeholder.
-3. **Tom's photographs.** None ship with this work.
-4. **Deploy.** The migration is on staging only; production needs the
+1. **Tom's real copy**, replacing the placeholder.
+2. **Tom's photographs.** None ship with this work.
+3. **Deploy.** The migration is on staging only; production needs the
    migration *and* `wrangler deploy`. Merging does not deploy.
