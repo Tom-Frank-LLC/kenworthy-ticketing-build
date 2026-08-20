@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Loader2, RefreshCw, Link2, AlertTriangle } from 'lucide-react';
+import { Loader2, RefreshCw, Link2, AlertTriangle, Plus } from 'lucide-react';
 
 /**
  * Square catalog mapping, for a human.
@@ -27,7 +27,16 @@ type PassRow = {
   status: 'linked' | 'match_found' | 'needs_item';
   square_variation_id: string | null;
   square_item_name: string | null;
-  variations: Array<{ id: string; name: string | null; price_cents: number | null }>;
+  variations: Array<{
+    id: string;
+    name: string | null;
+    price_cents: number | null;
+    item_id?: string;
+    item_name?: string | null;
+    archived?: boolean;
+  }>;
+  /** Distinct Square items carrying this name. Above 1 means duplicate SKUs. */
+  matching_items?: number;
   possible_matches?: Array<{ id: string; name: string; why: string }>;
 };
 
@@ -109,6 +118,25 @@ export default function SquareCatalogTab() {
       await load();
     } catch (e: any) {
       toast.error(e.message || 'Could not create them');
+    } finally { setBusy(null); }
+  };
+
+  const createPassItem = async (passTypeId: string, name: string) => {
+    if (!confirm(`Create "${name}" in Square under 9 Film Passes, and link it?`)) return;
+    setBusy(passTypeId);
+    try {
+      // dry_run:false and confirm:"WRITE" together are the function's ritual for
+      // a real catalog write; either one alone returns a plan and writes nothing.
+      await call({
+        action: 'create_pass_item',
+        pass_type_id: passTypeId,
+        dry_run: false,
+        confirm: 'WRITE',
+      });
+      toast.success(`Created "${name}" in Square and linked it.`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not create that item');
     } finally { setBusy(null); }
   };
 
@@ -266,11 +294,28 @@ export default function SquareCatalogTab() {
               </div>
               {pt.status !== 'linked' && pt.variations.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">In Square as {pt.square_item_name}:</p>
+                  {(pt.matching_items ?? 1) > 1 ? (
+                    // The case this catalog actually has: three items sharing a
+                    // name. Saying so is the difference between choosing and
+                    // guessing, because an archived duplicate looks identical.
+                    <p className="text-xs text-amber-500">
+                      {pt.matching_items} separate Square items are named “{pt.name}”.
+                      Every variation is listed below — pick the one on the item you
+                      actually sell.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">In Square as {pt.square_item_name}:</p>
+                  )}
                   {pt.variations.map((v) => (
                     <div key={v.id} className="flex items-center justify-between gap-2 text-sm">
                       <span className="text-muted-foreground">
                         {v.name || 'Regular'}{v.price_cents != null && ` · ${money(v.price_cents)}`}
+                        {(pt.matching_items ?? 1) > 1 && v.item_name && (
+                          <span className="opacity-70"> · {v.item_name}</span>
+                        )}
+                        {v.archived && (
+                          <Badge variant="outline" className="ml-1 text-[10px]">archived</Badge>
+                        )}
                       </span>
                       <Button size="sm" variant="outline" disabled={!!busy}
                         onClick={() => linkPass(pt.pass_type_id, v.id, v.name || pt.name)}>
@@ -283,11 +328,19 @@ export default function SquareCatalogTab() {
                 </div>
               )}
               {pt.status === 'needs_item' && !pt.variations.length && (
-                <p className="text-xs text-muted-foreground">
-                  {(pt.possible_matches ?? []).length
-                    ? <>Similar in Square: {(pt.possible_matches ?? []).map(m => m.name).join(', ')}. Open it in Square to check, then refresh.</>
-                    : <>Nothing similar in the catalog. Create it in Square under <strong>9 Film Passes</strong>, then refresh. Passes are ordinary items, not Event items.</>}
-                </p>
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    {(pt.possible_matches ?? []).length
+                      ? <>Similar in Square: {(pt.possible_matches ?? []).map(m => m.name).join(', ')}. Check those first — creating another item when one of these is the same pass is how duplicates start.</>
+                      : <>Nothing in the catalog matches this pass.</>}
+                  </p>
+                  <Button size="sm" variant="outline" disabled={!!busy}
+                    onClick={() => createPassItem(pt.pass_type_id, pt.name)}>
+                    {busy === pt.pass_type_id
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <><Plus className="h-3 w-3 mr-1" /> Create in Square and link</>}
+                  </Button>
+                </div>
               )}
             </div>
           ))}
