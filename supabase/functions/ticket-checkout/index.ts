@@ -288,6 +288,11 @@ Deno.serve(async (req: Request) => {
     status: 'pending',
     payment_method: 'online',
     checkout_idempotency_key: idempotencyKey,
+    // Written with the order, not just passed to the send, so a resend later
+    // can honour what the buyer actually answered instead of falling back to
+    // whatever number is on file. Strict boolean: the form always asks, so
+    // anything the client omits is a no rather than an unknown.
+    sms_consent: body.sms_consent === true,
   }));
 
   const { data: created, error: insertErr } = await admin
@@ -543,10 +548,9 @@ Deno.serve(async (req: Request) => {
     phone: contact.phone || undefined,
     name: contact.name || undefined,
     accountCreated,
-    // Read as a strict boolean, so anything the client does not send counts as
-    // no consent rather than as "unknown". This is the checkout path: the form
-    // always asks, so silence here is a decline, and a decline has to stop the
-    // number we hold on `profiles` from being texted too.
+    // Passed as well as stored. The stored value is what a later resend reads;
+    // this is the live answer for the send happening now, and it saves
+    // deliverConfirmation a re-read of a row it is about to write to anyway.
     smsConsent: body.sms_consent === true,
   }).catch((e) => console.error('[ticket-checkout] confirmation dispatch failed', e));
 

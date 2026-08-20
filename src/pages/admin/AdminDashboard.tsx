@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
@@ -472,6 +473,12 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Above the tabs, and only when it has something to say. Delivery is
+          fire-and-forget so a failed send is silent everywhere else — the buyer
+          is charged, the tickets are valid, and nobody is told. This is the
+          only screen that reads confirmation_error back. */}
+      <UndeliveredOrdersCard />
 
       <Tabs value={activeTopTab} onValueChange={setActiveTopTab} className="space-y-4">
         {(() => {

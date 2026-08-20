@@ -376,12 +376,15 @@ supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
 >    for proof of a keyword flow that does not exist. Opt-in type is web form,
 >    and that field belongs empty.
 >
-> **The 18–20 August window.** `SMS_DELIVERY_LIVE` was flipped on 2026-08-18,
-> two days before approval, as a deliberate decision with the trade stated: a
-> phone-only buyer who ticked the SMS box was charged and delivered nothing.
-> Those failures are in `orders.confirmation_error`, which **no admin screen
-> surfaces**. If a buyer from those two days says their ticket never arrived,
-> that is the first place to look:
+> **The 18–20 August window — closed, nobody was affected.** `SMS_DELIVERY_LIVE`
+> was flipped on 2026-08-18, two days before approval, as a deliberate decision
+> with the trade stated: a phone-only buyer who ticked the SMS box would be
+> charged and delivered nothing. In the event no buyer was: the site was not yet
+> live to customers, and the only purchases in that window were staff testing
+> (confirmed by Tom, 2026-08-20). The risk was real and the exposure was zero.
+>
+> The query is kept because the *shape* of the question outlives this window —
+> it is how you find any order that was paid for and never reached anyone:
 >
 > ```sql
 > select order_token, confirmation_sent_at, confirmation_error, purchased_at
@@ -390,6 +393,10 @@ supabase functions deploy ticket-access send-ticket-confirmation guest-checkout
 >    and (confirmation_error is not null or confirmation_sent_at is null)
 >  order by purchased_at desc;
 > ```
+>
+> Running it by hand is the fallback, not the plan. `confirmation_error` is the
+> only record a failed send leaves and **no admin screen surfaces it**, which is
+> why "watch `confirmation_error`" was never advice anyone could act on.
 >
 > Advanced Opt-Out is enabled on the Messaging Service with HELP, STOP and START
 > responses that name the theatre. Nothing in this repo answers an inbound text

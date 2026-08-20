@@ -198,12 +198,19 @@ secrets no-op cleanly. `deliverConfirmation` had **no test at all** before this
 and now has eleven, all about what gets recorded — delivery is fire-and-forget,
 so those columns are the only evidence there is.
 
+### Closed after the fact
+
+- **The 18–20 August window cost nothing.** `SMS_DELIVERY_LIVE` was flipped two
+  days before campaign approval, as a decision taken with the trade stated: a
+  phone-only buyer who ticked the box would be charged and delivered nothing.
+  No buyer was. The site was not yet live to customers and the only purchases
+  in that window were staff testing (confirmed by Tom, 2026-08-20). Worth
+  recording as *why it was survivable* rather than as vindication — the
+  exposure was zero because of when it happened, not because of anything the
+  decision did to limit it.
+
 ### Open, and deliberately not closed here
 
-- **The 18–20 August window.** `SMS_DELIVERY_LIVE` was flipped two days before
-  approval, as a decision taken with the trade stated: a phone-only buyer who
-  ticked the box in that window was charged and delivered nothing. Query in
-  `TICKET-DELIVERY.md`.
 - **No admin view of delivery failures.** `confirmation_error` is the only
   record of a failed send and nothing surfaces it, so "watch
   `confirmation_error`" is advice that currently requires SQL.
