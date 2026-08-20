@@ -440,13 +440,16 @@ export default function SilentFilmFestival() {
           <div
             className={cn(
               'mt-5',
-              heroTrailer && 'grid gap-6 lg:gap-10 lg:grid-cols-2 lg:items-center',
+              // items-start, not items-center: the two are meant to begin on the
+              // same line. Centring set the shorter one adrift against the taller,
+              // which reads as a misalignment rather than as a choice.
+              heroTrailer && 'grid gap-6 lg:gap-10 lg:grid-cols-2 lg:items-start',
             )}
           >
             {/* This year's own words when someone has written them, the standing
                 description when nobody has. A year with nothing written about it
                 still reads as a finished page rather than as a gap. */}
-            <p className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl whitespace-pre-line">
+            <p className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl whitespace-pre-line lg:order-2">
               {(heroYear && blurbs.get(heroYear)) || FESTIVAL_BLURB}
             </p>
 
@@ -459,6 +462,7 @@ export default function SilentFilmFestival() {
                 type="event"
                 trailerUrl={heroTrailer}
                 fallback="none"
+                className="lg:order-1"
               />
             )}
           </div>
