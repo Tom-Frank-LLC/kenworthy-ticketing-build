@@ -15,6 +15,7 @@ import {
   describeYear,
   groupProgramsByYear,
   selectFestivalLineup,
+  slidePath,
   stripLeadingShowtime,
   type FestivalProgram,
   type FestivalYear,
@@ -130,33 +131,43 @@ function YearSlideshow({ entry }: { entry: FestivalYear }) {
     if (total === 0) return;
     for (const offset of [1, -1]) {
       const neighbour = entry.pages[index + offset];
-      if (neighbour) {
+      const path = neighbour ? slidePath(neighbour) : null;
+      if (path) {
         const img = new Image();
-        img.src = thumbUrl(neighbour.file_path, SLIDE_WIDTH);
+        img.src = thumbUrl(path, SLIDE_WIDTH);
       }
     }
   }, [entry, index, total]);
 
-  if (total === 0) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <FileText className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50" aria-hidden="true" />
-          <p className="font-serif text-muted-foreground">
-            This programme has no scanned pages yet.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const current = entry.pages[index];
+  const currentPage = total > 0 ? entry.pages[index] : null;
+  // A booklet standing in as the only slide draws from its cover, not from the
+  // PDF — see slidePath. No drawable image means the empty state, not a broken
+  // <img>.
+  const currentSrc = currentPage ? slidePath(currentPage) : null;
+  const current = currentSrc ? currentPage : null;
   const go = (delta: number) =>
     setPage(p => Math.min(total - 1, Math.max(0, p + delta)));
 
   return (
     <Card className="overflow-hidden">
       <CardContent className="p-0">
+        {/* A year with no scanned pages still has a booklet to hand over, so
+            the footer below is outside this branch rather than inside it.
+            Returning early here is what made the one programme in production
+            unreachable: the message replaced the download alongside it. */}
+        {!current ? (
+          <div className="h-[60vh] lg:h-[72vh] flex flex-col items-center justify-center text-center px-6">
+            <FileText className="h-10 w-10 mb-3 text-muted-foreground opacity-50" aria-hidden="true" />
+            <p className="font-serif text-muted-foreground">
+              This programme has not been scanned page by page yet.
+            </p>
+            {entry.booklet && (
+              <p className="font-serif text-sm text-muted-foreground mt-2">
+                The full booklet is available below.
+              </p>
+            )}
+          </div>
+        ) : (
         <div
           className="relative bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           role="group"
@@ -178,7 +189,7 @@ function YearSlideshow({ entry }: { entry: FestivalYear }) {
                  builds a new one, so the browser starts from nothing every
                  click. Reusing one <img> and changing src lets a preloaded page
                  appear at once. */
-              src={thumbUrl(current.file_path, SLIDE_WIDTH)}
+              src={thumbUrl(currentSrc!, SLIDE_WIDTH)}
               alt={`Page ${index + 1} of the ${entry.year} Silent Film Festival programme`}
               /* The slide is the content, not something below the fold. */
               loading="eager"
@@ -210,6 +221,7 @@ function YearSlideshow({ entry }: { entry: FestivalYear }) {
             </>
           )}
         </div>
+        )}
 
         <div className="flex items-center justify-between gap-3 p-4 border-t border-border">
           <div className="min-w-0">
@@ -219,6 +231,7 @@ function YearSlideshow({ entry }: { entry: FestivalYear }) {
             <p className="font-serif text-foreground" aria-live="polite">
               {total > 1 ? `Page ${index + 1} of ${total}` : 'Programme'}
             </p>
+
           </div>
           {entry.booklet && (
             /* The one link that still leaves the page, because saving a file

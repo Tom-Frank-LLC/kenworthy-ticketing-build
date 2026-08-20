@@ -167,6 +167,18 @@ export interface FestivalYear {
  * deliberately not treated as an error: one slide and a download still beats an
  * empty pane.
  */
+/**
+ * The image to draw for a slide.
+ *
+ * A page row is its own picture. A booklet row standing in as the only slide is
+ * a PDF, and asking the image transform endpoint to resize a PDF returns
+ * nothing a browser will draw — so it points at the cover instead.
+ */
+export function slidePath(program: FestivalProgram): string | null {
+  if (program.file_type === 'image') return program.file_path;
+  return program.thumbnail_path ?? null;
+}
+
 export function describeYear(group: ProgramYear): FestivalYear {
   const pages = group.programs.filter(p => p.file_type === 'image');
   const booklet = group.programs.find(p => p.file_type === 'pdf') ?? null;

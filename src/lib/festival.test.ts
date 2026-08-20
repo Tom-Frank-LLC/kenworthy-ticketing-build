@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeYear, groupProgramsByYear, selectFestivalLineup, stripLeadingShowtime, type FestivalProgram } from '@/lib/festival';
+import { describeYear, groupProgramsByYear, selectFestivalLineup, slidePath, stripLeadingShowtime, type FestivalProgram } from '@/lib/festival';
 
 const program = (over: Partial<FestivalProgram> & { id: string; year: number }): FestivalProgram => ({
   title: null, file_path: `${over.id}.pdf`, file_type: 'pdf', display_order: 0, ...over,
@@ -133,5 +133,24 @@ describe('describeYear', () => {
     const y = describeYear({ year: 2024, programs: [pdf('z', null)] });
     expect(y.coverPath).toBeNull();
     expect(y.pages).toEqual([]);
+  });
+});
+
+describe('slidePath', () => {
+  it('draws a page from its own file', () => {
+    expect(slidePath(program({ id: 'a', year: 2024, file_type: 'image', file_path: 'p1.jpg' })))
+      .toBe('p1.jpg');
+  });
+
+  it('draws a booklet from its cover, never from the PDF itself', () => {
+    // Resizing a PDF through the image transform endpoint yields nothing
+    // drawable, so file_path must not be used here.
+    expect(slidePath(program({ id: 'z', year: 2024, file_type: 'pdf', file_path: 'book.pdf', thumbnail_path: 'cover.jpg' })))
+      .toBe('cover.jpg');
+  });
+
+  it('has nothing to draw for a coverless booklet', () => {
+    expect(slidePath(program({ id: 'z', year: 2024, file_type: 'pdf', file_path: 'book.pdf' })))
+      .toBeNull();
   });
 });
