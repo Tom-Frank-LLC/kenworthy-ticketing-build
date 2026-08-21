@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -186,42 +187,35 @@ export default function StaffBios() {
 
   return (
     <div className="space-y-4">
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display uppercase flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" /> Staff bios
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="font-serif text-sm text-muted-foreground">
-            These are the cards in the <span className="font-medium">Kenworthy Staff</span> section
-            of the public <span className="font-medium">/about</span> page, directly under the Board
-            of Directors. A bio only appears there once you tick{' '}
-            <span className="font-medium">Display on About Us</span> — adding someone here doesn’t
-            publish them.
-          </p>
-          <p className="font-serif text-sm text-muted-foreground">
-            When someone leaves, use <span className="font-medium">Former staff</span> rather than
-            Delete: it takes them off the page and keeps the headshot and the write-up in case they
-            come back or you want the copy again.
-          </p>
-          <p className="font-serif text-xs text-muted-foreground">
-            Headshots go in the same public image store as posters, so an uploaded photo is
-            reachable by anyone who has its link even before you publish the bio. Upload photos you
-            are happy to have public.
-          </p>
-          <p className="font-serif text-sm text-muted-foreground">
-            {publishedCount === 0
-              ? 'Nobody is on the About page yet — the section stays hidden until someone is.'
-              : `${publishedCount} ${publishedCount === 1 ? 'person is' : 'people are'} showing on the About page.`}
-          </p>
-          {!draft && (
-            <Button size="sm" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
-              <Plus className="h-4 w-4 mr-1" /> Add a staff member
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+      <CollapsibleSection id="pages.bios.page" title="Staff bios" icon={Users} defaultOpen>
+        <p className="font-serif text-sm text-muted-foreground">
+          These are the cards in the <span className="font-medium">Kenworthy Staff</span> section
+          of the public <span className="font-medium">/about</span> page, directly under the Board
+          of Directors. A bio only appears there once you tick{' '}
+          <span className="font-medium">Display on About Us</span> — adding someone here doesn’t
+          publish them.
+        </p>
+        <p className="font-serif text-sm text-muted-foreground">
+          When someone leaves, use <span className="font-medium">Former staff</span> rather than
+          Delete: it takes them off the page and keeps the headshot and the write-up in case they
+          come back or you want the copy again.
+        </p>
+        <p className="font-serif text-xs text-muted-foreground">
+          Headshots go in the same public image store as posters, so an uploaded photo is
+          reachable by anyone who has its link even before you publish the bio. Upload photos you
+          are happy to have public.
+        </p>
+        <p className="font-serif text-sm text-muted-foreground">
+          {publishedCount === 0
+            ? 'Nobody is on the About page yet — the section stays hidden until someone is.'
+            : `${publishedCount} ${publishedCount === 1 ? 'person is' : 'people are'} showing on the About page.`}
+        </p>
+        {!draft && (
+          <Button size="sm" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
+            <Plus className="h-4 w-4 mr-1" /> Add a staff member
+          </Button>
+        )}
+      </CollapsibleSection>
 
       {draft && (
         <Card className="glass border-primary/40">

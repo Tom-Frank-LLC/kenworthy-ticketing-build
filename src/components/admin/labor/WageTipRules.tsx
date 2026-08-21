@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '../CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,56 +51,53 @@ export function WageTipRules() {
   if (loading) return <Card><CardContent className="py-8 text-center text-muted-foreground"><Loader2 className="h-4 w-4 inline animate-spin mr-2" />Loading…</CardContent></Card>;
 
   return (
-    <Card>
-      <CardHeader><CardTitle className="font-display">Wage & tip rules</CardTitle></CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label>Overtime threshold (hrs / week)</Label>
-            <Input type="number" min={0} step={0.5} value={ot} onChange={(e) => setOt(Number(e.target.value))} />
-            <p className="text-xs text-muted-foreground mt-1">Idaho default is 40. Hours above this earn 1.5×.</p>
-          </div>
-          <div>
-            <Label>Tip pool method</Label>
-            <Select value={tipMethod} onValueChange={(v) => setTipMethod(v as TipMethod)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="off">Off — tips not pooled</SelectItem>
-                <SelectItem value="pooled_equal">Pooled equally among clocked-in staff</SelectItem>
-                <SelectItem value="by_hours">Pooled weighted by hours worked</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+    <CollapsibleSection id="labor.wage-rules" title="Wage & tip rules" defaultOpen>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label>Overtime threshold (hrs / week)</Label>
+          <Input type="number" min={0} step={0.5} value={ot} onChange={(e) => setOt(Number(e.target.value))} />
+          <p className="text-xs text-muted-foreground mt-1">Idaho default is 40. Hours above this earn 1.5×.</p>
         </div>
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <Label>Default wage by role</Label>
-            <Button size="sm" variant="outline" onClick={() => setRoles([...roles, { role: '', wage: 15 }])}>
-              <Plus className="h-4 w-4 mr-1" /> Add role
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {roles.length === 0 && <p className="text-sm text-muted-foreground">No role defaults yet. Square wages on individual staff still apply.</p>}
-            {roles.map((r, i) => (
-              <div key={i} className="flex gap-2 items-center">
-                <Input placeholder="Role (e.g. Box office)" value={r.role} onChange={(e) => {
-                  const next = [...roles]; next[i].role = e.target.value; setRoles(next);
-                }} />
-                <Input type="number" step={0.25} className="w-32" value={r.wage} onChange={(e) => {
-                  const next = [...roles]; next[i].wage = Number(e.target.value); setRoles(next);
-                }} />
-                <span className="text-sm text-muted-foreground">/ hr</span>
-                <Button size="icon" variant="ghost" onClick={() => setRoles(roles.filter((_, j) => j !== i))}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
+          <Label>Tip pool method</Label>
+          <Select value={tipMethod} onValueChange={(v) => setTipMethod(v as TipMethod)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">Off — tips not pooled</SelectItem>
+              <SelectItem value="pooled_equal">Pooled equally among clocked-in staff</SelectItem>
+              <SelectItem value="by_hours">Pooled weighted by hours worked</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <div className="flex justify-end">
-          <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}Save rules</Button>
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <Label>Default wage by role</Label>
+          <Button size="sm" variant="outline" onClick={() => setRoles([...roles, { role: '', wage: 15 }])}>
+            <Plus className="h-4 w-4 mr-1" /> Add role
+          </Button>
         </div>
-      </CardContent>
-    </Card>
+        <div className="space-y-2">
+          {roles.length === 0 && <p className="text-sm text-muted-foreground">No role defaults yet. Square wages on individual staff still apply.</p>}
+          {roles.map((r, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <Input placeholder="Role (e.g. Box office)" value={r.role} onChange={(e) => {
+                const next = [...roles]; next[i].role = e.target.value; setRoles(next);
+              }} />
+              <Input type="number" step={0.25} className="w-32" value={r.wage} onChange={(e) => {
+                const next = [...roles]; next[i].wage = Number(e.target.value); setRoles(next);
+              }} />
+              <span className="text-sm text-muted-foreground">/ hr</span>
+              <Button size="icon" variant="ghost" onClick={() => setRoles(roles.filter((_, j) => j !== i))}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}Save rules</Button>
+      </div>
+    </CollapsibleSection>
   );
 }

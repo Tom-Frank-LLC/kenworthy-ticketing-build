@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -223,67 +224,55 @@ export default function PressTab() {
   return (
     <div className="space-y-4">
       {/* The page's own photo and intro copy */}
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display uppercase flex items-center gap-2">
-            <Newspaper className="h-5 w-5 text-primary" /> Press page
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="font-serif text-sm text-muted-foreground">
-            The photo and paragraph below sit at the top of <span className="font-medium">/press</span>,
-            above the coverage. Both are optional — leave them empty and the page starts straight in
-            on the articles.
-          </p>
-          <PosterUpload
-            currentUrl={page.photo_url}
-            onUrlChange={url => setPage(p => ({ ...p, photo_url: url }))}
-            folder="press"
-            label="Banner photo"
-            previewClassName="w-full max-w-md aspect-[16/9]"
-            alt="Press page banner preview"
+      <CollapsibleSection id="pages.press.page" title="Press page" icon={Newspaper}>
+        <p className="font-serif text-sm text-muted-foreground">
+          The photo and paragraph below sit at the top of <span className="font-medium">/press</span>,
+          above the coverage. Both are optional — leave them empty and the page starts straight in
+          on the articles.
+        </p>
+        <PosterUpload
+          currentUrl={page.photo_url}
+          onUrlChange={url => setPage(p => ({ ...p, photo_url: url }))}
+          folder="press"
+          label="Banner photo"
+          previewClassName="w-full max-w-md aspect-[16/9]"
+          alt="Press page banner preview"
+        />
+        <div className="space-y-1">
+          <Label>Intro text</Label>
+          <Textarea
+            rows={5}
+            placeholder="A short introduction — who to contact for press enquiries, what the Kenworthy is, anything you want a journalist to read first. Line breaks are preserved."
+            value={page.intro_text}
+            onChange={e => setPage(p => ({ ...p, intro_text: e.target.value }))}
           />
-          <div className="space-y-1">
-            <Label>Intro text</Label>
-            <Textarea
-              rows={5}
-              placeholder="A short introduction — who to contact for press enquiries, what the Kenworthy is, anything you want a journalist to read first. Line breaks are preserved."
-              value={page.intro_text}
-              onChange={e => setPage(p => ({ ...p, intro_text: e.target.value }))}
-            />
-          </div>
-          <Button onClick={savePageContent} disabled={pageSaving}>
-            {pageSaving
-              ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              : <Save className="h-4 w-4 mr-1" />}
-            Save page photo &amp; text
-          </Button>
-        </CardContent>
-      </Card>
+        </div>
+        <Button onClick={savePageContent} disabled={pageSaving}>
+          {pageSaving
+            ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            : <Save className="h-4 w-4 mr-1" />}
+          Save page photo &amp; text
+        </Button>
+      </CollapsibleSection>
 
       {/* Articles */}
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display uppercase text-base">Coverage</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="font-serif text-sm text-muted-foreground">
-            Each entry is a <span className="font-medium">link</span> to an article on the outlet’s
-            own site — a headline, the outlet, a date, and an optional line of your own summarising
-            it. Don’t paste the article itself; it isn’t ours to republish.
-          </p>
-          <p className="font-serif text-sm text-muted-foreground">
-            Up to {MAX_FEATURED} articles can be featured, which pins them to the top of the page as
-            larger cards. Everything else is listed newest first.
-            {featuredCount > 0 && ` ${featuredCount} of ${MAX_FEATURED} featured right now.`}
-          </p>
-          {!draft && (
-            <Button size="sm" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
-              <Plus className="h-4 w-4 mr-1" /> Add an article
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+      <CollapsibleSection id="pages.press.coverage" title="Coverage" count={articles.length} defaultOpen>
+        <p className="font-serif text-sm text-muted-foreground">
+          Each entry is a <span className="font-medium">link</span> to an article on the outlet’s
+          own site — a headline, the outlet, a date, and an optional line of your own summarising
+          it. Don’t paste the article itself; it isn’t ours to republish.
+        </p>
+        <p className="font-serif text-sm text-muted-foreground">
+          Up to {MAX_FEATURED} articles can be featured, which pins them to the top of the page as
+          larger cards. Everything else is listed newest first.
+          {featuredCount > 0 && ` ${featuredCount} of ${MAX_FEATURED} featured right now.`}
+        </p>
+        {!draft && (
+          <Button size="sm" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
+            <Plus className="h-4 w-4 mr-1" /> Add an article
+          </Button>
+        )}
+      </CollapsibleSection>
 
       {draft && (
         <Card className="glass border-primary/40">

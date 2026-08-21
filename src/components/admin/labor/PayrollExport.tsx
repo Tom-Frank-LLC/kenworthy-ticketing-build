@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '../CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -222,63 +223,57 @@ export function PayrollExport() {
           </div>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader><CardTitle className="font-display">Preview — what will post</CardTitle></CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader><TableRow>
-              <TableHead>Staff</TableHead>
-              <TableHead>Linked to user</TableHead>
-              <TableHead className="text-right">Regular hrs</TableHead>
-              <TableHead className="text-right">OT hrs</TableHead>
-              <TableHead className="text-right">Cost</TableHead>
-            </TableRow></TableHeader>
-            <TableBody>
-              {lines.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">No shifts in this period.</TableCell></TableRow> :
-              lines.map((l, i) => (
-                <TableRow key={i}>
-                  <TableCell className="font-medium">{l.staff_name}</TableCell>
-                  <TableCell>{l.user_id ? <Badge variant="secondary">linked</Badge> : <Badge variant="outline">unlinked</Badge>}</TableCell>
-                  <TableCell className="text-right">{l.regular_hours.toFixed(2)}</TableCell>
-                  <TableCell className="text-right">{l.overtime_hours.toFixed(2)}</TableCell>
-                  <TableCell className="text-right">${l.cost.toFixed(2)}</TableCell>
-                </TableRow>
-              ))}
-              {lines.length > 0 && (
-                <TableRow className="font-medium">
-                  <TableCell colSpan={2}>Total</TableCell>
-                  <TableCell className="text-right" colSpan={2}>{totalHours.toFixed(2)} hrs</TableCell>
-                  <TableCell className="text-right">${totalCost.toFixed(2)}</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader><CardTitle className="font-display">Recent exports</CardTitle></CardHeader>
-        <CardContent>
-          {history.length === 0 ? <p className="text-sm text-muted-foreground">No exports yet.</p> :
-          (<Table>
-            <TableHeader><TableRow>
-              <TableHead>Period</TableHead><TableHead>Status</TableHead>
-              <TableHead className="text-right">Hours</TableHead><TableHead className="text-right">Cost</TableHead>
-              <TableHead>QBO batch</TableHead>
-            </TableRow></TableHeader>
-            <TableBody>
-              {history.map((h) => (
-                <TableRow key={h.id}>
-                  <TableCell>{h.period_start} → {h.period_end}</TableCell>
-                  <TableCell><Badge variant={h.status === 'success' || h.status === 'exported' ? 'secondary' : h.status === 'failed' ? 'destructive' : 'outline'}>{h.status}</Badge></TableCell>
-                  <TableCell className="text-right">{((h.totals?.regular_hours || 0) + (h.totals?.overtime_hours || 0)).toFixed(2)}</TableCell>
-                  <TableCell className="text-right">${Number(h.totals?.cost || 0).toFixed(2)}</TableCell>
-                  <TableCell className="font-mono text-xs">{h.qbo_batch_id || '—'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>)}
-        </CardContent>
-      </Card>
+      <CollapsibleSection id="labor.payroll.preview" title="Preview — what will post" defaultOpen>
+        <Table>
+          <TableHeader><TableRow>
+            <TableHead>Staff</TableHead>
+            <TableHead>Linked to user</TableHead>
+            <TableHead className="text-right">Regular hrs</TableHead>
+            <TableHead className="text-right">OT hrs</TableHead>
+            <TableHead className="text-right">Cost</TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {lines.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">No shifts in this period.</TableCell></TableRow> :
+            lines.map((l, i) => (
+              <TableRow key={i}>
+                <TableCell className="font-medium">{l.staff_name}</TableCell>
+                <TableCell>{l.user_id ? <Badge variant="secondary">linked</Badge> : <Badge variant="outline">unlinked</Badge>}</TableCell>
+                <TableCell className="text-right">{l.regular_hours.toFixed(2)}</TableCell>
+                <TableCell className="text-right">{l.overtime_hours.toFixed(2)}</TableCell>
+                <TableCell className="text-right">${l.cost.toFixed(2)}</TableCell>
+              </TableRow>
+            ))}
+            {lines.length > 0 && (
+              <TableRow className="font-medium">
+                <TableCell colSpan={2}>Total</TableCell>
+                <TableCell className="text-right" colSpan={2}>{totalHours.toFixed(2)} hrs</TableCell>
+                <TableCell className="text-right">${totalCost.toFixed(2)}</TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CollapsibleSection>
+      <CollapsibleSection id="labor.payroll.history" title="Recent exports" count={history.length}>
+        {history.length === 0 ? <p className="text-sm text-muted-foreground">No exports yet.</p> :
+        (<Table>
+          <TableHeader><TableRow>
+            <TableHead>Period</TableHead><TableHead>Status</TableHead>
+            <TableHead className="text-right">Hours</TableHead><TableHead className="text-right">Cost</TableHead>
+            <TableHead>QBO batch</TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {history.map((h) => (
+              <TableRow key={h.id}>
+                <TableCell>{h.period_start} → {h.period_end}</TableCell>
+                <TableCell><Badge variant={h.status === 'success' || h.status === 'exported' ? 'secondary' : h.status === 'failed' ? 'destructive' : 'outline'}>{h.status}</Badge></TableCell>
+                <TableCell className="text-right">{((h.totals?.regular_hours || 0) + (h.totals?.overtime_hours || 0)).toFixed(2)}</TableCell>
+                <TableCell className="text-right">${Number(h.totals?.cost || 0).toFixed(2)}</TableCell>
+                <TableCell className="font-mono text-xs">{h.qbo_batch_id || '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>)}
+      </CollapsibleSection>
     </div>
   );
 }

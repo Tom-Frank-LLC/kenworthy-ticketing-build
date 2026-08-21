@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Link2, AlertTriangle, Plus } from 'lucide-react';
 
@@ -253,11 +254,13 @@ export default function SquareCatalogTab({ showPasses = true }: SquareCatalogTab
       )}
 
       {needs.length > 0 && (
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-            {needs.length} production(s) with no Square item
-          </div>
+        <CollapsibleSection
+          id="listings.square.unlinked"
+          title="Productions with no Square item"
+          icon={AlertTriangle}
+          count={needs.length}
+          defaultOpen
+        >
           <p className="text-sm text-muted-foreground">
             Link one that already exists rather than making a second — a duplicate
             splits the film's takings across two items in every report.
@@ -292,12 +295,11 @@ export default function SquareCatalogTab({ showPasses = true }: SquareCatalogTab
               )}
             </div>
           ))}
-        </Card>
+        </CollapsibleSection>
       )}
 
       {showPasses && (passes ?? []).length > 0 && (
-        <Card className="p-4 space-y-3">
-          <div className="font-medium">Film passes</div>
+        <CollapsibleSection id="listings.square.passes" title="Film passes" count={(passes ?? []).length} defaultOpen>
           <p className="text-sm text-muted-foreground">
             A pass is one item in Square with no showtimes, so it is linked once
             and then stays linked. Pick the variation, not just the item — that is
@@ -390,7 +392,7 @@ export default function SquareCatalogTab({ showPasses = true }: SquareCatalogTab
               )}
             </div>
           ))}
-        </Card>
+        </CollapsibleSection>
       )}
 
       {(plan.price_drift ?? []).length > 0 && (

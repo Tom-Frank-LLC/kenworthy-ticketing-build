@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { CollapsibleSection } from './CollapsibleSection';
 import { toast } from 'sonner';
 import { Mail, Loader2, Copy, ExternalLink, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
@@ -144,70 +144,64 @@ export default function MailchimpTab() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" /> Mailchimp integration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="text-sm text-muted-foreground">
-            Kenworthy is connected to a Mailchimp audience. Tags (<code>ticket-buyer</code>, <code>donor</code>, <code>film-pass</code>, <code>dvd-renter</code>), merge fields (<code>LTV_TICKETS</code>, <code>LTV_DONATIONS</code>, <code>LAST_PURCH</code>, <code>FAV_GENRE</code>), and interest groups (Films / Live Performances / Special Events / Backstage) sync automatically on each purchase.
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={runBootstrap} disabled={bootstrapping} variant="outline">
-              {bootstrapping && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              Bootstrap store & interest groups
-            </Button>
-            <Button onClick={runBackfill} disabled={backfilling} variant="outline">
-              {backfilling && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              Backfill existing contacts
-            </Button>
-            <Button onClick={() => syncMailchimpProfile({ source: 'admin-self-sync' }).then(() => toast.success('Your own contact refreshed'))} variant="ghost">
-              <RefreshCw className="h-4 w-4 mr-1" /> Sync my contact
-            </Button>
-          </div>
-          {progress && (
-            <div className="text-xs text-muted-foreground">Backfilling {progress.done} / {progress.total}…</div>
-          )}
-          {webhook && (
-            <div className="space-y-2 rounded-md border p-3 bg-muted/30">
-              <div className="text-xs font-medium">Inbound webhook URL</div>
-              <div className="text-xs text-muted-foreground">Paste this into Mailchimp → Audience → Manage Audience → Webhooks. Enable all event types.</div>
-              <div className="flex gap-2">
-                <Input readOnly value={webhook} className="font-mono text-xs" />
-                <Button size="icon" variant="outline" onClick={() => { navigator.clipboard.writeText(webhook); toast.success('Copied'); }}><Copy className="h-4 w-4" /></Button>
-              </div>
+      <CollapsibleSection id="mailchimp.integration" title="Mailchimp integration" icon={Mail} defaultOpen>
+        <div className="text-sm text-muted-foreground">
+          Kenworthy is connected to a Mailchimp audience. Tags (<code>ticket-buyer</code>, <code>donor</code>, <code>film-pass</code>, <code>dvd-renter</code>), merge fields (<code>LTV_TICKETS</code>, <code>LTV_DONATIONS</code>, <code>LAST_PURCH</code>, <code>FAV_GENRE</code>), and interest groups (Films / Live Performances / Special Events / Backstage) sync automatically on each purchase.
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={runBootstrap} disabled={bootstrapping} variant="outline">
+            {bootstrapping && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            Bootstrap store & interest groups
+          </Button>
+          <Button onClick={runBackfill} disabled={backfilling} variant="outline">
+            {backfilling && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+            Backfill existing contacts
+          </Button>
+          <Button onClick={() => syncMailchimpProfile({ source: 'admin-self-sync' }).then(() => toast.success('Your own contact refreshed'))} variant="ghost">
+            <RefreshCw className="h-4 w-4 mr-1" /> Sync my contact
+          </Button>
+        </div>
+        {progress && (
+          <div className="text-xs text-muted-foreground">Backfilling {progress.done} / {progress.total}…</div>
+        )}
+        {webhook && (
+          <div className="space-y-2 rounded-md border p-3 bg-muted/30">
+            <div className="text-xs font-medium">Inbound webhook URL</div>
+            <div className="text-xs text-muted-foreground">Paste this into Mailchimp → Audience → Manage Audience → Webhooks. Enable all event types.</div>
+            <div className="flex gap-2">
+              <Input readOnly value={webhook} className="font-mono text-xs" />
+              <Button size="icon" variant="outline" onClick={() => { navigator.clipboard.writeText(webhook); toast.success('Copied'); }}><Copy className="h-4 w-4" /></Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </CollapsibleSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Draft a campaign from a showing</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {showings.length === 0 && <div className="text-sm text-muted-foreground">No upcoming showings.</div>}
-          {showings.map((s: any) => {
-            const prod = s.movie || s.event || s.performance || {};
-            const kind = s.movie ? 'Film' : s.event ? 'Event' : 'Performance';
-            return (
-              <div key={s.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate">{prod.title || 'Untitled'}</div>
-                  <div className="text-xs text-muted-foreground flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">{kind}</Badge>
-                    {s.show_datetime && format(new Date(s.show_datetime), 'EEE MMM d, h:mm a')}
-                  </div>
+      <CollapsibleSection
+        id="mailchimp.draft"
+        title="Draft a campaign from a showing"
+        count={showings.length}
+      >
+        {showings.length === 0 && <div className="text-sm text-muted-foreground">No upcoming showings.</div>}
+        {showings.map((s: any) => {
+          const prod = s.movie || s.event || s.performance || {};
+          const kind = s.movie ? 'Film' : s.event ? 'Event' : 'Performance';
+          return (
+            <div key={s.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate">{prod.title || 'Untitled'}</div>
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">{kind}</Badge>
+                  {s.show_datetime && format(new Date(s.show_datetime), 'EEE MMM d, h:mm a')}
                 </div>
-                <Button size="sm" variant="outline" disabled={busyShowing === s.id} onClick={() => draftCampaign(s.id)}>
-                  {busyShowing === s.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ExternalLink className="h-4 w-4 mr-1" />}
-                  Draft in Mailchimp
-                </Button>
               </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+              <Button size="sm" variant="outline" disabled={busyShowing === s.id} onClick={() => draftCampaign(s.id)}>
+                {busyShowing === s.id ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ExternalLink className="h-4 w-4 mr-1" />}
+                Draft in Mailchimp
+              </Button>
+            </div>
+          );
+        })}
+      </CollapsibleSection>
     </div>
   );
 }

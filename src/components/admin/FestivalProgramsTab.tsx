@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -330,115 +331,110 @@ export default function FestivalProgramsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h3 className="font-display text-2xl">Festival Programs</h3>
-          <p className="text-sm text-muted-foreground font-serif">
-            Scanned programs shown on the Silent Film Festival page. Uploads start
-            unpublished — nothing is public until you publish it.
-          </p>
-        </div>
-        <Button onClick={() => setUploadOpen(true)}>
-          <Upload className="h-4 w-4 mr-2" /> Upload program
-        </Button>
-      </div>
-
       {/* This year, which has no scanned programme and therefore never appeared
           in the list below — the list is built from uploaded files. Its trailer
           and its copy are the two things that need setting before the festival,
           which is exactly when there is nothing to upload yet. */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <h4 className="font-display uppercase tracking-[0.2em] text-sm text-primary">
-              This year
-            </h4>
-            <Input
-              type="number"
-              inputMode="numeric"
-              aria-label="Festival year"
-              className="w-28 h-8"
-              value={thisYear}
-              onChange={e => setThisYear(parseInt(e.target.value, 10) || thisYear)}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Shown on the festival page above the lineup. The blurb replaces the
-            standing description; leave it empty to keep that.
-          </p>
-          <YearFields year={thisYear} />
-        </CardContent>
-      </Card>
-
-      {loading ? (
-        <p className="text-muted-foreground text-center py-8">Loading…</p>
-      ) : archive.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
-            <p>No programs yet. Upload a scan to start the archive.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-8">
-          {archive.map(group => (
-            <div key={group.year}>
-              <h4 className="font-display uppercase tracking-[0.2em] text-sm text-primary mb-3">
-                {group.year}
-              </h4>
-
-              {/* One trailer and one blurb per year, not per file. A year has
-                  eight scanned pages and one of each, so hanging them off a page
-                  would leave seven empty boxes and no answer to which counts. */}
-              <div className="mb-3">
-                <YearFields year={group.year} />
-              </div>
-              <div className="grid gap-3">
-                {group.programs.map(program => (
-                  <Card key={program.id}>
-                    <CardContent className="p-4 flex items-center gap-4">
-                      <FileText className="h-8 w-8 text-accent shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-display text-lg truncate">
-                            {program.title || `${group.year} program`}
-                          </span>
-                          <Badge variant={published[program.id] ? 'default' : 'secondary'}>
-                            {published[program.id] ? 'Published' : 'Draft'}
-                          </Badge>
-                          <Badge variant="outline">{program.file_type.toUpperCase()}</Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Order {program.display_order}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 shrink-0">
-                        <Button variant="outline" size="sm" asChild>
-                          <a href={publicUrl(program.file_path)} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-4 w-4 mr-1" /> Preview
-                          </a>
-                        </Button>
-                        <Button
-                          variant={published[program.id] ? 'ghost' : 'default'}
-                          size="sm"
-                          onClick={() => togglePublished(program)}
-                        >
-                          {published[program.id]
-                            ? <><EyeOff className="h-4 w-4 mr-1" /> Unpublish</>
-                            : <><Eye className="h-4 w-4 mr-1" /> Publish</>}
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => remove(program)} title="Delete">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ))}
+      <CollapsibleSection id="pages.festival.this-year" title="This year" defaultOpen>
+        <div className="flex items-center gap-3">
+          <Input
+            type="number"
+            inputMode="numeric"
+            aria-label="Festival year"
+            className="w-28 h-8"
+            value={thisYear}
+            onChange={e => setThisYear(parseInt(e.target.value, 10) || thisYear)}
+          />
         </div>
-      )}
+        <p className="text-xs text-muted-foreground">
+          Shown on the festival page above the lineup. The blurb replaces the
+          standing description; leave it empty to keep that.
+        </p>
+        <YearFields year={thisYear} />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        id="pages.festival.programs"
+        title="Festival Programs"
+        count={archive.length}
+        description="Scanned programs shown on the Silent Film Festival page. Uploads start unpublished — nothing is public until you publish it."
+        defaultOpen
+        actions={
+          <Button onClick={() => setUploadOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" /> Upload program
+          </Button>
+        }
+      >
+        {loading ? (
+          <p className="text-muted-foreground text-center py-8">Loading…</p>
+        ) : archive.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
+              <p>No programs yet. Upload a scan to start the archive.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-8">
+            {archive.map(group => (
+              <div key={group.year}>
+                <h4 className="font-display uppercase tracking-[0.2em] text-sm text-primary mb-3">
+                  {group.year}
+                </h4>
+
+                {/* One trailer and one blurb per year, not per file. A year has
+                    eight scanned pages and one of each, so hanging them off a page
+                    would leave seven empty boxes and no answer to which counts. */}
+                <div className="mb-3">
+                  <YearFields year={group.year} />
+                </div>
+                <div className="grid gap-3">
+                  {group.programs.map(program => (
+                    <Card key={program.id}>
+                      <CardContent className="p-4 flex items-center gap-4">
+                        <FileText className="h-8 w-8 text-accent shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-display text-lg truncate">
+                              {program.title || `${group.year} program`}
+                            </span>
+                            <Badge variant={published[program.id] ? 'default' : 'secondary'}>
+                              {published[program.id] ? 'Published' : 'Draft'}
+                            </Badge>
+                            <Badge variant="outline">{program.file_type.toUpperCase()}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Order {program.display_order}
+                          </p>
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <Button variant="outline" size="sm" asChild>
+                            <a href={publicUrl(program.file_path)} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="h-4 w-4 mr-1" /> Preview
+                            </a>
+                          </Button>
+                          <Button
+                            variant={published[program.id] ? 'ghost' : 'default'}
+                            size="sm"
+                            onClick={() => togglePublished(program)}
+                          >
+                            {published[program.id]
+                              ? <><EyeOff className="h-4 w-4 mr-1" /> Unpublish</>
+                              : <><Eye className="h-4 w-4 mr-1" /> Publish</>}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => remove(program)} title="Delete">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CollapsibleSection>
 
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
         <DialogContent>

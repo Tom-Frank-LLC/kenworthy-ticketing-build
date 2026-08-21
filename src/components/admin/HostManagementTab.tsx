@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -143,125 +144,121 @@ export default function HostManagementTab() {
   return (
     <div className="space-y-6">
       {/* Assign new host */}
-      <Card className="glass">
-        <CardContent className="p-6 space-y-4">
-          <h3 className="font-display text-lg font-bold flex items-center gap-2">
-            <UserPlus className="h-5 w-5 text-primary" /> Assign a Host
-          </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* User search */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">User</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search users..."
-                  value={searchTerm}
-                  onChange={(e) => { setSearchTerm(e.target.value); setSelectedUserId(''); }}
-                  className="pl-9"
-                />
+      <CollapsibleSection id="rentals.hosts.assign" title="Assign a Host" icon={UserPlus}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* User search */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">User</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search users..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setSelectedUserId(''); }}
+                className="pl-9"
+              />
+            </div>
+            {searchTerm && !selectedUserId && (
+              <div className="border rounded-md max-h-40 overflow-y-auto bg-popover">
+                {filteredProfiles.length === 0 ? (
+                  <p className="p-2 text-sm text-muted-foreground">No users found</p>
+                ) : (
+                  filteredProfiles.slice(0, 10).map(p => (
+                    <button
+                      key={p.id}
+                      className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
+                      onClick={() => { setSelectedUserId(p.id); setSearchTerm(p.display_name || p.id); }}
+                    >
+                      {p.display_name || p.id.slice(0, 8)}
+                    </button>
+                  ))
+                )}
               </div>
-              {searchTerm && !selectedUserId && (
-                <div className="border rounded-md max-h-40 overflow-y-auto bg-popover">
-                  {filteredProfiles.length === 0 ? (
-                    <p className="p-2 text-sm text-muted-foreground">No users found</p>
-                  ) : (
-                    filteredProfiles.slice(0, 10).map(p => (
-                      <button
-                        key={p.id}
-                        className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
-                        onClick={() => { setSelectedUserId(p.id); setSearchTerm(p.display_name || p.id); }}
-                      >
-                        {p.display_name || p.id.slice(0, 8)}
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Production select */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Production</label>
-              <Select value={selectedProductionKey} onValueChange={setSelectedProductionKey}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select production..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {productions.filter(p => p.type === 'event').length > 0 && (
-                    <>
-                      <p className="px-2 py-1 text-xs text-muted-foreground font-semibold">Events</p>
-                      {productions.filter(p => p.type === 'event').map(p => (
-                        <SelectItem key={`event::${p.id}`} value={`event::${p.id}`}>{p.title}</SelectItem>
-                      ))}
-                    </>
-                  )}
-                  {productions.filter(p => p.type === 'live_performance').length > 0 && (
-                    <>
-                      <p className="px-2 py-1 text-xs text-muted-foreground font-semibold">Live Performances</p>
-                      {productions.filter(p => p.type === 'live_performance').map(p => (
-                        <SelectItem key={`live_performance::${p.id}`} value={`live_performance::${p.id}`}>{p.title}</SelectItem>
-                      ))}
-                    </>
-                  )}
-                  {productions.filter(p => p.type === 'movie').length > 0 && (
-                    <>
-                      <p className="px-2 py-1 text-xs text-muted-foreground font-semibold">Movies</p>
-                      {productions.filter(p => p.type === 'movie').map(p => (
-                        <SelectItem key={`movie::${p.id}`} value={`movie::${p.id}`}>{p.title}</SelectItem>
-                      ))}
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-end">
-              <Button onClick={assignHost} className="w-full">
-                <UserPlus className="h-4 w-4 mr-1" /> Assign Host
-              </Button>
-            </div>
+            )}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Current assignments */}
-      <div>
-        <h3 className="font-display text-lg font-bold mb-4 flex items-center gap-2">
-          <Users className="h-5 w-5 text-primary" /> Current Host Assignments
-        </h3>
-        {assignments.length === 0 ? (
-          <Card className="glass p-8 text-center">
-            <p className="text-muted-foreground">No host assignments yet.</p>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {assignments.map(a => {
-              const { name, type } = getAssignmentLabel(a);
-              return (
-                <Card key={a.id} className="glass">
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Users className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="font-medium">{a.profile?.display_name || 'Unknown'}</p>
-                        <div className="flex gap-2 mt-1">
-                          <Badge variant="outline" className="text-xs">{type}</Badge>
-                          <Badge variant="secondary" className="text-xs">{name}</Badge>
+          {/* Production select */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Production</label>
+            <Select value={selectedProductionKey} onValueChange={setSelectedProductionKey}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select production..." />
+              </SelectTrigger>
+              <SelectContent>
+                {productions.filter(p => p.type === 'event').length > 0 && (
+                  <>
+                    <p className="px-2 py-1 text-xs text-muted-foreground font-semibold">Events</p>
+                    {productions.filter(p => p.type === 'event').map(p => (
+                      <SelectItem key={`event::${p.id}`} value={`event::${p.id}`}>{p.title}</SelectItem>
+                    ))}
+                  </>
+                )}
+                {productions.filter(p => p.type === 'live_performance').length > 0 && (
+                  <>
+                    <p className="px-2 py-1 text-xs text-muted-foreground font-semibold">Live Performances</p>
+                    {productions.filter(p => p.type === 'live_performance').map(p => (
+                      <SelectItem key={`live_performance::${p.id}`} value={`live_performance::${p.id}`}>{p.title}</SelectItem>
+                    ))}
+                  </>
+                )}
+                {productions.filter(p => p.type === 'movie').length > 0 && (
+                  <>
+                    <p className="px-2 py-1 text-xs text-muted-foreground font-semibold">Movies</p>
+                    {productions.filter(p => p.type === 'movie').map(p => (
+                      <SelectItem key={`movie::${p.id}`} value={`movie::${p.id}`}>{p.title}</SelectItem>
+                    ))}
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-end">
+            <Button onClick={assignHost} className="w-full">
+              <UserPlus className="h-4 w-4 mr-1" /> Assign Host
+            </Button>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        id="rentals.hosts.assignments"
+        title="Current Host Assignments"
+        icon={Users}
+        count={assignments.length}
+        defaultOpen
+      >
+          {assignments.length === 0 ? (
+            <Card className="glass p-8 text-center">
+              <p className="text-muted-foreground">No host assignments yet.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {assignments.map(a => {
+                const { name, type } = getAssignmentLabel(a);
+                return (
+                  <Card key={a.id} className="glass">
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Users className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="font-medium">{a.profile?.display_name || 'Unknown'}</p>
+                          <div className="flex gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">{type}</Badge>
+                            <Badge variant="secondary" className="text-xs">{name}</Badge>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => removeAssignment(a.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                      <Button variant="ghost" size="sm" onClick={() => removeAssignment(a.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+      </CollapsibleSection>
     </div>
   );
 }

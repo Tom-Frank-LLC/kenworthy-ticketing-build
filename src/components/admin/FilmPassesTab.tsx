@@ -25,6 +25,7 @@ import {
   type AwaitingPostOrder,
 } from '@/lib/passOrders';
 import { MailQueueCard } from './MailQueueCard';
+import { CollapsibleSection } from './CollapsibleSection';
 import { PassEligibilityPanel } from './PassEligibilityPanel';
 import type { PassTypeOption } from '@/lib/passEligibility';
 
@@ -701,610 +702,629 @@ export default function FilmPassesTab() {
           obligation, and the admin dashboard is where someone thinks to look
           for it. Both views read the same `queue` action, so they cannot
           disagree about what is outstanding. */}
-      <Card className="glass">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="font-display text-xl font-bold flex items-center gap-2">
-              <Package className="h-5 w-5 text-primary" /> Waiting to be handed over
-              {queue.length > 0 && <Badge variant="default">{queue.length}</Badge>}
-            </h2>
-            {queue.length > 0 && (
-              <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
-                <Link to="/admin/pos">
-                  <ScanLine className="h-4 w-4 mr-1" /> Activate at the counter
-                </Link>
-              </Button>
-            )}
+      <CollapsibleSection
+        id="passes.queue"
+        title="Waiting to be handed over"
+        icon={Package}
+        count={queue.length}
+        defaultOpen
+        actions={
+          queue.length > 0 ? (
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/admin/pos">
+                <ScanLine className="h-4 w-4 mr-1" /> Activate at the counter
+              </Link>
+            </Button>
+          ) : undefined
+        }
+      >
+        {loadingQueue ? (
+          <p className="text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          </p>
+        ) : queueError ? (
+          <div className="space-y-2">
+            <p className="text-sm text-destructive">
+              Could not load outstanding orders — {queueError}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This is not the same as "nothing outstanding". Retry, and check the box
+              office queue before assuming there is nothing to post.
+            </p>
+            <Button size="sm" variant="outline" onClick={loadQueue}>Retry</Button>
           </div>
-
-          {loadingQueue ? (
-            <p className="text-sm text-muted-foreground flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-            </p>
-          ) : queueError ? (
-            <div className="space-y-2">
-              <p className="text-sm text-destructive">
-                Could not load outstanding orders — {queueError}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                This is not the same as "nothing outstanding". Retry, and check the box
-                office queue before assuming there is nothing to post.
-              </p>
-              <Button size="sm" variant="outline" onClick={loadQueue}>Retry</Button>
-            </div>
-          ) : queue.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nothing outstanding — every paid pass has been handed over or posted.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {queue.map(o => {
-                const address = formatMailingAddress(o.mailing_address);
-                return (
-                  <div key={o.id} className="p-4 rounded-lg bg-secondary/50 space-y-2">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 space-y-1">
-                        <p className="font-medium text-sm flex items-center gap-1.5">
-                          {o.fulfillment === 'mail' ? (
-                            <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          ) : (
-                            <Store className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          )}
-                          <span className="truncate">{passOrderBuyerLabel(o)}</span>
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {o.quantity} × {o.pass_type_name} · ${o.amount_paid.toFixed(2)} paid ·{' '}
-                          {formatShowtime(o.created_at, 'MMM d')}
-                        </p>
-                        {o.buyer_email && (
-                          <p className="text-xs text-muted-foreground break-all">{o.buyer_email}</p>
+        ) : queue.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nothing outstanding — every paid pass has been handed over or posted.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {queue.map(o => {
+              const address = formatMailingAddress(o.mailing_address);
+              return (
+                <div key={o.id} className="p-4 rounded-lg bg-secondary/50 space-y-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <p className="font-medium text-sm flex items-center gap-1.5">
+                        {o.fulfillment === 'mail' ? (
+                          <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        ) : (
+                          <Store className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         )}
-                        {o.buyer_phone && (
-                          <p className="text-xs text-muted-foreground">{o.buyer_phone}</p>
-                        )}
-                        {/* Shown in full: posting is a manual job and this is the
-                            label the staff member has to write. */}
-                        {o.fulfillment === 'mail' && (
-                          address ? (
-                            <p className="text-xs text-muted-foreground mt-1">Post to: {address}</p>
-                          ) : (
-                            <p className="text-xs text-destructive mt-1">
-                              Mail order with no address on file — contact the buyer before posting.
-                            </p>
-                          )
-                        )}
-                      </div>
-                      <Badge variant={o.fulfillment === 'mail' ? 'default' : 'secondary'} className="shrink-0 self-start">
-                        {o.fulfillment === 'mail' ? 'To post' : 'Pickup'}
-                      </Badge>
+                        <span className="truncate">{passOrderBuyerLabel(o)}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {o.quantity} × {o.pass_type_name} · ${o.amount_paid.toFixed(2)} paid ·{' '}
+                        {formatShowtime(o.created_at, 'MMM d')}
+                      </p>
+                      {o.buyer_email && (
+                        <p className="text-xs text-muted-foreground break-all">{o.buyer_email}</p>
+                      )}
+                      {o.buyer_phone && (
+                        <p className="text-xs text-muted-foreground">{o.buyer_phone}</p>
+                      )}
+                      {/* Shown in full: posting is a manual job and this is the
+                          label the staff member has to write. */}
+                      {o.fulfillment === 'mail' && (
+                        address ? (
+                          <p className="text-xs text-muted-foreground mt-1">Post to: {address}</p>
+                        ) : (
+                          <p className="text-xs text-destructive mt-1">
+                            Mail order with no address on file — contact the buyer before posting.
+                          </p>
+                        )
+                      )}
                     </div>
+                    <Badge variant={o.fulfillment === 'mail' ? 'default' : 'secondary'} className="shrink-0 self-start">
+                      {o.fulfillment === 'mail' ? 'To post' : 'Pickup'}
+                    </Badge>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CollapsibleSection>
 
-      {/* Always visible here, empty state included: an admin opening this tab
-          is asking "is anything outstanding?", and a silent absence is not an
-          answer. The counter hides it when empty instead. */}
-      <MailQueueCard
-        orders={awaitingPost}
-        loading={loadingQueue}
-        error={queueError}
-        onRetry={loadQueue}
-        onMarkPosted={markPosted}
-      />
+      {/* Open by default, empty state included: an admin opening this tab is
+          asking "is anything outstanding?", and a silent absence is not an
+          answer. The counter hides it when empty instead. Collapsible, so an
+          admin who has dealt with the post can put it away — but the count on
+          the header still answers the question without expanding it. */}
+      <CollapsibleSection
+        id="passes.to-post"
+        title="To be posted"
+        icon={Mail}
+        count={awaitingPost.length}
+        defaultOpen
+      >
+        <MailQueueCard
+          bare
+          orders={awaitingPost}
+          loading={loadingQueue}
+          error={queueError}
+          onRetry={loadQueue}
+          onMarkPosted={markPosted}
+        />
+      </CollapsibleSection>
 
       {/* Pass Types */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="font-display text-xl font-bold">Film Pass Types</h2>
-        <Button
-          size="sm"
-          className="w-full sm:w-auto"
-          onClick={() => (showForm ? closeForm() : setShowForm(true))}
-        >
-          <Plus className="h-4 w-4 mr-1" /> Add Pass Type
-        </Button>
-      </div>
-
-      {showForm && (
-        <Card className="glass">
-          <CardContent className="p-4 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. 10-Film Pass" />
-              </div>
-              <div className="space-y-2">
-                <Label>Sale Price ($)</Label>
-                <Input type="number" step="0.01" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label>Initial Balance ($)</Label>
-                <Input type="number" step="0.01" value={form.initial_balance} onChange={e => setForm(f => ({ ...f, initial_balance: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label>Cost Per Admission ($)</Label>
-                <Input type="number" step="0.01" value={form.redemption_price} onChange={e => setForm(f => ({ ...f, redemption_price: e.target.value }))} />
-                <p className="text-xs text-muted-foreground">
-                  Deducted at the door. Balance ÷ this is how many films the pass is worth.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Expiration (days, blank = none)</Label>
-                <Input type="number" value={form.expiration_days} onChange={e => setForm(f => ({ ...f, expiration_days: e.target.value }))} placeholder="365" />
-                <p className="text-xs text-muted-foreground">Counted from activation, not from purchase.</p>
-              </div>
-              <div className="space-y-2">
-                <Label>Uses per screening</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={form.per_showing_use_limit}
-                  onChange={e => setForm(f => ({ ...f, per_showing_use_limit: e.target.value }))}
-                  placeholder="blank = unlimited"
-                />
-                <p className="text-xs text-muted-foreground">
-                  How many people one pass may admit to a single screening. Blank lets the holder
-                  bring friends, bounded only by the balance. Set 1 for one admission each.
-                </p>
-              </div>
-            </div>
-
-            {/* The successor to showings.film_pass_eligible defaulting to true.
-                Without a pass carrying this, every screening created from now
-                on would start eligible for nothing, and the standard pass would
-                stop working at the door with no error anywhere. */}
-            <label className="flex items-start gap-2 text-sm cursor-pointer border-t border-border pt-4">
-              <input
-                type="checkbox"
-                checked={form.is_default_for_movies}
-                onChange={e => setForm(f => ({ ...f, is_default_for_movies: e.target.checked }))}
-                className="rounded mt-0.5"
-              />
-              <span>
-                <span className="font-semibold">Standard pass for ordinary films</span>
-                <span className="block text-xs text-muted-foreground">
-                  Pre-ticked on new movie screenings priced at the standard $8. Leave this off for
-                  a festival pass or anything else valid only at screenings you tag by hand.
-                </span>
-              </span>
-            </label>
-
-            {/* Which festival page, if any, advertises this pass.
-                The page finds its pass by this value rather than by name,
-                because the name is editable here and three duplicate
-                "SILENT FILM FESTIVAL PASS" SKUs already exist in Square. It
-                controls only what that page shows; what the pass admits to is
-                still the screenings tagged under Eligibility. */}
-            <div className="border-t border-border pt-4">
-              <Label htmlFor="festival-slug">Festival page (optional)</Label>
-              <Input
-                id="festival-slug"
-                placeholder="silent-film-festival"
-                value={form.festival_slug}
-                onChange={e => setForm(f => ({ ...f, festival_slug: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Leave blank for an ordinary pass. Enter{' '}
-                <code className="font-mono">silent-film-festival</code> to make this the pass
-                sold on the Silent Film Festival page. One pass per festival.
-              </p>
-            </div>
-
-            {/* Printed under the order summary for whichever pass is selected.
-                It used to be one sentence hard-coded into the page, which meant
-                the festival pass was sold beneath a line saying it was not
-                valid at special events. */}
-            <div className="border-t border-border pt-4">
-              <Label htmlFor="pass-fine-print">Validity note on the purchase page</Label>
-              <Textarea
-                id="pass-fine-print"
-                rows={2}
-                placeholder="Valid on standard movies. Not on special events or premium screenings."
-                value={form.fine_print}
-                onChange={e => setForm(f => ({ ...f, fine_print: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                One line saying where this pass is and is not valid. Leave blank to
-                print nothing — better than a sentence that is wrong for this pass.
-              </p>
-            </div>
-
-            {/* Shown beside the pass on /film-passes and on a festival page.
-                Optional throughout — without one both surfaces draw the ticket
-                icon they always have. */}
-            <div className="border-t border-border pt-4">
-              <Label htmlFor="pass-image">Pass image (optional)</Label>
-              <div className="flex items-center gap-3 mt-1">
-                {(imageFile || existingImage) && (
-                  <img
-                    src={imageFile ? URL.createObjectURL(imageFile) : passImageUrl(existingImage!)}
-                    alt=""
-                    className="w-14 h-18 rounded object-cover border border-border bg-background shrink-0"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
+      <CollapsibleSection
+        id="passes.types"
+        title="Film Pass Types"
+        count={passTypes.length}
+        actions={({ open }) => (
+          <Button
+            size="sm"
+            onClick={() => {
+              // Opening the section first: the form this toggles lives inside it.
+              if (!showForm) open();
+              showForm ? closeForm() : setShowForm(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-1" /> Add Pass Type
+          </Button>
+        )}
+      >
+        {showForm && (
+          <Card className="glass">
+            <CardContent className="p-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Name</Label>
+                  <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. 10-Film Pass" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Sale Price ($)</Label>
+                  <Input type="number" step="0.01" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Initial Balance ($)</Label>
+                  <Input type="number" step="0.01" value={form.initial_balance} onChange={e => setForm(f => ({ ...f, initial_balance: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cost Per Admission ($)</Label>
+                  <Input type="number" step="0.01" value={form.redemption_price} onChange={e => setForm(f => ({ ...f, redemption_price: e.target.value }))} />
+                  <p className="text-xs text-muted-foreground">
+                    Deducted at the door. Balance ÷ this is how many films the pass is worth.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Expiration (days, blank = none)</Label>
+                  <Input type="number" value={form.expiration_days} onChange={e => setForm(f => ({ ...f, expiration_days: e.target.value }))} placeholder="365" />
+                  <p className="text-xs text-muted-foreground">Counted from activation, not from purchase.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Uses per screening</Label>
                   <Input
-                    id="pass-image"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={e => setImageFile(e.target.files?.[0] || null)}
+                    type="number"
+                    min={1}
+                    value={form.per_showing_use_limit}
+                    onChange={e => setForm(f => ({ ...f, per_showing_use_limit: e.target.value }))}
+                    placeholder="blank = unlimited"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {existingImage && !imageFile
-                      ? 'An image is set. Choosing a file replaces it.'
-                      : 'Portrait artwork works best — it is shown at roughly 3:4.'}
+                  <p className="text-xs text-muted-foreground">
+                    How many people one pass may admit to a single screening. Blank lets the holder
+                    bring friends, bounded only by the balance. Set 1 for one admission each.
                   </p>
                 </div>
               </div>
-            </div>
 
-            <div className="flex gap-2">
-              <Button onClick={handleSaveType}>{editingId ? 'Save changes' : 'Create'}</Button>
-              <Button variant="outline" onClick={closeForm}>Cancel</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              {/* The successor to showings.film_pass_eligible defaulting to true.
+                  Without a pass carrying this, every screening created from now
+                  on would start eligible for nothing, and the standard pass would
+                  stop working at the door with no error anywhere. */}
+              <label className="flex items-start gap-2 text-sm cursor-pointer border-t border-border pt-4">
+                <input
+                  type="checkbox"
+                  checked={form.is_default_for_movies}
+                  onChange={e => setForm(f => ({ ...f, is_default_for_movies: e.target.checked }))}
+                  className="rounded mt-0.5"
+                />
+                <span>
+                  <span className="font-semibold">Standard pass for ordinary films</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Pre-ticked on new movie screenings priced at the standard $8. Leave this off for
+                    a festival pass or anything else valid only at screenings you tag by hand.
+                  </span>
+                </span>
+              </label>
 
-      <div className="space-y-3">
-        {passTypes.map(pt => (
-          <Card key={pt.id} className="glass">
-            <CardContent className="p-4 flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3 min-w-0 flex-1">
-                <CreditCard className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{pt.name}</p>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    <Badge variant="outline" className="text-xs">${Number(pt.price).toFixed(2)} sale price</Badge>
-                    <Badge variant="outline" className="text-xs">${Number(pt.initial_balance).toFixed(2)} balance</Badge>
-                    <Badge variant="outline" className="text-xs">
-                      ${Number(pt.redemption_price).toFixed(2)} per film ·{' '}
-                      {Math.floor(Number(pt.initial_balance) / Number(pt.redemption_price || 1))} films
-                    </Badge>
-                    {pt.expiration_days && <Badge variant="secondary" className="text-xs">{pt.expiration_days} day expiry</Badge>}
-                    <Badge variant="outline" className="text-xs">
-                      {pt.per_showing_use_limit === null
-                        ? 'Unlimited per screening'
-                        : `Max ${pt.per_showing_use_limit} per screening`}
-                    </Badge>
-                    {pt.is_default_for_movies && (
-                      <Badge variant="secondary" className="text-xs">Standard — auto on new films</Badge>
-                    )}
-                    <Badge variant={pt.is_active ? 'default' : 'secondary'} className="text-xs">
-                      {pt.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                    {/* Shown because it is the reason Delete will refuse. A
-                        constraint you only meet by tripping over it is a trap. */}
-                    {(typePassCounts[pt.id] ?? 0) > 0 && (
-                      <Badge variant="outline" className="text-xs">
-                        {typePassCounts[pt.id]} issued
-                      </Badge>
-                    )}
+              {/* Which festival page, if any, advertises this pass.
+                  The page finds its pass by this value rather than by name,
+                  because the name is editable here and three duplicate
+                  "SILENT FILM FESTIVAL PASS" SKUs already exist in Square. It
+                  controls only what that page shows; what the pass admits to is
+                  still the screenings tagged under Eligibility. */}
+              <div className="border-t border-border pt-4">
+                <Label htmlFor="festival-slug">Festival page (optional)</Label>
+                <Input
+                  id="festival-slug"
+                  placeholder="silent-film-festival"
+                  value={form.festival_slug}
+                  onChange={e => setForm(f => ({ ...f, festival_slug: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Leave blank for an ordinary pass. Enter{' '}
+                  <code className="font-mono">silent-film-festival</code> to make this the pass
+                  sold on the Silent Film Festival page. One pass per festival.
+                </p>
+              </div>
+
+              {/* Printed under the order summary for whichever pass is selected.
+                  It used to be one sentence hard-coded into the page, which meant
+                  the festival pass was sold beneath a line saying it was not
+                  valid at special events. */}
+              <div className="border-t border-border pt-4">
+                <Label htmlFor="pass-fine-print">Validity note on the purchase page</Label>
+                <Textarea
+                  id="pass-fine-print"
+                  rows={2}
+                  placeholder="Valid on standard movies. Not on special events or premium screenings."
+                  value={form.fine_print}
+                  onChange={e => setForm(f => ({ ...f, fine_print: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  One line saying where this pass is and is not valid. Leave blank to
+                  print nothing — better than a sentence that is wrong for this pass.
+                </p>
+              </div>
+
+              {/* Shown beside the pass on /film-passes and on a festival page.
+                  Optional throughout — without one both surfaces draw the ticket
+                  icon they always have. */}
+              <div className="border-t border-border pt-4">
+                <Label htmlFor="pass-image">Pass image (optional)</Label>
+                <div className="flex items-center gap-3 mt-1">
+                  {(imageFile || existingImage) && (
+                    <img
+                      src={imageFile ? URL.createObjectURL(imageFile) : passImageUrl(existingImage!)}
+                      alt=""
+                      className="w-14 h-18 rounded object-cover border border-border bg-background shrink-0"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <Input
+                      id="pass-image"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={e => setImageFile(e.target.files?.[0] || null)}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {existingImage && !imageFile
+                        ? 'An image is set. Choosing a file replaces it.'
+                        : 'Portrait artwork works best — it is shown at roughly 3:4.'}
+                    </p>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Switch checked={pt.is_active} onCheckedChange={() => toggleActive(pt.id, pt.is_active)} />
-                <Button variant="ghost" size="sm" onClick={() => startEdit(pt)} title="Edit this pass type">
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => deleteType(pt)}
-                  title={
-                    (typePassCounts[pt.id] ?? 0) > 0
-                      ? `Cannot delete — ${typePassCounts[pt.id]} pass(es) issued. Switch to Inactive to retire it.`
-                      : 'Delete this pass type'
-                  }
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+
+              <div className="flex gap-2">
+                <Button onClick={handleSaveType}>{editingId ? 'Save changes' : 'Create'}</Button>
+                <Button variant="outline" onClick={closeForm}>Cancel</Button>
               </div>
             </CardContent>
           </Card>
-        ))}
-        {passTypes.length === 0 && <p className="text-muted-foreground text-center py-8">No film pass types configured.</p>}
-      </div>
+        )}
+
+        <div className="space-y-3">
+          {passTypes.map(pt => (
+            <Card key={pt.id} className="glass">
+              <CardContent className="p-4 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <CreditCard className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{pt.name}</p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      <Badge variant="outline" className="text-xs">${Number(pt.price).toFixed(2)} sale price</Badge>
+                      <Badge variant="outline" className="text-xs">${Number(pt.initial_balance).toFixed(2)} balance</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        ${Number(pt.redemption_price).toFixed(2)} per film ·{' '}
+                        {Math.floor(Number(pt.initial_balance) / Number(pt.redemption_price || 1))} films
+                      </Badge>
+                      {pt.expiration_days && <Badge variant="secondary" className="text-xs">{pt.expiration_days} day expiry</Badge>}
+                      <Badge variant="outline" className="text-xs">
+                        {pt.per_showing_use_limit === null
+                          ? 'Unlimited per screening'
+                          : `Max ${pt.per_showing_use_limit} per screening`}
+                      </Badge>
+                      {pt.is_default_for_movies && (
+                        <Badge variant="secondary" className="text-xs">Standard — auto on new films</Badge>
+                      )}
+                      <Badge variant={pt.is_active ? 'default' : 'secondary'} className="text-xs">
+                        {pt.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                      {/* Shown because it is the reason Delete will refuse. A
+                          constraint you only meet by tripping over it is a trap. */}
+                      {(typePassCounts[pt.id] ?? 0) > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          {typePassCounts[pt.id]} issued
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Switch checked={pt.is_active} onCheckedChange={() => toggleActive(pt.id, pt.is_active)} />
+                  <Button variant="ghost" size="sm" onClick={() => startEdit(pt)} title="Edit this pass type">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteType(pt)}
+                    title={
+                      (typePassCounts[pt.id] ?? 0) > 0
+                        ? `Cannot delete — ${typePassCounts[pt.id]} pass(es) issued. Switch to Inactive to retire it.`
+                        : 'Delete this pass type'
+                    }
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {passTypes.length === 0 && <p className="text-muted-foreground text-center py-8">No film pass types configured.</p>}
+        </div>
+      </CollapsibleSection>
 
       {/* Eligibility, directly under the pass types that carry it. A pass is
           defined above and given its screenings here, which is the order the
           job is actually done in — creating a festival pass and then hunting
           through the schedule for its run is the same task split across two
           screens. */}
-      <h2 className="font-display text-xl font-bold pt-4">Screenings & Passes</h2>
-      {passTypes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Create a pass type above before tagging screenings.
-        </p>
-      ) : (
-        <PassEligibilityPanel passTypes={eligibilityOptions} />
-      )}
+      <CollapsibleSection id="passes.eligibility" title="Screenings & Passes">
+        {passTypes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Create a pass type above before tagging screenings.
+          </p>
+        ) : (
+          <PassEligibilityPanel passTypes={eligibilityOptions} />
+        )}
+      </CollapsibleSection>
 
       {/* Print runs */}
-      <h2 className="font-display text-xl font-bold pt-4">Sticker Print Runs</h2>
-      <Card className="glass">
-        <CardContent className="p-4 space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Stickers are printed blank and worth nothing until a staff member scans one at the
-            counter. Print a sheet, stick them on the paper passes, and keep them behind the desk.
-          </p>
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-            <div className="space-y-2">
-              <Label>Pass type</Label>
-              <Select value={batchTypeId} onValueChange={setBatchTypeId}>
-                <SelectTrigger><SelectValue placeholder="Choose a pass type..." /></SelectTrigger>
-                <SelectContent>
-                  {passTypes.filter(p => p.is_active).map(pt => (
-                    <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      <CollapsibleSection id="passes.stickers" title="Sticker Print Runs" count={batches.length}>
+        <Card className="glass">
+          <CardContent className="p-4 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Stickers are printed blank and worth nothing until a staff member scans one at the
+              counter. Print a sheet, stick them on the paper passes, and keep them behind the desk.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+              <div className="space-y-2">
+                <Label>Pass type</Label>
+                <Select value={batchTypeId} onValueChange={setBatchTypeId}>
+                  <SelectTrigger><SelectValue placeholder="Choose a pass type..." /></SelectTrigger>
+                  <SelectContent>
+                    {passTypes.filter(p => p.is_active).map(pt => (
+                      <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="batch-qty">How many</Label>
+                <Input
+                  id="batch-qty"
+                  type="number"
+                  min={1}
+                  max={500}
+                  className="sm:w-28"
+                  value={batchQuantity}
+                  onChange={e => setBatchQuantity(e.target.value)}
+                />
+              </div>
+              <Button onClick={handleMint} disabled={minting || !batchTypeId}>
+                {minting ? (
+                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Minting…</>
+                ) : (
+                  <><QrCode className="h-4 w-4 mr-1" /> Generate</>
+                )}
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="batch-qty">How many</Label>
-              <Input
-                id="batch-qty"
-                type="number"
-                min={1}
-                max={500}
-                className="sm:w-28"
-                value={batchQuantity}
-                onChange={e => setBatchQuantity(e.target.value)}
-              />
-            </div>
-            <Button onClick={handleMint} disabled={minting || !batchTypeId}>
-              {minting ? (
-                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Minting…</>
-              ) : (
-                <><QrCode className="h-4 w-4 mr-1" /> Generate</>
-              )}
-            </Button>
-          </div>
 
-          {batches.length > 0 && (
-            <div className="space-y-2 pt-2 border-t">
-              {batches.map(b => (
-                <div key={b.batch_id} className="flex items-center justify-between gap-3 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{b.pass_type_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatShowtime(b.created_at, 'MMM d, yyyy')} · {b.unassigned} of {b.total}{' '}
-                      still blank
-                    </p>
+            {batches.length > 0 && (
+              <div className="space-y-2 pt-2 border-t">
+                {batches.map(b => (
+                  <div key={b.batch_id} className="flex items-center justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{b.pass_type_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatShowtime(b.created_at, 'MMM d, yyyy')} · {b.unassigned} of {b.total}{' '}
+                        still blank
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={b.unassigned === 0}
+                      onClick={() => reprintBatch(b.batch_id)}
+                    >
+                      <Printer className="h-4 w-4 mr-1" /> Reprint blanks
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={b.unassigned === 0}
-                    onClick={() => reprintBatch(b.batch_id)}
-                  >
-                    <Printer className="h-4 w-4 mr-1" /> Reprint blanks
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </CollapsibleSection>
 
       {/* ---- Issued passes ----
           Searched, filtered and sorted in the database. The list used to be
           the newest 50 rows with no controls, which is fine as a dashboard and
           wrong as a register: the pass somebody is asking about at the counter
           is exactly the one that has aged off the bottom. */}
-      <h2 className="font-display text-xl font-bold pt-4">Issued Passes</h2>
+      <CollapsibleSection id="passes.issued" title="Issued Passes" count={total}>
+        <Card className="glass">
+          <CardContent className="p-4 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+              <div className="space-y-2">
+                <Label htmlFor="pass-search">Search</Label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    id="pass-search"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Pass number, name, email, phone or QR code"
+                    className="pl-8 pr-8"
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      onClick={() => setSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
 
-      <Card className="glass">
-        <CardContent className="p-4 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-            <div className="space-y-2">
-              <Label htmlFor="pass-search">Search</Label>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  id="pass-search"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Pass number, name, email, phone or QR code"
-                  className="pl-8 pr-8"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    aria-label="Clear search"
-                    onClick={() => setSearch('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="sm:w-52"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {STATUS_FILTERS.map(s => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Sort</Label>
+                <Select value={sort} onValueChange={setSort}>
+                  <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {SORTS.map(s => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="sm:w-52"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {STATUS_FILTERS.map(s => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Sort</Label>
-              <Select value={sort} onValueChange={setSort}>
-                <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {SORTS.map(s => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Counts describe the search, not the current filter — so they say
-              in advance what switching the filter will turn up, and clicking
-              one is the fastest way to get there. */}
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            {COUNT_ORDER.filter(s => (counts[s] ?? 0) > 0).map(s => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatusFilter(s)}
-                className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
-              >
-                <Badge
-                  variant={statusFilter === s ? (STATUS_VARIANT[s] ?? 'secondary') : 'outline'}
-                  className="text-xs cursor-pointer"
+            {/* Counts describe the search, not the current filter — so they say
+                in advance what switching the filter will turn up, and clicking
+                one is the fastest way to get there. */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {COUNT_ORDER.filter(s => (counts[s] ?? 0) > 0).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatusFilter(s)}
+                  className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
                 >
-                  {counts[s]} {STATUS_LABEL[s] ?? s}
-                </Badge>
-              </button>
-            ))}
-            {Object.keys(counts).length === 0 && !loadingPasses && (
-              <span className="text-xs text-muted-foreground">Nothing matches that search.</span>
-            )}
+                  <Badge
+                    variant={statusFilter === s ? (STATUS_VARIANT[s] ?? 'secondary') : 'outline'}
+                    className="text-xs cursor-pointer"
+                  >
+                    {counts[s]} {STATUS_LABEL[s] ?? s}
+                  </Badge>
+                </button>
+              ))}
+              {Object.keys(counts).length === 0 && !loadingPasses && (
+                <span className="text-xs text-muted-foreground">Nothing matches that search.</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {passesError ? (
+          <div className="space-y-2">
+            <p className="text-sm text-destructive">Could not search the passes — {passesError}</p>
+            <p className="text-xs text-muted-foreground">
+              This is not the same as "no such pass". Retry before telling anyone their pass is
+              not in the system.
+            </p>
+            <Button size="sm" variant="outline" onClick={() => loadPasses(0)}>Retry</Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {passesError ? (
-        <div className="space-y-2">
-          <p className="text-sm text-destructive">Could not search the passes — {passesError}</p>
-          <p className="text-xs text-muted-foreground">
-            This is not the same as "no such pass". Retry before telling anyone their pass is
-            not in the system.
+        ) : loadingPasses ? (
+          <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
+            <Loader2 className="h-4 w-4 animate-spin" /> Searching…
           </p>
-          <Button size="sm" variant="outline" onClick={() => loadPasses(0)}>Retry</Button>
-        </div>
-      ) : loadingPasses ? (
-        <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
-          <Loader2 className="h-4 w-4 animate-spin" /> Searching…
-        </p>
-      ) : passes.length === 0 ? (
-        <p className="text-muted-foreground text-center py-8">
-          {query.trim()
-            ? 'No pass matches that search.'
-            : 'No passes issued yet.'}
-        </p>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Showing {passes.length} of {total}
-            {query.trim() ? ' matching' : ''} {total === 1 ? 'pass' : 'passes'}.
+        ) : passes.length === 0 ? (
+          <p className="text-muted-foreground text-center py-8">
+            {query.trim()
+              ? 'No pass matches that search.'
+              : 'No passes issued yet.'}
           </p>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Showing {passes.length} of {total}
+              {query.trim() ? ' matching' : ''} {total === 1 ? 'pass' : 'passes'}.
+            </p>
 
-          {passes.map(up => (
-            <Card key={up.id} className="glass">
-              <CardContent className="p-4 flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <DollarSign className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium flex flex-wrap items-baseline gap-x-2">
-                      {up.pass_number !== null && (
-                        <span className="font-mono text-sm text-muted-foreground">
-                          #{up.pass_number}
-                        </span>
-                      )}
-                      <span>{holderLabel(up)}</span>
-                    </p>
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {up.pass_type_name && (
-                        <Badge variant="outline" className="text-xs">{up.pass_type_name}</Badge>
-                      )}
-                      {up.remaining_balance !== null && (
-                        <Badge variant="secondary" className="text-xs">
-                          ${Number(up.remaining_balance).toFixed(2)} remaining
+            {passes.map(up => (
+              <Card key={up.id} className="glass">
+                <CardContent className="p-4 flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <DollarSign className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium flex flex-wrap items-baseline gap-x-2">
+                        {up.pass_number !== null && (
+                          <span className="font-mono text-sm text-muted-foreground">
+                            #{up.pass_number}
+                          </span>
+                        )}
+                        <span>{holderLabel(up)}</span>
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {up.pass_type_name && (
+                          <Badge variant="outline" className="text-xs">{up.pass_type_name}</Badge>
+                        )}
+                        {up.remaining_balance !== null && (
+                          <Badge variant="secondary" className="text-xs">
+                            ${Number(up.remaining_balance).toFixed(2)} remaining
+                          </Badge>
+                        )}
+                        <Badge variant={STATUS_VARIANT[up.status] ?? 'secondary'} className="text-xs">
+                          {STATUS_LABEL[up.status] ?? up.status}
                         </Badge>
+                        {up.payment_method && (
+                          <Badge variant="outline" className="text-xs">{up.payment_method}</Badge>
+                        )}
+                        {up.redemption_count > 0 && (
+                          <Badge variant="outline" className="text-xs">
+                            {up.redemption_count} admitted
+                          </Badge>
+                        )}
+                        {up.expires_at && (
+                          <Badge
+                            variant={new Date(up.expires_at) < new Date() ? 'destructive' : 'secondary'}
+                            className="text-xs"
+                          >
+                            {new Date(up.expires_at) < new Date()
+                              ? 'Expired'
+                              : `Expires ${formatShowtime(up.expires_at, 'MMM d, yyyy')}`}
+                          </Badge>
+                        )}
+                      </div>
+                      {/* Shown because they are searchable: a staff member who
+                          found this row by typing an email should be able to see
+                          which email matched. */}
+                      {contactLines(up).length > 0 && (
+                        <p className="text-xs text-muted-foreground break-all mt-1">
+                          {contactLines(up).join(' · ')}
+                        </p>
                       )}
-                      <Badge variant={STATUS_VARIANT[up.status] ?? 'secondary'} className="text-xs">
-                        {STATUS_LABEL[up.status] ?? up.status}
-                      </Badge>
-                      {up.payment_method && (
-                        <Badge variant="outline" className="text-xs">{up.payment_method}</Badge>
-                      )}
-                      {up.redemption_count > 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          {up.redemption_count} admitted
-                        </Badge>
-                      )}
-                      {up.expires_at && (
-                        <Badge
-                          variant={new Date(up.expires_at) < new Date() ? 'destructive' : 'secondary'}
-                          className="text-xs"
-                        >
-                          {new Date(up.expires_at) < new Date()
-                            ? 'Expired'
-                            : `Expires ${formatShowtime(up.expires_at, 'MMM d, yyyy')}`}
-                        </Badge>
+                      {up.qr_code && (
+                        <p className="text-xs font-mono text-muted-foreground break-all mt-1">
+                          {up.qr_code}
+                        </p>
                       )}
                     </div>
-                    {/* Shown because they are searchable: a staff member who
-                        found this row by typing an email should be able to see
-                        which email matched. */}
-                    {contactLines(up).length > 0 && (
-                      <p className="text-xs text-muted-foreground break-all mt-1">
-                        {contactLines(up).join(' · ')}
-                      </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {up.status !== 'void' && (
+                      <Button variant="ghost" size="sm" onClick={() => voidPass(up)} title="Cancel this pass">
+                        <Ban className="h-4 w-4 text-destructive" />
+                      </Button>
                     )}
-                    {up.qr_code && (
-                      <p className="text-xs font-mono text-muted-foreground break-all mt-1">
-                        {up.qr_code}
-                      </p>
+                    {/* Active and expired passes are absent here on purpose:
+                        cancel is the step that decides a pass is finished, and
+                        delete only clears up after it. */}
+                    {DELETABLE_STATUSES.has(up.status) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deletePass(up)}
+                        title="Delete this pass permanently"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     )}
                   </div>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {up.status !== 'void' && (
-                    <Button variant="ghost" size="sm" onClick={() => voidPass(up)} title="Cancel this pass">
-                      <Ban className="h-4 w-4 text-destructive" />
-                    </Button>
-                  )}
-                  {/* Active and expired passes are absent here on purpose:
-                      cancel is the step that decides a pass is finished, and
-                      delete only clears up after it. */}
-                  {DELETABLE_STATUSES.has(up.status) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deletePass(up)}
-                      title="Delete this pass permanently"
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))}
 
-          {passes.length < total && (
-            <div className="flex justify-center pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={loadingMore}
-                onClick={() => loadPasses(passes.length)}
-              >
-                {loadingMore ? (
-                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Loading…</>
-                ) : (
-                  `Show ${Math.min(PAGE_SIZE, total - passes.length)} more`
-                )}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+            {passes.length < total && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={loadingMore}
+                  onClick={() => loadPasses(passes.length)}
+                >
+                  {loadingMore ? (
+                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Loading…</>
+                  ) : (
+                    `Show ${Math.min(PAGE_SIZE, total - passes.length)} more`
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </CollapsibleSection>
     </div>
   );
 }

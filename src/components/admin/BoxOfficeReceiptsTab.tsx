@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -193,112 +194,111 @@ export default function BoxOfficeReceiptsTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display flex items-center gap-2">
-            <FileText className="h-5 w-5" /> Box Office Receipts (Comscore format)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            Generate a per-showing receipt to submit to distributors via Comscore. Pulls ticket
-            counts and gross/net from confirmed sales for each past film showing.
-          </p>
-          <div className="mb-4 space-y-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                className="pl-9"
-                placeholder="Search by title, distributor, circuit, year, weekday…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
+      <CollapsibleSection
+        id="bor.receipts"
+        title="Box Office Receipts"
+        icon={FileText}
+        description="Comscore format"
+        defaultOpen
+      >
+        <p className="text-sm text-muted-foreground mb-4">
+          Generate a per-showing receipt to submit to distributors via Comscore. Pulls ticket
+          counts and gross/net from confirmed sales for each past film showing.
+        </p>
+        <div className="mb-4 space-y-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              className="pl-9"
+              placeholder="Search by title, distributor, circuit, year, weekday…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex-1">
+              <Label className="text-xs">From</Label>
+              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="flex-1">
-                <Label className="text-xs">From</Label>
-                <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+            <div className="flex-1">
+              <Label className="text-xs">To</Label>
+              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </div>
+            {(query || fromDate || toDate) && (
+              <div className="flex items-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setQuery(''); setFromDate(''); setToDate(''); }}
+                >
+                  <X className="h-4 w-4 mr-1" /> Clear
+                </Button>
               </div>
-              <div className="flex-1">
-                <Label className="text-xs">To</Label>
-                <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            )}
+          </div>
+        </div>
+        {(() => {
+          const q = query.trim().toLowerCase();
+          // The date pickers name venue calendar days, so the bounds are
+          // venue midnight to venue end-of-day. `new Date('2026-08-14')`
+          // would parse as UTC midnight and drag the previous evening's
+          // shows — 7 PM Pacific is already the 14th in UTC — into range.
+          const from = fromDate ? venueLocalToInstant(`${fromDate}T00:00:00`) : null;
+          const to = toDate ? venueLocalToInstant(`${toDate}T23:59:59.999`) : null;
+          const filtered = showings.filter((s) => {
+            const d = new Date(s.start_time);
+            if (from && d < from) return false;
+            if (to && d > to) return false;
+            if (!q) return true;
+            const m = s.movies;
+            const hay = [
+              m?.title,
+              m?.distributor,
+              m?.circuit,
+              m?.release_label,
+              m?.release_year != null ? String(m.release_year) : '',
+              format(d, 'EEEE MMMM d yyyy h:mm a'),
+              format(d, 'yyyy-MM-dd'),
+              'film movie showing',
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+            return hay.includes(q);
+          });
+          return (
+            <>
+              <p className="text-xs text-muted-foreground mb-2">
+                {filtered.length} of {showings.length} showings
+              </p>
+              {showings.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No past film showings yet.</p>
+              ) : filtered.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No showings match your search.</p>
+              ) : (
+                <div className="space-y-2">
+                  {filtered.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center justify-between p-3 rounded-md border border-border/40 hover:bg-accent/5"
+              >
+                <div>
+                  <p className="font-medium">{s.movies?.title ?? 'Untitled'}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatShowtime(s.start_time, 'EEE, MMM d, yyyy · h:mm a')}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => openReceipt(s)}>
+                  <FileText className="h-4 w-4 mr-1" /> Receipt
+                </Button>
               </div>
-              {(query || fromDate || toDate) && (
-                <div className="flex items-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { setQuery(''); setFromDate(''); setToDate(''); }}
-                  >
-                    <X className="h-4 w-4 mr-1" /> Clear
-                  </Button>
+                  ))}
                 </div>
               )}
-            </div>
-          </div>
-          {(() => {
-            const q = query.trim().toLowerCase();
-            // The date pickers name venue calendar days, so the bounds are
-            // venue midnight to venue end-of-day. `new Date('2026-08-14')`
-            // would parse as UTC midnight and drag the previous evening's
-            // shows — 7 PM Pacific is already the 14th in UTC — into range.
-            const from = fromDate ? venueLocalToInstant(`${fromDate}T00:00:00`) : null;
-            const to = toDate ? venueLocalToInstant(`${toDate}T23:59:59.999`) : null;
-            const filtered = showings.filter((s) => {
-              const d = new Date(s.start_time);
-              if (from && d < from) return false;
-              if (to && d > to) return false;
-              if (!q) return true;
-              const m = s.movies;
-              const hay = [
-                m?.title,
-                m?.distributor,
-                m?.circuit,
-                m?.release_label,
-                m?.release_year != null ? String(m.release_year) : '',
-                format(d, 'EEEE MMMM d yyyy h:mm a'),
-                format(d, 'yyyy-MM-dd'),
-                'film movie showing',
-              ]
-                .filter(Boolean)
-                .join(' ')
-                .toLowerCase();
-              return hay.includes(q);
-            });
-            return (
-              <>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {filtered.length} of {showings.length} showings
-                </p>
-                {showings.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No past film showings yet.</p>
-                ) : filtered.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No showings match your search.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {filtered.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center justify-between p-3 rounded-md border border-border/40 hover:bg-accent/5"
-                >
-                  <div>
-                    <p className="font-medium">{s.movies?.title ?? 'Untitled'}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatShowtime(s.start_time, 'EEE, MMM d, yyyy · h:mm a')}
-                    </p>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => openReceipt(s)}>
-                    <FileText className="h-4 w-4 mr-1" /> Receipt
-                  </Button>
-                </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </CardContent>
-      </Card>
+            </>
+          );
+        })()}
+      </CollapsibleSection>
 
       <Dialog open={!!active} onOpenChange={(o) => !o && setActive(null)}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">

@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -368,167 +369,154 @@ export default function BackstageTab() {
       </div>
 
       {/* ------------------------------------------------- The hero image */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <h4 className="font-display uppercase tracking-[0.2em] text-sm text-primary">
-            Hero image
-          </h4>
-          <p className="text-xs text-muted-foreground">
-            The photograph at the very top of the page — a shot of the real neon
-            sign works best. It <strong className="text-foreground">replaces</strong> the
-            drawn sign rather than sitting above it, because both say
-            &ldquo;Backstage&rdquo; and showing them together prints the name twice.
-            With no hero, the page falls back to the drawn sign.
-          </p>
-
-          {heroPath ? (
-            <img
-              src={thumbUrl(heroPath)}
-              alt="Current hero"
-              className="h-32 w-full rounded object-cover border border-border"
-            />
-          ) : (
-            <div className="h-32 w-full rounded border border-dashed border-border flex items-center justify-center text-muted-foreground text-sm">
-              No hero image — the page is showing the drawn sign
-            </div>
-          )}
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <Input
-              id="backstage-hero-file"
-              type="file"
-              className="max-w-xs"
-              accept={BACKSTAGE_ACCEPTED_TYPES.join(',')}
-              disabled={heroBusy}
-              onChange={e => {
-                const chosen = e.target.files?.[0];
-                // Cleared so choosing the same file twice still fires a change
-                // — otherwise a failed upload cannot be retried without picking
-                // a different file first.
-                e.target.value = '';
-                if (chosen) uploadHero(chosen);
-              }}
-            />
-            {heroBusy && <span className="text-xs text-muted-foreground">Working…</span>}
-            {heroPath && !heroBusy && (
-              <>
-                <Button variant="outline" size="sm" asChild>
-                  <a href={publicUrl(heroPath)} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-1" /> Full size
-                  </a>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={removeHero}>
-                  <Trash2 className="h-4 w-4 mr-1" /> Remove
-                </Button>
-              </>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ------------------------------------------- How the room gets used */}
-      <Card>
-        <CardContent className="p-4 space-y-3">
-          <h4 className="font-display uppercase tracking-[0.2em] text-sm text-primary">
-            How the room gets used
-          </h4>
-          <p className="text-xs text-muted-foreground">
-            The paragraph under the sign. Leave a blank line between paragraphs.
-            Clearing it hides the section — and the booking link with it.
-            <strong className="text-foreground">
-              {' '}What is in here now is placeholder copy written to sound right,
-              not the real wording. Replace it.
-            </strong>
-          </p>
-          <Textarea
-            id="backstage-body"
-            rows={10}
-            className="font-serif"
-            aria-label="How the room gets used"
-            value={bodyDraft}
-            onChange={e => setBodyDraft(e.target.value)}
-          />
-          <Button size="sm" variant="outline" disabled={savingBody || !bodyDirty} onClick={saveBody}>
-            <Save className="h-4 w-4 mr-1" />
-            {savingBody ? 'Saving…' : 'Save copy'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* ------------------------------------------------------ The gallery */}
-      <div>
-        <h4 className="font-display uppercase tracking-[0.2em] text-sm text-primary mb-3">
-          Past events
-        </h4>
-        <p className="text-xs text-muted-foreground mb-3">
-          Uploads start unpublished — nothing is on the page until you publish it.
-          The caption is also the image&rsquo;s alt text, so write it for someone who
-          cannot see the photograph. Lower display order comes first; photos left
-          at 0 fall back to newest first.
+      <CollapsibleSection id="pages.backstage.hero" title="Hero image">
+        <p className="text-xs text-muted-foreground">
+          The photograph at the very top of the page — a shot of the real neon
+          sign works best. It <strong className="text-foreground">replaces</strong> the
+          drawn sign rather than sitting above it, because both say
+          &ldquo;Backstage&rdquo; and showing them together prints the name twice.
+          With no hero, the page falls back to the drawn sign.
         </p>
 
-        {loading ? (
-          <p className="text-muted-foreground text-center py-8">Loading…</p>
-        ) : photos.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center text-muted-foreground">
-              <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-50" />
-              <p>No photographs yet. Upload one to start the gallery.</p>
-            </CardContent>
-          </Card>
+        {heroPath ? (
+          <img
+            src={thumbUrl(heroPath)}
+            alt="Current hero"
+            className="h-32 w-full rounded object-cover border border-border"
+          />
         ) : (
-          <div className="grid gap-3">
-            {photos.map(photo => (
-              <Card key={photo.id}>
-                <CardContent className="p-4 flex items-center gap-4">
-                  <img
-                    src={thumbUrl(photo.file_path)}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="h-16 w-24 shrink-0 rounded object-cover border border-border"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-display text-lg truncate">
-                        {photo.caption || <span className="text-muted-foreground">No caption</span>}
-                      </span>
-                      <Badge variant={photo.is_published ? 'default' : 'secondary'}>
-                        {photo.is_published ? 'Published' : 'Draft'}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Order {photo.display_order}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={publicUrl(photo.file_path)} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-4 w-4 mr-1" /> Full size
-                      </a>
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => openEdit(photo)}>
-                      <Pencil className="h-4 w-4 mr-1" /> Edit
-                    </Button>
-                    <Button
-                      variant={photo.is_published ? 'ghost' : 'default'}
-                      size="sm"
-                      onClick={() => togglePublished(photo)}
-                    >
-                      {photo.is_published
-                        ? <><EyeOff className="h-4 w-4 mr-1" /> Unpublish</>
-                        : <><Eye className="h-4 w-4 mr-1" /> Publish</>}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => remove(photo)} title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="h-32 w-full rounded border border-dashed border-border flex items-center justify-center text-muted-foreground text-sm">
+            No hero image — the page is showing the drawn sign
           </div>
         )}
-      </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Input
+            id="backstage-hero-file"
+            type="file"
+            className="max-w-xs"
+            accept={BACKSTAGE_ACCEPTED_TYPES.join(',')}
+            disabled={heroBusy}
+            onChange={e => {
+              const chosen = e.target.files?.[0];
+              // Cleared so choosing the same file twice still fires a change
+              // — otherwise a failed upload cannot be retried without picking
+              // a different file first.
+              e.target.value = '';
+              if (chosen) uploadHero(chosen);
+            }}
+          />
+          {heroBusy && <span className="text-xs text-muted-foreground">Working…</span>}
+          {heroPath && !heroBusy && (
+            <>
+              <Button variant="outline" size="sm" asChild>
+                <a href={publicUrl(heroPath)} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-1" /> Full size
+                </a>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={removeHero}>
+                <Trash2 className="h-4 w-4 mr-1" /> Remove
+              </Button>
+            </>
+          )}
+        </div>
+      </CollapsibleSection>
+
+      {/* ------------------------------------------- How the room gets used */}
+      <CollapsibleSection id="pages.backstage.room" title="How the room gets used">
+        <p className="text-xs text-muted-foreground">
+          The paragraph under the sign. Leave a blank line between paragraphs.
+          Clearing it hides the section — and the booking link with it.
+          <strong className="text-foreground">
+            {' '}What is in here now is placeholder copy written to sound right,
+            not the real wording. Replace it.
+          </strong>
+        </p>
+        <Textarea
+          id="backstage-body"
+          rows={10}
+          className="font-serif"
+          aria-label="How the room gets used"
+          value={bodyDraft}
+          onChange={e => setBodyDraft(e.target.value)}
+        />
+        <Button size="sm" variant="outline" disabled={savingBody || !bodyDirty} onClick={saveBody}>
+          <Save className="h-4 w-4 mr-1" />
+          {savingBody ? 'Saving…' : 'Save copy'}
+        </Button>
+      </CollapsibleSection>
+
+      {/* ------------------------------------------------------ The gallery */}
+      <CollapsibleSection id="pages.backstage.gallery" title="Past events" count={photos.length} defaultOpen>
+      <p className="text-xs text-muted-foreground mb-3">
+        Uploads start unpublished — nothing is on the page until you publish it.
+        The caption is also the image&rsquo;s alt text, so write it for someone who
+        cannot see the photograph. Lower display order comes first; photos left
+        at 0 fall back to newest first.
+      </p>
+
+      {loading ? (
+        <p className="text-muted-foreground text-center py-8">Loading…</p>
+      ) : photos.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-50" />
+            <p>No photographs yet. Upload one to start the gallery.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3">
+          {photos.map(photo => (
+            <Card key={photo.id}>
+              <CardContent className="p-4 flex items-center gap-4">
+                <img
+                  src={thumbUrl(photo.file_path)}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-16 w-24 shrink-0 rounded object-cover border border-border"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-display text-lg truncate">
+                      {photo.caption || <span className="text-muted-foreground">No caption</span>}
+                    </span>
+                    <Badge variant={photo.is_published ? 'default' : 'secondary'}>
+                      {photo.is_published ? 'Published' : 'Draft'}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Order {photo.display_order}
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={publicUrl(photo.file_path)} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4 mr-1" /> Full size
+                    </a>
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => openEdit(photo)}>
+                    <Pencil className="h-4 w-4 mr-1" /> Edit
+                  </Button>
+                  <Button
+                    variant={photo.is_published ? 'ghost' : 'default'}
+                    size="sm"
+                    onClick={() => togglePublished(photo)}
+                  >
+                    {photo.is_published
+                      ? <><EyeOff className="h-4 w-4 mr-1" /> Unpublish</>
+                      : <><Eye className="h-4 w-4 mr-1" /> Publish</>}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => remove(photo)} title="Delete">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+      </CollapsibleSection>
 
       {/* Edit — caption and order. Not the image; see saveEdit. */}
       <Dialog open={editing !== null} onOpenChange={o => !o && setEditing(null)}>

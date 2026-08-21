@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '../CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -292,123 +293,111 @@ export default function QboExportTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display flex items-center gap-2">
-            <Link2 className="h-5 w-5" /> QuickBooks Connection
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {!qbo ? (
-            <p className="text-sm text-muted-foreground"><Loader2 className="h-4 w-4 inline animate-spin mr-2" /> Checking status…</p>
-          ) : !qbo.configured ? (
-            <p className="text-sm text-muted-foreground">QBO credentials are not configured in this environment.</p>
-          ) : qbo.connected ? (
+      <CollapsibleSection id="accounting.qbo.connection" title="QuickBooks Connection" icon={Link2}>
+        {!qbo ? (
+          <p className="text-sm text-muted-foreground"><Loader2 className="h-4 w-4 inline animate-spin mr-2" /> Checking status…</p>
+        ) : !qbo.configured ? (
+          <p className="text-sm text-muted-foreground">QBO credentials are not configured in this environment.</p>
+        ) : qbo.connected ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Connected</Badge>
+            <span className="text-sm text-muted-foreground">Realm <span className="font-mono">{qbo.realm_id}</span> • {qbo.environment}</span>
+            {qbo.token_expires_at && (
+              <span className="text-xs text-muted-foreground">Token expires {new Date(qbo.token_expires_at).toLocaleString()}</span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={disconnectQbo}
+              disabled
+              title="Disabled while the QuickBooks API side is unfinished."
+              className="ml-auto"
+            >
+              <Unlink className="h-4 w-4 mr-1" /> Disconnect
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Connected</Badge>
-              <span className="text-sm text-muted-foreground">Realm <span className="font-mono">{qbo.realm_id}</span> • {qbo.environment}</span>
-              {qbo.token_expires_at && (
-                <span className="text-xs text-muted-foreground">Token expires {new Date(qbo.token_expires_at).toLocaleString()}</span>
-              )}
+              <Badge variant="outline">Not connected</Badge>
+              <span className="text-sm text-muted-foreground">Environment: {qbo.environment}</span>
+              {/* Left visible but inert on purpose. The OAuth half of qbo-sync
+                  works, but nothing is ever sent to or read from the
+                  QuickBooks API, and the function is deployed nowhere.
+                  Connecting would only enable a payroll path that reports a
+                  push it never makes. Export the CSV/IIF below instead. See
+                  docs/briefs/FINDINGS-quickbooks-integration-state.md */}
               <Button
-                variant="outline"
-                size="sm"
-                onClick={disconnectQbo}
+                onClick={connectQbo}
                 disabled
-                title="Disabled while the QuickBooks API side is unfinished."
+                title="Connecting is not available yet — export the CSV or IIF below and import it into QuickBooks by hand."
                 className="ml-auto"
               >
-                <Unlink className="h-4 w-4 mr-1" /> Disconnect
+                {qboBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
+                Connect QuickBooks
               </Button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <Badge variant="outline">Not connected</Badge>
-                <span className="text-sm text-muted-foreground">Environment: {qbo.environment}</span>
-                {/* Left visible but inert on purpose. The OAuth half of qbo-sync
-                    works, but nothing is ever sent to or read from the
-                    QuickBooks API, and the function is deployed nowhere.
-                    Connecting would only enable a payroll path that reports a
-                    push it never makes. Export the CSV/IIF below instead. See
-                    docs/briefs/FINDINGS-quickbooks-integration-state.md */}
-                <Button
-                  onClick={connectQbo}
-                  disabled
-                  title="Connecting is not available yet — export the CSV or IIF below and import it into QuickBooks by hand."
-                  className="ml-auto"
-                >
-                  {qboBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
-                  Connect QuickBooks
-                </Button>
+            {qbo.redirect_uri && (
+              <div className="rounded-md border border-border/50 bg-muted/30 p-3 text-xs">
+                <p className="font-medium mb-1">Redirect URI registered in Intuit must match exactly:</p>
+                <code className="block break-all font-mono text-muted-foreground">{qbo.redirect_uri}</code>
               </div>
-              {qbo.redirect_uri && (
-                <div className="rounded-md border border-border/50 bg-muted/30 p-3 text-xs">
-                  <p className="font-medium mb-1">Redirect URI registered in Intuit must match exactly:</p>
-                  <code className="block break-all font-mono text-muted-foreground">{qbo.redirect_uri}</code>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </div>
+        )}
+      </CollapsibleSection>
 
       <QboSyncStatus />
 
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display flex items-center gap-2"><FileText className="h-5 w-5" /> QuickBooks Export</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Aggregates app transactions (tickets, concessions, donations, passes) by QBO account for the selected range.
-            Import the CSV into QBO via a Journal Entry, or use the IIF for desktop/Online import tools.
-          </p>
-          <div className="grid grid-cols-2 gap-3 max-w-md">
-            <div><Label>From</Label><Input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
-            <div><Label>To</Label><Input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={runPreview} disabled={busy} variant="outline">
-              {busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Preview
-            </Button>
-            <Button onClick={exportCsv} disabled={busy}>
-              <Download className="h-4 w-4 mr-1" /> Journal CSV
-            </Button>
-            <Button onClick={exportIif} disabled={busy} variant="outline">
-              <Download className="h-4 w-4 mr-1" /> IIF
-            </Button>
-          </div>
+      <CollapsibleSection id="accounting.qbo.export" title="QuickBooks Export" icon={FileText} defaultOpen>
+        <p className="text-sm text-muted-foreground">
+          Aggregates app transactions (tickets, concessions, donations, passes) by QBO account for the selected range.
+          Import the CSV into QBO via a Journal Entry, or use the IIF for desktop/Online import tools.
+        </p>
+        <div className="grid grid-cols-2 gap-3 max-w-md">
+          <div><Label>From</Label><Input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
+          <div><Label>To</Label><Input type="date" value={to} onChange={e => setTo(e.target.value)} /></div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={runPreview} disabled={busy} variant="outline">
+            {busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Preview
+          </Button>
+          <Button onClick={exportCsv} disabled={busy}>
+            <Download className="h-4 w-4 mr-1" /> Journal CSV
+          </Button>
+          <Button onClick={exportIif} disabled={busy} variant="outline">
+            <Download className="h-4 w-4 mr-1" /> IIF
+          </Button>
+        </div>
 
-          {unmapped && (
-            <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-              <strong>{unmapped.count}</strong> transaction(s) totaling <strong>${unmapped.amount.toFixed(2)}</strong> have no account mapping.
-              Set defaults in <Badge variant="outline">Mappings</Badge> before exporting.
-            </div>
-          )}
+        {unmapped && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+            <strong>{unmapped.count}</strong> transaction(s) totaling <strong>${unmapped.amount.toFixed(2)}</strong> have no account mapping.
+            Set defaults in <Badge variant="outline">Mappings</Badge> before exporting.
+          </div>
+        )}
 
-          {preview && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs uppercase text-muted-foreground border-b">
-                  <tr><th className="text-left py-2 pr-2">Code</th><th className="text-left py-2 pr-2">QBO Account</th><th className="text-left py-2 pr-2">Type</th><th className="text-right py-2 pr-2">Amount</th><th className="text-right py-2">Txns</th></tr>
-                </thead>
-                <tbody>
-                  {preview.map(r => (
-                    <tr key={r.code} className="border-b border-border/40">
-                      <td className="py-2 pr-2"><Badge variant="outline" className="text-xs">{r.code}</Badge></td>
-                      <td className="py-2 pr-2">{r.qbo_account_name}</td>
-                      <td className="py-2 pr-2 text-muted-foreground text-xs">{r.account_type}</td>
-                      <td className="py-2 pr-2 text-right font-mono">${r.amount.toFixed(2)}</td>
-                      <td className="py-2 text-right text-muted-foreground">{r.count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {preview && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs uppercase text-muted-foreground border-b">
+                <tr><th className="text-left py-2 pr-2">Code</th><th className="text-left py-2 pr-2">QBO Account</th><th className="text-left py-2 pr-2">Type</th><th className="text-right py-2 pr-2">Amount</th><th className="text-right py-2">Txns</th></tr>
+              </thead>
+              <tbody>
+                {preview.map(r => (
+                  <tr key={r.code} className="border-b border-border/40">
+                    <td className="py-2 pr-2"><Badge variant="outline" className="text-xs">{r.code}</Badge></td>
+                    <td className="py-2 pr-2">{r.qbo_account_name}</td>
+                    <td className="py-2 pr-2 text-muted-foreground text-xs">{r.account_type}</td>
+                    <td className="py-2 pr-2 text-right font-mono">${r.amount.toFixed(2)}</td>
+                    <td className="py-2 text-right text-muted-foreground">{r.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CollapsibleSection>
     </div>
   );
 }

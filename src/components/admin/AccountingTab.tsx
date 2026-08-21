@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { Upload, Loader2, Trash2 } from 'lucide-react';
@@ -77,25 +78,20 @@ export default function AccountingTab() {
         </Card>
       )}
 
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display flex items-center gap-2"><Upload className="h-5 w-5" /> Income & Expenses</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Upload one yearly xlsx (sheets named January … December). The importer tolerates column drift across years.
-            Year is read from the filename.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Input ref={fileRef} type="file" accept=".xlsx" className="max-w-sm"
-              disabled={busy}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-            <Button onClick={clearAll} disabled={busy} variant="ghost">
-              <Trash2 className="h-4 w-4 mr-1 text-destructive" /> Clear financials
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <CollapsibleSection id="accounting.imports" title="Income & Expenses" icon={Upload} defaultOpen>
+        <p className="text-sm text-muted-foreground">
+          Upload one yearly xlsx (sheets named January … December). The importer tolerates column drift across years.
+          Year is read from the filename.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Input ref={fileRef} type="file" accept=".xlsx" className="max-w-sm"
+            disabled={busy}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+          <Button onClick={clearAll} disabled={busy} variant="ghost">
+            <Trash2 className="h-4 w-4 mr-1 text-destructive" /> Clear financials
+          </Button>
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }

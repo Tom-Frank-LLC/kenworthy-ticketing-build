@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -121,124 +122,119 @@ export default function LglTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display uppercase flex items-center gap-2">
-            <Heart className="h-5 w-5 text-primary" /> Little Green Light
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="font-serif text-sm text-muted-foreground">
-            Completed donations sync automatically. Each donor becomes a constituent (matched
-            by email) and each gift is posted with a note referencing the Kenworthy donation id.
-            Use the backfill button below if any donations failed to sync in real time.
-          </p>
-          {isSuperadmin && paused !== null && (
-            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 flex items-start gap-3">
-              <PauseCircle className="h-5 w-5 text-primary mt-0.5" />
-              <div className="flex-1">
-                <div className="flex items-center gap-3">
-                  <Switch checked={paused} onCheckedChange={togglePause} disabled={pauseBusy} />
-                  <span className="font-medium text-sm">
-                    {paused ? 'LGL sync is PAUSED' : 'LGL sync is LIVE'}
-                  </span>
-                </div>
-                <p className="text-xs font-serif text-muted-foreground mt-1">
-                  Superadmin-only, dev-stage safety toggle. While paused, no constituents or
-                  gifts are created in the real Little Green Light account — safe for demos and
-                  test donations. Remove this control once Kenworthy is fully live on the
-                  platform.
-                </p>
+      <CollapsibleSection id="lgl.integration" title="Little Green Light" icon={Heart} defaultOpen>
+        <p className="font-serif text-sm text-muted-foreground">
+          Completed donations sync automatically. Each donor becomes a constituent (matched
+          by email) and each gift is posted with a note referencing the Kenworthy donation id.
+          Use the backfill button below if any donations failed to sync in real time.
+        </p>
+        {isSuperadmin && paused !== null && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-3 flex items-start gap-3">
+            <PauseCircle className="h-5 w-5 text-primary mt-0.5" />
+            <div className="flex-1">
+              <div className="flex items-center gap-3">
+                <Switch checked={paused} onCheckedChange={togglePause} disabled={pauseBusy} />
+                <span className="font-medium text-sm">
+                  {paused ? 'LGL sync is PAUSED' : 'LGL sync is LIVE'}
+                </span>
               </div>
+              <p className="text-xs font-serif text-muted-foreground mt-1">
+                Superadmin-only, dev-stage safety toggle. While paused, no constituents or
+                gifts are created in the real Little Green Light account — safe for demos and
+                test donations. Remove this control once Kenworthy is fully live on the
+                platform.
+              </p>
             </div>
-          )}
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge variant="default">{synced} synced</Badge>
-            <Badge variant="outline">{pending} pending</Badge>
-            {failed > 0 && <Badge variant="destructive">{failed} failed</Badge>}
-            {paused && <Badge variant="destructive">Sync paused</Badge>}
           </div>
-          <Button onClick={backfill} disabled={backfilling || pending + failed === 0}>
-            {backfilling
-              ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Syncing {progress?.done}/{progress?.total}…</>
-              : <><RefreshCw className="h-4 w-4 mr-2" /> Sync all unsynced ({pending + failed})</>}
-          </Button>
-        </CardContent>
-      </Card>
+        )}
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge variant="default">{synced} synced</Badge>
+          <Badge variant="outline">{pending} pending</Badge>
+          {failed > 0 && <Badge variant="destructive">{failed} failed</Badge>}
+          {paused && <Badge variant="destructive">Sync paused</Badge>}
+        </div>
+        <Button onClick={backfill} disabled={backfilling || pending + failed === 0}>
+          {backfilling
+            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Syncing {progress?.done}/{progress?.total}…</>
+            : <><RefreshCw className="h-4 w-4 mr-2" /> Sync all unsynced ({pending + failed})</>}
+        </Button>
+      </CollapsibleSection>
 
-      <div className="grid gap-2">
-        {loading ? (
-          <p className="text-center py-8 text-muted-foreground font-serif">Loading…</p>
-        ) : rows.length === 0 ? (
-          <p className="text-center py-8 text-muted-foreground font-serif">No completed donations yet.</p>
-        ) : rows.map(r => (
-          <Card key={r.id} className="glass">
-            <CardContent className="p-3 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">
-                  {r.donor_name} <span className="text-muted-foreground font-normal">${(r.amount_cents / 100).toFixed(2)}</span>
-                </p>
-                <p className="text-xs text-muted-foreground font-serif truncate">
-                  {r.donor_email} • {format(new Date(r.created_at), 'MMM d, yyyy')}
-                </p>
-                {r.lgl_sync_error && !r.lgl_gift_id && (
-                  <p className="text-xs text-destructive font-serif truncate mt-0.5">
-                    <AlertCircle className="h-3 w-3 inline mr-1" />{r.lgl_sync_error}
+      <CollapsibleSection id="lgl.donations" title="Completed donations" count={rows.length} defaultOpen>
+        <div className="grid gap-2">
+          {loading ? (
+            <p className="text-center py-8 text-muted-foreground font-serif">Loading…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-center py-8 text-muted-foreground font-serif">No completed donations yet.</p>
+          ) : rows.map(r => (
+            <Card key={r.id} className="glass">
+              <CardContent className="p-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">
+                    {r.donor_name} <span className="text-muted-foreground font-normal">${(r.amount_cents / 100).toFixed(2)}</span>
                   </p>
-                )}
-                {r.lgl_synced_at && (
-                  <p className="text-xs text-muted-foreground font-serif mt-0.5">
-                    <CheckCircle2 className="h-3 w-3 inline mr-1 text-primary" />
-                    Synced {format(new Date(r.lgl_synced_at), 'MMM d')} • gift #{r.lgl_gift_id}
+                  <p className="text-xs text-muted-foreground font-serif truncate">
+                    {r.donor_email} • {format(new Date(r.created_at), 'MMM d, yyyy')}
                   </p>
-                )}
-                {/* Whether the donor was actually thanked. The receipt is sent
-                    fire-and-forget, so this line is the only place a failed
-                    send is visible to a human. */}
-                <p className="text-xs font-serif mt-0.5">
-                  {r.confirmation_sent_at ? (
-                    <span className="text-muted-foreground">
-                      <CheckCircle2 className="h-3 w-3 inline mr-1 text-primary" />
-                      Receipt sent {format(new Date(r.confirmation_sent_at), 'MMM d')}
-                      {r.notify_email && (r.notify_sent_at ? ' • tribute notice sent' : ' • tribute notice NOT sent')}
-                    </span>
-                  ) : r.confirmation_error ? (
-                    <span className="text-destructive">
-                      <AlertCircle className="h-3 w-3 inline mr-1" />Receipt failed: {r.confirmation_error}
-                    </span>
-                  ) : r.donor_email ? (
-                    <span className="text-muted-foreground">No receipt sent yet</span>
-                  ) : (
-                    <span className="text-muted-foreground">No email on file — no receipt to send</span>
+                  {r.lgl_sync_error && !r.lgl_gift_id && (
+                    <p className="text-xs text-destructive font-serif truncate mt-0.5">
+                      <AlertCircle className="h-3 w-3 inline mr-1" />{r.lgl_sync_error}
+                    </p>
                   )}
-                </p>
-              </div>
-              <div className="flex flex-col gap-1">
-                <Button
-                  size="sm"
-                  variant={r.lgl_gift_id ? 'outline' : 'default'}
-                  disabled={busy === r.id}
-                  onClick={() => syncOne(r.id, !!r.lgl_gift_id)}
-                >
-                  {busy === r.id
-                    ? <Loader2 className="h-4 w-4 animate-spin" />
-                    : r.lgl_gift_id ? 'Re-sync' : 'Sync now'}
-                </Button>
-                {r.donor_email && (
+                  {r.lgl_synced_at && (
+                    <p className="text-xs text-muted-foreground font-serif mt-0.5">
+                      <CheckCircle2 className="h-3 w-3 inline mr-1 text-primary" />
+                      Synced {format(new Date(r.lgl_synced_at), 'MMM d')} • gift #{r.lgl_gift_id}
+                    </p>
+                  )}
+                  {/* Whether the donor was actually thanked. The receipt is sent
+                      fire-and-forget, so this line is the only place a failed
+                      send is visible to a human. */}
+                  <p className="text-xs font-serif mt-0.5">
+                    {r.confirmation_sent_at ? (
+                      <span className="text-muted-foreground">
+                        <CheckCircle2 className="h-3 w-3 inline mr-1 text-primary" />
+                        Receipt sent {format(new Date(r.confirmation_sent_at), 'MMM d')}
+                        {r.notify_email && (r.notify_sent_at ? ' • tribute notice sent' : ' • tribute notice NOT sent')}
+                      </span>
+                    ) : r.confirmation_error ? (
+                      <span className="text-destructive">
+                        <AlertCircle className="h-3 w-3 inline mr-1" />Receipt failed: {r.confirmation_error}
+                      </span>
+                    ) : r.donor_email ? (
+                      <span className="text-muted-foreground">No receipt sent yet</span>
+                    ) : (
+                      <span className="text-muted-foreground">No email on file — no receipt to send</span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1">
                   <Button
                     size="sm"
-                    variant="ghost"
+                    variant={r.lgl_gift_id ? 'outline' : 'default'}
                     disabled={busy === r.id}
-                    onClick={() => resendEmails(r.id)}
+                    onClick={() => syncOne(r.id, !!r.lgl_gift_id)}
                   >
-                    {r.confirmation_sent_at ? 'Resend receipt' : 'Send receipt'}
+                    {busy === r.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : r.lgl_gift_id ? 'Re-sync' : 'Sync now'}
                   </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                  {r.donor_email && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy === r.id}
+                      onClick={() => resendEmails(r.id)}
+                    >
+                      {r.confirmation_sent_at ? 'Resend receipt' : 'Send receipt'}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }

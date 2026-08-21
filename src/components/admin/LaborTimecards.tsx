@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
@@ -351,30 +352,27 @@ export function LaborTimecards() {
           </CardContent>
         </Card>
       )}
-      <Card>
-        <CardHeader><CardTitle className="font-display">Shifts</CardTitle></CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader><TableRow>
-              <TableHead>Staff</TableHead><TableHead>Clock In</TableHead><TableHead>Clock Out</TableHead>
-              <TableHead className="text-right">Hours</TableHead><TableHead className="text-right">Staff cost</TableHead>
-            </TableRow></TableHeader>
-            <TableBody>
-              {rows.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">No shifts in range.</TableCell></TableRow>
-              ) : rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.name}</TableCell>
-                  <TableCell>{format(new Date(r.start), 'MMM d, h:mm a')}</TableCell>
-                  <TableCell>{r.end ? format(new Date(r.end), 'MMM d, h:mm a') : <span className="text-primary">Open</span>}</TableCell>
-                  <TableCell className="text-right">{r.hours.toFixed(2)}</TableCell>
-                  <TableCell className="text-right">${r.cost.toFixed(2)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <CollapsibleSection id="labor.timecards.shifts" title="Shifts" count={rows.length} defaultOpen>
+        <Table>
+          <TableHeader><TableRow>
+            <TableHead>Staff</TableHead><TableHead>Clock In</TableHead><TableHead>Clock Out</TableHead>
+            <TableHead className="text-right">Hours</TableHead><TableHead className="text-right">Staff cost</TableHead>
+          </TableRow></TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">No shifts in range.</TableCell></TableRow>
+            ) : rows.map((r) => (
+              <TableRow key={r.id}>
+                <TableCell className="font-medium">{r.name}</TableCell>
+                <TableCell>{format(new Date(r.start), 'MMM d, h:mm a')}</TableCell>
+                <TableCell>{r.end ? format(new Date(r.end), 'MMM d, h:mm a') : <span className="text-primary">Open</span>}</TableCell>
+                <TableCell className="text-right">{r.hours.toFixed(2)}</TableCell>
+                <TableCell className="text-right">${r.cost.toFixed(2)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CollapsibleSection>
     </div>
   );
 }

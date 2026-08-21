@@ -4,6 +4,7 @@ import { invokeFunction } from '@/lib/functions';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { CONCESSION_SQUARE_PUSH_ENABLED } from '@/lib/flags';
 import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -598,109 +599,117 @@ export default function ConcessionItemsTab() {
         </div>
       </div>
 
-      <Card className="glass mb-6 border-accent/30">
-        <CardContent className="p-4">
-          <p className="font-medium text-sm mb-1">Square catalog categories</p>
-          <p className="text-xs text-muted-foreground mb-3">
-            Works on the Square catalog itself, not this menu. Both options show
-            you every affected item before anything is written.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => planRepair('restore')}
-              disabled={repairing}
-            >
-              Restore wiped categories
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => planRepair('organize')}
-              disabled={repairing}
-            >
-              File uncategorized items
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={planVariations}
-              disabled={repairing}
-            >
-              Check variations
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={runDamageCensus}
-              disabled={repairing}
-            >
-              What was lost?
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {Object.entries(grouped).map(([cat, catItems]) => (
-        <div key={cat} className="mb-6">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">{cat}</h3>
-          <div className="space-y-2">
-            {catItems.map(item => (
-              <Card key={item.id} className="glass">
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {item.is_combo ? (
-                      <Package className="h-5 w-5 text-accent" />
-                    ) : (
-                      <UtensilsCrossed className="h-5 w-5 text-primary" />
-                    )}
-                    <div>
-                      <p className="font-medium flex items-center gap-2">
-                        {item.name}
-                        {item.is_combo && (
-                          <Badge variant="outline" className="text-xs uppercase tracking-wide">Combo</Badge>
-                        )}
-                        {!item.is_combo && (item.square_catalog_id ? (
-                          <span title={`Synced${item.square_synced_at ? ' ' + new Date(item.square_synced_at).toLocaleString() : ''}`}>
-                            <Cloud className="h-3 w-3 text-accent" />
-                          </span>
-                        ) : (
-                          <span title="Not yet in Square">
-                            <CloudOff className="h-3 w-3 text-muted-foreground" />
-                          </span>
-                        ))}
-                      </p>
-                      <p className="text-sm text-muted-foreground">${Number(item.price).toFixed(2)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch checked={item.is_active} onCheckedChange={() => toggleActive(item)} />
-                    <Badge variant={item.is_active ? 'default' : 'secondary'} className="text-xs">
-                      {item.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                    {item.is_combo && (
-                      <Button variant="ghost" size="sm" onClick={() => openComboManager(item)} title="Manage combo contents">
-                        <Package className="h-4 w-4" />
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => deleteItem(item.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+      <CollapsibleSection
+        id="concessions.square-categories"
+        title="Square catalog categories"
+        description="Works on the Square catalog itself, not this menu."
+      >
+        <p className="text-xs text-muted-foreground">
+          Both options show you every affected item before anything is written.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => planRepair('restore')}
+            disabled={repairing}
+          >
+            Restore wiped categories
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => planRepair('organize')}
+            disabled={repairing}
+          >
+            File uncategorized items
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={planVariations}
+            disabled={repairing}
+          >
+            Check variations
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={runDamageCensus}
+            disabled={repairing}
+          >
+            What was lost?
+          </Button>
         </div>
-      ))}
+      </CollapsibleSection>
 
-      {items.length === 0 && (
-        <p className="text-muted-foreground text-center py-8">No concession items yet. Add your first item!</p>
-      )}
+      <CollapsibleSection
+        id="concessions.items"
+        title="Menu items"
+        icon={UtensilsCrossed}
+        count={items.length}
+        defaultOpen
+      >
+        {Object.entries(grouped).map(([cat, catItems]) => (
+          <div key={cat} className="mb-6">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">{cat}</h3>
+            <div className="space-y-2">
+              {catItems.map(item => (
+                <Card key={item.id} className="glass">
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {item.is_combo ? (
+                        <Package className="h-5 w-5 text-accent" />
+                      ) : (
+                        <UtensilsCrossed className="h-5 w-5 text-primary" />
+                      )}
+                      <div>
+                        <p className="font-medium flex items-center gap-2">
+                          {item.name}
+                          {item.is_combo && (
+                            <Badge variant="outline" className="text-xs uppercase tracking-wide">Combo</Badge>
+                          )}
+                          {!item.is_combo && (item.square_catalog_id ? (
+                            <span title={`Synced${item.square_synced_at ? ' ' + new Date(item.square_synced_at).toLocaleString() : ''}`}>
+                              <Cloud className="h-3 w-3 text-accent" />
+                            </span>
+                          ) : (
+                            <span title="Not yet in Square">
+                              <CloudOff className="h-3 w-3 text-muted-foreground" />
+                            </span>
+                          ))}
+                        </p>
+                        <p className="text-sm text-muted-foreground">${Number(item.price).toFixed(2)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch checked={item.is_active} onCheckedChange={() => toggleActive(item)} />
+                      <Badge variant={item.is_active ? 'default' : 'secondary'} className="text-xs">
+                        {item.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                      {item.is_combo && (
+                        <Button variant="ghost" size="sm" onClick={() => openComboManager(item)} title="Manage combo contents">
+                          <Package className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteItem(item.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {items.length === 0 && (
+          <p className="text-muted-foreground text-center py-8">No concession items yet. Add your first item!</p>
+        )}
+      </CollapsibleSection>
 
       <Dialog open={censusOpen} onOpenChange={setCensusOpen}>
         <DialogContent className="max-w-lg">
