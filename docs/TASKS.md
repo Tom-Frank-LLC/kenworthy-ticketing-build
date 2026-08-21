@@ -5,20 +5,11 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**51 briefs** — 50 shipped, 0 built, 0 open, 1 needs triage, 0 closed.
-
-## Needs triage
-
-Status is what the document claims, not something anyone checked. This has
-gone wrong before: nineteen briefs sat marked open while all nineteen were in
-production, and one was flagged as an architectural gap by the very PR that
-fixed it. Confirm each against the repo, record `shipped_in`, set
-`verified: true` — or correct the status.
-
-- `P2` **The admin Overview reads the theatre's real revenue, from Square**<br>`bug` — `#142`, `#144` — [brief](briefs/BRIEF-analytics-square.md) · [notes](briefs/FINDINGS-analytics-square.md)
+**51 briefs** — 51 shipped, 0 built, 0 open, 0 needs triage, 0 closed.
 
 ## Shipped
 
+- **The admin Overview reads the theatre's real revenue, from Square**<br>`bug` — `#142`, `#144`, `#145`, `#147` — [brief](briefs/BRIEF-analytics-square.md) · [notes](briefs/FINDINGS-analytics-square.md)
 - **Send a ticket confirmation for box-office (StaffPOS) sales**<br>`feature` — `#91`, `bb9a506` — [brief](briefs/BRIEF-pos-ticket-delivery.md)
 - **Re-activate phone capture and connect Twilio SMS**<br>`ops` — `#86`, `#90`, `#96`, `#98`, `#104`, `#105`, `#118`, `#119`, `#122`, `#124`, `070efee`, `dd1dc71`, `b3dfb97`, `62c6559`, `4354dbc`, `ba2d03c`, `1f63153`, `da670a8`, `1ea3a23` — [brief](briefs/BRIEF-reactivate-phone-sms.md)
 - **Make ticket / event / MET / film-pass sales write catalogued line items in Square**<br>`data` — `#103`, `9d5876a` — [brief](briefs/BRIEF-square-line-items.md)

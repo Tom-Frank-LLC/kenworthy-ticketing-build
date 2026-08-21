@@ -43,28 +43,34 @@ const RANGES = [
 
 type RangeKey = typeof RANGES[number]['key'];
 
-/** Exactly what `square-analytics` returns. Money is always in cents. */
+/**
+ * Exactly what `square-analytics` returns. Money is always in cents.
+ *
+ * These figures come from Square's Reporting API — the same engine behind
+ * Square's own Dashboard reports — so they agree with Square by construction.
+ * The previous implementation summed /v2/orders/search here and under-reported
+ * by ~35%. See docs/briefs/FINDINGS-square-reporting-api.md.
+ */
 interface Analytics {
   range: { start: string; end: string };
+  granularity: 'day' | 'month';
   totals: {
     totalCollectedCents: number;
+    netSalesCents: number;
     grossSalesCents: number;
     ticketsSold: number;
     avgPerTicketCents: number;
     concessionRevenueCents: number;
     refundCount: number;
     refundCents: number;
+    tipsCents: number;
+    taxCents: number;
   };
   revenueByDay: Array<{ date: string; ticketsCents: number; concessionsCents: number; otherCents: number; totalCents: number }>;
-  revenueByCategory: Array<{ name: string; amountCents: number }>;
+  revenueByCategory: Array<{ name: string; amountCents: number; quantity: number }>;
   topPerformers: Array<{ title: string; revenueCents: number; count: number }>;
-  meta: {
-    orders: number;
-    lineItems: number;
-    uncategorizedLineItems: number;
-    uncategorizedSamples?: Array<{ name: string; hadCatalogId: boolean; amountCents: number; lines: number }>;
-    truncated: boolean;
-  };
+  uncategorized: Array<{ name: string; amountCents: number; quantity: number }>;
+  meta: { orders: number; categories: number; truncated: boolean; source: string };
   cached?: boolean;
 }
 
@@ -245,28 +251,6 @@ export default function AnalyticsTab() {
             <KPI icon={<Users className="h-5 w-5 text-destructive" />} label="Refunds" value={`${t!.refundCount} · ${dollars(t!.refundCents)}`} />
           </div>
 
-          {/* Known-wrong, and said out loud.
-              Measured against Square's own Reporting API on 20 Aug, these
-              figures come out about a third low — concessions agree to within a
-              percent, ticket categories are out by 2x. The cause is not yet
-              found (see FINDINGS-square-reporting-api.md). Until it is, a
-              number on this screen must not be read as the theatre's takings,
-              and the honest thing is to say so on the screen rather than in a
-              document nobody has open. Remove this the moment the figures
-              reconcile. */}
-          <Card className="glass border-destructive/40">
-            <CardContent className="p-4">
-              <p className="text-destructive font-medium">
-                These figures are under-reporting — do not use them for accounting yet.
-              </p>
-              <p className="text-muted-foreground mt-1">
-                Checked against Square's own reports on 20 August, revenue here came out
-                roughly a third low. Concessions are close; ticket categories are out by
-                about half. Square's Dashboard is the number to trust until this is fixed.
-              </p>
-            </CardContent>
-          </Card>
-
           {/* A silently short total is the failure mode worth shouting about. */}
           {data.meta.truncated && (
             <p className="text-destructive">
@@ -345,33 +329,27 @@ export default function AnalyticsTab() {
             </Card>
           </div>
 
-          {/* What is in the Uncategorised wedge.
-              On the live account this is real money — roughly a fifth of gross
-              in a typical month — so leaving it as an unexplained slice would
-              make the whole pie untrustworthy. `hadCatalogId` is the important
-              column: "keyed in" is a sale that never referenced the catalog and
-              is genuinely uncategorisable, while "catalog item" means the line
-              DID point at a variation our lookup failed to resolve — that is a
-              bug, not a data-entry habit. */}
-          {(data.meta.uncategorizedSamples?.length ?? 0) > 0 && (
+          {/* What is inside Square's own "Uncategorized" bucket.
+              On the live account this is the largest single category, so an
+              unexplained wedge would make the whole pie untrustworthy. Note
+              this is no longer a diagnostic for a bug on our side: Square
+              genuinely holds no category for these items, and this list is
+              Square's answer to "which ones". */}
+          {data.uncategorized.length > 0 && (
             <Card className="glass">
               <CardHeader>
-                <CardTitle className="text-base">What's in "Uncategorised"</CardTitle>
+                <CardTitle className="text-base">What's in "Uncategorized"</CardTitle>
                 <p className="text-muted-foreground">
-                  {data.meta.uncategorizedLineItems} of {data.meta.lineItems.toLocaleString()} line
-                  items carry no reporting category. Largest first.
+                  Items Square holds no reporting category for. Largest first.
                 </p>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-1">
-                  {data.meta.uncategorizedSamples!.map((u, i) => (
+                  {data.uncategorized.map((u, i) => (
                     <li key={i} className="flex items-baseline justify-between gap-4">
                       <span className="truncate">
                         {u.name}
-                        <span className="text-muted-foreground">
-                          {' · '}{u.lines}&times;{' · '}
-                          {u.hadCatalogId ? 'catalog item, category unresolved' : 'keyed in at the POS'}
-                        </span>
+                        <span className="text-muted-foreground">{' · '}{u.quantity}&times;</span>
                       </span>
                       <span className="tabular-nums shrink-0">{dollars(u.amountCents)}</span>
                     </li>
@@ -427,9 +405,8 @@ export default function AnalyticsTab() {
           )}
 
           <p className="text-muted-foreground text-center">
-            {data.meta.orders.toLocaleString()} Square orders ·{' '}
-            {data.meta.lineItems.toLocaleString()} line items
-            {data.meta.uncategorizedLineItems > 0 && ` · ${data.meta.uncategorizedLineItems} uncategorised`}
+            {data.meta.orders.toLocaleString()} Square orders · {data.meta.categories} categories ·{' '}
+            {data.range.start} to {data.range.end} · from Square's own reports
             {data.cached && ' · cached'}
           </p>
         </>

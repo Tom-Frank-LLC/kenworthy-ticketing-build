@@ -104,19 +104,51 @@ The leading suspects, in order:
 None of these is confirmed. That is the next session's first job, and the
 Reporting API is now the instrument to check against.
 
-## 3. What to do
+## 3. Done — rewritten, 20 Aug
 
-**Rewrite `square-analytics` on the Reporting API.** It removes the page cap,
-removes the catalog join, and — the real point — makes the numbers *match Square
-by construction*, because it is the same engine that draws Square's own reports.
-The acceptance criterion stops being a manual comparison and becomes true by
-definition.
+`square-analytics` now runs entirely on the Reporting API. The
+`/v2/orders/search` paging loop, the `/catalog/batch-retrieve` join and
+`_shared/square-analytics.ts` are deleted; `square-reporting-probe` is deleted
+and undeployed.
 
-Keep the current implementation behind it only as long as the beta label
-justifies a fallback.
+Five server-side aggregates run in parallel — totals (`Sales`), category×day
+(`ItemTransactions`), top performers, the Uncategorized breakdown, and refunds
+(`PaymentAndRefunds`). Measured on production:
 
-**Until that lands, the deployed Overview under-reports.** It is live and it is
-wrong by about a third. Either fast-follow the rewrite or caption the cards.
+| range | orders | wall clock | buckets |
+|---|---|---|---|
+| 30 days | 2,719 | 3.3 s | 30 days |
+| 90 days | 9,043 | 1.8 s | 89 days |
+| **year to date** | **22,243** | **1.7 s** | 8 months |
+
+**YTD is the point.** 22,243 orders is past the old 20,000-order cap — the
+previous implementation would have truncated and shown a short total. There is
+now no pagination to cap.
+
+Ticket counts more than doubled (754 → 1,680 for 30 days), which is the
+under-reporting bug going away rather than a change in the theatre's business.
+
+An empty range returns clean zeros. Long ranges switch to month granularity so
+the chart stays readable.
+
+### Two things learned in the rewrite
+
+- **`order` is rejected.** Cube's object form (`{"Measure":"desc"}`) comes back
+  as a bare `Invalid request` with no indication of the offending field. `limit`
+  alone is accepted, so ordering is done in `shape()`. Errors now carry the
+  query name, because a 400 with five parallel queries is otherwise unattributable.
+- **The Reporting API is production-only.** `connect.squareupsandbox.com/reporting/v1/meta`
+  returns **404** — the sandbox does not serve it. The function detects a
+  non-production environment and says so plainly rather than surfacing an
+  upstream error. Staging's sandbox has no sales history to report on anyway,
+  but it does mean **the Overview cannot be exercised on staging at all**.
+
+### What the Uncategorized wedge turned out to be
+
+Square's own breakdown, which the tab now renders: `Theater Rental` ($9,000),
+`Fall Fundraiser Ticket` ($5,700), `Rehearsal Hours`, and similar. Real
+uncatalogued items keyed in at the POS — not a defect in our lookup, which is
+what the previous implementation could not distinguish.
 
 ## 4. Industry practice, for the record
 
