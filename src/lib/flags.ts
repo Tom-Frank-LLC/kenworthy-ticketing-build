@@ -181,3 +181,31 @@ export const COLLECT_PHONE = true;
  * only trace is `orders.confirmation_error`.
  */
 export const SMS_DELIVERY_LIVE = true;
+
+/**
+ * Whether the **Imports** tab appears under Analytics.
+ *
+ * **Off.** `AccountingTab` takes an .xlsx workbook, parses it with
+ * `parseFinancialWorkbook`, and bulk-inserts the result into
+ * `financial_entries` in chunks of 500. It is the way historical accounting
+ * data gets *into* the platform, which is a different job from the QuickBooks
+ * export beside it, and it is not part of the workflow yet.
+ *
+ * Hidden rather than removed for the usual reason: the parser, the component,
+ * the tab and `financial_entries` are all untouched, and the work resumes by
+ * flipping this line. It is off because a bulk insert driven by a file picker
+ * is easy to fire by accident and has no undo — the chunked insert has no
+ * transaction around it, so a workbook that fails halfway leaves the rows it
+ * already wrote behind.
+ *
+ * What this does NOT hide is the rest of the accounting area. Chart of
+ * Accounts, Mappings and QBO Export stay visible, and so does the payroll CSV
+ * under Labor — those are the export path, which is the half staff actually
+ * use while QuickBooks is still a manual import. See
+ * `docs/briefs/FINDINGS-quickbooks-integration-state.md`.
+ *
+ * A literal rather than a `VITE_` env var, for the same reason as
+ * `COLLECT_PHONE`: flipping it is one reviewed line, not a variable to
+ * remember in `.env.staging`, `.env.production` and the Worker.
+ */
+export const FINANCIAL_IMPORTS_ENABLED = false;
