@@ -1,14 +1,14 @@
 ---
 brief: analytics-square
 title: The admin Overview reads the theatre's real revenue, from Square
-status: needs-triage
+status: shipped
 track: bug
 severity: P2
 date: 2026-08-18
-shipped_in: ["#142", "#144"]
+shipped_in: ["#142", "#144", "#145", "#147"]
 shipped_at: 2026-08-20
 findings: FINDINGS-analytics-square.md
-verified: false
+verified: true
 ---
 
 # Brief (for Claude Code): Wire the analytics Overview to Square (it currently reads empty build tables)
@@ -88,7 +88,12 @@ Two cards don't map cleanly and need a decision:
 frontend deployed (worker version `0a07041a`, rollback `65d43c47`). Verified
 against the live account: 2,377 orders, $45,421.69 collected, 754 tickets.
 
-**The reconciliation FAILED.** Measured against Square's own Reporting API on
+**Superseded by the Reporting API rewrite (#147).** The `/v2/orders/search`
+implementation described below is gone. Figures now come from Square's own
+reporting engine and agree with Square by construction. See
+`FINDINGS-square-reporting-api.md` §3.
+
+**Historical note — why the rewrite happened:** Measured against Square's own Reporting API on
 20 Aug, these figures are ~35% low (concessions agree; ticket categories are out
 2x). Status is `needs-triage`, not `shipped`, because the feature is deployed
 and wrong. The tab now says so on screen. Cause not yet found — see
