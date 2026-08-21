@@ -36,12 +36,14 @@ type NavItem = {
   label: string;
   to: string;
   icon?: typeof Ticket;
+  /** Hidden from patrons. See the note at the top of pages/Dvds.tsx. */
+  staffOnly?: boolean;
 };
 
 const primaryLinks: NavItem[] = [
   { label: "What's On", to: '/calendar', icon: CalendarDays },
   { label: 'Theatre Rentals', to: '/rentals', icon: Building2 },
-  { label: 'DVD Rentals', to: '/dvds', icon: Disc3 },
+  { label: 'DVD Rentals', to: '/dvds', icon: Disc3, staffOnly: true },
   { label: 'Donate', to: '/donate', icon: Heart },
 ];
 
@@ -116,6 +118,11 @@ export function MobileNav() {
 
   const close = () => setOpen(false);
 
+  // A flag on the item rather than a second list: DVD Rentals is still a
+  // primary destination sitting among the others, it is just not one a patron
+  // may reach. Filtering keeps it in place for the people who can.
+  const visiblePrimaryLinks = primaryLinks.filter(item => !item.staffOnly || isStaff || isAdmin);
+
   const staffLinks: NavItem[] = [];
   if (isAdmin || isStaff) staffLinks.push({ label: 'Admin', to: '/admin', icon: Shield });
   if (isStaff && !isAdmin) {
@@ -152,7 +159,7 @@ export function MobileNav() {
 
         <nav className="flex-1 overflow-y-auto px-2 py-2" aria-label="Mobile">
           <div className="pt-2">
-            {primaryLinks.map(item => (
+            {visiblePrimaryLinks.map(item => (
               <NavRow key={item.to} item={item} onNavigate={close} />
             ))}
           </div>

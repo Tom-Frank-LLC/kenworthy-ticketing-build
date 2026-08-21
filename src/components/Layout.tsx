@@ -137,9 +137,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <Link to="/dvds" className={`hidden lg:inline ${navLinkClass}`}>
-              DVDs
-            </Link>
+            {/* Staff only — the catalogue is behind an isStaff gate, so showing
+                the link to a patron would advertise a page that redirects them
+                straight home. See the note at the top of pages/Dvds.tsx. */}
+            {(isStaff || isAdmin) && (
+              <Link to="/dvds" className={`hidden lg:inline ${navLinkClass}`}>
+                DVDs
+              </Link>
+            )}
           </div>
 
           <nav className="flex items-center gap-1.5" aria-label="Primary">
