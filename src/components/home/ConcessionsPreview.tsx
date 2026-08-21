@@ -60,11 +60,21 @@ export function ConcessionsPreview() {
       setItems((itemData as ConcessionItem[]) || []);
       setComboChildren((childData as ComboChildRow[]) || []);
       if (menuData?.file_path) {
-        const { data: signed } = await supabase.storage
+        // getPublicUrl, not createSignedUrl. Signing needs SELECT on the
+        // storage object, and the only policy on this bucket was staff-or-
+        // admin — so for an actual patron the sign failed, the error was
+        // dropped on the floor, and this link silently never rendered. It
+        // looked correct to everyone who checked it, because they were signed
+        // in. The bucket is public now; see 20260820234512.
+        //
+        // Synchronous and cannot fail, which is the other half of the fix:
+        // there is no longer a network round trip between having the path and
+        // having the URL, and therefore no error left to discard.
+        const { data } = supabase.storage
           .from('concession-menus')
-          .createSignedUrl(menuData.file_path, 60 * 60);
-        if (!cancelled && signed?.signedUrl) {
-          setActiveMenuUrl(signed.signedUrl);
+          .getPublicUrl(menuData.file_path);
+        if (!cancelled && data.publicUrl) {
+          setActiveMenuUrl(data.publicUrl);
           setActiveMenuLabel(menuData.label);
         }
       }
