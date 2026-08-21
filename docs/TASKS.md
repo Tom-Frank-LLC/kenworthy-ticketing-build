@@ -5,13 +5,17 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**52 briefs** — 51 shipped, 1 built, 0 open, 0 needs triage, 0 closed.
+**53 briefs** — 51 shipped, 1 built, 1 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
+
+## Open
+
+- `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)
 
 ## Shipped
 
