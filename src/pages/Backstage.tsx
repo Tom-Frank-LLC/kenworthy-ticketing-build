@@ -119,9 +119,20 @@ export default function Backstage() {
    * idea — the room is not the point, the fact that it is behind another one is.
    */
   const titleBlock = (
-    <h1 className="font-display text-3xl md:text-5xl text-foreground">
-      The room <span className="text-primary">behind the room</span>.
-    </h1>
+    <>
+      {/* The gold eyebrow, in the slot the old "You found the door" had. It
+          reads into the heading rather than standing alone — "Welcome to" /
+          "The room behind the room." — so the two are one sentence and the
+          smaller line is doing work rather than decorating. Kept a <p>: the
+          global heading rule would uppercase an <h*> anyway, but this is not a
+          heading and putting it in the outline would give the page two. */}
+      <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mb-3">
+        Welcome to
+      </p>
+      <h1 className="font-display text-3xl md:text-5xl text-foreground">
+        The room <span className="text-primary">behind the room</span>.
+      </h1>
+    </>
   );
 
   return (
