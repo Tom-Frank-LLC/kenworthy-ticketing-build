@@ -4,6 +4,102 @@
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover exposes env(safe-area-inset-*) so the sticky header
          and bottom bars can clear the notch and home indicator. -->
+    <!--
+      Boot watchdog. This MUST stay inline, and MUST stay HIGH IN <head> —
+      it is the only code that still runs when the module script fails to
+      load, and its error listener has to be registered before that script
+      is fetched.
+
+      It lived in <body> for one commit and that was wrong: Vite hoists the
+      bundled entry into <head>, so in the BUILT html the module tag sat at
+      byte 2861 and this script at 5593. Source order is not build order.
+      There is a test asserting this stays inside <head>; check dist/index.html
+      if you move it.
+
+      `src/lib/lazyWithRecovery.ts` already recovers a *route* chunk that a
+      deploy deleted under an open tab. It cannot recover the **entry** chunk:
+      it lives inside the bundle that failed to arrive, so React never mounts,
+      no error boundary exists, and `#root` stays empty. The tab sits black
+      and empty until a hard refresh — which is exactly the symptom this fixes.
+
+      How the entry chunk goes missing: every build content-hashes its assets,
+      and a deploy deletes the previous build's files. A stale service-worker
+      shell (NetworkFirst falls back to cache after 3s on a slow connection)
+      names `index-OLDHASH.js`, which is gone. The Worker's
+      `not_found_handling: single-page-application` answers with index.html —
+      **HTTP 200, text/html** — and the browser refuses to execute HTML as a
+      module. Verified against production: a request for a dead asset returns
+      200 / text/html / 4175 bytes.
+
+      A plain location.reload() is not enough on its own: the same service
+      worker can serve the same stale shell again. So recovery unregisters the
+      worker and drops its caches first. That is safe here because we only get
+      here when the app is already unbootable.
+    -->
+    <script>
+      (function () {
+      var KEY = 'kw:boot-reload';
+      var ROOT = 'root';
+      var attempted = false;
+
+      function reload() { window.location.reload(); }
+
+      function recover(why) {
+        // Once per document; several failing assets must not queue reloads.
+        if (attempted) return;
+        attempted = true;
+        try {
+          // One attempt per tab. If the reload lands on a shell that is
+          // still broken, reloading again would spin forever — replacing a
+          // blank page with an infinite one. Same budget rule, and the same
+          // reasoning, as lazyWithRecovery.
+          if (sessionStorage.getItem(KEY)) return;
+          sessionStorage.setItem(KEY, why);
+        } catch (e) {
+          // Storage blocked (private browsing). Without a way to record the
+          // attempt a reload could loop, so do nothing and leave the page as
+          // it is rather than risk it.
+          return;
+        }
+        if (!navigator.serviceWorker || !navigator.serviceWorker.getRegistrations) return reload();
+        navigator.serviceWorker.getRegistrations()
+          .then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })
+          .then(function () {
+            if (!window.caches || !caches.keys) return null;
+            return caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+            });
+          })
+          .then(reload, reload);
+      }
+
+      // A module script handed text/html is refused on MIME grounds and
+      // fires `error` on the element. Resource errors do not bubble, so this
+      // listener has to be in the capture phase.
+      window.addEventListener('error', function (e) {
+        var t = e.target;
+        if (!t || t === window) return;
+        if (t.tagName === 'SCRIPT' || t.tagName === 'LINK') recover('asset');
+      }, true);
+
+      // Safety net for any failure that never fires an error event. Generous
+      // on purpose: this must never pre-empt a slow but working load.
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          var root = document.getElementById(ROOT);
+          if (!root) return;
+          if (root.childElementCount > 0) {
+            // Booted. Release the budget so a tab left open across several
+            // deploys can recover from each of them, not just the first.
+            try { sessionStorage.removeItem(KEY); } catch (e) { /* nothing to clear */ }
+            return;
+          }
+          recover('empty');
+        }, 8000);
+      });
+    })();
+    </script>
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#0f0f0f" />

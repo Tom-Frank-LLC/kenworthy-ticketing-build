@@ -29,4 +29,17 @@ describe('resolveAdminSection', () => {
   it('falls back rather than opening an unknown sub-tab', () => {
     expect(resolveAdminSection('pages', 'nonsense').pagesTab).toBe('festival');
   });
+
+  // Backstage was born inside Pages, so it is a sub-tab that was never a
+  // section. The two lists are separate for exactly this pair of cases.
+  it('opens a sub-tab that was never a top-level section', () => {
+    expect(resolveAdminSection('pages', 'backstage')).toEqual({
+      section: 'pages',
+      pagesTab: 'backstage',
+    });
+  });
+
+  it('does not invent a redirect for a section that never existed', () => {
+    expect(resolveAdminSection('backstage', null).section).toBe('backstage');
+  });
 });

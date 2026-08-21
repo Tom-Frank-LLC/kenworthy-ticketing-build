@@ -87,25 +87,27 @@ export default function ConcessionMenusTab() {
     }
   };
 
-  const openPreview = async (menu: ConcessionMenu) => {
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(menu.file_path, 60 * 10);
-    if (error || !data) {
-      toast.error('Could not load preview');
-      return;
-    }
+  // The bucket is public, so a signed URL here would be ceremony that proves
+  // nothing — and a ten-minute expiry would strand a preview left open. Same
+  // reasoning as the festival programme archive.
+  const openPreview = (menu: ConcessionMenu) => {
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(menu.file_path);
     setPreviewMenu(menu);
-    setPreviewUrl(data.signedUrl);
+    setPreviewUrl(data.publicUrl);
   };
 
   const activate = async (menu: ConcessionMenu) => {
-    const { error } = await supabase
+    // .select() and a row count, not just the absence of an error: an RLS
+    // denial comes back 204 with no error, so without this a blocked publish
+    // reports success and the menu never appears on the home page — the same
+    // silent failure this migration was written to fix, one layer up.
+    const { data, error } = await supabase
       .from('concession_menus')
       .update({ is_active: true })
-      .eq('id', menu.id);
-    if (error) {
-      toast.error(error.message);
+      .eq('id', menu.id)
+      .select('id');
+    if (error || !data || data.length === 0) {
+      toast.error(error?.message ?? 'Nothing was published — you may not have admin rights.');
       return;
     }
     toast.success(`"${menu.label}" is now the published menu`);

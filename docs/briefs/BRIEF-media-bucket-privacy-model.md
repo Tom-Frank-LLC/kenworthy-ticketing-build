@@ -185,19 +185,21 @@ public bucket with extra steps and one more thing to break.
 
 ## Proposed work
 
-**Do first, independently — it is small and it is a live defect:**
+**~~Do first, independently~~ — DONE, `#148`.**
 
-1. **Make the concession menu reachable.** Either (a) add the anon SELECT
-   policy above and keep signed URLs, or (b) move `concession-menus` to a
-   public bucket and use `getPublicUrl`, matching the four other media buckets.
-   **(b) is recommended** — a printed menu handed to every customer at the
-   counter has nothing to protect, and Pattern A is what the rest of the
-   platform already does. Either way, **stop discarding the error** in
-   `ConcessionsPreview.tsx`; a failed sign should log.
-   *Test as an anonymous visitor, not while signed in — that is the whole
-   reason this was missed.*
+1. ~~**Make the concession menu reachable.**~~ **Shipped in `#148`** (built, not
+   yet in production). Tom chose (b): `concession-menus` is now a public bucket
+   read with `getPublicUrl`, matching the four other media buckets — a printed
+   menu handed to every customer at the counter has nothing to protect.
+   `getPublicUrl` is synchronous and cannot fail, so there is no longer an error
+   to discard rather than a discarded error to remember to log.
+   Migration `20260820234512`. Verified on staging with a real menu uploaded and
+   activated, **as an anonymous visitor**: the request that returned `404`
+   before now returns `200 application/pdf` with no key at all.
+   `#148` also fixed `activate()`, which had no `.select()` — a blocked publish
+   reported success, which is the same silent failure one layer up.
 
-**Then, the model itself:**
+**Still open — the model itself:**
 
 2. **Write `docs/STORAGE-CONVENTIONS.md`** — the six buckets, the three
    patterns, the choosing question, the "unlisted ≠ private" statement, and the
@@ -214,8 +216,8 @@ public bucket with extra steps and one more thing to break.
 
 ## Decisions for Tom
 
-1. **The menu PDF: public bucket, or private with a scoped policy?** Public
-   recommended — it is a menu.
+1. ~~**The menu PDF: public bucket, or private with a scoped policy?**~~
+   **Decided: public.** Shipped in `#148`.
 2. **Is any theatre media genuinely private?** Rental contracts and signed
    agreements are the plausible candidates and do not currently live in
    storage. If they ever do, that is Pattern C, not A.
@@ -224,9 +226,9 @@ public bucket with extra steps and one more thing to break.
 
 ## Test plan
 
-- With the **anon key only**, the active menu PDF is fetchable and the home
-  page renders the link. Verified signed out, in a fresh session.
-- A failed sign logs rather than vanishing.
+- ~~With the **anon key only**, the active menu PDF is fetchable and the home
+  page renders the link.~~ **Done in `#148`** — `200 application/pdf` with no
+  key at all, and the link is a plain public URL carrying no token.
 - Every public bucket reports non-null `allowed_mime_types` and
   `file_size_limit`; the lint fails if one does not.
 - An SVG upload is refused with `415` on every public bucket.
