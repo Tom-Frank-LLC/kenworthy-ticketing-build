@@ -5,13 +5,12 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**54 briefs** — 51 shipped, 2 built, 1 open, 0 needs triage, 0 closed.
+**54 briefs** — 52 shipped, 1 built, 1 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
-- `P2` **Every admin table becomes a collapsible section, and the tabs get a consolidation map**<br>`ux` — [brief](briefs/BRIEF-admin-collapsible-sections.md)
 - `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
 
 ## Open
@@ -20,6 +19,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Every admin table becomes a collapsible section, and the tabs get a consolidation map**<br>`ux` — `#151` — [brief](briefs/BRIEF-admin-collapsible-sections.md)
 - **The admin Overview reads the theatre's real revenue, from Square**<br>`bug` — `#142`, `#144`, `#145`, `#147` — [brief](briefs/BRIEF-analytics-square.md) · [notes](briefs/FINDINGS-analytics-square.md)
 - **Send a ticket confirmation for box-office (StaffPOS) sales**<br>`feature` — `#91`, `bb9a506` — [brief](briefs/BRIEF-pos-ticket-delivery.md)
 - **Re-activate phone capture and connect Twilio SMS**<br>`ops` — `#86`, `#90`, `#96`, `#98`, `#104`, `#105`, `#118`, `#119`, `#122`, `#124`, `070efee`, `dd1dc71`, `b3dfb97`, `62c6559`, `4354dbc`, `ba2d03c`, `1f63153`, `da670a8`, `1ea3a23` — [brief](briefs/BRIEF-reactivate-phone-sms.md)

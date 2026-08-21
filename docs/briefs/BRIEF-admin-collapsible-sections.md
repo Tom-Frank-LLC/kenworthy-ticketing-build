@@ -1,12 +1,14 @@
 ---
 brief: admin-collapsible-sections
 title: Every admin table becomes a collapsible section, and the tabs get a consolidation map
-status: built
+status: shipped
 track: ux
 severity: P2
 date: 2026-08-18
-verified: false
-evidence: "Phase 1 built: src/components/admin/CollapsibleSection.tsx + src/lib/adminSectionState.ts, applied across all 12 admin tabs. Phase 2 is a proposal only — see docs/admin-consolidation-plan.md."
+shipped_in: ["#151"]
+shipped_at: 2026-08-21
+verified: true
+evidence: "Phase 1 only. Deployed to production 2026-08-21 (version 5b9a3ee9-44d7-4e65-b6a0-7a51bee001af) and verified live: the Analytics sections render with Square data and stay unmounted until expanded. Phase 2 is a proposal awaiting a decision — see docs/admin-consolidation-plan.md; it is NOT shipped."
 ---
 
 # Brief (for Claude Code): De-clutter the admin dashboard — collapsible sections everywhere, then consolidate
