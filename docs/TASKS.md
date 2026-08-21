@@ -5,7 +5,17 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**51 briefs** — 50 shipped, 1 built, 0 open, 0 needs triage, 0 closed.
+**52 briefs** — 50 shipped, 1 built, 0 open, 1 needs triage, 0 closed.
+
+## Needs triage
+
+Status is what the document claims, not something anyone checked. This has
+gone wrong before: nineteen briefs sat marked open while all nineteen were in
+production, and one was flagged as an architectural gap by the very PR that
+fixed it. Confirm each against the repo, record `shipped_in`, set
+`verified: true` — or correct the status.
+
+- `P2` **The admin Overview reads the theatre's real revenue, from Square**<br>`bug` — `#142`, `#144` — [brief](briefs/BRIEF-analytics-square.md) · [notes](briefs/FINDINGS-analytics-square.md)
 
 ## Built, not deployed
 

@@ -14,9 +14,15 @@
 
 # Incident — Square catalog over-pull and overwrite (14 Aug 2026)
 
-Two separate faults in `square-catalog-sync`. The first flooded the public site
-and was visible immediately. The second damaged the **live Square catalog** and
-was invisible from the site — it was found only by looking at timestamps.
+**Three faults.** Two were in `square-catalog-sync`: the first flooded the
+public site and was visible immediately; the second damaged the **live Square
+catalog** and was invisible from the site, found only by looking at timestamps.
+
+The third was not in the code. It was in how we ran the damage control: we
+never checked what recovery Square already offered before concluding the data
+was gone, and that wrong conclusion was written down and believed for four
+days. It is recorded as a fault of equal standing because it cost more working
+time than either of the code faults.
 
 ## What happened
 
@@ -69,10 +75,15 @@ The 505 were **already uncategorized before the incident** — the pull recorded
 them as `General` at 19:41, ~3 hours before the first push. That is pre-existing
 catalog disorganization, not damage.
 
-Only the category is recoverable, because `concession_items.category` held the
-Square category *name*. Descriptions, images, taxes and extra variations were
-never stored on our side and **cannot be restored from here** — only from a
-Square-side backup or export.
+> ~~Only the category is recoverable, because `concession_items.category` held
+> the Square category *name*. Descriptions, images, taxes and extra variations
+> were never stored on our side and **cannot be restored from here** — only from
+> a Square-side backup or export.~~
+>
+> **This paragraph was wrong, and it is left here struck through on purpose.**
+> It is the fault-3 artifact: a confident, plausible sentence that foreclosed a
+> whole class of solution and was never tested. See the correction at the top
+> and §"Fault 3" below. Do not delete it — it is the evidence.
 
 ## Why clicking through the admin list could not finish the job
 
@@ -80,6 +91,58 @@ Square-side backup or export.
 rows with no error. With 1,006 rows in the table the admin list could never show
 the tail, so the last items stayed active and invisible. Both this and
 `ConcessionsPreview` are paged with `fetchAllRows` now.
+
+## Fault 3 — we never asked what Square already offered
+
+The two code faults were understood within hours. This one ran for four days.
+
+On the evening of the 14th the conclusion was recorded that descriptions,
+images, taxes and extra variations "cannot be restored from here — only from a
+Square-side backup or export". Nobody had tested that. It was inferred from the
+fact that *we* had not stored those fields, which is true and irrelevant: the
+question was never what our database held, it was what **Square** held.
+
+Square retains historical catalog versions and serves them through the ordinary
+Catalog API. `catalog_version=<epoch ms>` on any read returns the catalog as it
+stood at that instant. It needed no export, no Support ticket, and no special
+permission — one query parameter, about a minute to try.
+
+Reading as of 14 Aug 21:00 UTC (after the over-pull, before the overwrite)
+returned **682 descriptions and 539 images** that were being treated as
+permanently lost, with their `IMAGE` objects intact and undeleted.
+
+### What it actually cost
+
+The note did not sit inert. It was read as a constraint by everyone who came
+after, and it scoped the recovery work:
+
+- "Descriptions and images … needs a Square export or Square Support; nothing
+  on our side can reconstruct them" went into **Still open** and stayed there.
+- Several sessions were planned around **hand-refilling** data that was one API
+  call away.
+- The poster restore was driven to 55% by re-fetching from external sources,
+  when the originals were retrievable from Square the whole time.
+
+The code faults damaged 906 items and were repaired. This fault wasted days and
+nearly caused a large amount of avoidable manual re-entry.
+
+### Why it happened
+
+We pivoted straight into damage control and started rebuilding. Nobody spent
+the minute to ask **what recovery channel the vendor already has** — and Square
+is a system whose entire business is keeping an auditable record of a
+merchant's catalog and sales. The recovery path was the *likely* one, not an
+exotic one.
+
+The tell, which generalises past this incident: **you are about to do something
+laborious because of something you were told, and you have not personally
+verified the thing you were told.** An inherited "this is impossible" is a
+claim, not a fact — including when the claim is in this repo's own docs, in a
+postmortem, or written by an earlier version of you.
+
+Weight the check by what the claim forecloses. "Recovery is impossible", "that
+data is gone", "the API can't do X" each rule out an entire class of solution,
+so they are worth minutes of testing even when you fully expect to confirm them.
 
 ## Fixes
 
@@ -196,8 +259,12 @@ may not survive anywhere.
   concession stand was never touched. Restorable in principle: the snapshot holds
   each item's real `square_variation_id` and price, though the variation *name*
   is lost and would come back as `Regular`.
-- Descriptions and images on the 906 items — needs a Square
-  export or Square Support; nothing on our side can reconstruct them.
+- ~~Descriptions and images on the 906 items — needs a Square export or Square
+  Support; nothing on our side can reconstruct them.~~ **Not open, and never
+  was.** 682 descriptions and 539 images are readable via
+  `catalog_version=<epoch ms>`; captured to
+  `square-catalog-PRE-DAMAGE-2026-08-14T21-00Z.json`. Applying them back is
+  ordinary read-modify-write work. See "Fault 3" above.
 - `Poster Design` and `Poster Print` are proposed as merch but look like
   billable services.
 - `SILENT FILM FESTIVAL PASS` exists **three times** in Square — duplicate SKUs,
@@ -212,3 +279,11 @@ may not survive anywhere.
    what makes a mis-scoped pull survivable.
 3. **Vendor-side damage is invisible from our UI.** The site looked fine
    throughout. Timestamps were the only evidence.
+4. **Before accepting that data is unrecoverable, check what the vendor keeps.**
+   Version history, audit logs, soft deletes and export endpoints are ordinary
+   features of systems that hold other people's records. Establish what the
+   vendor offers *before* planning the manual rebuild, not after it.
+5. **Write down whether a claim was tested or inferred.** This incident's worst
+   consequence came from a sentence that read like a finding and was a guess.
+   An untested conclusion must say so, or the next reader will treat it as
+   settled and plan around it.

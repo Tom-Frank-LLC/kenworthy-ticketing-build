@@ -1,10 +1,28 @@
-import { useEffect, useState } from 'react';
+// The admin Overview.
+//
+// The money cards read SQUARE, not our own tables. That is the whole point of
+// this component's shape: the theatre's revenue lives in Square — Point of Sale,
+// Square Online, invoices — and exactly one order has ever come through this
+// build. Computing revenue from `tickets` and `concession_sales`, as this tab
+// used to, returned ~zero for every card. It was not broken arithmetic; it was
+// the wrong source. See docs/SQUARE-TRANSACTION-CONVENTIONS.md.
+//
+// Genre Popularity and Venue Utilization stay build-sourced, because neither
+// exists in Square: genre is a `movies`/`events`/`concerts` column, and seat
+// capacity is `showings.total_seats`. They are labelled as such on the cards, so
+// a sparse genre chart next to a full revenue chart reads as "we only know this
+// for showings in the build" rather than as a bug.
+
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DollarSign, TrendingUp, Users, BarChart3, UtensilsCrossed } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { DollarSign, TrendingUp, Users, BarChart3, UtensilsCrossed, RefreshCw } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, LineChart, Line,
+  PieChart, Pie, Cell, Legend,
 } from 'recharts';
 
 const COLORS = [
@@ -16,156 +34,121 @@ const COLORS = [
   'hsl(45, 80%, 55%)',
 ];
 
-interface TicketRow {
-  price: number;
-  total_price: number;
-  purchased_at: string;
-  status: string;
-  payment_method: string;
+const RANGES = [
+  { key: '30d', label: '30 days' },
+  { key: '90d', label: '90 days' },
+  { key: 'ytd', label: 'Year to date' },
+  { key: 'custom', label: 'Custom' },
+] as const;
+
+type RangeKey = typeof RANGES[number]['key'];
+
+/** Exactly what `square-analytics` returns. Money is always in cents. */
+interface Analytics {
+  range: { start: string; end: string };
+  totals: {
+    totalCollectedCents: number;
+    grossSalesCents: number;
+    ticketsSold: number;
+    avgPerTicketCents: number;
+    concessionRevenueCents: number;
+    refundCount: number;
+    refundCents: number;
+  };
+  revenueByDay: Array<{ date: string; ticketsCents: number; concessionsCents: number; otherCents: number; totalCents: number }>;
+  revenueByCategory: Array<{ name: string; amountCents: number }>;
+  topPerformers: Array<{ title: string; revenueCents: number; count: number }>;
+  meta: {
+    orders: number;
+    lineItems: number;
+    uncategorizedLineItems: number;
+    uncategorizedSamples?: Array<{ name: string; hadCatalogId: boolean; amountCents: number; lines: number }>;
+    truncated: boolean;
+  };
+  cached?: boolean;
+}
+
+/** Build-sourced rows, for the two cards Square cannot answer. */
+interface ShowingTicketRow {
   showing_id: string;
+  status: string;
   showings: {
-    movie_id: string | null;
-    event_id: string | null;
-    concert_id: string | null;
     total_seats: number;
     venue_id: string | null;
-    movies: { title: string; genre: string | null } | null;
-    events: { title: string; genre: string | null } | null;
-    concerts: { title: string; genre: string | null } | null;
+    movies: { genre: string | null } | null;
+    events: { genre: string | null } | null;
+    concerts: { genre: string | null } | null;
     venues: { name: string } | null;
   } | null;
 }
 
-interface ConcessionSaleRow {
-  id: string;
-  total: number;
-  created_at: string;
-  showing_id: string | null;
-  showings: {
-    movie_id: string | null;
-    event_id: string | null;
-    concert_id: string | null;
-    movies: { title: string } | null;
-    events: { title: string } | null;
-    concerts: { title: string } | null;
-  } | null;
-}
+const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function AnalyticsTab() {
-  const [tickets, setTickets] = useState<TicketRow[]>([]);
-  const [concessionSales, setConcessionSales] = useState<ConcessionSaleRow[]>([]);
+  const [range, setRange] = useState<RangeKey>('30d');
+  const [custom, setCustom] = useState({ start: '', end: '' });
+  const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [tickets, setTickets] = useState<ShowingTicketRow[]>([]);
 
+  const load = useCallback(async (opts: { refresh?: boolean } = {}) => {
+    // A custom range is only a valid query once both ends are set; until then
+    // keep showing the last good result rather than asking Square for nonsense.
+    if (range === 'custom' && !(custom.start && custom.end)) return;
+    setLoading(true);
+    setError(null);
+    const { data: res, error: err } = await supabase.functions.invoke('square-analytics', {
+      body: { range, start: custom.start || undefined, end: custom.end || undefined, refresh: opts.refresh },
+    });
+    if (err || (res as { error?: string })?.error) {
+      setError((res as { error?: string })?.error || err?.message || 'Could not read Square.');
+      setData(null);
+    } else {
+      setData(res as Analytics);
+    }
+    setLoading(false);
+  }, [range, custom.start, custom.end]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  // Build-sourced, and independent of the Square range — these two cards
+  // describe what the build knows about its own showings.
   useEffect(() => {
     (async () => {
-      const [ticketsRes, concessionsRes] = await Promise.all([
+      const { data: rows } = await fetchAllRows<ShowingTicketRow>((from, to) =>
         supabase
           .from('tickets')
-          .select('price, total_price, purchased_at, status, payment_method, showing_id, showings(movie_id, event_id, concert_id, total_seats, venue_id, movies(title, genre), events(title, genre), concerts(title, genre), venues(name))')
-          .order('purchased_at', { ascending: true }),
-        supabase
-          .from('concession_sales')
-          .select('id, total, created_at, showing_id, showings(movie_id, event_id, concert_id, movies(title), events(title), concerts(title))')
-          .order('created_at', { ascending: true }),
-      ]);
-      setTickets((ticketsRes.data as unknown as TicketRow[]) || []);
-      setConcessionSales((concessionsRes.data as unknown as ConcessionSaleRow[]) || []);
-      setLoading(false);
+          .select('showing_id, status, showings(total_seats, venue_id, movies(genre), events(genre), concerts(genre), venues(name))')
+          .eq('status', 'confirmed')
+          .range(from, to) as unknown as PromiseLike<{ data: ShowingTicketRow[] | null; error: null }>);
+      setTickets(rows);
     })();
   }, []);
 
-  if (loading) return <p className="text-center text-muted-foreground py-12">Loading analytics…</p>;
+  const t = data?.totals;
 
-  const confirmed = tickets.filter(t => t.status === 'confirmed');
-
-  // --- Revenue over time (last 30 days, daily) — tickets + concessions ---
-  const revenueByDay: Record<string, { tickets: number; concessions: number }> = {};
-  confirmed.forEach(t => {
-    const day = new Date(t.purchased_at).toISOString().slice(0, 10);
-    if (!revenueByDay[day]) revenueByDay[day] = { tickets: 0, concessions: 0 };
-    revenueByDay[day].tickets += Number(t.total_price);
-  });
-  concessionSales.forEach(s => {
-    const day = new Date(s.created_at).toISOString().slice(0, 10);
-    if (!revenueByDay[day]) revenueByDay[day] = { tickets: 0, concessions: 0 };
-    revenueByDay[day].concessions += Number(s.total);
-  });
-  const revenueSeries = Object.entries(revenueByDay)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-30)
-    .map(([date, rev]) => ({
-      date: date.slice(5),
-      tickets: +rev.tickets.toFixed(2),
-      concessions: +rev.concessions.toFixed(2),
-      total: +(rev.tickets + rev.concessions).toFixed(2),
-    }));
-
-  // --- Revenue by category (now includes concessions) ---
-  let movieRev = 0, eventRev = 0, concertRev = 0;
-  confirmed.forEach(t => {
-    const s = t.showings;
-    if (!s) return;
-    if (s.movie_id) movieRev += Number(t.total_price);
-    else if (s.event_id) eventRev += Number(t.total_price);
-    else if (s.concert_id) concertRev += Number(t.total_price);
-  });
-  const totalConcessionRev = concessionSales.reduce((s, c) => s + Number(c.total), 0);
-  const categoryData = [
-    { name: 'Movies', value: +movieRev.toFixed(2) },
-    { name: 'Events', value: +eventRev.toFixed(2) },
-    { name: 'Concerts', value: +concertRev.toFixed(2) },
-    { name: 'Concessions', value: +totalConcessionRev.toFixed(2) },
-  ].filter(d => d.value > 0);
-
-  // --- Top performers (by ticket count) ---
-  const perfMap: Record<string, { title: string; count: number; revenue: number; concessionRev: number }> = {};
-  confirmed.forEach(t => {
-    const s = t.showings;
-    if (!s) return;
-    const title = s.movies?.title || s.events?.title || s.concerts?.title || 'Unknown';
-    if (!perfMap[title]) perfMap[title] = { title, count: 0, revenue: 0, concessionRev: 0 };
-    perfMap[title].count += 1;
-    perfMap[title].revenue += Number(t.total_price);
-  });
-  // Add concession revenue per showing's production
-  concessionSales.forEach(cs => {
-    const s = cs.showings;
-    if (!s) return;
-    const title = s.movies?.title || s.events?.title || s.concerts?.title || 'Unknown';
-    if (!perfMap[title]) perfMap[title] = { title, count: 0, revenue: 0, concessionRev: 0 };
-    perfMap[title].concessionRev += Number(cs.total);
-  });
-  const topPerformers = Object.values(perfMap)
-    .sort((a, b) => (b.revenue + b.concessionRev) - (a.revenue + a.concessionRev))
-    .slice(0, 8)
-    .map(p => ({
-      title: p.title,
-      tickets: +p.revenue.toFixed(2),
-      concessions: +p.concessionRev.toFixed(2),
-    }));
-
-  // --- Venue utilization ---
-  const venueMap: Record<string, { name: string; ticketsSold: number; showingIds: Set<string>; totalCapacity: number }> = {};
-  confirmed.forEach(t => {
-    const s = t.showings;
-    if (!s?.venues?.name || !s.venue_id) return;
-    const name = s.venues.name;
-    if (!venueMap[name]) venueMap[name] = { name, ticketsSold: 0, showingIds: new Set(), totalCapacity: 0 };
-    venueMap[name].ticketsSold += 1;
-    if (!venueMap[name].showingIds.has(t.showing_id)) {
-      venueMap[name].showingIds.add(t.showing_id);
-      venueMap[name].totalCapacity += s.total_seats;
-    }
-  });
-  const venueData = Object.values(venueMap).map(v => ({
-    name: v.name,
-    utilization: v.totalCapacity > 0 ? +((v.ticketsSold / v.totalCapacity) * 100).toFixed(1) : 0,
-    tickets: v.ticketsSold,
+  const revenueSeries = (data?.revenueByDay ?? []).map(d => ({
+    date: d.date.slice(5),
+    tickets: d.ticketsCents / 100,
+    concessions: d.concessionsCents / 100,
+    other: d.otherCents / 100,
   }));
 
-  // --- Genre popularity ---
+  const categoryData = (data?.revenueByCategory ?? []).map(c => ({
+    name: c.name,
+    value: +(c.amountCents / 100).toFixed(2),
+  }));
+
+  const topPerformers = (data?.topPerformers ?? []).map(p => ({
+    title: p.title.length > 28 ? `${p.title.slice(0, 27)}…` : p.title,
+    revenue: +(p.revenueCents / 100).toFixed(2),
+    count: p.count,
+  }));
+
+  // --- Genre popularity (build-sourced) ---
   const genreMap: Record<string, number> = {};
-  confirmed.forEach(t => {
+  tickets.forEach(t => {
     const s = t.showings;
     if (!s) return;
     const genre = s.movies?.genre || s.events?.genre || s.concerts?.genre || 'Other';
@@ -176,117 +159,280 @@ export default function AnalyticsTab() {
     .slice(0, 8)
     .map(([name, value]) => ({ name, value }));
 
-  // --- Summary stats ---
-  const totalTicketRevenue = confirmed.reduce((s, t) => s + Number(t.total_price), 0);
-  const totalRevenue = totalTicketRevenue + totalConcessionRev;
-  const avgPerTicket = confirmed.length > 0 ? totalTicketRevenue / confirmed.length : 0;
-  const refundCount = tickets.filter(t => t.status === 'refunded').length;
+  // --- Venue utilization (build-sourced) ---
+  const venueMap: Record<string, { name: string; ticketsSold: number; showingIds: Set<string>; totalCapacity: number }> = {};
+  tickets.forEach(t => {
+    const s = t.showings;
+    if (!s?.venues?.name || !s.venue_id) return;
+    const name = s.venues.name;
+    if (!venueMap[name]) venueMap[name] = { name, ticketsSold: 0, showingIds: new Set(), totalCapacity: 0 };
+    venueMap[name].ticketsSold += 1;
+    if (!venueMap[name].showingIds.has(t.showing_id)) {
+      venueMap[name].showingIds.add(t.showing_id);
+      venueMap[name].totalCapacity += s.total_seats ?? 0;
+    }
+  });
+  const venueData = Object.values(venueMap).map(v => ({
+    name: v.name,
+    utilization: v.totalCapacity > 0 ? +((v.ticketsSold / v.totalCapacity) * 100).toFixed(1) : 0,
+    tickets: v.ticketsSold,
+  }));
 
   return (
     <div className="space-y-6">
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <KPI icon={<DollarSign className="h-5 w-5 text-primary" />} label="Total Revenue" value={`$${totalRevenue.toFixed(2)}`} />
-        <KPI icon={<TrendingUp className="h-5 w-5 text-primary" />} label="Tickets Sold" value={String(confirmed.length)} />
-        <KPI icon={<BarChart3 className="h-5 w-5 text-primary" />} label="Avg / Ticket" value={`$${avgPerTicket.toFixed(2)}`} />
-        <KPI icon={<UtensilsCrossed className="h-5 w-5 text-primary" />} label="Concession Rev" value={`$${totalConcessionRev.toFixed(2)}`} />
-        <KPI icon={<Users className="h-5 w-5 text-destructive" />} label="Refunds" value={String(refundCount)} />
+      {/* Range selector */}
+      <div className="flex flex-wrap items-center gap-2">
+        {RANGES.map(r => (
+          <Button
+            key={r.key}
+            size="sm"
+            variant={range === r.key ? 'default' : 'outline'}
+            onClick={() => setRange(r.key)}
+          >
+            {r.label}
+          </Button>
+        ))}
+        {range === 'custom' && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="date"
+              value={custom.start}
+              onChange={e => setCustom(c => ({ ...c, start: e.target.value }))}
+              className="w-auto"
+              aria-label="Range start"
+            />
+            <span className="text-muted-foreground">to</span>
+            <Input
+              type="date"
+              value={custom.end}
+              onChange={e => setCustom(c => ({ ...c, end: e.target.value }))}
+              className="w-auto"
+              aria-label="Range end"
+            />
+          </div>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => void load({ refresh: true })}
+          disabled={loading}
+          className="ml-auto"
+        >
+          <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
-      {/* Revenue over time */}
-      <Card className="glass">
-        <CardHeader><CardTitle className="text-base">Revenue Over Time (Last 30 Days)</CardTitle></CardHeader>
-        <CardContent>
-          {revenueSeries.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={revenueSeries}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="date" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                <Legend />
-                <Bar dataKey="tickets" stackId="rev" fill="hsl(var(--primary))" name="Tickets" />
-                <Bar dataKey="concessions" stackId="rev" fill="hsl(var(--accent))" name="Concessions" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <p className="text-muted-foreground text-center py-8">No revenue data yet.</p>}
-        </CardContent>
-      </Card>
-
-      <div className="grid md:grid-cols-2 gap-4">
-        {/* Revenue by category */}
-        <Card className="glass">
-          <CardHeader><CardTitle className="text-base">Revenue by Category</CardTitle></CardHeader>
-          <CardContent>
-            {categoryData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                    {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : <p className="text-muted-foreground text-center py-8">No data yet.</p>}
+      {error && (
+        <Card className="glass border-destructive/40">
+          <CardContent className="p-4">
+            <p className="text-destructive font-medium">Could not read Square</p>
+            <p className="text-muted-foreground mt-1">{error}</p>
           </CardContent>
         </Card>
+      )}
 
-        {/* Genre popularity */}
-        <Card className="glass">
-          <CardHeader><CardTitle className="text-base">Genre Popularity</CardTitle></CardHeader>
-          <CardContent>
-            {genreData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie data={genreData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name} (${value})`}>
-                    {genreData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : <p className="text-muted-foreground text-center py-8">No data yet.</p>}
-          </CardContent>
-        </Card>
-      </div>
+      {loading && !data && <p className="text-center text-muted-foreground py-12">Reading Square…</p>}
 
-      {/* Top performers */}
-      <Card className="glass">
-        <CardHeader><CardTitle className="text-base">Top Performers — Tickets + Concessions</CardTitle></CardHeader>
-        <CardContent>
-          {topPerformers.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={topPerformers} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                <YAxis dataKey="title" type="category" width={120} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                <Legend />
-                <Bar dataKey="tickets" stackId="perf" fill="hsl(var(--primary))" name="Ticket Rev" />
-                <Bar dataKey="concessions" stackId="perf" fill="hsl(var(--accent))" name="Concession Rev" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <p className="text-muted-foreground text-center py-8">No data yet.</p>}
-        </CardContent>
-      </Card>
+      {data && (
+        <>
+          {/* KPI cards — all from Square */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <KPI icon={<DollarSign className="h-5 w-5 text-primary" />} label="Total Revenue" value={dollars(t!.totalCollectedCents)} />
+            <KPI icon={<TrendingUp className="h-5 w-5 text-primary" />} label="Tickets Sold" value={String(t!.ticketsSold)} />
+            <KPI icon={<BarChart3 className="h-5 w-5 text-primary" />} label="Avg / Ticket" value={dollars(t!.avgPerTicketCents)} />
+            <KPI icon={<UtensilsCrossed className="h-5 w-5 text-primary" />} label="Concession Rev" value={dollars(t!.concessionRevenueCents)} />
+            <KPI icon={<Users className="h-5 w-5 text-destructive" />} label="Refunds" value={`${t!.refundCount} · ${dollars(t!.refundCents)}`} />
+          </div>
 
-      {/* Venue utilization */}
-      {venueData.length > 0 && (
-        <Card className="glass">
-          <CardHeader><CardTitle className="text-base">Venue Utilization</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={venueData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                <YAxis unit="%" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                <Tooltip formatter={(v: number, name: string) => name === 'utilization' ? `${v}%` : v} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                <Bar dataKey="utilization" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          {/* Known-wrong, and said out loud.
+              Measured against Square's own Reporting API on 20 Aug, these
+              figures come out about a third low — concessions agree to within a
+              percent, ticket categories are out by 2x. The cause is not yet
+              found (see FINDINGS-square-reporting-api.md). Until it is, a
+              number on this screen must not be read as the theatre's takings,
+              and the honest thing is to say so on the screen rather than in a
+              document nobody has open. Remove this the moment the figures
+              reconcile. */}
+          <Card className="glass border-destructive/40">
+            <CardContent className="p-4">
+              <p className="text-destructive font-medium">
+                These figures are under-reporting — do not use them for accounting yet.
+              </p>
+              <p className="text-muted-foreground mt-1">
+                Checked against Square's own reports on 20 August, revenue here came out
+                roughly a third low. Concessions are close; ticket categories are out by
+                about half. Square's Dashboard is the number to trust until this is fixed.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* A silently short total is the failure mode worth shouting about. */}
+          {data.meta.truncated && (
+            <p className="text-destructive">
+              This range has more orders than one read can cover, so the totals below are incomplete.
+              Choose a shorter range.
+            </p>
+          )}
+
+          {/* Revenue over time */}
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle className="text-base">Revenue Over Time</CardTitle>
+              <p className="text-muted-foreground">
+                Gross sales, before tax and tips — the basis Square's Item Sales report uses.
+                Total Revenue above is what was collected, so it is higher by tax and tips.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {revenueSeries.length > 0 ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={revenueSeries}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                    <Legend />
+                    <Bar dataKey="tickets" stackId="rev" fill="hsl(var(--primary))" name="Tickets" />
+                    <Bar dataKey="concessions" stackId="rev" fill="hsl(var(--accent))" name="Concessions" />
+                    <Bar dataKey="other" stackId="rev" fill="hsl(210, 70%, 55%)" name="Other" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}
+            </CardContent>
+          </Card>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Revenue by category */}
+            <Card className="glass">
+              <CardHeader><CardTitle className="text-base">Revenue by Category</CardTitle></CardHeader>
+              <CardContent>
+                {categoryData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <PieChart>
+                      <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                        {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}
+              </CardContent>
+            </Card>
+
+            {/* Genre popularity — build-sourced */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="text-base">Genre Popularity</CardTitle>
+                <p className="text-muted-foreground">
+                  From this build's own ticket sales — Square does not record genre.
+                </p>
+              </CardHeader>
+              <CardContent>
+                {genreData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <PieChart>
+                      <Pie data={genreData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name} (${value})`}>
+                        {genreData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-muted-foreground text-center py-8">No tickets sold through this build yet.</p>}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* What is in the Uncategorised wedge.
+              On the live account this is real money — roughly a fifth of gross
+              in a typical month — so leaving it as an unexplained slice would
+              make the whole pie untrustworthy. `hadCatalogId` is the important
+              column: "keyed in" is a sale that never referenced the catalog and
+              is genuinely uncategorisable, while "catalog item" means the line
+              DID point at a variation our lookup failed to resolve — that is a
+              bug, not a data-entry habit. */}
+          {(data.meta.uncategorizedSamples?.length ?? 0) > 0 && (
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="text-base">What's in "Uncategorised"</CardTitle>
+                <p className="text-muted-foreground">
+                  {data.meta.uncategorizedLineItems} of {data.meta.lineItems.toLocaleString()} line
+                  items carry no reporting category. Largest first.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-1">
+                  {data.meta.uncategorizedSamples!.map((u, i) => (
+                    <li key={i} className="flex items-baseline justify-between gap-4">
+                      <span className="truncate">
+                        {u.name}
+                        <span className="text-muted-foreground">
+                          {' · '}{u.lines}&times;{' · '}
+                          {u.hadCatalogId ? 'catalog item, category unresolved' : 'keyed in at the POS'}
+                        </span>
+                      </span>
+                      <span className="tabular-nums shrink-0">{dollars(u.amountCents)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Top performers */}
+          <Card className="glass">
+            <CardHeader><CardTitle className="text-base">Top Performers — Ticket Revenue</CardTitle></CardHeader>
+            <CardContent>
+              {topPerformers.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={topPerformers} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis dataKey="title" type="category" width={160} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip
+                      formatter={(v: number, name: string) => name === 'revenue' ? `$${v.toFixed(2)}` : v}
+                      contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                    />
+                    <Legend />
+                    <Bar dataKey="revenue" fill="hsl(var(--primary))" name="Revenue" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="text-muted-foreground text-center py-8">No ticket sales in this range.</p>}
+            </CardContent>
+          </Card>
+
+          {/* Venue utilization — build-sourced */}
+          {venueData.length > 0 && (
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="text-base">Venue Utilization</CardTitle>
+                <p className="text-muted-foreground">
+                  From this build's own sales and seat counts — Square does not record capacity.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={venueData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis unit="%" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip formatter={(v: number, name: string) => name === 'utilization' ? `${v}%` : v} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                    <Bar dataKey="utilization" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          <p className="text-muted-foreground text-center">
+            {data.meta.orders.toLocaleString()} Square orders ·{' '}
+            {data.meta.lineItems.toLocaleString()} line items
+            {data.meta.uncategorizedLineItems > 0 && ` · ${data.meta.uncategorizedLineItems} uncategorised`}
+            {data.cached && ' · cached'}
+          </p>
+        </>
       )}
     </div>
   );
