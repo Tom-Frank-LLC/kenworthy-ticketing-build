@@ -573,3 +573,41 @@ export function storedCategoryId(itemData: any): string | null {
     null
   );
 }
+
+/** Every production kind a scoped write may name. */
+export const PRODUCTION_KINDS: ProductionKind[] = ["movie", "event", "live_performance"];
+
+/**
+ * Read a `kinds` filter off a request body.
+ *
+ * The Listings tab shows the Square work as a section of Movies and a section
+ * of Live Events, so "Create all 3" under the movie list has to mean three
+ * movies. This is what carries that promise to the write itself, rather than
+ * leaving it to a label — a control that understates what it writes to Square
+ * is the shape of the 14 Aug damage.
+ *
+ * **Fails closed, and that is the whole point.** `["mvoie"]` is a typo, not a
+ * request to write everything, so anything unrecognised is an error rather than
+ * a silent widening to global scope. An empty array is refused for the same
+ * reason: "restrict this to nothing" is far more likely to be a bug that would
+ * otherwise read as "no restriction".
+ *
+ * Absent (`undefined`) is the one case that legitimately means "no
+ * restriction" — the unscoped screen and `ensure_showing` both rely on it.
+ */
+export function parseKindFilter(
+  raw: unknown,
+): { kinds: ProductionKind[] } | { error: string } {
+  if (raw === undefined) return { kinds: [] };
+
+  const asked = Array.isArray(raw) ? raw.map(String) : [];
+  const unknown = asked.filter((k) => !PRODUCTION_KINDS.includes(k as ProductionKind));
+
+  if (!asked.length || unknown.length) {
+    return {
+      error: `kinds must be a non-empty subset of ${PRODUCTION_KINDS.join(", ")}` +
+        (unknown.length ? ` — did not recognise: ${unknown.join(", ")}` : ""),
+    };
+  }
+  return { kinds: asked as ProductionKind[] };
+}

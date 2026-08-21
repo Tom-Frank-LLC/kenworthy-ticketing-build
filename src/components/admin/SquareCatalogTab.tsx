@@ -106,6 +106,17 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
+  /*
+   * The scope, in the shape the edge function wants. Spread into every write so
+   * the button matches the section it sits under: "Create all 3" beneath the
+   * movie list writes three movies, not the whole plan.
+   *
+   * `kinds` is omitted entirely when unscoped — the function reads absent as "no
+   * restriction" and refuses an empty array, so sending `[]` would 400 rather
+   * than mean what it looks like.
+   */
+  const scopeArg = kinds?.length ? { kinds } : {};
+
   const call = useCallback(async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke('square-showing-variations', { body });
     if (error) throw new Error(error.message);
@@ -117,7 +128,7 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
     setLoading(true);
     try {
       const [p, fp] = await Promise.all([
-        call({ action: 'plan', horizon_days: 120 }),
+        call({ action: 'plan', horizon_days: 120, ...scopeArg }),
         call({ action: 'plan_film_passes' }),
       ]);
       setPlan(p);
@@ -135,7 +146,7 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
   const adopt = async () => {
     setBusy('adopt');
     try {
-      const r = await call({ action: 'apply', dry_run: false, confirm: 'WRITE', max_batch: 0 });
+      const r = await call({ action: 'apply', dry_run: false, confirm: 'WRITE', max_batch: 0, ...scopeArg });
       toast.success(`Recorded ${r.adopted} showtime(s) Square already had.`);
       await load();
     } catch (e: any) {
@@ -150,7 +161,7 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
   const append = async (count: number) => {
     setBusy('append');
     try {
-      const r = await call({ action: 'apply', dry_run: false, confirm: 'WRITE', max_batch: count });
+      const r = await call({ action: 'apply', dry_run: false, confirm: 'WRITE', max_batch: count, ...scopeArg });
       const wrote = r.tally?.written ?? 0;
       const bad = (r.tally?.accepted_but_not_stored ?? 0) + (r.tally?.error ?? 0) + (r.tally?.refused ?? 0);
       if (wrote) toast.success(`Created ${wrote} showtime(s) in Square.`);
@@ -212,6 +223,15 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
 
   const c = plan.counts || {};
   const scoped = !!kinds?.length;
+  /*
+   * Belt and braces. The server already scoped this read — that is what stops
+   * the 50-row cap sampling the wrong kind — so this filter should be a no-op.
+   * It stays because it costs nothing and because a stale bundle talking to an
+   * older function would otherwise render another kind's rows under this
+   * heading. Rows with no `production_kind` are kept rather than dropped: an
+   * older function that cannot scope should under-filter visibly, not silently
+   * show an empty section.
+   */
   const inScope = <T extends { production_kind?: ProductionKind }>(rows: T[] | undefined) =>
     (rows ?? []).filter(r => !scoped || (r.production_kind ? kinds!.includes(r.production_kind) : true));
 
@@ -230,17 +250,6 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
   const appendable = scoped ? appendableRows.length : (c.would_append ?? 0);
   const truncated = (rows: unknown[]) => (scoped && rows.length >= 50 ? '+' : '');
 
-  /*
-   * `apply` has no kind filter — it works the whole plan, every kind at once.
-   * So a scoped view may *list* three movie showtimes while the button behind
-   * it writes twelve across all listings. The list is scoped because that is
-   * what makes it useful here; the buttons are labelled with the real, global
-   * figure because a control that understates what it writes to Square is the
-   * exact shape of the 14 Aug damage. Scoping the write needs a `kinds` filter
-   * on the edge function's `apply` action.
-   */
-  const adoptableTotal = c.adopt_existing ?? 0;
-  const appendableTotal = c.would_append ?? 0;
 
   // Linkage belongs to SquareLinkPanel on the scoped surfaces; see the prop note.
   const needs = scoped ? [] : (plan.needs_dashboard_item ?? []);
@@ -291,7 +300,7 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
           </p>
           <Button onClick={adopt} disabled={!!busy}>
             {busy === 'adopt' && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-            Record {scoped ? `all ${adoptableTotal}, across every listing` : adoptable}
+            Record {adoptable}
           </Button>
         </Card>
       )}
@@ -309,8 +318,8 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
               {busy === 'append' && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Create one, to check
             </Button>
-            <Button onClick={() => append(appendableTotal)} disabled={!!busy}>
-              Create all {appendableTotal}{scoped ? ', across every listing' : ''}
+            <Button onClick={() => append(appendable)} disabled={!!busy}>
+              Create all {appendable}
             </Button>
           </div>
         </Card>

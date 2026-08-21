@@ -412,3 +412,44 @@ Deno.test('partial words do not match', () => {
   const s = suggestTitleMatches('Summer Family Matinee: Peter Rabbit', CATALOG);
   assertEquals(s.length, 0);
 });
+
+// --- parseKindFilter --------------------------------------------------------
+//
+// This one guards a Square *write*. The scoped Listings sections promise that
+// "Create all 3" under the movie list writes three movies, and this is where
+// that promise is kept.
+import { parseKindFilter } from './square-catalog.ts';
+
+Deno.test('parseKindFilter: absent means no restriction', () => {
+  assertEquals(parseKindFilter(undefined), { kinds: [] });
+});
+
+Deno.test('parseKindFilter: passes through a valid subset', () => {
+  assertEquals(parseKindFilter(['movie']), { kinds: ['movie'] });
+  assertEquals(
+    parseKindFilter(['event', 'live_performance']),
+    { kinds: ['event', 'live_performance'] },
+  );
+});
+
+// The important ones: every rejection below would otherwise widen a scoped
+// button into a write across every listing.
+Deno.test('parseKindFilter: a misspelled kind is refused, not ignored', () => {
+  const result = parseKindFilter(['mvoie']);
+  assertEquals('error' in result, true);
+  assertEquals((result as { error: string }).error.includes('mvoie'), true);
+});
+
+Deno.test('parseKindFilter: one bad kind among good ones still refuses', () => {
+  assertEquals('error' in parseKindFilter(['movie', 'nonsense']), true);
+});
+
+Deno.test('parseKindFilter: an empty array is refused rather than read as global', () => {
+  assertEquals('error' in parseKindFilter([]), true);
+});
+
+Deno.test('parseKindFilter: a non-array is refused', () => {
+  assertEquals('error' in parseKindFilter('movie'), true);
+  assertEquals('error' in parseKindFilter({ kind: 'movie' }), true);
+  assertEquals('error' in parseKindFilter(null), true);
+});
