@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Upload, Eye, EyeOff, Trash2, Image as ImageIcon, ExternalLink, Save } from 'lucide-react';
+import { Upload, Eye, EyeOff, Trash2, Image as ImageIcon, ExternalLink, Save, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   BACKSTAGE_ACCEPTED_TYPES,
@@ -60,6 +60,19 @@ export default function BackstageTab() {
   const [displayOrder, setDisplayOrder] = useState('0');
   const [file, setFile] = useState<File | null>(null);
 
+  // The photo being edited, plus its in-progress values. Held separately from
+  // `photos` so an abandoned edit leaves no trace — closing the dialog is a
+  // cancel, and the row is untouched until the save comes back with a count.
+  // The photograph at the top of the page. One object, replaced in place —
+  // there is only ever one hero, so uploading a new one removes the old.
+  const [heroPath, setHeroPath] = useState<string | null>(null);
+  const [heroBusy, setHeroBusy] = useState(false);
+
+  const [editing, setEditing] = useState<AdminPhoto | null>(null);
+  const [editCaption, setEditCaption] = useState('');
+  const [editOrder, setEditOrder] = useState('0');
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     // Neither table is in the generated Supabase types yet, the same as
@@ -70,7 +83,7 @@ export default function BackstageTab() {
         .select('id, caption, file_path, display_order, is_published, created_at'),
       (supabase as any)
         .from('backstage_page_content')
-        .select('body_text')
+        .select('body_text, hero_path')
         .maybeSingle(),
     ]);
 
@@ -78,9 +91,11 @@ export default function BackstageTab() {
     // The admin SELECT policy returns drafts too, so this list is everything.
     setPhotos(orderBackstagePhotos((photoRes.data ?? []) as AdminPhoto[]));
 
-    const stored = (copyRes.data as { body_text: string | null } | null)?.body_text ?? '';
+    const copy = copyRes.data as { body_text: string | null; hero_path: string | null } | null;
+    const stored = copy?.body_text ?? '';
     setBody(stored);
     setBodyDraft(stored);
+    setHeroPath(copy?.hero_path ?? null);
     setLoading(false);
   }, []);
 
@@ -168,6 +183,129 @@ export default function BackstageTab() {
     }
   };
 
+  /**
+   * Replace the hero photograph.
+   *
+   * Upload first, then point the row at it, then delete the object that was
+   * there before — in that order, so the page is never pointing at bytes that
+   * do not exist. The old object is removed last and its failure is a warning
+   * rather than an error: an orphan in a bucket costs storage, while a row
+   * pointing at nothing costs the reader a broken image at the top of the page.
+   */
+  const uploadHero = async (chosen: File) => {
+    if (!(BACKSTAGE_ACCEPTED_TYPES as readonly string[]).includes(chosen.type)) {
+      toast.error('Only JPEG, PNG, WebP or AVIF images can go on the page');
+      return;
+    }
+    setHeroBusy(true);
+    const previous = heroPath;
+    try {
+      const safeName = chosen.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `hero/${Date.now()}_${safeName}`;
+
+      const { error: upErr } = await supabase.storage
+        .from(BACKSTAGE_BUCKET)
+        .upload(path, chosen, { contentType: chosen.type, upsert: false });
+      if (upErr) throw upErr;
+
+      const { data, error } = await (supabase as any)
+        .from('backstage_page_content')
+        .update({ hero_path: path })
+        .eq('id', true)
+        .select('id');
+      if (error) throw error;
+      if (!data?.length) {
+        await supabase.storage.from(BACKSTAGE_BUCKET).remove([path]);
+        throw new Error('The hero was not saved — you may not have admin rights.');
+      }
+
+      if (previous) {
+        const { error: rmErr } = await supabase.storage
+          .from(BACKSTAGE_BUCKET).remove([previous]);
+        if (rmErr) toast.warning('New hero is live, but the old file is still in storage.');
+      }
+      setHeroPath(path);
+      toast.success('Hero image updated');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not upload that image');
+    } finally {
+      setHeroBusy(false);
+    }
+  };
+
+  const removeHero = async () => {
+    if (!heroPath) return;
+    if (!confirm('Remove the hero photograph? The page falls back to the drawn sign.')) return;
+    setHeroBusy(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from('backstage_page_content')
+        .update({ hero_path: null })
+        .eq('id', true)
+        .select('id');
+      if (error) throw error;
+      if (!data?.length) throw new Error('Nothing changed — you may not have admin rights.');
+
+      const { error: rmErr } = await supabase.storage
+        .from(BACKSTAGE_BUCKET).remove([heroPath]);
+      if (rmErr) toast.warning('Hero removed from the page, but the file is still in storage.');
+      setHeroPath(null);
+      toast.success('Hero removed — the page shows the drawn sign again');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not remove the hero');
+    } finally {
+      setHeroBusy(false);
+    }
+  };
+
+  const openEdit = (photo: AdminPhoto) => {
+    setEditing(photo);
+    setEditCaption(photo.caption ?? '');
+    setEditOrder(String(photo.display_order));
+  };
+
+  /**
+   * Caption and order only — deliberately not the image.
+   *
+   * Replacing the file would mean a second object, a path swap and an orphan to
+   * clean up, and it is not what "edit" means here: a photograph is the thing,
+   * and what needs correcting after the fact is the typo underneath it or where
+   * it sits in the grid. A wrong photograph is a delete and a re-upload.
+   */
+  const saveEdit = async () => {
+    if (!editing) return;
+    setSavingEdit(true);
+    try {
+      const nextCaption = editCaption.trim() || null;
+      const nextOrder = parseInt(editOrder, 10) || 0;
+
+      const { data, error } = await (supabase as any)
+        .from('backstage_photos')
+        .update({ caption: nextCaption, display_order: nextOrder })
+        .eq('id', editing.id)
+        .select('id');
+      if (error) throw error;
+      // An RLS denial is a 204 with no error, so the row count is the only
+      // thing that distinguishes a save from a silent refusal.
+      if (!data?.length) throw new Error('Nothing was saved — you may not have admin rights.');
+
+      // Re-sorted through the shared comparator rather than patched in place:
+      // display_order is what the grid orders on, so an edit can move the row,
+      // and the admin list has to agree with the public page about where.
+      setPhotos(prev => orderBackstagePhotos(
+        prev.map(p => (p.id === editing.id
+          ? { ...p, caption: nextCaption, display_order: nextOrder }
+          : p)),
+      ));
+      setEditing(null);
+      toast.success('Photo updated');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save that change');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const togglePublished = async (photo: AdminPhoto) => {
     const next = !photo.is_published;
     const { data, error } = await (supabase as any)
@@ -228,6 +366,65 @@ export default function BackstageTab() {
           </Button>
         </div>
       </div>
+
+      {/* ------------------------------------------------- The hero image */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <h4 className="font-display uppercase tracking-[0.2em] text-sm text-primary">
+            Hero image
+          </h4>
+          <p className="text-xs text-muted-foreground">
+            The photograph at the very top of the page — a shot of the real neon
+            sign works best. It <strong className="text-foreground">replaces</strong> the
+            drawn sign rather than sitting above it, because both say
+            &ldquo;Backstage&rdquo; and showing them together prints the name twice.
+            With no hero, the page falls back to the drawn sign.
+          </p>
+
+          {heroPath ? (
+            <img
+              src={thumbUrl(heroPath)}
+              alt="Current hero"
+              className="h-32 w-full rounded object-cover border border-border"
+            />
+          ) : (
+            <div className="h-32 w-full rounded border border-dashed border-border flex items-center justify-center text-muted-foreground text-sm">
+              No hero image — the page is showing the drawn sign
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Input
+              id="backstage-hero-file"
+              type="file"
+              className="max-w-xs"
+              accept={BACKSTAGE_ACCEPTED_TYPES.join(',')}
+              disabled={heroBusy}
+              onChange={e => {
+                const chosen = e.target.files?.[0];
+                // Cleared so choosing the same file twice still fires a change
+                // — otherwise a failed upload cannot be retried without picking
+                // a different file first.
+                e.target.value = '';
+                if (chosen) uploadHero(chosen);
+              }}
+            />
+            {heroBusy && <span className="text-xs text-muted-foreground">Working…</span>}
+            {heroPath && !heroBusy && (
+              <>
+                <Button variant="outline" size="sm" asChild>
+                  <a href={publicUrl(heroPath)} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-1" /> Full size
+                  </a>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={removeHero}>
+                  <Trash2 className="h-4 w-4 mr-1" /> Remove
+                </Button>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ------------------------------------------- How the room gets used */}
       <Card>
@@ -310,6 +507,9 @@ export default function BackstageTab() {
                         <ExternalLink className="h-4 w-4 mr-1" /> Full size
                       </a>
                     </Button>
+                    <Button variant="outline" size="sm" onClick={() => openEdit(photo)}>
+                      <Pencil className="h-4 w-4 mr-1" /> Edit
+                    </Button>
                     <Button
                       variant={photo.is_published ? 'ghost' : 'default'}
                       size="sm"
@@ -329,6 +529,60 @@ export default function BackstageTab() {
           </div>
         )}
       </div>
+
+      {/* Edit — caption and order. Not the image; see saveEdit. */}
+      <Dialog open={editing !== null} onOpenChange={o => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit photo</DialogTitle>
+          </DialogHeader>
+          {editing && (
+            <div className="space-y-4">
+              <img
+                src={thumbUrl(editing.file_path)}
+                alt=""
+                className="h-32 w-full rounded object-cover border border-border"
+              />
+              <div>
+                <Label htmlFor="edit-caption">Caption</Label>
+                <Input
+                  id="edit-caption"
+                  placeholder="e.g. The Palouse Ramblers, February 2026"
+                  value={editCaption}
+                  onChange={e => setEditCaption(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Shown under the photograph, and read out as its description.
+                  Clearing it falls back to &ldquo;an event in the Backstage
+                  speakeasy&rdquo;.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="edit-order">Display order</Label>
+                <Input
+                  id="edit-order" type="number" inputMode="numeric"
+                  value={editOrder} onChange={e => setEditOrder(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Lower comes first. Photos left at 0 fall back to newest first.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                To change the photograph itself, delete this one and upload the
+                replacement.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditing(null)} disabled={savingEdit}>
+              Cancel
+            </Button>
+            <Button onClick={saveEdit} disabled={savingEdit}>
+              {savingEdit ? 'Saving…' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
         <DialogContent>

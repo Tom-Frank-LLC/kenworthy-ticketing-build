@@ -38,6 +38,8 @@ import {
 export default function Backstage() {
   const [photos, setPhotos] = useState<BackstagePhoto[]>([]);
   const [body, setBody] = useState<string | null>(null);
+  /** Photograph of the real sign. Null falls back to the drawn logo. */
+  const [heroPath, setHeroPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   /** Index into `photos` of the photograph open full size, or null. */
   const [lightbox, setLightbox] = useState<number | null>(null);
@@ -60,7 +62,7 @@ export default function Backstage() {
           .eq('is_published', true),
         (supabase as any)
           .from('backstage_page_content')
-          .select('body_text')
+          .select('body_text, hero_path')
           .maybeSingle(),
       ]);
 
@@ -68,7 +70,9 @@ export default function Backstage() {
       // A failure here is an empty gallery, not an error page. The room still
       // exists and the address at the bottom is still worth having.
       setPhotos(orderBackstagePhotos((photoRes.data ?? []) as BackstagePhoto[]));
-      setBody((copyRes.data as { body_text: string | null } | null)?.body_text ?? null);
+      const copy = copyRes.data as { body_text: string | null; hero_path: string | null } | null;
+      setBody(copy?.body_text ?? null);
+      setHeroPath(copy?.hero_path ?? null);
       setLoading(false);
     })();
 
@@ -134,33 +138,50 @@ export default function Backstage() {
         />
 
         <div className="relative container max-w-4xl py-20 md:py-28 text-center">
-          {/* max-width rather than a fixed width: the sign is the widest thing
-              on the page and a fixed 300px overflows a 320px phone once the
-              container's own padding is taken out. */}
-          <div className="relative mx-auto w-full max-w-[300px] md:max-w-[420px]">
-            <div
-              aria-hidden
-              className="absolute -inset-8 rounded-full blur-3xl"
-              style={{
-                background:
-                  'radial-gradient(circle, hsl(41 65% 56% / 0.25), transparent 70%)',
-              }}
-            />
-            {/* The sign is the page's heading. An <h1> around the image gives
-                the outline a level-one entry whose text is the alt text, so the
-                document has a title without printing the word twice under a
-                sign that already says it. */}
+          {/* The photograph replaces the drawn sign rather than sitting above
+              it. Both say BACKSTAGE in neon; showing the two together would
+              print the name twice and make the real one look like a caption
+              for the drawing. Whichever is shown is the <h1>, so the document
+              outline has a level-one entry either way. */}
+          {heroPath ? (
             <h1 className="relative m-0">
               <img
-                src={backstageLogo}
-                alt="Backstage"
-                width={3012}
-                height={1388}
-                className="w-full [filter:drop-shadow(0_0_6px_hsl(333_90%_60%/0.85))_drop-shadow(0_0_18px_hsl(333_85%_55%/0.6))_drop-shadow(0_0_38px_hsl(333_80%_50%/0.45))_drop-shadow(0_8px_30px_rgba(0,0,0,0.6))]"
+                src={thumbUrl(heroPath, 1600)}
+                alt="The Backstage neon sign, lit, above the bar"
+                /* The hero is the content, not something below the fold — so
+                   eager, and fetchpriority high. Every other image on this page
+                   is lazy for exactly the opposite reason. */
+                loading="eager"
+                fetchPriority="high"
                 decoding="async"
+                className="mx-auto w-full max-w-3xl rounded-lg object-contain shadow-[0_8px_60px_rgba(0,0,0,0.7)]"
               />
             </h1>
-          </div>
+          ) : (
+            /* max-width rather than a fixed width: the sign is the widest thing
+               on the page and a fixed 300px overflows a 320px phone once the
+               container's own padding is taken out. */
+            <div className="relative mx-auto w-full max-w-[300px] md:max-w-[420px]">
+              <div
+                aria-hidden
+                className="absolute -inset-8 rounded-full blur-3xl"
+                style={{
+                  background:
+                    'radial-gradient(circle, hsl(41 65% 56% / 0.25), transparent 70%)',
+                }}
+              />
+              <h1 className="relative m-0">
+                <img
+                  src={backstageLogo}
+                  alt="Backstage"
+                  width={3012}
+                  height={1388}
+                  className="w-full [filter:drop-shadow(0_0_6px_hsl(333_90%_60%/0.85))_drop-shadow(0_0_18px_hsl(333_85%_55%/0.6))_drop-shadow(0_0_38px_hsl(333_80%_50%/0.45))_drop-shadow(0_8px_30px_rgba(0,0,0,0.6))]"
+                  decoding="async"
+                />
+              </h1>
+            </div>
+          )}
 
           <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mt-10">
             You found the door
