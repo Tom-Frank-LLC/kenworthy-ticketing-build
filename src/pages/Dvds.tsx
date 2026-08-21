@@ -17,20 +17,31 @@ import { MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
 type Dvd = any;
 
 /**
- * The lending library.
+ * The lending library. **Staff only.**
  *
  * Reserving a DVD needs an account: the reservation is a row keyed to a
  * `user_id`, and there is nothing like the ticket world's `/t/:token` to stand
- * in for a session. So while member accounts are off this page is a catalogue —
- * browse, search, filter, then ask at the box office. The alternative was a
- * "Sign in" button pointing at a staff-only door, which is worse than no button.
+ * in for a session. When patron accounts were switched off in `c90637c` this
+ * page became a public catalogue instead — browse, filter, ask at the box
+ * office — on the reasoning that a "Sign in" button pointing at a staff-only
+ * door is worse than no button.
  *
- * Nothing is deleted. `reserve`, `cancel` and the active-rentals section are all
- * still here behind `MEMBER_ACCOUNTS_ENABLED`, and come back with it.
+ * Tom's call is that the catalogue should not be public at all while there is
+ * nothing a patron can *do* with it, so the page and both of its nav links are
+ * now behind the same `isStaff` check the admin area uses. Note what that means
+ * today: with `MEMBER_ACCOUNTS_ENABLED` off there is no patron session in
+ * existence, so "signed in" and "staff" are the same set of people. This gate
+ * is staff-only by consequence, not by a second decision.
+ *
+ * Nothing is deleted, and this is a switch rather than a demolition in the same
+ * way the flag is. `reserve`, `cancel` and the active-rentals section are still
+ * here behind `MEMBER_ACCOUNTS_ENABLED`. If the membership programme launches,
+ * revisit *this* gate too — patrons will then have a real account to reserve
+ * with, and keeping them out of the catalogue would no longer be the point.
  */
 
 export default function Dvds() {
-  const { user } = useAuth();
+  const { user, isStaff, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [dvds, setDvds] = useState<Dvd[]>([]);
   const [settings, setSettings] = useState<any>(null);
@@ -61,6 +72,16 @@ export default function Dvds() {
     setLoading(false);
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [user?.id]);
+
+  // Send anyone who is not staff home. Waiting on `authLoading` is the whole
+  // trick: the role arrives a tick after the session does, so redirecting on a
+  // bare `!isStaff` bounces a signed-in staff member off their own page on the
+  // first paint. Same shape as the admin dashboard's guard, deliberately — one
+  // gate behaving one way is easier to reason about than two near-misses.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isStaff) navigate('/', { replace: true });
+  }, [isStaff, authLoading, navigate]);
 
   async function reserve(dvd: Dvd) {
     if (!user) {
@@ -141,16 +162,45 @@ export default function Dvds() {
     return <Button size="sm" disabled={out} onClick={() => reserve(d)}>{out ? 'Unavailable' : 'Reserve'}</Button>;
   };
 
+  /*
+   * Rendered on every path through this component, including the ones that show
+   * nothing. Googlebot crawls anonymously, so it is *never* staff: if the
+   * noindex tag only rendered for signed-in staff, the crawler would never see
+   * it and the existing search listing for this page would survive untouched —
+   * a tag that only the people who do not need it can read.
+   *
+   * For the same reason `/dvds` is deliberately NOT added to robots.txt.
+   * Disallow stops the crawl, and a page that is never crawled is a page whose
+   * noindex is never read; the stale listing would be frozen in place rather
+   * than dropped. Allow the crawl, serve the tag, let it fall out of the index.
+   */
+  const seo = (
+    <SEO
+      title="DVD Rentals — Kenworthy"
+      description={
+        MEMBER_ACCOUNTS_ENABLED
+          ? "Browse and reserve DVDs from the Kenworthy's lending library. Pick up at the box office on Main Street, Moscow."
+          : "Browse the Kenworthy's DVD lending library. Ask at the box office on Main Street, Moscow, to borrow a title."
+      }
+      noindex
+    />
+  );
+
+  if (authLoading) {
+    return (
+      <>
+        {seo}
+        <div className="container py-16 text-center text-muted-foreground">Loading...</div>
+      </>
+    );
+  }
+  // The redirect above is still in flight; render the tag and nothing else,
+  // rather than flash the catalogue at someone about to be sent away from it.
+  if (!isStaff) return seo;
+
   return (
     <>
-      <SEO
-        title="DVD Rentals — Kenworthy"
-        description={
-          MEMBER_ACCOUNTS_ENABLED
-            ? "Browse and reserve DVDs from the Kenworthy's lending library. Pick up at the box office on Main Street, Moscow."
-            : "Browse the Kenworthy's DVD lending library. Ask at the box office on Main Street, Moscow, to borrow a title."
-        }
-      />
+      {seo}
       <div className="container mx-auto px-4 py-10 space-y-8 max-w-6xl">
         <header className="space-y-2">
           <p className="font-display uppercase tracking-[0.3em] text-xs text-accent">Lending library</p>
