@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Trash2, UserPlus, Search, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchAllRows } from '@/lib/fetchAllRows';
@@ -37,6 +37,30 @@ export default function HostManagementTab() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedProductionKey, setSelectedProductionKey] = useState('');
   const [loading, setLoading] = useState(true);
+
+  /*
+   * One flat, searchable list rather than three scrollable groups.
+   *
+   * There are ~1,290 productions here — the movies alone are 1,088, and they
+   * are paged in with `fetchAllRows` precisely so none are missing. Every one
+   * of them was a row in a dropdown, which is the case `SearchableSelect` was
+   * built for: finding "Casablanca" meant scrolling past a thousand titles.
+   *
+   * The Events / Live Performances / Movies headings are gone, but the kind is
+   * not: it moves into `hint`, which the picker searches alongside the title.
+   * So typing "movie" still narrows to films, and unlike a heading it composes
+   * — "movie dune" gets there in one go.
+   */
+  const productionOptions = useMemo(
+    () =>
+      productions.map(p => ({
+        value: `${p.type}::${p.id}`,
+        label: p.title,
+        hint:
+          p.type === 'movie' ? 'Movie' : p.type === 'event' ? 'Event' : 'Live performance',
+      })),
+    [productions],
+  );
 
   useEffect(() => {
     loadData();
@@ -179,38 +203,16 @@ export default function HostManagementTab() {
 
           {/* Production select */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Production</label>
-            <Select value={selectedProductionKey} onValueChange={setSelectedProductionKey}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select production..." />
-              </SelectTrigger>
-              <SelectContent>
-                {productions.filter(p => p.type === 'event').length > 0 && (
-                  <>
-                    <p className="px-2 py-1 text-xs text-muted-foreground font-semibold">Events</p>
-                    {productions.filter(p => p.type === 'event').map(p => (
-                      <SelectItem key={`event::${p.id}`} value={`event::${p.id}`}>{p.title}</SelectItem>
-                    ))}
-                  </>
-                )}
-                {productions.filter(p => p.type === 'live_performance').length > 0 && (
-                  <>
-                    <p className="px-2 py-1 text-xs text-muted-foreground font-semibold">Live Performances</p>
-                    {productions.filter(p => p.type === 'live_performance').map(p => (
-                      <SelectItem key={`live_performance::${p.id}`} value={`live_performance::${p.id}`}>{p.title}</SelectItem>
-                    ))}
-                  </>
-                )}
-                {productions.filter(p => p.type === 'movie').length > 0 && (
-                  <>
-                    <p className="px-2 py-1 text-xs text-muted-foreground font-semibold">Movies</p>
-                    {productions.filter(p => p.type === 'movie').map(p => (
-                      <SelectItem key={`movie::${p.id}`} value={`movie::${p.id}`}>{p.title}</SelectItem>
-                    ))}
-                  </>
-                )}
-              </SelectContent>
-            </Select>
+            <label htmlFor="host-production" className="text-sm font-medium">Production</label>
+            <SearchableSelect
+              id="host-production"
+              options={productionOptions}
+              value={selectedProductionKey}
+              onChange={setSelectedProductionKey}
+              placeholder="Select production…"
+              searchPlaceholder="Search films, events, performances…"
+              emptyText="No production matches that search."
+            />
           </div>
 
           <div className="flex items-end">

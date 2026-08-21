@@ -219,6 +219,16 @@ toast now names the environment the server resolved, so it should read
 Resolved: the frontend fix is live as of `f6946942` (see below), and the Labor
 roster confirmed the production token.
 
+**21 Aug 2026 — the button referenced above no longer exists.** "Pull from
+Square" and the "Square catalog categories" panel were removed from Admin →
+Concessions; they were recovery instruments built during the 14 Aug damage
+window and outlived the emergency. The `square-catalog-sync` function still has
+every action they called (`preview`, `repair_categories`, `repair_variations`,
+`damage_census`) and is still invoked for `push_item`, so nothing server-side
+was withdrawn — the actions are simply no longer one click from the menu
+editor. Reach them by invoking the function directly if a catalog repair is
+ever needed again.
+
 ## Concurrent-deploy collision — RESOLVED, but keep the lesson
 
 The prod Worker was deployed three times within 20 seconds today
