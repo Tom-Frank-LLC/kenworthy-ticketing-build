@@ -50,6 +50,8 @@ type PassRow = {
   possible_matches?: Array<{ id: string; name: string; why: string }>;
 };
 
+type ProductionKind = 'movie' | 'event' | 'live_performance';
+
 type Plan = {
   showings: number;
   catalog_items: number;
@@ -62,24 +64,43 @@ type Plan = {
     showings: number;
     possible_matches?: Array<{ id: string; name: string; why: string }>;
   }>;
-  adoptable?: Array<{ variation_name: string; production_title: string }>;
-  appendable?: Array<{ variation_name: string; production_title: string; price_cents: number }>;
-  price_drift?: Array<{ variation_name: string; production_title: string; reason?: string }>;
+  /*
+   * Each of these is built server-side by spreading a `Desired` row, which
+   * carries `production_kind` (see `_shared/square-catalog.ts`). The field was
+   * simply never declared here. Declaring it is what lets one panel be scoped
+   * to the surface it sits on without touching the edge function.
+   *
+   * Server-side these are `.slice(0, 50)` while `counts` holds the true totals,
+   * so a scoped view counts the rows it actually received and says "50+" rather
+   * than quoting an unscoped total against a filtered list.
+   */
+  adoptable?: Array<{ variation_name: string; production_title: string; production_kind?: ProductionKind }>;
+  appendable?: Array<{ variation_name: string; production_title: string; price_cents: number; production_kind?: ProductionKind }>;
+  price_drift?: Array<{ variation_name: string; production_title: string; reason?: string; production_kind?: ProductionKind }>;
 };
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
 interface SquareCatalogTabProps {
   /**
-   * Passes now have their own panel on the Passes tab, so this screen suppresses
-   * its pass section when mounted beside it. What is left is the showtime work —
-   * variations to append, prices that disagree with Square — which has no other
-   * home yet.
+   * Passes have their own panel on the Passes tab, so this screen suppresses its
+   * pass section when mounted beside it.
    */
   showPasses?: boolean;
+  /**
+   * Restrict the showtime work to these production kinds.
+   *
+   * Given, the panel stops being a screen of its own and becomes a section of
+   * the Listings sub-tab it sits on: Movies shows movie showtimes, Live Events
+   * shows events and performances. It also drops the "productions with no
+   * Square item" list, because `SquareLinkPanel` is already on those surfaces
+   * doing exactly that job — two panels answering one question in the same tab
+   * is how an operator ends up unsure which one is authoritative.
+   */
+  kinds?: ProductionKind[];
 }
 
-export default function SquareCatalogTab({ showPasses = true }: SquareCatalogTabProps) {
+export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCatalogTabProps) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [passes, setPasses] = useState<PassRow[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -190,19 +211,57 @@ export default function SquareCatalogTab({ showPasses = true }: SquareCatalogTab
   if (!plan) return null;
 
   const c = plan.counts || {};
-  const adoptable = c.adopt_existing ?? 0;
-  const appendable = c.would_append ?? 0;
-  const needs = plan.needs_dashboard_item ?? [];
+  const scoped = !!kinds?.length;
+  const inScope = <T extends { production_kind?: ProductionKind }>(rows: T[] | undefined) =>
+    (rows ?? []).filter(r => !scoped || (r.production_kind ? kinds!.includes(r.production_kind) : true));
+
+  const adoptableRows = inScope(plan.adoptable);
+  const appendableRows = inScope(plan.appendable);
+  const driftRows = inScope(plan.price_drift);
+
+  /*
+   * Unscoped, `counts` is the honest total and the arrays are a 50-row sample of
+   * it. Scoped, that total is about the whole catalog and would overstate what
+   * is on screen, so the filtered length is the only number that matches the
+   * list. It can still under-report when the server truncated at 50 — hence the
+   * "+" rather than a figure presented as complete.
+   */
+  const adoptable = scoped ? adoptableRows.length : (c.adopt_existing ?? 0);
+  const appendable = scoped ? appendableRows.length : (c.would_append ?? 0);
+  const truncated = (rows: unknown[]) => (scoped && rows.length >= 50 ? '+' : '');
+
+  /*
+   * `apply` has no kind filter — it works the whole plan, every kind at once.
+   * So a scoped view may *list* three movie showtimes while the button behind
+   * it writes twelve across all listings. The list is scoped because that is
+   * what makes it useful here; the buttons are labelled with the real, global
+   * figure because a control that understates what it writes to Square is the
+   * exact shape of the 14 Aug damage. Scoping the write needs a `kinds` filter
+   * on the edge function's `apply` action.
+   */
+  const adoptableTotal = c.adopt_existing ?? 0;
+  const appendableTotal = c.would_append ?? 0;
+
+  // Linkage belongs to SquareLinkPanel on the scoped surfaces; see the prop note.
+  const needs = scoped ? [] : (plan.needs_dashboard_item ?? []);
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="font-display text-lg font-bold">Square catalog</h3>
+          {/* Scoped, the enclosing section already names this; a second heading
+              would title the same box twice. */}
+          {!scoped && <h3 className="font-display text-lg font-bold">Square catalog</h3>}
           <p className="text-sm text-muted-foreground">
-            {plan.showings} showing(s) on sale · {plan.catalog_items} items in Square.
-            A showtime with no Square item still sells, but it will not appear in
-            item sales or under a category.
+            {scoped ? (
+              <>A showtime with no Square item still sells, but it will not appear in item sales or under a category.</>
+            ) : (
+              <>
+                {plan.showings} showing(s) on sale · {plan.catalog_items} items in Square.
+                A showtime with no Square item still sells, but it will not appear in
+                item sales or under a category.
+              </>
+            )}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={!!busy}>
@@ -210,34 +269,38 @@ export default function SquareCatalogTab({ showPasses = true }: SquareCatalogTab
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(c).map(([k, v]) => (
-          <Badge key={k} variant={k === 'linked' ? 'default' : 'outline'}>
-            {k.replace(/_/g, ' ')}: {v}
-          </Badge>
-        ))}
-        {!Object.keys(c).length && <Badge variant="outline">nothing on sale in this window</Badge>}
-      </div>
+      {/* Whole-catalog tallies. Hidden when scoped: they count every kind, and
+          printed above a filtered list they would describe something else. */}
+      {!scoped && (
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(c).map(([k, v]) => (
+            <Badge key={k} variant={k === 'linked' ? 'default' : 'outline'}>
+              {k.replace(/_/g, ' ')}: {v}
+            </Badge>
+          ))}
+          {!Object.keys(c).length && <Badge variant="outline">nothing on sale in this window</Badge>}
+        </div>
+      )}
 
       {adoptable > 0 && (
         <Card className="p-4 space-y-2">
-          <div className="font-medium">{adoptable} showtime(s) already in Square</div>
+          <div className="font-medium">{adoptable}{truncated(adoptableRows)} showtime(s) already in Square</div>
           <p className="text-sm text-muted-foreground">
             These exist in the catalog and only need recording on our side. Nothing
             is written to Square.
           </p>
           <Button onClick={adopt} disabled={!!busy}>
             {busy === 'adopt' && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-            Record {adoptable}
+            Record {scoped ? `all ${adoptableTotal}, across every listing` : adoptable}
           </Button>
         </Card>
       )}
 
       {appendable > 0 && (
         <Card className="p-4 space-y-2">
-          <div className="font-medium">{appendable} showtime(s) to create in Square</div>
+          <div className="font-medium">{appendable}{truncated(appendableRows)} showtime(s) to create in Square</div>
           <ul className="text-sm text-muted-foreground space-y-0.5">
-            {(plan.appendable ?? []).slice(0, 8).map((a, i) => (
+            {appendableRows.slice(0, 8).map((a, i) => (
               <li key={i}>{a.production_title} — {a.variation_name} · {money(a.price_cents)}</li>
             ))}
           </ul>
@@ -246,8 +309,8 @@ export default function SquareCatalogTab({ showPasses = true }: SquareCatalogTab
               {busy === 'append' && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
               Create one, to check
             </Button>
-            <Button onClick={() => append(appendable)} disabled={!!busy}>
-              Create all {appendable}
+            <Button onClick={() => append(appendableTotal)} disabled={!!busy}>
+              Create all {appendableTotal}{scoped ? ', across every listing' : ''}
             </Button>
           </div>
         </Card>
@@ -395,10 +458,10 @@ export default function SquareCatalogTab({ showPasses = true }: SquareCatalogTab
         </CollapsibleSection>
       )}
 
-      {(plan.price_drift ?? []).length > 0 && (
+      {driftRows.length > 0 && (
         <Card className="p-4 space-y-1">
           <div className="font-medium">Prices that disagree with Square</div>
-          {(plan.price_drift ?? []).slice(0, 8).map((p, i) => (
+          {driftRows.slice(0, 8).map((p, i) => (
             <p key={i} className="text-sm text-muted-foreground">
               {p.production_title} — {p.variation_name}: {p.reason}
             </p>

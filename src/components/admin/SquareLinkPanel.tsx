@@ -34,6 +34,22 @@ const ENTITY_TABLE: Record<SquareScope, string> = {
   live_performances: 'live_performances',
 };
 
+/**
+ * Which production kinds a scope answers for.
+ *
+ * `live_performances` covers **two** kinds, and that is the point. The Listings
+ * tab has one "Live Events" surface holding both events and performances, so a
+ * panel there that matched only `live_performance` left every unlinked *event*
+ * with nowhere to appear — not in Movies, not here, and visible only on the
+ * separate Square screen. That screen is gone now, which turns a gap into a
+ * disappearance, so the scope has to cover what its surface actually lists.
+ */
+const SCOPE_KINDS: Record<Exclude<SquareScope, 'passes'>, ProductionRow['kind'][]> = {
+  movies: ['movie'],
+  events: ['event'],
+  live_performances: ['event', 'live_performance'],
+};
+
 interface PassRow {
   pass_type_id: string;
   name: string;
@@ -206,7 +222,7 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
           canCreate: p.status === 'needs_item',
         }))
     : (plan?.needs_dashboard_item ?? [])
-        .filter(p => p.kind === (scope === 'movies' ? 'movie' : scope === 'events' ? 'event' : 'live_performance'))
+        .filter(p => SCOPE_KINDS[scope as Exclude<SquareScope, 'passes'>].includes(p.kind))
         .map(p => ({
           entityId: p.production_id,
           title: p.title,
