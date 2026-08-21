@@ -130,7 +130,7 @@ export default function Backstage() {
         Welcome to
       </p>
       <h1 className="font-display text-3xl md:text-5xl text-foreground">
-        The room <span className="text-primary">behind the room</span>.
+        The room <span className="text-primary">behind the room</span>
       </h1>
     </>
   );
