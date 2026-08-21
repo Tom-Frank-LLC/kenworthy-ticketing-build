@@ -49,6 +49,7 @@ import {
   desiredVariations,
   type ProductionKind,
   type Desired,
+  parseKindFilter,
 } from "../_shared/square-catalog.ts";
 
 declare const Deno: any;
@@ -159,6 +160,25 @@ Deno.serve(async (req: Request) => {
   if (isEnsure && !scopedShowingId) {
     return json({ error: "ensure_showing needs a showing_id" }, 400);
   }
+
+  /*
+   * Restrict a write to certain production kinds.
+   *
+   * The Listings tab shows this work as a section of Movies and a section of
+   * Live Events, so "Create all 3" under the movie list has to mean three
+   * movies. Without this the button wrote the whole plan — every kind — while
+   * sitting under a filtered list, which is a control that understates what it
+   * writes to Square. That is the shape of the 14 Aug damage and not something
+   * to leave to a label.
+   *
+   * Fails closed. `kinds: ["mvoie"]` is a typo, not a request to write
+   * everything, so an unrecognised value is a 400 rather than a silent widening
+   * to global scope. Omitting the key entirely still means "no restriction",
+   * which is what the unscoped screen and `ensure_showing` rely on.
+   */
+  const kindFilter = parseKindFilter(payload.kinds);
+  if ("error" in kindFilter) return json({ error: kindFilter.error }, 400);
+  const kinds = kindFilter.kinds;
 
   const dryRun = isEnsure ? false : payload.dry_run !== false;
   const maxBatch = isEnsure ? Number(payload.max_batch ?? 8) : Number(payload.max_batch ?? 1);
@@ -782,6 +802,22 @@ Deno.serve(async (req: Request) => {
       (n as any).possible_matches = suggestTitleMatches(n.title, eventItems);
     }
 
+    /*
+     * One scope, applied before anything is counted or sliced.
+     *
+     * The read matters as much as the write here. These lists are capped at 50
+     * server-side, so filtering client-side would sample a global 50 and then
+     * narrow it — a Movies section could show two rows out of forty because the
+     * unscoped fifty happened to be mostly live events. Scoping first means the
+     * fifty are fifty of *this* kind.
+     *
+     * Callers that send no `kinds` — the unscoped screen, SquareLinkPanel,
+     * ensure_showing — are unaffected: absent means no restriction.
+     */
+    const inScope = kinds.length
+      ? plans.filter((p) => kinds.includes(p.production_kind))
+      : plans;
+
     const base = {
       ok: true,
       action,
@@ -799,9 +835,9 @@ Deno.serve(async (req: Request) => {
       return json({
         ...base,
         dry_run: true,
-        adoptable: plans.filter((p) => p.status === "adopt_existing").slice(0, 50),
-        appendable: plans.filter((p) => p.status === "would_append").slice(0, 50),
-        price_drift: plans.filter((p) => p.status === "price_drift").slice(0, 50),
+        adoptable: inScope.filter((p) => p.status === "adopt_existing").slice(0, 50),
+        appendable: inScope.filter((p) => p.status === "would_append").slice(0, 50),
+        price_drift: inScope.filter((p) => p.status === "price_drift").slice(0, 50),
         note:
           "Read-only. Nothing was written to Square or to the mapping table. " +
           "`adopt_existing` needs no catalog write at all — the variation is " +
@@ -812,7 +848,7 @@ Deno.serve(async (req: Request) => {
     // ---- apply ------------------------------------------------------------
     // Adoptions first: they are pure database writes, they cannot damage the
     // catalog, and every one of them removes an item from the append list.
-    const adoptions = plans.filter((p) => p.status === "adopt_existing");
+    const adoptions = inScope.filter((p) => p.status === "adopt_existing");
     let adopted = 0;
     if (!dryRun && adoptions.length) {
       for (const a of adoptions) {
@@ -829,7 +865,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const appendable = plans.filter((p) => p.status === "would_append");
+    const appendable = inScope.filter((p) => p.status === "would_append");
 
     // The cap governs WRITES, not the rehearsal.
     //

@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini } from 'lucide-react';
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store
+} from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import { CollapsibleSection } from '@/components/admin/CollapsibleSection';
@@ -115,6 +116,9 @@ async function fetchAllPages<T>(
   return data;
 }
 
+/** The Listings sub-tabs that `?tab=` may name. */
+const SCHEDULE_TABS = ['movies', 'live-events', 'venues'];
+
 export default function AdminDashboard() {
   const { isAdmin, isStaff, isSuperadmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -127,7 +131,18 @@ export default function AdminDashboard() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [ticketCount, setTicketCount] = useState(0);
   const [scheduleQuery, setScheduleQuery] = useState(() => searchParams.get('q') || '');
-  const [activeScheduleTab, setActiveScheduleTab] = useState(() => searchParams.get('tab') || 'movies');
+  /*
+   * `?tab=` is a link somebody may have bookmarked, and "square" was one of its
+   * values until the Square work moved inside Movies and Live Events. Radix
+   * renders nothing for a value with no TabsContent, so an old link would open
+   * the Listings tab onto a blank panel with no error to search for. Unknown
+   * values land on Movies instead. (Same contract `adminSections.ts` keeps for
+   * the top-level `?section=`.)
+   */
+  const [activeScheduleTab, setActiveScheduleTab] = useState(() => {
+    const wanted = searchParams.get('tab');
+    return wanted && SCHEDULE_TABS.includes(wanted) ? wanted : 'movies';
+  });
   // Festival, Hiring and Press were each a top-level tab until the dashboard
   // grew past what a row of tabs can hold. They are all one job — editing a
   // specific public page — so they live under Pages now. Their old ?section=
@@ -414,6 +429,138 @@ export default function AdminDashboard() {
   };
 
 
+  /*
+   * The search and filter controls, rendered at the top of whichever listing
+   * they filter rather than in a section of their own.
+   *
+   * They were briefly their own collapsible panel, which read as a separate
+   * thing to open rather than as part of the table underneath — and every
+   * control here narrows exactly one list, so the two belong together. The
+   * conditionals inside still key off `activeScheduleTab`; Radix only mounts
+   * the active TabsContent, so whichever copy is on screen is the right one.
+   */
+  const listingFilters = (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+      <div className="relative w-full sm:w-56">
+        <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={scheduleQuery}
+          onChange={e => setScheduleQuery(e.target.value)}
+          placeholder="Search title…"
+          className="pl-9"
+        />
+      </div>
+      <div className="flex flex-wrap gap-2 items-center">
+        <Select value={statusFilter} onValueChange={v => setStatusFilter(v as any)}>
+          <SelectTrigger className="w-[130px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {activeScheduleTab === 'movies' && (
+          <>
+            <Select value={ratingFilter} onValueChange={setRatingFilter}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue placeholder="Rating" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All ratings</SelectItem>
+                {uniqueRatings.map(r => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={genreFilter} onValueChange={setGenreFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Genre" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All genres</SelectItem>
+                {uniqueMovieGenres.map(g => (
+                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
+
+        {activeScheduleTab === 'live-events' && (
+          <>
+            <Select value={liveEventKindFilter} onValueChange={v => setLiveEventKindFilter(v as any)}>
+              <SelectTrigger className="w-[130px]">
+                <SelectValue placeholder="Kind" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All kinds</SelectItem>
+                <SelectItem value="event">Event</SelectItem>
+                <SelectItem value="concert">Performance</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Ticket type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All ticket types</SelectItem>
+                {uniqueEventTypes.map(t => (
+                  <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={concertSubcategoryFilter} onValueChange={setConcertSubcategoryFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Subcategory" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All subcategories</SelectItem>
+                {uniqueConcertSubcategories.map(s => (
+                  <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={genreFilter} onValueChange={setGenreFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Genre" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All genres</SelectItem>
+                {uniqueConcertGenres.map(g => (
+                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
+
+        <Select value={sortOrder} onValueChange={v => setSortOrder(v as SortOrder)}>
+          <SelectTrigger className="w-[190px]">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="showtime_desc">Showtime (upcoming first)</SelectItem>
+            <SelectItem value="showtime_asc">Showtime (past first)</SelectItem>
+            <SelectItem value="title_asc">Title A–Z</SelectItem>
+            <SelectItem value="title_desc">Title Z–A</SelectItem>
+            {/* Everything was bulk-imported at once, so created_at barely
+                varies — labelled plainly so the near-no-op isn't mistaken
+                for a broken showtime sort. */}
+            <SelectItem value="newest">Date added (newest)</SelectItem>
+            <SelectItem value="oldest">Date added (oldest)</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Button variant="ghost" size="sm" onClick={resetScheduleFilters} className="h-9 px-2 text-muted-foreground">
+          <X className="h-4 w-4 mr-1" /> Reset
+        </Button>
+      </div>
+    </div>
+  );
+
   if (authLoading) return <div className="container py-16 text-center text-muted-foreground">Loading...</div>;
 
   return (
@@ -562,137 +709,20 @@ export default function AdminDashboard() {
                 <TabsTrigger value="movies">Movies</TabsTrigger>
                 <TabsTrigger value="live-events">Live Events</TabsTrigger>
                 <TabsTrigger value="venues">Venues</TabsTrigger>
-                <TabsTrigger value="square">Showtimes in Square</TabsTrigger>
               </TabsList>
             </div>
-            {/* The filter row was the tallest thing on the tab and is empty on
-                arrival — every control below is component state, so a collapsed
-                panel can never be hiding a filter that is actually applied. */}
-            {activeScheduleTab !== 'venues' && (
-              <CollapsibleSection id="listings.filters" title="Filters" icon={Search}>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
-                  <div className="relative w-full sm:w-56">
-                    <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={scheduleQuery}
-                      onChange={e => setScheduleQuery(e.target.value)}
-                      placeholder="Search title…"
-                      className="pl-9"
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <Select value={statusFilter} onValueChange={v => setStatusFilter(v as any)}>
-                      <SelectTrigger className="w-[130px]">
-                        <SelectValue placeholder="Status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All statuses</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    {activeScheduleTab === 'movies' && (
-                      <>
-                        <Select value={ratingFilter} onValueChange={setRatingFilter}>
-                          <SelectTrigger className="w-[120px]">
-                            <SelectValue placeholder="Rating" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All ratings</SelectItem>
-                            {uniqueRatings.map(r => (
-                              <SelectItem key={r} value={r}>{r}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select value={genreFilter} onValueChange={setGenreFilter}>
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue placeholder="Genre" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All genres</SelectItem>
-                            {uniqueMovieGenres.map(g => (
-                              <SelectItem key={g} value={g}>{g}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </>
-                    )}
-
-                    {activeScheduleTab === 'live-events' && (
-                      <>
-                        <Select value={liveEventKindFilter} onValueChange={v => setLiveEventKindFilter(v as any)}>
-                          <SelectTrigger className="w-[130px]">
-                            <SelectValue placeholder="Kind" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All kinds</SelectItem>
-                            <SelectItem value="event">Event</SelectItem>
-                            <SelectItem value="concert">Performance</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
-                          <SelectTrigger className="w-[150px]">
-                            <SelectValue placeholder="Ticket type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All ticket types</SelectItem>
-                            {uniqueEventTypes.map(t => (
-                              <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select value={concertSubcategoryFilter} onValueChange={setConcertSubcategoryFilter}>
-                          <SelectTrigger className="w-[150px]">
-                            <SelectValue placeholder="Subcategory" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All subcategories</SelectItem>
-                            {uniqueConcertSubcategories.map(s => (
-                              <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select value={genreFilter} onValueChange={setGenreFilter}>
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue placeholder="Genre" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All genres</SelectItem>
-                            {uniqueConcertGenres.map(g => (
-                              <SelectItem key={g} value={g}>{g}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </>
-                    )}
-
-                    <Select value={sortOrder} onValueChange={v => setSortOrder(v as SortOrder)}>
-                      <SelectTrigger className="w-[190px]">
-                        <SelectValue placeholder="Sort by" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="showtime_desc">Showtime (upcoming first)</SelectItem>
-                        <SelectItem value="showtime_asc">Showtime (past first)</SelectItem>
-                        <SelectItem value="title_asc">Title A–Z</SelectItem>
-                        <SelectItem value="title_desc">Title Z–A</SelectItem>
-                        {/* Everything was bulk-imported at once, so created_at barely
-                            varies — labelled plainly so the near-no-op isn't mistaken
-                            for a broken showtime sort. */}
-                        <SelectItem value="newest">Date added (newest)</SelectItem>
-                        <SelectItem value="oldest">Date added (oldest)</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Button variant="ghost" size="sm" onClick={resetScheduleFilters} className="h-9 px-2 text-muted-foreground">
-                      <X className="h-4 w-4 mr-1" /> Reset
-                    </Button>
-                  </div>
-                </div>
-              </CollapsibleSection>
-            )}
             <TabsContent value="movies">
             <SquareLinkPanel scope="movies" title="Square catalog — movies" />
+            {/* The showtime half of the old Square screen, scoped to this
+                listing. Its own tab is gone: the work is about these titles,
+                so it belongs beside them rather than one tab away. */}
+            <CollapsibleSection
+              id="listings.movies.square"
+              title="Showtimes in Square"
+              icon={Store}
+            >
+              <SquareCatalogTab showPasses={false} kinds={['movie']} />
+            </CollapsibleSection>
             <CollapsibleSection
               id="listings.movies"
               title="Movies"
@@ -709,6 +739,7 @@ export default function AdminDashboard() {
                 </>
               }
             >
+            {listingFilters}
             <div className="space-y-4">
               {filteredMovies.map(movie => {
                 const movieShowings = getMovieShowings(movie.id);
@@ -790,6 +821,16 @@ export default function AdminDashboard() {
             </TabsContent>
             <TabsContent value="live-events">
             <SquareLinkPanel scope="live_performances" title="Square catalog — live events" />
+            {/* The showtime half of the old Square screen, scoped to this
+                listing. Its own tab is gone: the work is about these titles,
+                so it belongs beside them rather than one tab away. */}
+            <CollapsibleSection
+              id="listings.live-events.square"
+              title="Showtimes in Square"
+              icon={Store}
+            >
+              <SquareCatalogTab showPasses={false} kinds={['event', 'live_performance']} />
+            </CollapsibleSection>
             <CollapsibleSection
               id="listings.live-events"
               title="Live Events"
@@ -806,6 +847,7 @@ export default function AdminDashboard() {
                 </>
               }
             >
+            {listingFilters}
             <div className="space-y-3">
               {filteredLiveEvents.map(item => {
                 const isEvent = item.kind === 'event';
@@ -948,13 +990,6 @@ export default function AdminDashboard() {
             </CollapsibleSection>
             </TabsContent>
 
-            {/* The showtime half of the old Analytics screen. Passes moved to
-                their own panel on the Passes tab; variations to append and
-                prices that disagree with Square are a listings concern and
-                keep a home here rather than vanishing with that tab. */}
-            <TabsContent value="square">
-              <SquareCatalogTab showPasses={false} />
-            </TabsContent>
           </Tabs>
         </TabsContent>
 
