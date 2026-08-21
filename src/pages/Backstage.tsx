@@ -107,6 +107,23 @@ export default function Backstage() {
   const open = lightbox !== null ? photos[lightbox] ?? null : null;
   const paragraphs = backstageParagraphs(body);
 
+  /**
+   * The page's own line, and its heading.
+   *
+   * Defined once because it appears in one of two places and never both: laid
+   * over the foot of the photograph when there is one, and under the drawn sign
+   * when there is not. Two copies of a page's <h1> is the kind of duplication
+   * that ends with the two disagreeing.
+   *
+   * "behind the room" carries the primary token because that half is the whole
+   * idea — the room is not the point, the fact that it is behind another one is.
+   */
+  const titleBlock = (
+    <h1 className="font-display text-3xl md:text-5xl text-foreground">
+      The room <span className="text-primary">behind the room</span>.
+    </h1>
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <SEO
@@ -117,50 +134,70 @@ export default function Backstage() {
       />
 
       {/* ----------------------------------------------------- The sign */}
-      <section className="relative overflow-hidden border-b border-accent/20">
-        {/* The teaser's lighting, carried through the door. Decorative, so it
-            is inert to the pointer and invisible to a screen reader. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-70"
-          style={{
-            background:
-              'radial-gradient(ellipse at 78% 30%, hsl(var(--accent) / 0.18), transparent 55%), radial-gradient(ellipse at 20% 80%, hsl(var(--primary) / 0.10), transparent 60%)',
-          }}
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(ellipse at center, transparent 40%, hsl(var(--background) / 0.85) 100%)',
-          }}
-        />
+      {heroPath ? (
+        /* The room, with the page's line laid over the foot of it — the same
+           treatment as the festival page, and for the same reasons.
 
-        <div className="relative container max-w-4xl py-20 md:py-28 text-center">
-          {/* The photograph replaces the drawn sign rather than sitting above
-              it. Both say BACKSTAGE in neon; showing the two together would
-              print the name twice and make the real one look like a caption
-              for the drawing. Whichever is shown is the <h1>, so the document
-              outline has a level-one entry either way. */}
-          {heroPath ? (
-            <h1 className="relative m-0">
-              <img
-                src={thumbUrl(heroPath, 1600)}
-                alt="The Backstage neon sign, lit, above the bar"
-                /* The hero is the content, not something below the fold — so
-                   eager, and fetchpriority high. Every other image on this page
-                   is lazy for exactly the opposite reason. */
-                loading="eager"
-                fetchPriority="high"
-                decoding="async"
-                className="mx-auto w-full max-w-3xl rounded-lg object-contain shadow-[0_8px_60px_rgba(0,0,0,0.7)]"
-              />
-            </h1>
-          ) : (
-            /* max-width rather than a fixed width: the sign is the widest thing
-               on the page and a fixed 300px overflows a 320px phone once the
-               container's own padding is taken out. */
+           It runs flush to the header: there is no top padding above it,
+           because a band of empty page above a photograph that is meant to be
+           the first thing there reads as a mistake. Full-bleed on a phone,
+           container width from md up, and only the bottom corners rounded —
+           the top edge has nothing left to be rounded against.
+
+           The scrim is not decoration. The bottom of the neon photograph is
+           dark but not uniformly so, and a title set straight onto it would be
+           legible in this image and illegible in whichever one replaces it. */
+        <section className="container max-w-5xl px-4">
+          {/* No bottom margin: the section below brings its own top padding,
+              and stacking the two left a band of empty page under the
+              photograph almost as tall as the copy it was separating. */}
+          <div className="relative -mx-4 md:mx-0 md:rounded-b-lg overflow-hidden">
+            <img
+              src={thumbUrl(heroPath, 1800)}
+              /* Described rather than decorative: unlike the festival's shot of
+                 the auditorium, this photograph is of the sign itself, and the
+                 heading laid over it does not say the room's name. Without this
+                 alt the name "Backstage" appears nowhere in the page's content. */
+              alt="The Backstage neon sign, lit, above the bar"
+              /* The hero is the content, not something below the fold. Every
+                 other image on this page is lazy for exactly the opposite
+                 reason. */
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
+              className="w-full h-[46vh] md:h-[56vh] object-cover"
+            />
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/85 to-transparent pt-20 pb-8 md:pb-12 px-4 md:px-8">
+              {titleBlock}
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="relative overflow-hidden border-b border-accent/20">
+          {/* The teaser's lighting, carried through the door. Decorative, so it
+              is inert to the pointer and invisible to a screen reader. Only the
+              drawn sign needs it — a photograph brings its own light. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 opacity-70"
+            style={{
+              background:
+                'radial-gradient(ellipse at 78% 30%, hsl(var(--accent) / 0.18), transparent 55%), radial-gradient(ellipse at 20% 80%, hsl(var(--primary) / 0.10), transparent 60%)',
+            }}
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(ellipse at center, transparent 40%, hsl(var(--background) / 0.85) 100%)',
+            }}
+          />
+
+          <div className="relative container max-w-4xl py-20 md:py-28 text-center">
+            {/* max-width rather than a fixed width: the sign is the widest thing
+                on the page and a fixed 300px overflows a 320px phone once the
+                container's own padding is taken out. */}
             <div className="relative mx-auto w-full max-w-[300px] md:max-w-[420px]">
               <div
                 aria-hidden
@@ -170,27 +207,20 @@ export default function Backstage() {
                     'radial-gradient(circle, hsl(41 65% 56% / 0.25), transparent 70%)',
                 }}
               />
-              <h1 className="relative m-0">
-                <img
-                  src={backstageLogo}
-                  alt="Backstage"
-                  width={3012}
-                  height={1388}
-                  className="w-full [filter:drop-shadow(0_0_6px_hsl(333_90%_60%/0.85))_drop-shadow(0_0_18px_hsl(333_85%_55%/0.6))_drop-shadow(0_0_38px_hsl(333_80%_50%/0.45))_drop-shadow(0_8px_30px_rgba(0,0,0,0.6))]"
-                  decoding="async"
-                />
-              </h1>
+              <img
+                src={backstageLogo}
+                alt="Backstage"
+                width={3012}
+                height={1388}
+                className="relative w-full [filter:drop-shadow(0_0_6px_hsl(333_90%_60%/0.85))_drop-shadow(0_0_18px_hsl(333_85%_55%/0.6))_drop-shadow(0_0_38px_hsl(333_80%_50%/0.45))_drop-shadow(0_8px_30px_rgba(0,0,0,0.6))]"
+                decoding="async"
+              />
             </div>
-          )}
 
-          <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mt-10">
-            You found the door
-          </p>
-          <p className="font-display text-3xl md:text-4xl text-foreground mt-4">
-            The room behind the room.
-          </p>
-        </div>
-      </section>
+            <div className="mt-10">{titleBlock}</div>
+          </div>
+        </section>
+      )}
 
       {/* -------------------------------------------- How it gets used */}
       {/* Both sections below sit in the same container so their headings share
