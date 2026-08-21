@@ -13,9 +13,19 @@ interface SEOProps {
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
   /** Optional og:type override (default "website"). */
   ogType?: string;
+  /**
+   * Keep the page out of search results.
+   *
+   * For a page that is *unlisted* rather than private: reachable by anyone who
+   * has the URL, but not something to be found by searching. Without this a
+   * secret door linked from the home page is crawled like any other link and
+   * turns into a search result, which is the whole thing it was not supposed
+   * to be. Matches the `noindex, nofollow` already on public/colorlab.html.
+   */
+  noindex?: boolean;
 }
 
-export function SEO({ title, description, path, image, jsonLd, ogType = "website" }: SEOProps) {
+export function SEO({ title, description, path, image, jsonLd, ogType = "website", noindex = false }: SEOProps) {
   const location = useLocation();
   const url = `${SITE_URL}${path ?? location.pathname}`;
   const trimmedTitle = title.length > 60 ? title.slice(0, 57) + "…" : title;
@@ -27,6 +37,7 @@ export function SEO({ title, description, path, image, jsonLd, ogType = "website
     <Helmet>
       <title>{trimmedTitle}</title>
       <meta name="description" content={trimmedDesc} />
+      {noindex && <meta name="robots" content="noindex, nofollow" />}
       <link rel="canonical" href={url} />
       <meta property="og:title" content={trimmedTitle} />
       <meta property="og:description" content={trimmedDesc} />

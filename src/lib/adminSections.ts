@@ -16,7 +16,22 @@
 /** Sections that used to be top-level tabs and are now sub-tabs of Pages. */
 export const LEGACY_PAGE_SECTIONS = ['festival', 'hiring', 'press'] as const;
 
-export type PagesSubTab = (typeof LEGACY_PAGE_SECTIONS)[number];
+/**
+ * Every sub-tab Pages has, legacy or not.
+ *
+ * The two lists are not the same list and collapsing them would be a bug.
+ * `LEGACY_PAGE_SECTIONS` answers "was this once a top-level tab, so does an old
+ * `?section=` link have to be redirected?" — a closed set that can only shrink.
+ * This one answers "is this a sub-tab that exists?", and it grows every time a
+ * page gets an editor. Backstage was born inside Pages, so it belongs here and
+ * not there: `?section=backstage` was never a working link and should not start
+ * being one.
+ */
+export const PAGES_SUB_TABS = [...LEGACY_PAGE_SECTIONS, 'backstage'] as const;
+
+export type LegacyPageSection = (typeof LEGACY_PAGE_SECTIONS)[number];
+
+export type PagesSubTab = (typeof PAGES_SUB_TABS)[number];
 
 /** The sub-tab Pages opens on when nothing says otherwise. */
 export const DEFAULT_PAGES_TAB: PagesSubTab = 'festival';
@@ -28,8 +43,12 @@ export interface ResolvedSection {
   pagesTab: string;
 }
 
-function isLegacy(value: string): value is PagesSubTab {
+function isLegacy(value: string): value is LegacyPageSection {
   return (LEGACY_PAGE_SECTIONS as readonly string[]).includes(value);
+}
+
+function isSubTab(value: string): value is PagesSubTab {
+  return (PAGES_SUB_TABS as readonly string[]).includes(value);
 }
 
 /**
@@ -51,6 +70,8 @@ export function resolveAdminSection(
 
   return {
     section: current,
-    pagesTab: page && isLegacy(page) ? page : DEFAULT_PAGES_TAB,
+    // Any real sub-tab, not just a legacy one — otherwise a page added after
+    // the reorganisation could never be linked to.
+    pagesTab: page && isSubTab(page) ? page : DEFAULT_PAGES_TAB,
   };
 }
