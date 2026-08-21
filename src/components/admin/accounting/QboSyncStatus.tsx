@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '../CollapsibleSection';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Activity, AlertTriangle, CheckCircle2, Clock, Loader2, RefreshCw } from 'lucide-react';
@@ -85,65 +86,64 @@ export default function QboSyncStatus() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <Card className="glass">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="font-display flex items-center gap-2">
-          <Activity className="h-5 w-5" /> Background QBO Sync Status
-        </CardTitle>
+    <CollapsibleSection
+      id="accounting.qbo.sync-status"
+      title="Background QBO Sync Status"
+      icon={Activity}
+      actions={
         <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground">
-          Rolling 30-day view of records pushed to QuickBooks. Counts and errors update as the background sync runs.
-        </p>
-        <div className="grid gap-3 md:grid-cols-3">
-          {rows.map((r) => {
-            const hasErrors = r.recent_errors.length > 0;
-            const healthy = !!r.last_success_at && !hasErrors;
-            return (
-              <div key={r.kind} className="rounded-lg border border-border/60 p-3 space-y-2 bg-card/40">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{r.label}</span>
-                  {healthy ? (
-                    <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Healthy</Badge>
-                  ) : hasErrors ? (
-                    <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" /> Errors</Badge>
-                  ) : (
-                    <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Idle</Badge>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <p className="text-muted-foreground">Last success</p>
-                    <p className="font-medium">
-                      {r.last_success_at
-                        ? formatDistanceToNow(new Date(r.last_success_at), { addSuffix: true })
-                        : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Pushed (30d)</p>
-                    <p className="font-medium font-mono">{r.pushed_count.toLocaleString()}</p>
-                  </div>
-                </div>
-                {hasErrors && (
-                  <div className="space-y-1 pt-1 border-t border-border/40">
-                    <p className="text-xs font-medium text-destructive">Recent errors</p>
-                    {r.recent_errors.map((e) => (
-                      <div key={e.id} className="text-xs">
-                        <p className="text-muted-foreground truncate">{e.entity}</p>
-                        <p className="text-destructive/80 line-clamp-2">{e.message}</p>
-                      </div>
-                    ))}
-                  </div>
+      }
+    >
+      <p className="text-xs text-muted-foreground">
+        Rolling 30-day view of records pushed to QuickBooks. Counts and errors update as the background sync runs.
+      </p>
+      <div className="grid gap-3 md:grid-cols-3">
+        {rows.map((r) => {
+          const hasErrors = r.recent_errors.length > 0;
+          const healthy = !!r.last_success_at && !hasErrors;
+          return (
+            <div key={r.kind} className="rounded-lg border border-border/60 p-3 space-y-2 bg-card/40">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{r.label}</span>
+                {healthy ? (
+                  <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Healthy</Badge>
+                ) : hasErrors ? (
+                  <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" /> Errors</Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Idle</Badge>
                 )}
               </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p className="text-muted-foreground">Last success</p>
+                  <p className="font-medium">
+                    {r.last_success_at
+                      ? formatDistanceToNow(new Date(r.last_success_at), { addSuffix: true })
+                      : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Pushed (30d)</p>
+                  <p className="font-medium font-mono">{r.pushed_count.toLocaleString()}</p>
+                </div>
+              </div>
+              {hasErrors && (
+                <div className="space-y-1 pt-1 border-t border-border/40">
+                  <p className="text-xs font-medium text-destructive">Recent errors</p>
+                  {r.recent_errors.map((e) => (
+                    <div key={e.id} className="text-xs">
+                      <p className="text-muted-foreground truncate">{e.entity}</p>
+                      <p className="text-destructive/80 line-clamp-2">{e.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </CollapsibleSection>
   );
 }

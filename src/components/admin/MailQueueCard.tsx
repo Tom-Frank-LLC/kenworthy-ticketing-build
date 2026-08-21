@@ -32,6 +32,7 @@ export function MailQueueCard({
   onRetry,
   onMarkPosted,
   hideWhenEmpty = false,
+  bare = false,
 }: {
   orders: AwaitingPostOrder[];
   loading: boolean;
@@ -44,6 +45,16 @@ export function MailQueueCard({
   onMarkPosted: (orderId: string) => Promise<void>;
   /** Counter hides an empty card to stay fast; admin shows "nothing to post". */
   hideWhenEmpty?: boolean;
+  /**
+   * Drop the internal heading and card chrome.
+   *
+   * The admin dashboard renders this inside a `CollapsibleSection`, whose own
+   * header already carries the title and the count; drawing both would print
+   * "To be posted" twice, once inside the other. The counter passes nothing and
+   * is unaffected — this component is shared verbatim by both screens
+   * precisely so they cannot drift, so the difference is a prop, not a copy.
+   */
+  bare?: boolean;
 }) {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -66,13 +77,14 @@ export function MailQueueCard({
     }
   }
 
-  return (
-    <Card className="glass">
-      <CardContent className="p-4 space-y-3">
+  const body = (
+    <>
+      {!bare && (
         <h2 className="font-display text-xl font-bold flex items-center gap-2">
           <Mail className="h-5 w-5 text-primary" /> To be posted
           {orders.length > 0 && <Badge variant="default">{orders.length}</Badge>}
         </h2>
+      )}
 
         {loading ? (
           <p className="text-sm text-muted-foreground flex items-center gap-2">
@@ -167,7 +179,14 @@ export function MailQueueCard({
             })}
           </div>
         )}
-      </CardContent>
+    </>
+  );
+
+  if (bare) return <div className="space-y-3">{body}</div>;
+
+  return (
+    <Card className="glass">
+      <CardContent className="p-4 space-y-3">{body}</CardContent>
     </Card>
   );
 }

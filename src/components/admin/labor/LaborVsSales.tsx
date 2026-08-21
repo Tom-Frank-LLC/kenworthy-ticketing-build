@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '../CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -51,27 +52,24 @@ export function LaborVsSales() {
           </div>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader><CardTitle className="font-display">Labor cost vs sales</CardTitle></CardHeader>
-        <CardContent className="h-[360px]">
-          {loading ? <div className="py-10 text-center text-muted-foreground"><Loader2 className="h-4 w-4 inline animate-spin mr-2" />Loading…</div> :
-          series.length === 0 ? <div className="py-10 text-center text-muted-foreground">No data in range yet.</div> :
-          (<ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={series} margin={{ top: 12, right: 12, bottom: 4, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-              <XAxis dataKey="day" tickFormatter={(d) => format(new Date(d), 'MMM d')} />
-              <YAxis yAxisId="left" tickFormatter={(v) => `$${v}`} />
-              <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${v}%`} />
-              <Tooltip />
-              <Legend />
-              <Bar yAxisId="left" dataKey="ticket_revenue" stackId="rev" name="Ticket revenue" fill="hsl(var(--primary))" />
-              <Bar yAxisId="left" dataKey="concession_revenue" stackId="rev" name="Concessions" fill="hsl(var(--accent))" />
-              <Bar yAxisId="left" dataKey="labor_cost" name="Labor cost" fill="hsl(var(--muted-foreground))" />
-              <Line yAxisId="right" type="monotone" dataKey="labor_pct" name="Labor %" stroke="hsl(var(--destructive))" strokeWidth={2} />
-            </ComposedChart>
-          </ResponsiveContainer>)}
-        </CardContent>
-      </Card>
+      <CollapsibleSection id="labor.vs-sales.chart" title="Labor cost vs sales" defaultOpen>
+        {loading ? <div className="py-10 text-center text-muted-foreground"><Loader2 className="h-4 w-4 inline animate-spin mr-2" />Loading…</div> :
+        series.length === 0 ? <div className="py-10 text-center text-muted-foreground">No data in range yet.</div> :
+        (<ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={series} margin={{ top: 12, right: 12, bottom: 4, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+            <XAxis dataKey="day" tickFormatter={(d) => format(new Date(d), 'MMM d')} />
+            <YAxis yAxisId="left" tickFormatter={(v) => `$${v}`} />
+            <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${v}%`} />
+            <Tooltip />
+            <Legend />
+            <Bar yAxisId="left" dataKey="ticket_revenue" stackId="rev" name="Ticket revenue" fill="hsl(var(--primary))" />
+            <Bar yAxisId="left" dataKey="concession_revenue" stackId="rev" name="Concessions" fill="hsl(var(--accent))" />
+            <Bar yAxisId="left" dataKey="labor_cost" name="Labor cost" fill="hsl(var(--muted-foreground))" />
+            <Line yAxisId="right" type="monotone" dataKey="labor_pct" name="Labor %" stroke="hsl(var(--destructive))" strokeWidth={2} />
+          </ComposedChart>
+        </ResponsiveContainer>)}
+      </CollapsibleSection>
     </div>
   );
 }

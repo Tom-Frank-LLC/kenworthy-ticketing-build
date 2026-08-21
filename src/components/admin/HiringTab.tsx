@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -171,44 +172,37 @@ export default function HiringTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display uppercase flex items-center gap-2">
-            <Briefcase className="h-5 w-5 text-primary" /> Hiring page
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {enabled !== null && (
-            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 flex items-start gap-3">
-              {enabled
-                ? <Eye className="h-5 w-5 text-primary mt-0.5" />
-                : <EyeOff className="h-5 w-5 text-muted-foreground mt-0.5" />}
-              <div className="flex-1">
-                <div className="flex items-center gap-3">
-                  <Switch checked={enabled} onCheckedChange={toggleHiring} disabled={toggleBusy} />
-                  <span className="font-medium text-sm">
-                    {enabled ? "We're hiring — page is LIVE" : 'Hiring page is OFF'}
-                  </span>
-                </div>
-                <p className="text-xs font-serif text-muted-foreground mt-1">
-                  {enabled
-                    ? 'The Hiring link appears in the header and mobile menu, and /hiring shows the active postings below.'
-                    : 'The Hiring link is hidden and /hiring redirects to the Volunteer page, which keeps Natalia’s contact details in front of anyone who follows an old link.'}
-                </p>
+      <CollapsibleSection id="pages.hiring.page" title="Hiring page" icon={Briefcase} defaultOpen>
+        {enabled !== null && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-3 flex items-start gap-3">
+            {enabled
+              ? <Eye className="h-5 w-5 text-primary mt-0.5" />
+              : <EyeOff className="h-5 w-5 text-muted-foreground mt-0.5" />}
+            <div className="flex-1">
+              <div className="flex items-center gap-3">
+                <Switch checked={enabled} onCheckedChange={toggleHiring} disabled={toggleBusy} />
+                <span className="font-medium text-sm">
+                  {enabled ? "We're hiring — page is LIVE" : 'Hiring page is OFF'}
+                </span>
               </div>
+              <p className="text-xs font-serif text-muted-foreground mt-1">
+                {enabled
+                  ? 'The Hiring link appears in the header and mobile menu, and /hiring shows the active postings below.'
+                  : 'The Hiring link is hidden and /hiring redirects to the Volunteer page, which keeps Natalia’s contact details in front of anyone who follows an old link.'}
+              </p>
             </div>
-          )}
-          <p className="font-serif text-sm text-muted-foreground">
-            The volunteer copy and the coordinator’s contact details are part of the page itself and
-            are always shown — these postings are the paid openings listed above them.
-          </p>
-          {!draft && (
-            <Button size="sm" onClick={() => setDraft({ id: null, title: '', description: '' })}>
-              <Plus className="h-4 w-4 mr-1" /> New posting
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+        <p className="font-serif text-sm text-muted-foreground">
+          The volunteer copy and the coordinator’s contact details are part of the page itself and
+          are always shown — these postings are the paid openings listed above them.
+        </p>
+        {!draft && (
+          <Button size="sm" onClick={() => setDraft({ id: null, title: '', description: '' })}>
+            <Plus className="h-4 w-4 mr-1" /> New posting
+          </Button>
+        )}
+      </CollapsibleSection>
 
       {draft && (
         <Card className="glass border-primary/40">

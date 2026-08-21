@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -140,107 +141,107 @@ export default function RentalRequestsTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="glass">
-        <CardContent className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div>
-            <p className="font-display uppercase text-sm">Public rental form</p>
-            <p className="font-serif text-xs text-muted-foreground break-all">{publicFormUrl}</p>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => copyLink()}>
-              <Copy className="h-4 w-4 mr-1" /> Copy link
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href={publicFormUrl} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-4 w-4 mr-1" /> Open
-              </a>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <CollapsibleSection id="rentals.public-form" title="Public rental form">
+        <p className="font-serif text-xs text-muted-foreground break-all">{publicFormUrl}</p>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => copyLink()}>
+            <Copy className="h-4 w-4 mr-1" /> Copy link
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <a href={publicFormUrl} target="_blank" rel="noreferrer">
+              <ExternalLink className="h-4 w-4 mr-1" /> Open
+            </a>
+          </Button>
+        </div>
+      </CollapsibleSection>
 
-      <div className="flex items-center justify-between">
-        <h2 className="font-display text-xl">Rental Requests</h2>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            {STATUS_OPTIONS.map(s => (
-              <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {loading ? (
-        <p className="text-muted-foreground text-center py-8">Loading…</p>
-      ) : filtered.length === 0 ? (
-        <p className="text-muted-foreground text-center py-8 font-serif">No rental requests {filter !== 'all' && `with status "${filter}"`}.</p>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map(r => (
-            <Card key={r.id} className="glass">
-              <CardContent className="p-4 flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium truncate">{r.event_title}</p>
-                    <Badge variant={STATUS_VARIANT[r.status]} className="capitalize text-xs">{r.status}</Badge>
+      <CollapsibleSection
+        id="rentals.requests"
+        title="Rental Requests"
+        count={filtered.length}
+        defaultOpen
+        actions={
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {STATUS_OPTIONS.map(s => (
+                <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+      >
+        {loading ? (
+          <p className="text-muted-foreground text-center py-8">Loading…</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-muted-foreground text-center py-8 font-serif">No rental requests {filter !== 'all' && `with status "${filter}"`}.</p>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map(r => (
+              <Card key={r.id} className="glass">
+                <CardContent className="p-4 flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium truncate">{r.event_title}</p>
+                      <Badge variant={STATUS_VARIANT[r.status]} className="capitalize text-xs">{r.status}</Badge>
+                    </div>
+                    <p className="font-serif text-xs text-muted-foreground mt-1">
+                      {r.applicant_name} • {r.email}
+                      {r.proposed_date && ` • ${formatPlainDateRange(r.proposed_date, r.end_date)}`}
+                    </p>
+                    <p className="font-serif text-xs text-muted-foreground">
+                      Submitted {format(new Date(r.submitted_at), 'MMM d, yyyy h:mm a')}
+                    </p>
                   </div>
-                  <p className="font-serif text-xs text-muted-foreground mt-1">
-                    {r.applicant_name} • {r.email}
-                    {r.proposed_date && ` • ${formatPlainDateRange(r.proposed_date, r.end_date)}`}
-                  </p>
-                  <p className="font-serif text-xs text-muted-foreground">
-                    Submitted {format(new Date(r.submitted_at), 'MMM d, yyyy h:mm a')}
-                  </p>
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button size="sm" variant="outline" asChild title="Open contract">
-                    <a href={`/contract/${r.invite_token}`} target="_blank" rel="noreferrer">
-                      <FileText className="h-4 w-4 mr-1" /> Contract
-                    </a>
-                  </Button>
-                  {r.square_invoice_id ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      asChild
-                      title={`Square invoice — ${(r.square_invoice_status || 'draft').toLowerCase()}`}
-                    >
-                      <a href={r.square_invoice_url} target="_blank" rel="noreferrer">
-                        <Receipt className="h-4 w-4 mr-1" /> View Invoice
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="sm" variant="outline" asChild title="Open contract">
+                      <a href={`/contract/${r.invite_token}`} target="_blank" rel="noreferrer">
+                        <FileText className="h-4 w-4 mr-1" /> Contract
                       </a>
                     </Button>
-                  ) : (
-                    // A disabled button swallows its own tooltip, so the reason
-                    // it is disabled lives on the wrapper.
-                    <span title={lineCounts[r.id] ? 'Create a draft invoice in Square' : 'Add invoice lines under Details first'}>
+                    {r.square_invoice_id ? (
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={!lineCounts[r.id] || generating === r.id}
-                        onClick={() => generateInvoice(r)}
+                        asChild
+                        title={`Square invoice — ${(r.square_invoice_status || 'draft').toLowerCase()}`}
                       >
-                        <Receipt className="h-4 w-4 mr-1" />
-                        {generating === r.id ? 'Generating…' : 'Generate Invoice'}
+                        <a href={r.square_invoice_url} target="_blank" rel="noreferrer">
+                          <Receipt className="h-4 w-4 mr-1" /> View Invoice
+                        </a>
                       </Button>
-                    </span>
-                  )}
-                  <Button size="sm" variant="ghost" title="Copy contract link for renter" onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/contract/${r.invite_token}`);
-                    toast.success('Renter contract link copied');
-                  }}>
-                    <Link2 className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setOpen(r)}>
-                    <Eye className="h-4 w-4 mr-1" /> Details
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                    ) : (
+                      // A disabled button swallows its own tooltip, so the reason
+                      // it is disabled lives on the wrapper.
+                      <span title={lineCounts[r.id] ? 'Create a draft invoice in Square' : 'Add invoice lines under Details first'}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!lineCounts[r.id] || generating === r.id}
+                          onClick={() => generateInvoice(r)}
+                        >
+                          <Receipt className="h-4 w-4 mr-1" />
+                          {generating === r.id ? 'Generating…' : 'Generate Invoice'}
+                        </Button>
+                      </span>
+                    )}
+                    <Button size="sm" variant="ghost" title="Copy contract link for renter" onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/contract/${r.invite_token}`);
+                      toast.success('Renter contract link copied');
+                    }}>
+                      <Link2 className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setOpen(r)}>
+                      <Eye className="h-4 w-4 mr-1" /> Details
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </CollapsibleSection>
 
       <Dialog open={!!open} onOpenChange={v => !v && setOpen(null)}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">

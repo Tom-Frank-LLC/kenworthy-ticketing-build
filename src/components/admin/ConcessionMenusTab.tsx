@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Upload, Eye, Check, Trash2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
@@ -132,71 +133,73 @@ export default function ConcessionMenusTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-display text-2xl">Menu Versions</h3>
-          <p className="text-sm text-muted-foreground font-serif">
-            Upload menu PDFs, preview them, and choose which one shows on the homepage.
-          </p>
-        </div>
-        <Button onClick={() => setUploadOpen(true)}>
-          <Upload className="h-4 w-4 mr-2" /> Upload menu PDF
-        </Button>
-      </div>
-
-      {loading ? (
-        <p className="text-muted-foreground text-center py-8">Loading…</p>
-      ) : menus.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
-            <p>No menu PDFs yet. Upload one to get started.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-3">
-          {menus.map((m) => (
-            <Card key={m.id} className={m.is_active ? 'border-primary' : ''}>
-              <CardContent className="p-4 flex items-center gap-4">
-                <FileText className="h-8 w-8 text-accent shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-display text-lg truncate">{m.label}</span>
-                    {m.is_active && <Badge>Active on homepage</Badge>}
-                  </div>
-                  {m.notes && (
-                    <p className="text-sm text-muted-foreground font-serif italic mt-0.5">
-                      {m.notes}
+      <CollapsibleSection
+        id="concessions.menus"
+        title="Menu Versions"
+        icon={FileText}
+        count={menus.length}
+        description="Upload menu PDFs, preview them, and choose which one shows on the homepage."
+        defaultOpen
+        actions={
+          <Button onClick={() => setUploadOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" /> Upload menu PDF
+          </Button>
+        }
+      >
+        {loading ? (
+          <p className="text-muted-foreground text-center py-8">Loading…</p>
+        ) : menus.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
+              <p>No menu PDFs yet. Upload one to get started.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-3">
+            {menus.map((m) => (
+              <Card key={m.id} className={m.is_active ? 'border-primary' : ''}>
+                <CardContent className="p-4 flex items-center gap-4">
+                  <FileText className="h-8 w-8 text-accent shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-display text-lg truncate">{m.label}</span>
+                      {m.is_active && <Badge>Active on homepage</Badge>}
+                    </div>
+                    {m.notes && (
+                      <p className="text-sm text-muted-foreground font-serif italic mt-0.5">
+                        {m.notes}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Uploaded {new Date(m.created_at).toLocaleDateString()}
                     </p>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Uploaded {new Date(m.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button variant="outline" size="sm" onClick={() => openPreview(m)}>
-                    <Eye className="h-4 w-4 mr-1" /> Preview
-                  </Button>
-                  {!m.is_active && (
-                    <Button size="sm" onClick={() => activate(m)}>
-                      <Check className="h-4 w-4 mr-1" /> Publish
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => openPreview(m)}>
+                      <Eye className="h-4 w-4 mr-1" /> Preview
                     </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => remove(m)}
-                    disabled={m.is_active}
-                    title={m.is_active ? 'Activate another menu first' : 'Delete'}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                    {!m.is_active && (
+                      <Button size="sm" onClick={() => activate(m)}>
+                        <Check className="h-4 w-4 mr-1" /> Publish
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(m)}
+                      disabled={m.is_active}
+                      title={m.is_active ? 'Activate another menu first' : 'Delete'}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </CollapsibleSection>
 
       {/* Upload dialog */}
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>

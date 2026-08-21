@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DollarSign, TrendingUp, Users, BarChart3, UtensilsCrossed, RefreshCw } from 'lucide-react';
@@ -260,73 +261,62 @@ export default function AnalyticsTab() {
           )}
 
           {/* Revenue over time */}
-          <Card className="glass">
-            <CardHeader>
-              <CardTitle className="text-base">Revenue Over Time</CardTitle>
-              <p className="text-muted-foreground">
-                Gross sales, before tax and tips — the basis Square's Item Sales report uses.
-                Total Revenue above is what was collected, so it is higher by tax and tips.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {revenueSeries.length > 0 ? (
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={revenueSeries}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="date" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                    <Legend />
-                    <Bar dataKey="tickets" stackId="rev" fill="hsl(var(--primary))" name="Tickets" />
-                    <Bar dataKey="concessions" stackId="rev" fill="hsl(var(--accent))" name="Concessions" />
-                    <Bar dataKey="other" stackId="rev" fill="hsl(210, 70%, 55%)" name="Other" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}
-            </CardContent>
-          </Card>
+          <CollapsibleSection
+            id="analytics.revenue-over-time"
+            title="Revenue Over Time"
+            description="Gross sales, before tax and tips — the basis Square's Item Sales report uses. Total Revenue above is what was collected, so it is higher by tax and tips."
+            defaultOpen
+          >
+            {revenueSeries.length > 0 ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={revenueSeries}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="date" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                  <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                  <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                  <Legend />
+                  <Bar dataKey="tickets" stackId="rev" fill="hsl(var(--primary))" name="Tickets" />
+                  <Bar dataKey="concessions" stackId="rev" fill="hsl(var(--accent))" name="Concessions" />
+                  <Bar dataKey="other" stackId="rev" fill="hsl(210, 70%, 55%)" name="Other" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}
+          </CollapsibleSection>
 
           <div className="grid md:grid-cols-2 gap-4">
             {/* Revenue by category */}
-            <Card className="glass">
-              <CardHeader><CardTitle className="text-base">Revenue by Category</CardTitle></CardHeader>
-              <CardContent>
-                {categoryData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <PieChart>
-                      <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                        {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}
-              </CardContent>
-            </Card>
+            <CollapsibleSection id="analytics.by-category" title="Revenue by Category">
+              {categoryData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                      {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}
+            </CollapsibleSection>
 
             {/* Genre popularity — build-sourced */}
-            <Card className="glass">
-              <CardHeader>
-                <CardTitle className="text-base">Genre Popularity</CardTitle>
-                <p className="text-muted-foreground">
-                  From this build's own ticket sales — Square does not record genre.
-                </p>
-              </CardHeader>
-              <CardContent>
-                {genreData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <PieChart>
-                      <Pie data={genreData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name} (${value})`}>
-                        {genreData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : <p className="text-muted-foreground text-center py-8">No tickets sold through this build yet.</p>}
-              </CardContent>
-            </Card>
+            <CollapsibleSection
+              id="analytics.genres"
+              title="Genre Popularity"
+              description="From this build's own ticket sales — Square does not record genre."
+            >
+              {genreData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie data={genreData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name} (${value})`}>
+                      {genreData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : <p className="text-muted-foreground text-center py-8">No tickets sold through this build yet.</p>}
+            </CollapsibleSection>
           </div>
 
           {/* What is inside Square's own "Uncategorized" bucket.
@@ -336,72 +326,63 @@ export default function AnalyticsTab() {
               genuinely holds no category for these items, and this list is
               Square's answer to "which ones". */}
           {data.uncategorized.length > 0 && (
-            <Card className="glass">
-              <CardHeader>
-                <CardTitle className="text-base">What's in "Uncategorized"</CardTitle>
-                <p className="text-muted-foreground">
-                  Items Square holds no reporting category for. Largest first.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-1">
-                  {data.uncategorized.map((u, i) => (
-                    <li key={i} className="flex items-baseline justify-between gap-4">
-                      <span className="truncate">
-                        {u.name}
-                        <span className="text-muted-foreground">{' · '}{u.quantity}&times;</span>
-                      </span>
-                      <span className="tabular-nums shrink-0">{dollars(u.amountCents)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+            <CollapsibleSection
+              id="analytics.uncategorized"
+              title={`What's in "Uncategorized"`}
+              count={data.uncategorized.length}
+              description="Items Square holds no reporting category for. Largest first."
+            >
+              <ul className="space-y-1">
+                {data.uncategorized.map((u, i) => (
+                  <li key={i} className="flex items-baseline justify-between gap-4">
+                    <span className="truncate">
+                      {u.name}
+                      <span className="text-muted-foreground">{' · '}{u.quantity}&times;</span>
+                    </span>
+                    <span className="tabular-nums shrink-0">{dollars(u.amountCents)}</span>
+                  </li>
+                ))}
+              </ul>
+            </CollapsibleSection>
           )}
 
           {/* Top performers */}
-          <Card className="glass">
-            <CardHeader><CardTitle className="text-base">Top Performers — Ticket Revenue</CardTitle></CardHeader>
-            <CardContent>
-              {topPerformers.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={topPerformers} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <YAxis dataKey="title" type="category" width={160} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <Tooltip
-                      formatter={(v: number, name: string) => name === 'revenue' ? `$${v.toFixed(2)}` : v}
-                      contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
-                    />
-                    <Legend />
-                    <Bar dataKey="revenue" fill="hsl(var(--primary))" name="Revenue" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <p className="text-muted-foreground text-center py-8">No ticket sales in this range.</p>}
-            </CardContent>
-          </Card>
+          <CollapsibleSection id="analytics.top-performers" title="Top Performers" description="Ticket revenue">
+            {topPerformers.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={topPerformers} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                  <YAxis dataKey="title" type="category" width={160} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                  <Tooltip
+                    formatter={(v: number, name: string) => name === 'revenue' ? `$${v.toFixed(2)}` : v}
+                    contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                  />
+                  <Legend />
+                  <Bar dataKey="revenue" fill="hsl(var(--primary))" name="Revenue" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <p className="text-muted-foreground text-center py-8">No ticket sales in this range.</p>}
+          </CollapsibleSection>
 
           {/* Venue utilization — build-sourced */}
           {venueData.length > 0 && (
-            <Card className="glass">
-              <CardHeader>
-                <CardTitle className="text-base">Venue Utilization</CardTitle>
-                <p className="text-muted-foreground">
-                  From this build's own sales and seat counts — Square does not record capacity.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={venueData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <YAxis unit="%" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                    <Tooltip formatter={(v: number, name: string) => name === 'utilization' ? `${v}%` : v} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                    <Bar dataKey="utilization" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            <CollapsibleSection
+              id="analytics.venues"
+              title="Venue Utilization"
+              count={venueData.length}
+              description="From this build's own sales and seat counts — Square does not record capacity."
+            >
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={venueData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                  <YAxis unit="%" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                  <Tooltip formatter={(v: number, name: string) => name === 'utilization' ? `${v}%` : v} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
+                  <Bar dataKey="utilization" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CollapsibleSection>
           )}
 
           <p className="text-muted-foreground text-center">

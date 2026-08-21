@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -413,52 +414,50 @@ function ReportsPanel() {
             <Stat label="Returned" value={`${returned}`} sub={checkouts ? `${Math.round((returned/checkouts)*100)}% of checkouts` : '—'} />
           </div>
 
-          <Card className="glass">
-            <CardContent className="p-4 space-y-2">
-              <p className="font-display uppercase text-sm text-accent">Fleet utilization (right now)</p>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full bg-primary" style={{ width: `${Math.round(fleetUtilization * 100)}%` }} />
-                </div>
-                <span className="font-display text-sm w-20 text-right">
-                  {Math.round(fleetUtilization * 100)}%
-                </span>
+          <CollapsibleSection id="dvds.reports.fleet" title="Fleet utilization" description="Right now" defaultOpen>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden">
+                <div className="h-full bg-primary" style={{ width: `${Math.round(fleetUtilization * 100)}%` }} />
               </div>
-              <p className="text-xs font-serif text-muted-foreground">
-                {onLoanCopies} of {totalCopies} copies out on loan • {availableCopies} on the shelf
-              </p>
-            </CardContent>
-          </Card>
+              <span className="font-display text-sm w-20 text-right">
+                {Math.round(fleetUtilization * 100)}%
+              </span>
+            </div>
+            <p className="text-xs font-serif text-muted-foreground">
+              {onLoanCopies} of {totalCopies} copies out on loan • {availableCopies} on the shelf
+            </p>
+          </CollapsibleSection>
 
-          <Card className="glass">
-            <CardContent className="p-4 space-y-3">
-              <p className="font-display uppercase text-sm text-accent">
-                Per-title utilization ({range} days)
-              </p>
-              {titleRows.filter(r => r.checkouts > 0).length === 0 ? (
-                <p className="text-muted-foreground font-serif text-sm">No checkouts in this window yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {titleRows.slice(0, 25).map((r, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium">{r.title}</p>
-                        <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
-                          <div className="h-full bg-accent" style={{ width: `${Math.min(100, Math.round(r.utilization * 100))}%` }} />
-                        </div>
+          <CollapsibleSection
+            id="dvds.reports.per-title"
+            title="Per-title utilization"
+            description={`Last ${range} days`}
+            count={titleRows.filter(r => r.checkouts > 0).length}
+            defaultOpen
+          >
+            {titleRows.filter(r => r.checkouts > 0).length === 0 ? (
+              <p className="text-muted-foreground font-serif text-sm">No checkouts in this window yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {titleRows.slice(0, 25).map((r, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{r.title}</p>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                        <div className="h-full bg-accent" style={{ width: `${Math.min(100, Math.round(r.utilization * 100))}%` }} />
                       </div>
-                      <span className="font-display text-xs text-muted-foreground w-24 text-right">
-                        {r.checkouts} / {r.copies} copies
-                      </span>
-                      <span className="font-display text-xs w-20 text-right">
-                        ${(r.revenue + r.lateFees).toFixed(2)}
-                      </span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    <span className="font-display text-xs text-muted-foreground w-24 text-right">
+                      {r.checkouts} / {r.copies} copies
+                    </span>
+                    <span className="font-display text-xs w-20 text-right">
+                      ${(r.revenue + r.lateFees).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CollapsibleSection>
         </>
       )}
     </div>

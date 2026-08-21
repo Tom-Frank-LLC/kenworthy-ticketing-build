@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '../CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -80,34 +81,35 @@ export default function AccountMappingsTab() {
       </div>
 
       {Object.entries(grouped).map(([type, items]) => (
-        <Card key={type} className="glass">
-          <CardHeader>
-            <CardTitle className="font-display text-base">{SOURCE_TYPE_LABELS[type] || type}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {items.map(m => {
-                const currentId = dirty[m.id] ?? m.account_id;
-                return (
-                  <div key={m.id} className="grid grid-cols-12 gap-2 items-center">
-                    <div className="col-span-4 flex items-center gap-2">
-                      <span className="text-sm">{m.source_key}</span>
-                      {m.is_default && <Badge variant="outline" className="text-xs">default</Badge>}
-                    </div>
-                    <div className="col-span-8">
-                      <select value={currentId} onChange={e => change(m.id, e.target.value)}
-                              className="w-full h-9 rounded border bg-background px-2 text-sm">
-                        {accounts.map(a => (
-                          <option key={a.id} value={a.id}>{a.code} — {a.qbo_account_name} ({a.account_type})</option>
-                        ))}
-                      </select>
-                    </div>
+        <CollapsibleSection
+          key={type}
+          id={`accounting.mappings.${type}`}
+          title={SOURCE_TYPE_LABELS[type] || type}
+          count={items.length}
+          defaultOpen
+        >
+          <div className="space-y-2">
+            {items.map(m => {
+              const currentId = dirty[m.id] ?? m.account_id;
+              return (
+                <div key={m.id} className="grid grid-cols-12 gap-2 items-center">
+                  <div className="col-span-4 flex items-center gap-2">
+                    <span className="text-sm">{m.source_key}</span>
+                    {m.is_default && <Badge variant="outline" className="text-xs">default</Badge>}
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+                  <div className="col-span-8">
+                    <select value={currentId} onChange={e => change(m.id, e.target.value)}
+                            className="w-full h-9 rounded border bg-background px-2 text-sm">
+                      {accounts.map(a => (
+                        <option key={a.id} value={a.id}>{a.code} — {a.qbo_account_name} ({a.account_type})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CollapsibleSection>
       ))}
     </div>
   );

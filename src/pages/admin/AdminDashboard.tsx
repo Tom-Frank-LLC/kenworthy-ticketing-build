@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
+import { CollapsibleSection } from '@/components/admin/CollapsibleSection';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
 import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
@@ -563,367 +564,388 @@ export default function AdminDashboard() {
                 <TabsTrigger value="venues">Venues</TabsTrigger>
                 <TabsTrigger value="square">Showtimes in Square</TabsTrigger>
               </TabsList>
-              {/* Title search, ratings and showtime sorting have nothing to
-                  filter on the Venues list. */}
-              {activeScheduleTab !== 'venues' && (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
-                <div className="relative w-full sm:w-56">
-                  <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={scheduleQuery}
-                    onChange={e => setScheduleQuery(e.target.value)}
-                    placeholder="Search title…"
-                    className="pl-9"
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2 items-center">
-                  <Select value={statusFilter} onValueChange={v => setStatusFilter(v as any)}>
-                    <SelectTrigger className="w-[130px]">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All statuses</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {activeScheduleTab === 'movies' && (
-                    <>
-                      <Select value={ratingFilter} onValueChange={setRatingFilter}>
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue placeholder="Rating" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All ratings</SelectItem>
-                          {uniqueRatings.map(r => (
-                            <SelectItem key={r} value={r}>{r}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={genreFilter} onValueChange={setGenreFilter}>
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue placeholder="Genre" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All genres</SelectItem>
-                          {uniqueMovieGenres.map(g => (
-                            <SelectItem key={g} value={g}>{g}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </>
-                  )}
-
-                  {activeScheduleTab === 'live-events' && (
-                    <>
-                      <Select value={liveEventKindFilter} onValueChange={v => setLiveEventKindFilter(v as any)}>
-                        <SelectTrigger className="w-[130px]">
-                          <SelectValue placeholder="Kind" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All kinds</SelectItem>
-                          <SelectItem value="event">Event</SelectItem>
-                          <SelectItem value="concert">Performance</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
-                        <SelectTrigger className="w-[150px]">
-                          <SelectValue placeholder="Ticket type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All ticket types</SelectItem>
-                          {uniqueEventTypes.map(t => (
-                            <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={concertSubcategoryFilter} onValueChange={setConcertSubcategoryFilter}>
-                        <SelectTrigger className="w-[150px]">
-                          <SelectValue placeholder="Subcategory" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All subcategories</SelectItem>
-                          {uniqueConcertSubcategories.map(s => (
-                            <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={genreFilter} onValueChange={setGenreFilter}>
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue placeholder="Genre" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All genres</SelectItem>
-                          {uniqueConcertGenres.map(g => (
-                            <SelectItem key={g} value={g}>{g}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </>
-                  )}
-
-                  <Select value={sortOrder} onValueChange={v => setSortOrder(v as SortOrder)}>
-                    <SelectTrigger className="w-[190px]">
-                      <SelectValue placeholder="Sort by" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="showtime_desc">Showtime (upcoming first)</SelectItem>
-                      <SelectItem value="showtime_asc">Showtime (past first)</SelectItem>
-                      <SelectItem value="title_asc">Title A–Z</SelectItem>
-                      <SelectItem value="title_desc">Title Z–A</SelectItem>
-                      {/* Everything was bulk-imported at once, so created_at barely
-                          varies — labelled plainly so the near-no-op isn't mistaken
-                          for a broken showtime sort. */}
-                      <SelectItem value="newest">Date added (newest)</SelectItem>
-                      <SelectItem value="oldest">Date added (oldest)</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Button variant="ghost" size="sm" onClick={resetScheduleFilters} className="h-9 px-2 text-muted-foreground">
-                    <X className="h-4 w-4 mr-1" /> Reset
-                  </Button>
-                </div>
-              </div>
-              )}
             </div>
+            {/* The filter row was the tallest thing on the tab and is empty on
+                arrival — every control below is component state, so a collapsed
+                panel can never be hiding a filter that is actually applied. */}
+            {activeScheduleTab !== 'venues' && (
+              <CollapsibleSection id="listings.filters" title="Filters" icon={Search}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+                  <div className="relative w-full sm:w-56">
+                    <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={scheduleQuery}
+                      onChange={e => setScheduleQuery(e.target.value)}
+                      placeholder="Search title…"
+                      className="pl-9"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <Select value={statusFilter} onValueChange={v => setStatusFilter(v as any)}>
+                      <SelectTrigger className="w-[130px]">
+                        <SelectValue placeholder="Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All statuses</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {activeScheduleTab === 'movies' && (
+                      <>
+                        <Select value={ratingFilter} onValueChange={setRatingFilter}>
+                          <SelectTrigger className="w-[120px]">
+                            <SelectValue placeholder="Rating" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All ratings</SelectItem>
+                            {uniqueRatings.map(r => (
+                              <SelectItem key={r} value={r}>{r}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={genreFilter} onValueChange={setGenreFilter}>
+                          <SelectTrigger className="w-[140px]">
+                            <SelectValue placeholder="Genre" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All genres</SelectItem>
+                            {uniqueMovieGenres.map(g => (
+                              <SelectItem key={g} value={g}>{g}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </>
+                    )}
+
+                    {activeScheduleTab === 'live-events' && (
+                      <>
+                        <Select value={liveEventKindFilter} onValueChange={v => setLiveEventKindFilter(v as any)}>
+                          <SelectTrigger className="w-[130px]">
+                            <SelectValue placeholder="Kind" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All kinds</SelectItem>
+                            <SelectItem value="event">Event</SelectItem>
+                            <SelectItem value="concert">Performance</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                          <SelectTrigger className="w-[150px]">
+                            <SelectValue placeholder="Ticket type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All ticket types</SelectItem>
+                            {uniqueEventTypes.map(t => (
+                              <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={concertSubcategoryFilter} onValueChange={setConcertSubcategoryFilter}>
+                          <SelectTrigger className="w-[150px]">
+                            <SelectValue placeholder="Subcategory" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All subcategories</SelectItem>
+                            {uniqueConcertSubcategories.map(s => (
+                              <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={genreFilter} onValueChange={setGenreFilter}>
+                          <SelectTrigger className="w-[140px]">
+                            <SelectValue placeholder="Genre" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All genres</SelectItem>
+                            {uniqueConcertGenres.map(g => (
+                              <SelectItem key={g} value={g}>{g}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </>
+                    )}
+
+                    <Select value={sortOrder} onValueChange={v => setSortOrder(v as SortOrder)}>
+                      <SelectTrigger className="w-[190px]">
+                        <SelectValue placeholder="Sort by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="showtime_desc">Showtime (upcoming first)</SelectItem>
+                        <SelectItem value="showtime_asc">Showtime (past first)</SelectItem>
+                        <SelectItem value="title_asc">Title A–Z</SelectItem>
+                        <SelectItem value="title_desc">Title Z–A</SelectItem>
+                        {/* Everything was bulk-imported at once, so created_at barely
+                            varies — labelled plainly so the near-no-op isn't mistaken
+                            for a broken showtime sort. */}
+                        <SelectItem value="newest">Date added (newest)</SelectItem>
+                        <SelectItem value="oldest">Date added (oldest)</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Button variant="ghost" size="sm" onClick={resetScheduleFilters} className="h-9 px-2 text-muted-foreground">
+                      <X className="h-4 w-4 mr-1" /> Reset
+                    </Button>
+                  </div>
+                </div>
+              </CollapsibleSection>
+            )}
             <TabsContent value="movies">
             <SquareLinkPanel scope="movies" title="Square catalog — movies" />
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <h2 className="font-display text-xl font-bold">Movies</h2>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" asChild>
-                <Link to="/admin/showings/new"><Plus className="h-4 w-4 mr-1" /> Add Showing</Link>
-              </Button>
-              <Button size="sm" asChild>
-                <Link to="/admin/movies/new"><Plus className="h-4 w-4 mr-1" /> Add Movie</Link>
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-4">
-            {filteredMovies.map(movie => {
-              const movieShowings = getMovieShowings(movie.id);
-              return (
-                <Card key={movie.id} className="glass">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Film className="h-5 w-5 text-primary" />
-                        <div>
-                          <p className="font-medium">{movie.title}</p>
-                          <div className="flex gap-2 mt-1">
-                            {movie.rating && <Badge variant="secondary" className="text-xs">{movie.rating}</Badge>}
-                            {movie.genre && <Badge variant="outline" className="text-xs">{movie.genre}</Badge>}
-                            <Badge variant={movie.is_active ? 'default' : 'secondary'} className="text-xs">
-                              {movie.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
+            <CollapsibleSection
+              id="listings.movies"
+              title="Movies"
+              count={filteredMovies.length}
+              defaultOpen
+              actions={
+                <>
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/admin/showings/new"><Plus className="h-4 w-4 mr-1" /> Add Showing</Link>
+                  </Button>
+                  <Button size="sm" asChild>
+                    <Link to="/admin/movies/new"><Plus className="h-4 w-4 mr-1" /> Add Movie</Link>
+                  </Button>
+                </>
+              }
+            >
+            <div className="space-y-4">
+              {filteredMovies.map(movie => {
+                const movieShowings = getMovieShowings(movie.id);
+                return (
+                  <Card key={movie.id} className="glass">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Film className="h-5 w-5 text-primary" />
+                          <div>
+                            <p className="font-medium">{movie.title}</p>
+                            <div className="flex gap-2 mt-1">
+                              {movie.rating && <Badge variant="secondary" className="text-xs">{movie.rating}</Badge>}
+                              {movie.genre && <Badge variant="outline" className="text-xs">{movie.genre}</Badge>}
+                              <Badge variant={movie.is_active ? 'default' : 'secondary'} className="text-xs">
+                                {movie.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(movie, 'movie')}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" asChild>
+                            <Link to={`/admin/movies/${movie.id}`}><Edit className="h-4 w-4" /></Link>
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => deleteItem('movies', movie.id, 'Movie')}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(movie, 'movie')}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/admin/movies/${movie.id}`}><Edit className="h-4 w-4" /></Link>
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => deleteItem('movies', movie.id, 'Movie')}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                    {movieShowings.length > 0 && (
-                      <div className="mt-3 pl-8 space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Showings</p>
-                        {movieShowings.map(showing => (
-                          <div key={showing.id} className="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2">
-                            <div className="flex gap-2 items-center flex-wrap">
-                              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span className="text-sm">
-                                {formatShowtime(showing.start_time, 'MMM d, yyyy h:mm a')}
-                              </span>
-                              <span className="text-sm text-muted-foreground">• ${Number(showing.ticket_price).toFixed(2)}</span>
-                              {showing.venues?.name && (
-                                <Badge variant="secondary" className="text-xs">{showing.venues.name}</Badge>
-                              )}
+                      {movieShowings.length > 0 && (
+                        <div className="mt-3 pl-8 space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Showings</p>
+                          {movieShowings.map(showing => (
+                            <div key={showing.id} className="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2">
+                              <div className="flex gap-2 items-center flex-wrap">
+                                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-sm">
+                                  {formatShowtime(showing.start_time, 'MMM d, yyyy h:mm a')}
+                                </span>
+                                <span className="text-sm text-muted-foreground">• ${Number(showing.ticket_price).toFixed(2)}</span>
+                                {showing.venues?.name && (
+                                  <Badge variant="secondary" className="text-xs">{showing.venues.name}</Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <TicketCountBadge
+                                  sold={getTicketsSoldForShowing(showing.id)}
+                                  scanned={getScannedForShowing(showing.id)}
+                                  capacity={showing.total_seats || 0}
+                                  onClick={() =>
+                                    openAttendees(
+                                      `${movie.title} — ${formatShowtime(showing.start_time, 'MMM d, yyyy h:mm a')}`,
+                                      [showing.id],
+                                      showing.total_seats || 0
+                                    )
+                                  }
+                                />
+                                <Button variant="ghost" size="sm" asChild>
+                                  <Link to={`/admin/showings/${showing.id}`}><Edit className="h-3.5 w-3.5" /></Link>
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => deleteItem('showings', showing.id, 'Showing')}>
+                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <TicketCountBadge
-                                sold={getTicketsSoldForShowing(showing.id)}
-                                scanned={getScannedForShowing(showing.id)}
-                                capacity={showing.total_seats || 0}
-                                onClick={() =>
-                                  openAttendees(
-                                    `${movie.title} — ${formatShowtime(showing.start_time, 'MMM d, yyyy h:mm a')}`,
-                                    [showing.id],
-                                    showing.total_seats || 0
-                                  )
-                                }
-                              />
-                              <Button variant="ghost" size="sm" asChild>
-                                <Link to={`/admin/showings/${showing.id}`}><Edit className="h-3.5 w-3.5" /></Link>
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => deleteItem('showings', showing.id, 'Showing')}>
-                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-            {filteredMovies.length === 0 && <p className="text-muted-foreground text-center py-8">No movies match the filters.</p>}
-          </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {filteredMovies.length === 0 && <p className="text-muted-foreground text-center py-8">No movies match the filters.</p>}
+            </div>
+            </CollapsibleSection>
             </TabsContent>
             <TabsContent value="live-events">
             <SquareLinkPanel scope="live_performances" title="Square catalog — live events" />
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <h2 className="font-display text-xl font-bold">Live Events</h2>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" asChild>
-                <Link to="/admin/concerts/new"><Plus className="h-4 w-4 mr-1" /> Add Performance</Link>
-              </Button>
-              <Button size="sm" asChild>
-                <Link to="/admin/events/new"><Plus className="h-4 w-4 mr-1" /> Add Event</Link>
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {filteredLiveEvents.map(item => {
-              const isEvent = item.kind === 'event';
-              const isConcert = item.kind === 'concert';
-              const { sold, scanned, capacity } = isEvent
-                ? getTicketsSoldForEvent(item.id)
-                : getTicketsSoldForConcert(item.id);
-              return (
-                <Card key={`${item.kind}-${item.id}`} className="glass">
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {isEvent ? <PartyPopper className="h-5 w-5 text-primary" /> : <Music className="h-5 w-5 text-primary" />}
-                      <div>
-                        <p className="font-medium">{item.title}</p>
-                        <div className="flex gap-2 mt-1">
-                          {isEvent && (
-                            <Badge variant="outline" className="text-xs capitalize">{item.ticket_type.replace('_', ' ')}</Badge>
-                          )}
-                          {isConcert && item.subcategory && (
-                            <Badge variant="outline" className="text-xs capitalize">
-                              {item.subcategory.replace(/_/g, ' ')}
+            <CollapsibleSection
+              id="listings.live-events"
+              title="Live Events"
+              count={filteredLiveEvents.length}
+              defaultOpen
+              actions={
+                <>
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/admin/concerts/new"><Plus className="h-4 w-4 mr-1" /> Add Performance</Link>
+                  </Button>
+                  <Button size="sm" asChild>
+                    <Link to="/admin/events/new"><Plus className="h-4 w-4 mr-1" /> Add Event</Link>
+                  </Button>
+                </>
+              }
+            >
+            <div className="space-y-3">
+              {filteredLiveEvents.map(item => {
+                const isEvent = item.kind === 'event';
+                const isConcert = item.kind === 'concert';
+                const { sold, scanned, capacity } = isEvent
+                  ? getTicketsSoldForEvent(item.id)
+                  : getTicketsSoldForConcert(item.id);
+                return (
+                  <Card key={`${item.kind}-${item.id}`} className="glass">
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {isEvent ? <PartyPopper className="h-5 w-5 text-primary" /> : <Music className="h-5 w-5 text-primary" />}
+                        <div>
+                          <p className="font-medium">{item.title}</p>
+                          <div className="flex gap-2 mt-1">
+                            {isEvent && (
+                              <Badge variant="outline" className="text-xs capitalize">{item.ticket_type.replace('_', ' ')}</Badge>
+                            )}
+                            {isConcert && item.subcategory && (
+                              <Badge variant="outline" className="text-xs capitalize">
+                                {item.subcategory.replace(/_/g, ' ')}
+                              </Badge>
+                            )}
+                            {isConcert && item.genre && <Badge variant="outline" className="text-xs">{item.genre}</Badge>}
+                            <Badge variant={item.is_active ? 'default' : 'secondary'} className="text-xs">
+                              {item.is_active ? 'Active' : 'Inactive'}
                             </Badge>
-                          )}
-                          {isConcert && item.genre && <Badge variant="outline" className="text-xs">{item.genre}</Badge>}
-                          <Badge variant={item.is_active ? 'default' : 'secondary'} className="text-xs">
-                            {item.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <TicketCountBadge
-                        sold={sold}
-                        scanned={scanned}
-                        capacity={capacity}
-                        onClick={() =>
-                          openAttendees(
-                            item.title,
-                            showingsForProduction(item.kind, item.id).map(s => s.id),
-                            capacity
-                          )
-                        }
-                      />
-                      <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(item, item.kind)}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" title="Export contacts" onClick={async () => {
-                        const count = await exportContactsCsv(item.kind, item.id, item.title);
-                        if (count === null) toast.info('No attendees found');
-                        else toast.success(`Exported ${count} contacts`);
-                      }}>
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link to={`/admin/${item.kind}s/${item.id}`}><Edit className="h-4 w-4" /></Link>
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteItem(item.kind === 'event' ? 'events' : 'live_performances', item.id, item.kind === 'event' ? 'Event' : 'Live Performance')}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-            {filteredLiveEvents.length === 0 && <p className="text-muted-foreground text-center py-8">No live events match the filters.</p>}
-          </div>
+                      <div className="flex items-center gap-1">
+                        <TicketCountBadge
+                          sold={sold}
+                          scanned={scanned}
+                          capacity={capacity}
+                          onClick={() =>
+                            openAttendees(
+                              item.title,
+                              showingsForProduction(item.kind, item.id).map(s => s.id),
+                              capacity
+                            )
+                          }
+                        />
+                        <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(item, item.kind)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" title="Export contacts" onClick={async () => {
+                          const count = await exportContactsCsv(item.kind, item.id, item.title);
+                          if (count === null) toast.info('No attendees found');
+                          else toast.success(`Exported ${count} contacts`);
+                        }}>
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link to={`/admin/${item.kind}s/${item.id}`}><Edit className="h-4 w-4" /></Link>
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => deleteItem(item.kind === 'event' ? 'events' : 'live_performances', item.id, item.kind === 'event' ? 'Event' : 'Live Performance')}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {filteredLiveEvents.length === 0 && <p className="text-muted-foreground text-center py-8">No live events match the filters.</p>}
+            </div>
+            </CollapsibleSection>
             </TabsContent>
             {/* Venues. Previously reachable only by typing /admin/venues/new,
                 which is why the theatre ran for months with no venue row at all
                 and an empty venue picker on every showing. */}
             <TabsContent value="venues">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <h2 className="font-display text-xl font-bold">Venues</h2>
-            <Button size="sm" asChild>
-              <Link to="/admin/venues/new"><Plus className="h-4 w-4 mr-1" /> Add Venue</Link>
-            </Button>
-          </div>
-          <div className="space-y-3">
-            {venues.map(venue => {
-              // venue_seats(count) comes back as [{ count: n }], or [] when the
-              // venue has no seats. A venue flagged as having a seat map but
-              // holding no seats is exactly the state this whole fix was about,
-              // so it is called out rather than left to be inferred.
-              const seatCount = venue.venue_seats?.[0]?.count ?? 0;
-              const showingCount = showings.filter(s => s.venue_id === venue.id).length;
-              const flaggedButEmpty = venue.has_assigned_seating && seatCount === 0;
-              return (
-                <Card key={venue.id} className="glass">
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Building2 className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="font-medium">{venue.name}</p>
-                        <div className="flex gap-2 mt-1 flex-wrap">
-                          <Badge variant="secondary" className="text-xs">
-                            {venue.total_seats} seats
-                          </Badge>
-                          <Badge variant={venue.has_assigned_seating ? 'default' : 'outline'} className="text-xs">
-                            {venue.has_assigned_seating ? `Seat map · ${seatCount}` : 'No seat map'}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {showingCount} {showingCount === 1 ? 'showing' : 'showings'}
-                          </Badge>
-                          <Badge variant={venue.is_active ? 'default' : 'secondary'} className="text-xs">
-                            {venue.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
+            <CollapsibleSection
+              id="listings.venues"
+              title="Venues"
+              count={venues.length}
+              defaultOpen
+              actions={
+                <Button size="sm" asChild>
+                  <Link to="/admin/venues/new"><Plus className="h-4 w-4 mr-1" /> Add Venue</Link>
+                </Button>
+              }
+            >
+            <div className="space-y-3">
+              {venues.map(venue => {
+                // venue_seats(count) comes back as [{ count: n }], or [] when the
+                // venue has no seats. A venue flagged as having a seat map but
+                // holding no seats is exactly the state this whole fix was about,
+                // so it is called out rather than left to be inferred.
+                const seatCount = venue.venue_seats?.[0]?.count ?? 0;
+                const showingCount = showings.filter(s => s.venue_id === venue.id).length;
+                const flaggedButEmpty = venue.has_assigned_seating && seatCount === 0;
+                return (
+                  <Card key={venue.id} className="glass">
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Building2 className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="font-medium">{venue.name}</p>
+                          <div className="flex gap-2 mt-1 flex-wrap">
+                            <Badge variant="secondary" className="text-xs">
+                              {venue.total_seats} seats
+                            </Badge>
+                            <Badge variant={venue.has_assigned_seating ? 'default' : 'outline'} className="text-xs">
+                              {venue.has_assigned_seating ? `Seat map · ${seatCount}` : 'No seat map'}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {showingCount} {showingCount === 1 ? 'showing' : 'showings'}
+                            </Badge>
+                            <Badge variant={venue.is_active ? 'default' : 'secondary'} className="text-xs">
+                              {venue.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </div>
+                          {flaggedButEmpty && (
+                            <p className="text-xs text-amber-500 mt-1">
+                              Marked as having a seat map, but no seats are attached — assigned
+                              seating here would show an empty picker.
+                            </p>
+                          )}
                         </div>
-                        {flaggedButEmpty && (
-                          <p className="text-xs text-amber-500 mt-1">
-                            Marked as having a seat map, but no seats are attached — assigned
-                            seating here would show an empty picker.
-                          </p>
-                        )}
                       </div>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link to={`/admin/venues/${venue.id}`}><Edit className="h-4 w-4" /></Link>
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteVenue(venue, seatCount, showingCount)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-            {venues.length === 0 && (
-              <p className="text-muted-foreground text-center py-8">
-                No venues yet. Add one so showings have a room to sit in.
-              </p>
-            )}
-          </div>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link to={`/admin/venues/${venue.id}`}><Edit className="h-4 w-4" /></Link>
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => deleteVenue(venue, seatCount, showingCount)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {venues.length === 0 && (
+                <p className="text-muted-foreground text-center py-8">
+                  No venues yet. Add one so showings have a room to sit in.
+                </p>
+              )}
+            </div>
+            </CollapsibleSection>
             </TabsContent>
 
             {/* The showtime half of the old Analytics screen. Passes moved to

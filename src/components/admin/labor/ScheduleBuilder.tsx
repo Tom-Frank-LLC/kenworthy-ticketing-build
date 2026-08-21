@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CollapsibleSection } from '../CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -157,61 +158,58 @@ export function ScheduleBuilder() {
           </div>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader><CardTitle className="font-display">Week schedule</CardTitle></CardHeader>
-        <CardContent className="overflow-x-auto">
-          {loading ? (
-            <div className="py-8 text-center text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading…</div>
-          ) : members.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">No team members found in Square for this location.</div>
-          ) : (
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr>
-                  <th className="text-left p-2 border-b w-40">Staff</th>
-                  {days.map((d) => (
-                    <th key={d.toISOString()} className="text-left p-2 border-b min-w-[140px]">
-                      <div className="font-medium">{format(d, 'EEE')}</div>
-                      <div className="text-xs text-muted-foreground">{format(d, 'MMM d')}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((m) => (
-                  <tr key={m.id} className="border-b">
-                    <td className="p-2 font-medium">{fullName(m)}</td>
-                    {days.map((d) => {
-                      const key = `${m.id}|${format(d, 'yyyy-MM-dd')}`;
-                      const cellShifts = shiftsByCell.get(key) || [];
-                      return (
-                        <td key={d.toISOString()} className="p-2 align-top">
-                          <div className="space-y-1">
-                            {cellShifts.map((s) => (
-                              <div key={s.id} className="rounded border bg-muted/40 px-2 py-1 text-xs flex items-center gap-1">
-                                <span className="flex-1">
-                                  {format(parseISO(s.start_at), 'h:mm a')}–{format(parseISO(s.end_at), 'h:mm a')}
-                                </span>
-                                {s.draft && <Badge variant="outline" className="text-xs">draft</Badge>}
-                                <button className="text-muted-foreground hover:text-destructive" onClick={() => removeShift(s)}>
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
-                            <Button variant="ghost" size="sm" className="h-6 text-xs w-full" onClick={() => openNew(m.id, d)}>
-                              <Plus className="h-3 w-3 mr-1" /> Add
-                            </Button>
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
+      <CollapsibleSection id="labor.schedule.week" title="Week schedule" defaultOpen>
+        {loading ? (
+          <div className="py-8 text-center text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Loading…</div>
+        ) : members.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground">No team members found in Square for this location.</div>
+        ) : (
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr>
+                <th className="text-left p-2 border-b w-40">Staff</th>
+                {days.map((d) => (
+                  <th key={d.toISOString()} className="text-left p-2 border-b min-w-[140px]">
+                    <div className="font-medium">{format(d, 'EEE')}</div>
+                    <div className="text-xs text-muted-foreground">{format(d, 'MMM d')}</div>
+                  </th>
                 ))}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m) => (
+                <tr key={m.id} className="border-b">
+                  <td className="p-2 font-medium">{fullName(m)}</td>
+                  {days.map((d) => {
+                    const key = `${m.id}|${format(d, 'yyyy-MM-dd')}`;
+                    const cellShifts = shiftsByCell.get(key) || [];
+                    return (
+                      <td key={d.toISOString()} className="p-2 align-top">
+                        <div className="space-y-1">
+                          {cellShifts.map((s) => (
+                            <div key={s.id} className="rounded border bg-muted/40 px-2 py-1 text-xs flex items-center gap-1">
+                              <span className="flex-1">
+                                {format(parseISO(s.start_at), 'h:mm a')}–{format(parseISO(s.end_at), 'h:mm a')}
+                              </span>
+                              {s.draft && <Badge variant="outline" className="text-xs">draft</Badge>}
+                              <button className="text-muted-foreground hover:text-destructive" onClick={() => removeShift(s)}>
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                          <Button variant="ghost" size="sm" className="h-6 text-xs w-full" onClick={() => openNew(m.id, d)}>
+                            <Plus className="h-3 w-3 mr-1" /> Add
+                          </Button>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CollapsibleSection>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

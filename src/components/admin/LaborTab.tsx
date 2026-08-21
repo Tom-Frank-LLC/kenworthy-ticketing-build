@@ -7,20 +7,26 @@ import { LaborVsSales } from './labor/LaborVsSales';
 import { WageTipRules } from './labor/WageTipRules';
 import { PayrollExport } from './labor/PayrollExport';
 import StaffBios from './StaffBios';
-import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleSection } from './CollapsibleSection';
 import { Info } from 'lucide-react';
 
 export default function LaborTab() {
   return (
     <div className="space-y-4">
-      <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="py-3 flex items-start gap-2 text-sm">
-          <Info className="h-4 w-4 text-primary mt-0.5" />
+      {/* Collapsed by default: it explains a wiring decision that is made once
+          and then true forever, so it does not need to cost a paragraph of
+          vertical space on every visit to a tab someone opens daily. */}
+      <CollapsibleSection
+        id="labor.square-note"
+        title="How this reads from Square"
+        icon={Info}
+      >
+        <div className="flex items-start gap-2 text-sm">
           <span>
             Scheduling, timecards, labor-vs-sales and payroll read live from Square Labor. Which Square account they use follows the <code>SQUARE_ENV</code> secret, the same as ticket payments — set it to <code>production</code> with the matching <code>SQUARE_PRODUCTION_*</code> credentials to go live. The Timecards tab says so when it is reading the sandbox. <span className="text-muted-foreground">Bios is the exception: it is our own table, and it feeds the public About page rather than Square.</span>
           </span>
-        </CardContent>
-      </Card>
+        </div>
+      </CollapsibleSection>
       <Tabs defaultValue="timecards" className="space-y-4">
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="timecards">Timecards</TabsTrigger>
