@@ -4,14 +4,17 @@ title: Missing Ticket Confirmation & Account Emails
 status: shipped
 track: ops
 date: 2026-08-11
-shipped_in: ["#91", "bb9a506", "2bb68d4"]
-evidence: RESEND_API_KEY wired in _shared/deliver.ts
+shipped_in: ["a72aabe", "23d6bd3", "202c6a2", "cb17100", "fc44c33", "6ddfa72", "3de95a8", "#91", "2bb68d4"]
+shipped_at: 2026-08-22
 verified: true
+evidence: 20 email + 1 email+sms confirmations delivered in production (tickets.confirmation_sent_at), Send Email Hook live on both projects
 ---
 
 # Brief: Missing Ticket Confirmation & Account Emails
 
-**Status:** 🔴 Launch blocker — **code complete Aug 11 2026, blocked on provider credentials**
+**Status:** ✅ **Shipped.** Closed 22 August 2026 after checking the running
+system rather than the commit log — see *Outcome* at the end for what was
+confirmed, and the four things deliberately left open.
 **Date:** August 11, 2026
 **Reported by:** Tom (live purchase test on production)
 
@@ -124,3 +127,70 @@ Configure custom SMTP on both Supabase projects (staging + production) once Kenw
 6. Configure Supabase SMTP for auth emails (pending Kenworthy provider).
 7. Test end-to-end on staging (both email and phone paths), then production.
 8. Clean up test purchase data from production.
+
+---
+
+## Outcome — closed 22 August 2026
+
+Checked against the running system, not the commit log.
+
+| Brief item | Outcome |
+|---|---|
+| **A.** Transactional confirmation email with QR | ✅ 20 email confirmations delivered in production |
+| **B.** Account access for guest-created accounts | ✅ Shipped, then corrected — the password link is offered only to someone who has never signed in, so returning customers are not told an account was made for them |
+| **C.** SMS for phone-only purchases | ✅ Delivered by `BRIEF-reactivate-phone-sms.md`; Twilio via restricted API key + Messaging Service, A2P campaign approved, first production text 20 Aug |
+| **D.** SMTP for Supabase auth email | ✅ **Obsoleted, not done.** A Send Email Hook routes every auth email through Resend's API, so no SMTP is configured anywhere and the rate-limited built-in mailer is unused |
+| **Q4.** Clean up production test purchases | ❌ Open — see below |
+
+Follow-on briefs also closed three gaps this brief's implementation had left:
+an admin undelivered-orders card, per-order SMS consent, and the box-office
+send from the POS.
+
+### What the brief did not anticipate
+
+Recorded because each cost real time and none were visible from the brief:
+
+1. **The signed-in checkout path had the same gap.** The brief scoped the
+   problem to `guest-checkout`; every logged-in buyer was equally undelivered.
+2. **The QR code was decorative** — a grid coloured from `charCodeAt` of the
+   ticket UUID, which looked like a QR and encoded nothing, while the scanner
+   matched against `tickets.qr_code`. "Link to view tickets in their profile"
+   would not have produced a scannable ticket either.
+3. **Supabase rotated the injected keys mid-build.** Function-to-function
+   dispatch started failing with `Conflicting API keys`, and because the send
+   is fire-and-forget it left no trace at all — purchases succeeded, cards were
+   charged, nothing was delivered, and `confirmation_error` stayed *null*.
+   Delivery moved in-process to remove the whole class of failure.
+4. **`sign-contract` was already dead in production** for an unrelated import
+   bug, found while deploying this. Fixed separately.
+
+### Open, and deliberately not closed here
+
+- **An unexplained silent failure remains.** On 19 Aug, five orders for one
+  showing: the two at 21:26 were never delivered, the three after 21:29
+  succeeded. Both failures have `confirmation_error = null`, meaning delivery
+  was never *attempted*. The path that produces exactly that signature is
+  `deliverConfirmation(...).catch(e => console.error(e))` — every recorded
+  outcome is written inside the function, so an exception thrown before those
+  writes leaves nothing behind. A `.catch` that records the error would close
+  it. **This is the one item worth doing next.**
+
+- **Comp tickets bypass delivery entirely.** `HostDashboard.tsx` inserts
+  tickets client-side and never calls `send-ticket-confirmation`. `StaffPOS`
+  does. Comps carry `comp_recipient_email`, so the wiring is short.
+
+- **Production test data is still present** — 11 undelivered tickets (4
+  film-pass rows with no contact, 5 to `events@kenworthy.org`, 2 originals from
+  11 Aug). Owner: Tom. Script ready at
+  `supabase/scripts/cleanup_test_purchases.sql`, inspection-first. Until it
+  runs, the admin undelivered-orders card shows permanent false alarms.
+
+- **A stale `TWILIO_API_KEY` secret on production**, unread by any code.
+  Untidiness rather than risk; also logged by the SMS brief.
+
+### A measurement note for whoever reads this next
+
+`confirmation_channel` is **not** just `email` or `sms`. When a purchase
+supplies both and consent is given it records **`email+sms`**. Filtering on
+`= 'sms'` reports zero SMS deliveries and looks like a broken feature. That
+mistake was made during this very assessment.

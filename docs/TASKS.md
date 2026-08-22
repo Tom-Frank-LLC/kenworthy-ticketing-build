@@ -19,6 +19,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Missing Ticket Confirmation & Account Emails**<br>`ops` — `a72aabe`, `23d6bd3`, `202c6a2`, `cb17100`, `fc44c33`, `6ddfa72`, `3de95a8`, `#91`, `2bb68d4` — [brief](briefs/BRIEF-ticket-email.md)
 - **Every admin table becomes a collapsible section, and the tabs get a consolidation map**<br>`ux` — `#151` — [brief](briefs/BRIEF-admin-collapsible-sections.md)
 - **The admin Overview reads the theatre's real revenue, from Square**<br>`bug` — `#142`, `#144`, `#145`, `#147` — [brief](briefs/BRIEF-analytics-square.md) · [notes](briefs/FINDINGS-analytics-square.md)
 - **Send a ticket confirmation for box-office (StaffPOS) sales**<br>`feature` — `#91`, `bb9a506` — [brief](briefs/BRIEF-pos-ticket-delivery.md)
@@ -70,7 +71,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - **Online Ticket & Film-Pass Purchases Take No Payment**<br>`ops` — `#103`, `9d5876a` — [brief](briefs/BRIEF-square-ticket-payments.md)
 - **Update the Handoff Doc (`PLATFORM.md`) to Match Reality**<br>`feature` — `22daa6a` — [brief](briefs/BRIEF-update-handoff-doc.md)
 - **Enrich the Showing / Ticketing Page with Drawer Elements**<br>`ux` — [brief](briefs/BRIEF-showing-page-media.md)
-- **Missing Ticket Confirmation & Account Emails**<br>`ops` — `#91`, `bb9a506`, `2bb68d4` — [brief](briefs/BRIEF-ticket-email.md)
 
 ## Briefs with no frontmatter
 
