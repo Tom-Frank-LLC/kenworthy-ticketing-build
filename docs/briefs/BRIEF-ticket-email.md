@@ -177,7 +177,11 @@ Recorded because each cost real time and none were visible from the brief:
 
 - **Comp tickets bypass delivery entirely.** `HostDashboard.tsx` inserts
   tickets client-side and never calls `send-ticket-confirmation`. `StaffPOS`
-  does. Comps carry `comp_recipient_email`, so the wiring is short.
+  does. Written up as `BRIEF-comp-ticket-delivery.md`, which also records the
+  two traps a naive fix hits: the rows are owned by the staff member, so an
+  override is required or the guest's ticket is emailed to whoever issued it;
+  and no `order_token` is set, so three comps for one guest are three separate
+  orders rather than one link.
 
 - **Production test data is still present** — 11 undelivered tickets (4
   film-pass rows with no contact, 5 to `events@kenworthy.org`, 2 originals from

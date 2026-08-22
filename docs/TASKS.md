@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**54 briefs** — 52 shipped, 1 built, 1 open, 0 needs triage, 0 closed.
+**55 briefs** — 52 shipped, 1 built, 2 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -15,6 +15,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Open
 
+- `P2` **Comp tickets are issued but never delivered to the person receiving them**<br>`bug` — [brief](briefs/BRIEF-comp-ticket-delivery.md)
 - `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)
 
 ## Shipped
