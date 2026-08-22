@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store
@@ -666,7 +667,7 @@ export default function AdminDashboard() {
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <div className="flex-1 min-w-0 flex items-center justify-center gap-2 h-10 rounded-md border border-input bg-muted/40 px-3 font-display uppercase tracking-wider text-sm">
-                  <CurrentIcon className="h-4 w-4 text-primary" />
+                  <CurrentIcon className="h-6 w-6 shrink-0 text-primary glow-icon" strokeWidth={2.5} />
                   <span className="truncate">{current.label}</span>
                   <span className="text-xs text-muted-foreground ml-1 shrink-0">
                     {currentIdx + 1}/{topTabs.length}
@@ -683,16 +684,58 @@ export default function AdminDashboard() {
                 </Button>
               </div>
 
-              {/* Desktop: grid tabs */}
+              {/* Desktop: icon-only grid tabs.
+
+                  The label leaves the surface, not the tab: every trigger keeps
+                  an `aria-label` and gains a tooltip. Twelve unlabelled glyphs
+                  would otherwise be a memory test, and a screen reader would
+                  hear twelve buttons named nothing at all. */}
               <TabsList
-                className="hidden md:grid w-full"
+                className="hidden md:grid w-full h-auto p-1.5"
                 style={{ gridTemplateColumns: `repeat(${topTabs.length}, minmax(0, 1fr))` }}
               >
                 {topTabs.map(t => {
                   const Icon = t.icon;
+                  const isActive = activeTopTab === t.value;
+                  /*
+                   * The tooltip wraps the icon, NOT the trigger.
+                   *
+                   * `TooltipTrigger asChild` merges its props onto its child, and
+                   * Radix Tabs and Radix Tooltip both write `data-state`. Put the
+                   * tooltip on the trigger and the tooltip's open/closed wins, so
+                   * every `data-[state=active]:` rule on that tab goes silently
+                   * inert. It still *looks* right when the styling is driven from
+                   * JS, which is exactly what makes it worth writing down.
+                   */
                   return (
-                    <TabsTrigger key={t.value} value={t.value}>
-                      <Icon className="h-4 w-4 mr-1 inline" />{t.label}
+                    <TabsTrigger
+                      key={t.value}
+                      value={t.value}
+                      aria-label={t.label}
+                      /* The lit glyph is the selected state, so the default active
+                         pill comes off: a lighter rectangle behind a glow reads as
+                         two competing highlights. */
+                      className="h-12 px-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center justify-center">
+                            <Icon
+                              aria-hidden="true"
+                              /* Bolder while selected, which a stroke weight does
+                                 and a font weight cannot: these are strokes, not text. */
+                              strokeWidth={isActive ? 2.5 : 1.75}
+                              className={
+                                'shrink-0 transition-all duration-200 ' +
+                                (isActive
+                                  ? 'h-10 w-10 text-primary glow-icon'
+                                  : 'h-8 w-8 text-muted-foreground')
+                              }
+                            />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">{t.label}</TooltipContent>
+                      </Tooltip>
                     </TabsTrigger>
                   );
                 })}
