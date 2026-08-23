@@ -667,7 +667,10 @@ export default function AdminDashboard() {
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <div className="flex-1 min-w-0 flex items-center justify-center gap-2 h-10 rounded-md border border-input bg-muted/40 px-3 font-display uppercase tracking-wider text-sm">
-                  <CurrentIcon className="h-6 w-6 shrink-0 text-accent glow-icon" strokeWidth={2.5} />
+                  <span className="relative flex items-center justify-center shrink-0">
+                    <span aria-hidden className="icon-backlight absolute -inset-1.5 rounded-full" />
+                    <CurrentIcon className="relative h-6 w-6 text-background" strokeWidth={2.5} />
+                  </span>
                   <span className="truncate">{current.label}</span>
                   <span className="text-xs text-muted-foreground ml-1 shrink-0">
                     {currentIdx + 1}/{topTabs.length}
@@ -719,16 +722,23 @@ export default function AdminDashboard() {
                     >
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="flex items-center justify-center">
+                          <span className="relative flex items-center justify-center">
+                            {/* The lamp, behind the glyph. Its own element because
+                                the light belongs to the space around the icon, not
+                                to the icon — the glyph sits on top of it as a
+                                silhouette. */}
+                            {isActive && (
+                              <span aria-hidden className="icon-backlight absolute -inset-2.5 rounded-full" />
+                            )}
                             <Icon
                               aria-hidden="true"
                               /* Bolder while selected, which a stroke weight does
                                  and a font weight cannot: these are strokes, not text. */
                               strokeWidth={isActive ? 2.5 : 1.75}
                               className={
-                                'shrink-0 transition-all duration-200 ' +
+                                'relative shrink-0 transition-all duration-200 ' +
                                 (isActive
-                                  ? 'h-10 w-10 text-accent glow-icon'
+                                  ? 'h-10 w-10 text-background'
                                   : 'h-8 w-8 text-muted-foreground')
                               }
                             />
