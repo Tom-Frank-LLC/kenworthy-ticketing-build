@@ -143,28 +143,6 @@
     box-shadow: 0 0 40px -8px hsl(41 65% 56% / 0.35);
   }
 
-  /* The Backstage sign's lamp, for an icon.
-
-     The sign on the home page is lit two ways, and only one of them is this.
-     The neon *emits* — that is the `drop-shadow` stack on the image itself.
-     Behind it sits a separate pool of warm light: a blurred radial gradient on
-     its own element (`-inset-8 rounded-full blur-3xl`), which is what makes the
-     sign look like it hangs in a room rather than floating in the dark.
-
-     This is the pool, not the neon. It goes *behind* the glyph, so the glyph
-     reads as a silhouette against a lit ground rather than as the light source.
-     A `drop-shadow` filter cannot do it: that traces the glyph's own outline and
-     always makes the strokes themselves glow, which is the opposite effect. */
-  .icon-backlight {
-    background: radial-gradient(
-      circle,
-      hsl(var(--accent) / 0.95) 0%,
-      hsl(var(--accent) / 0.75) 38%,
-      hsl(var(--accent) / 0.28) 60%,
-      transparent 74%
-    );
-    filter: blur(5px);
-  }
 
   /* Marquee divider — thin gold rule with a centered bulb-dot, evokes
      the hand-painted dividers used on the .org calendar */

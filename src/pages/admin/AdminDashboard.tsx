@@ -668,8 +668,8 @@ export default function AdminDashboard() {
                 </Button>
                 <div className="flex-1 min-w-0 flex items-center justify-center gap-2 h-10 rounded-md border border-input bg-muted/40 px-3 font-display uppercase tracking-wider text-sm">
                   <span className="relative flex items-center justify-center shrink-0">
-                    <span aria-hidden className="icon-backlight absolute -inset-1.5 rounded-full" />
-                    <CurrentIcon className="relative h-6 w-6 text-background" strokeWidth={2.5} />
+                    <CurrentIcon aria-hidden="true" strokeWidth={2.5} className="absolute h-6 w-6 text-accent opacity-70 blur-[4px]" />
+                    <CurrentIcon className="relative h-6 w-6 text-muted" strokeWidth={2.5} />
                   </span>
                   <span className="truncate">{current.label}</span>
                   <span className="text-xs text-muted-foreground ml-1 shrink-0">
@@ -723,12 +723,20 @@ export default function AdminDashboard() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="relative flex items-center justify-center">
-                            {/* The lamp, behind the glyph. Its own element because
-                                the light belongs to the space around the icon, not
-                                to the icon — the glyph sits on top of it as a
-                                silhouette. */}
+                            {/* The glow is the icon, drawn a second time.
+                                
+                                A radial gradient behind the glyph lit the *area*
+                                and read as a spotlight on a button. Light that
+                                follows the shape has to be drawn from the shape,
+                                so the back copy is the same glyph in gold, blurred;
+                                the front copy sits on top and masks the middle,
+                                which leaves the glow escaping around the strokes. */}
                             {isActive && (
-                              <span aria-hidden className="icon-backlight absolute -inset-2.5 rounded-full" />
+                              <Icon
+                                aria-hidden="true"
+                                strokeWidth={2.5}
+                                className="absolute h-10 w-10 text-accent opacity-70 blur-[5px]"
+                              />
                             )}
                             <Icon
                               aria-hidden="true"
@@ -737,8 +745,11 @@ export default function AdminDashboard() {
                               strokeWidth={isActive ? 2.5 : 1.75}
                               className={
                                 'relative shrink-0 transition-all duration-200 ' +
+                                /* The bar's own `bg-muted`, so the lit glyph reads as
+                                   a cut-out with the background showing through the
+                                   glow rather than as a black shape laid over it. */
                                 (isActive
-                                  ? 'h-10 w-10 text-background'
+                                  ? 'h-10 w-10 text-muted opacity-90 blur-[0.4px]'
                                   : 'h-8 w-8 text-muted-foreground')
                               }
                             />
