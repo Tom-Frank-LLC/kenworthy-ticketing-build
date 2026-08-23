@@ -669,7 +669,7 @@ export default function AdminDashboard() {
                 <div className="flex-1 min-w-0 flex items-center justify-center gap-2 h-10 rounded-md border border-input bg-muted/40 px-3 font-display uppercase tracking-wider text-sm">
                   <span className="relative flex items-center justify-center shrink-0">
                     <CurrentIcon aria-hidden="true" strokeWidth={2.5} className="absolute h-6 w-6 text-accent opacity-70 blur-[4px]" />
-                    <CurrentIcon className="relative h-6 w-6 text-muted" strokeWidth={2.5} />
+                    <CurrentIcon className="relative h-6 w-6 glyph-lit" strokeWidth={2.5} />
                   </span>
                   <span className="truncate">{current.label}</span>
                   <span className="text-xs text-muted-foreground ml-1 shrink-0">
@@ -749,7 +749,7 @@ export default function AdminDashboard() {
                                    a cut-out with the background showing through the
                                    glow rather than as a black shape laid over it. */
                                 (isActive
-                                  ? 'h-10 w-10 text-muted opacity-90 blur-[0.4px]'
+                                  ? 'h-10 w-10 glyph-lit opacity-90 blur-[0.4px]'
                                   : 'h-8 w-8 text-muted-foreground')
                               }
                             />
