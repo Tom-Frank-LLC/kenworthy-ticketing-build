@@ -4,7 +4,18 @@
 // invoices, payment links and this site — with our own tickets, donations and
 // film-pass orders joined onto the ones that came from here.
 //
-// Two things about its shape are worth knowing before changing it.
+// Three things about its shape are worth knowing before changing it.
+//
+// **The money comes from Square's reports; the rows come from Square's orders.**
+// Two endpoints, one job each. The summary cards are `/reporting/v1/load` —
+// the engine behind Square's own Dashboard — so they agree with Square by
+// construction. The table is `/v2/orders/search`, because reports aggregate and
+// a log needs rows. Nothing on this screen adds money up; an earlier version
+// did, and spent a paragraph explaining why its sum disagreed with Square.
+//
+// A consequence worth keeping: the cards describe the whole RANGE and do not
+// narrow with the filters. Filtering to CASH does not change what the theatre
+// took last month.
 //
 // **Nothing is filtered in the browser.** Search, filters, sorting and paging
 // all happen in `square-transactions`, because the account holds thousands of
@@ -134,16 +145,28 @@ interface TransactionRow {
   reconciliation: Reconciliation;
 }
 
-interface CrossCheck {
+/**
+ * The range's money, as Square reports it. Nothing here is summed by us.
+ *
+ * These come from `/reporting/v1/load`, the engine behind Square's own
+ * Dashboard, so they agree with Square by construction. They describe the whole
+ * RANGE and do not narrow with the filters — filtering the table to CASH does
+ * not change what the theatre took last month, and re-summing under the same
+ * heading is how a filtered view ends up quoted as a month's revenue.
+ *
+ * `available` is false on staging: the sandbox host has no Reporting API at
+ * all. The rows come from a different endpoint and still work there.
+ */
+interface SquareTotals {
   available: boolean;
   reason?: string;
-  squareCollectedCents?: number;
-  squareOrderCount?: number;
-  ourCollectedCents?: number;
-  ourOrderCount?: number;
-  deltaCents?: number;
-  /** How far our order COUNT is from Square's, as a percentage. */
-  countDeltaPct?: number;
+  collectedCents: number;
+  netSalesCents: number;
+  taxCents: number;
+  tipsCents: number;
+  refundCents: number;
+  refundCount: number;
+  orderCount: number;
 }
 
 interface TransactionsPayload {
@@ -152,14 +175,7 @@ interface TransactionsPayload {
   page_size: number;
   total: number;
   range_total: number;
-  totals: {
-    count: number;
-    grossCents: number;
-    taxCents: number;
-    tipCents: number;
-    refundedCents: number;
-    netCents: number;
-  };
+  totals: SquareTotals;
   facets: {
     sources: string[];
     tenders: string[];
@@ -169,7 +185,6 @@ interface TransactionsPayload {
   };
   mismatches: { square_only: number; site_only: number; matched: number };
   range: { start_date: string; end_date: string; start_at: string; end_at: string };
-  cross_check: CrossCheck | null;
   untendered_orders: number;
   environment: string;
   fetched_at: string;
@@ -723,14 +738,36 @@ function FacetSelect({
 // Summary
 // ---------------------------------------------------------------------------
 
+/**
+ * Square's figures for the range — not a sum of the rows below.
+ *
+ * These describe the whole range and deliberately do not move when the table
+ * is filtered. The filtered row count is shown by the pager instead, so the two
+ * are never confused for one another.
+ */
 function SummaryCards({ data }: { data: TransactionsPayload }) {
   const t = data.totals;
+
+  if (!t.available) {
+    return (
+      <Card className="border-muted">
+        <CardContent className="p-3 text-sm text-muted-foreground">
+          {t.reason ?? 'Square’s totals are unavailable for this range.'}
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <Stat label="Transactions" value={t.count.toLocaleString()} />
-      <Stat label="Collected" value={money(t.grossCents)} />
-      <Stat label="Refunded" value={money(t.refundedCents)} />
-      <Stat label="Net" value={money(t.netCents)} />
+      <Stat label="Transactions" value={t.orderCount.toLocaleString()} />
+      <Stat label="Collected" value={money(t.collectedCents)} />
+      <Stat
+        label="Refunded"
+        value={money(t.refundCents)}
+        note={t.refundCount > 0 ? `${t.refundCount.toLocaleString()} refunds` : undefined}
+      />
+      <Stat label="Net sales" value={money(t.netSalesCents)} />
       {data.mismatches.site_only > 0 && (
         <Card className="col-span-2 lg:col-span-4 border-destructive/50 bg-destructive/5">
           <CardContent className="p-3 flex items-start gap-2 text-sm">
@@ -748,12 +785,13 @@ function SummaryCards({ data }: { data: TransactionsPayload }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <Card>
       <CardContent className="p-3">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
         <p className="font-display text-xl">{value}</p>
+        {note && <p className="text-xs text-muted-foreground">{note}</p>}
       </CardContent>
     </Card>
   );
@@ -787,9 +825,9 @@ function TransactionRowView({
         </TableCell>
         <TableCell className="whitespace-nowrap">
           {row.createdAt ? formatShowtime(row.createdAt, 'd MMM yyyy, h:mm a') : '—'}
-          {/* An invoice is raised weeks before it is paid, and the gap is the
-              reason this tab's totals and Square's reports differ over a short
-              range. Say so on the row rather than only in the footnote. */}
+          {/* An invoice is raised weeks before it is paid. Worth showing on the
+              row: it is why a sale can sit in this range while Square's own
+              totals count it in the next one. */}
           {collectedLater(row) && (
             <span className="block text-xs text-muted-foreground">
               paid {formatShowtime(row.collectedAt!, 'd MMM yyyy')}
@@ -1117,73 +1155,24 @@ function Pager({
   );
 }
 
-/**
- * Where these numbers came from, and whether Square agrees with them.
- *
- * The brief's acceptance test is that this tab matches Square's own Dashboard
- * for the same range. Rather than leave that as something to check by hand
- * once, the function asks Square's Reporting API — the engine behind that
- * dashboard — for the same range and reports both figures here.
- *
- * The COUNT is the test of completeness and the MONEY is not, which is the
- * opposite of what you would guess. Measured on the live account 23 Aug 2026:
- * counts agree within ~1% at every window from 7 days to year-to-date, while
- * the money delta swings from −30% over 7 days through +17% for June alone to
- * +0.6% over 180 days. A discrepancy that changes sign is not missing money —
- * it is the same money in a different bucket, because this tab ranges on when
- * an order was rung up and Square ranges on when it collected. So the two are
- * reported separately, and a money delta over a short range is explained
- * rather than alarmed about.
- */
+/** Where these numbers came from. */
 function Provenance({ data }: { data: TransactionsPayload }) {
-  const check = data.cross_check;
-  const delta = check?.deltaCents ?? 0;
-  const countPct = check?.countDeltaPct ?? 0;
-  const countAgrees = check?.available && Math.abs(countPct) <= 2;
-  const moneyAgrees = check?.available && Math.abs(delta) < 100;
-
   return (
-    <div className="space-y-2 border-t pt-3 text-sm text-muted-foreground">
-      <p>
-        {data.range.start_date} to {data.range.end_date} · {data.environment} · read{' '}
-        {formatShowtime(data.fetched_at, 'd MMM, h:mm a')}
-        {data.cached && ' (cached)'}
-        {data.untendered_orders > 0 && (
-          <> · {data.untendered_orders.toLocaleString()} unpaid carts and drafts excluded</>
-        )}
-      </p>
-
-      {check?.available
-        ? (
-          <>
-            <p>
-              {countAgrees
-                ? <ShieldCheck className="h-4 w-4 inline mr-1 text-emerald-600" />
-                : <AlertTriangle className="h-4 w-4 inline mr-1 text-amber-600" />}
-              Square counts <strong>{(check.squareOrderCount ?? 0).toLocaleString()}</strong>{' '}
-              transactions in this range; this tab shows{' '}
-              <strong>{(check.ourOrderCount ?? 0).toLocaleString()}</strong>
-              {countAgrees ? ' — complete.' : ` — ${countPct > 0 ? '+' : ''}${countPct.toFixed(1)}%.`}
-            </p>
-            <p>
-              Square’s reports total <strong>{money(check.squareCollectedCents ?? 0)}</strong>{' '}
-              against this tab’s <strong>{money(check.ourCollectedCents ?? 0)}</strong>
-              {moneyAgrees ? '. They agree.' : `, a difference of ${money(Math.abs(delta))}.`}
-              {!moneyAgrees && (
-                <>
-                  {' '}That is expected over a short range and is not missing money: this tab
-                  dates a sale when it was <em>rung up</em>, Square’s reports date it when the
-                  money was <em>collected</em>, and an invoice is raised weeks before it is
-                  paid. The two converge as the range widens.
-                </>
-              )}
-            </p>
-          </>
-        )
-        : check?.reason
-        ? <p>Not cross-checked against Square’s own reports: {check.reason}</p>
-        : null}
-    </div>
+    <p className="border-t pt-3 text-sm text-muted-foreground">
+      {data.totals.available && (
+        <>
+          <ShieldCheck className="h-4 w-4 inline mr-1 text-emerald-600" />
+          Totals are Square’s own, for the whole range — they do not narrow with the
+          filters.{' '}
+        </>
+      )}
+      {data.range.start_date} to {data.range.end_date} · {data.environment} · read{' '}
+      {formatShowtime(data.fetched_at, 'd MMM, h:mm a')}
+      {data.cached && ' (cached)'}
+      {data.untendered_orders > 0 && (
+        <> · {data.untendered_orders.toLocaleString()} unpaid carts and drafts excluded</>
+      )}
+    </p>
   );
 }
 

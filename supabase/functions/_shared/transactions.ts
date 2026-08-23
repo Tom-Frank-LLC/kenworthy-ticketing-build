@@ -591,41 +591,21 @@ export function buildFacets(rows: TransactionRow[]): Facets {
   };
 }
 
-export interface Totals {
-  count: number;
-  grossCents: Cents;
-  taxCents: Cents;
-  tipCents: Cents;
-  refundedCents: Cents;
-  netCents: Cents;
-}
-
-/**
- * Totals for the filtered set.
- *
- * `site_only` rows are excluded from the money: they represent a sale Square
- * has no record of, so adding them to a revenue figure would report income the
- * bank never saw. They are counted, so the count and the sum can disagree —
- * which is exactly the signal the reconciliation view exists to give.
- */
-export function totalsFor(rows: TransactionRow[]): Totals {
-  let grossCents = 0, taxCents = 0, tipCents = 0, refundedCents = 0;
-  for (const row of rows) {
-    if (row.reconciliation === 'site_only') continue;
-    grossCents += row.totalCents;
-    taxCents += row.taxCents;
-    tipCents += row.tipCents;
-    refundedCents += row.refundedCents;
-  }
-  return {
-    count: rows.length,
-    grossCents,
-    taxCents,
-    tipCents,
-    refundedCents,
-    netCents: grossCents - refundedCents,
-  };
-}
+// There is deliberately NO totalsFor() here any more.
+//
+// This module used to sum the fetched rows to produce the screen's money
+// figures, and that sum disagreed with Square — not because the arithmetic was
+// wrong but because the two range on different things: we on when an order was
+// rung up, Square on when it collected. An invoice raised in July and paid in
+// August belongs to a different month for each of us, and this account's
+// invoices average $566, so the delta swung from -30% over seven days to +17%
+// for June alone.
+//
+// The totals now come from Square's Reporting API instead (see
+// `squareTotals()` in ../square-transactions/index.ts), which is the engine
+// behind Square's own Dashboard, so they agree with Square by construction.
+// Anything re-added here would have to disagree with the number on the card
+// above it. Don't.
 
 // ---------------------------------------------------------------------------
 // Catalog index

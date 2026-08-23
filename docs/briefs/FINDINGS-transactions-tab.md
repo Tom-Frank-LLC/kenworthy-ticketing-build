@@ -12,9 +12,16 @@ premise in the brief itself.
 Square within ~1% at every window from 7 days to year-to-date — the old
 implementation counted 2,377 where Square counted 2,894. `state_filter:
 ["COMPLETED"]` was the cause, confirmed: the `OPEN` orders it discarded are
-worth $13,499 of a $49,200 month. The remaining money difference **changes
-sign** (−30% over 7 days, +17% in June, +0.6% over 180 days) and is a
-date-attribution difference, not missing money.
+worth $13,499 of a $49,200 month.
+
+The money was a different story, and its resolution is the lesson. Our sum of
+the fetched rows disagreed with Square by an amount that **changed sign** —
+−30% over 7 days, +17% in June, +0.6% over 180 days — because we range on when
+an order was rung up and Square ranges on when it collected. The first instinct
+was to explain that on screen. The right answer was to **stop summing and ask
+Square**, which is what `square-analytics` had already concluded and what this
+now does. A closed month matches Square to the cent because it is Square's
+number.
 
 ## 1. The brief's premise was already out of date
 
@@ -239,24 +246,66 @@ That explains every feature of the table: worst over 7 days (few offsetting
 orders), converging as the window widens, and sign-flipping by month depending
 on which side of the boundary that month's invoices fell.
 
-### What was done about it
+### Resolved: stop doing the arithmetic
 
-`collectedAt` is now on every row — the earliest tender's `created_at`, falling
-back to `closed_at`. The table shows "paid <date>" under the date whenever the
-two differ, the CSV has both as separate columns, and the tender detail shows
-when each was taken.
+The first response to this was to explain it — a `cross_check` block reporting
+both figures, a paragraph under the table about why they differed, and a
+`collectedAt` on every row. All of that was machinery for describing a
+discrepancy rather than removing one.
 
-The provenance line now reports the **count** and the **money** separately,
-because the count is the honest test of completeness and the money is not. A
-money delta over a short range is explained on screen rather than alarmed
-about.
+Tom's call, and it is the right one: **take the numbers from Square instead.**
 
-**Not done: keying the range on collection time.** That is what would make the
-totals match Square at every window, and it is a real change — it needs the
-fetch window widened well beyond the requested range (an invoice paid today may
-have been created months ago) and then re-filtered, which multiplies the scan
-cost. It also changes what "Date" means on this screen. That is a decision,
-not a detail.
+`squareTotals()` now asks `/reporting/v1/load` for the range — `Sales` for what
+was collected, `PaymentAndRefunds` for what went back out — and those are the
+figures on the cards. `totalsFor()` is deleted from `_shared/transactions.ts`
+and its tests with it. Nothing on the screen adds money up any more, so nothing
+can disagree with Square.
+
+This is the same move `square-analytics` made (§3 of
+`FINDINGS-square-reporting-api.md`): *"Rather than hunt that bug, we deleted the
+arithmetic."* It had already been made once in this repo and was worth making
+again rather than re-deriving.
+
+Measured after the change, against the live account:
+
+| range | cards now show | Square | our old sum |
+|---|---:|---:|---:|
+| Jun 2026 | **$49,993.71** | $49,993.71 | $58,725.12 |
+
+A closed month matches to the cent, because it *is* Square's number.
+
+Two things came free with it:
+
+- **Refunds appear.** The row-sourced figure was $0.00 for every range, because
+  `/v2/orders/search` does not populate `order.refunds`. Square's
+  `PaymentAndRefunds` cube does: $63.21 across 4 in the last 30 days.
+- **No pagination limit on the money.** The totals are a server-side aggregate,
+  so they are correct even for a range whose rows would be truncated.
+
+### The shape this leaves
+
+Two Square endpoints, one job each:
+
+| | source | scope |
+|---|---|---|
+| summary cards | `/reporting/v1/load` | the whole **range**, unfiltered |
+| table rows | `/v2/orders/search` | filtered, searched, sorted, paged |
+
+**The cards deliberately do not narrow with the filters.** Verified on
+production — filtering to CASH (636 rows), searching "popcorn" (665 rows) or
+`site_only` (12 rows) leaves the collected figure at $57,669.21 throughout,
+while the row count moves. Filtering the table does not change what the theatre
+took last month, and re-summing under the same heading is how a filtered view
+ends up quoted as a month's revenue. The pager reports the filtered count, so
+the two are never confused.
+
+`collectedAt` stayed. It is a fact about a transaction, not part of the
+explaining apparatus, and it is what makes an invoice legible: the table shows
+"paid *date*" when the two differ, and the CSV carries both.
+
+On staging the cards say plainly that Square's Reporting API is
+production-only; the rows still render, because they come from the other
+endpoint.
 
 ## 7. Why `GET /v2/catalog/list` and not `batch-retrieve`
 

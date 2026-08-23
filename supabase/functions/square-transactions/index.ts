@@ -53,10 +53,15 @@ import {
   siteOnlyRows,
   type SortKey,
   sortRows,
-  totalsFor,
   type TransactionRow,
 } from '../_shared/transactions.ts';
-import { pollLoad, totalsQuery } from '../_shared/square-reporting.ts';
+import {
+  absCents,
+  cents,
+  pollLoad,
+  refundsQuery,
+  totalsQuery,
+} from '../_shared/square-reporting.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -90,33 +95,42 @@ interface RangeCache {
   rows: TransactionRow[];
   truncated: boolean;
   untendered: number;
-  crossCheck: CrossCheck | null;
+  totals: SquareTotals;
 }
 
 /**
- * Our figure for the range, beside Square's own for the same range.
+ * The range's money, as SQUARE reports it. We do not add anything up.
  *
- * The brief's acceptance test is "the tab's transactions match Square Dashboard
- * → Transactions in count and totals". That is a test somebody has to remember
- * to run by hand, against a dashboard, once. This runs it on every load: the
- * Reporting API IS the engine behind that dashboard, so a disagreement here is
- * a disagreement with Square.
+ * This screen previously summed `order.total_money` across the orders it had
+ * fetched, and then explained at length why that sum disagreed with Square. It
+ * disagreed because the two range on different things — we on when an order was
+ * rung up, Square on when it collected — so an invoice raised in July and paid
+ * in August lands in a different month for each. The delta swung from -30% over
+ * seven days to +17% for June alone.
  *
- * It also puts a number on the open question left by
- * FINDINGS-square-reporting-api.md §2 — whether paging /v2/orders/search can be
- * made to agree with Square at all. If `deltaCents` sits near zero across
- * ranges, dropping `state_filter` was the fix and that finding can be closed.
+ * None of that is worth explaining to someone who wants to know what the
+ * theatre took last month. `/reporting/v1/load` is the engine behind Square's
+ * own Dashboard, so asking it makes these figures agree with Square by
+ * construction rather than by reconciliation — the same move
+ * `square-analytics` made when it deleted its own arithmetic
+ * (docs/briefs/FINDINGS-square-reporting-api.md §3).
+ *
+ * The ROWS still come from `/v2/orders/search`, because the Reporting API
+ * aggregates and returns no per-order rows and a log needs rows. So the tab has
+ * two sources with one job each: Square's reports for what the money was,
+ * Square's orders for what the transactions were.
  */
-interface CrossCheck {
+interface SquareTotals {
   available: boolean;
+  /** Why not, when unavailable — the sandbox has no Reporting API at all. */
   reason?: string;
-  squareCollectedCents?: number;
-  squareOrderCount?: number;
-  ourCollectedCents?: number;
-  ourOrderCount?: number;
-  deltaCents?: number;
-  /** How far our order COUNT is from Square's, as a percentage. */
-  countDeltaPct?: number;
+  collectedCents: number;
+  netSalesCents: number;
+  taxCents: number;
+  tipsCents: number;
+  refundCents: number;
+  refundCount: number;
+  orderCount: number;
 }
 
 const rangeCache = new Map<string, RangeCache>();
@@ -204,14 +218,14 @@ Deno.serve(async (req: Request) => {
       return json({ error: String((err as Error)?.message ?? err) }, 502);
     }
 
-    const crossCheck = await crossCheckAgainstSquare(config, range, fetched.rows);
+    const totals = await squareTotals(config, range);
 
     cached = {
       fetchedAt: now,
       rows: fetched.rows,
       truncated: fetched.truncated,
       untendered: fetched.untendered,
-      crossCheck,
+      totals,
     };
     rangeCache.set(cacheKey, cached);
     pruneCache(now);
@@ -290,7 +304,11 @@ Deno.serve(async (req: Request) => {
     page_size: pageSize,
     total: sorted.length,
     range_total: allRows.length,
-    totals: totalsFor(sorted),
+    // Square's own figures for the whole range — NOT a sum of the rows above,
+    // and NOT narrowed by the filters. Filtering to CASH does not change what
+    // the theatre took last month, and quietly re-summing under the same
+    // heading is how a filtered view ends up quoted as a month's revenue.
+    totals: cached!.totals,
     facets,
     mismatches: {
       square_only: allRows.filter((r) => r.reconciliation === 'square_only').length,
@@ -303,7 +321,6 @@ Deno.serve(async (req: Request) => {
       start_at: range.startAt,
       end_at: range.endAt,
     },
-    cross_check: cached!.crossCheck,
     untendered_orders: cached!.untendered,
     environment: config.environment,
     fetched_at: new Date(cached!.fetchedAt).toISOString(),
@@ -318,74 +335,79 @@ Deno.serve(async (req: Request) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Ask Square what it thinks the same range totals, and record both figures.
+ * The range's money, from Square's own reporting engine.
  *
- * Deliberately non-fatal in every direction. The Reporting API is an open beta
- * and is production-only — `connect.squareupsandbox.com/reporting/v1` is a 404,
- * measured 2026-08-20 — so on staging there is simply nothing to compare
- * against. A transaction log that refused to render because its optional
- * self-audit was unavailable would be a worse screen than one that says so.
+ * Two queries, both server-side aggregates with no pagination: `Sales` for
+ * what was collected, `PaymentAndRefunds` for what went back out. Amounts come
+ * back as decimal dollars, so `cents()` converts at the boundary.
+ *
+ * Deliberately non-fatal. The Reporting API is production-only —
+ * `connect.squareupsandbox.com/reporting/v1` is a 404, measured 2026-08-20 —
+ * so on staging there are no figures to show. The transaction rows come from a
+ * different endpoint and still work, and a log that refused to render because
+ * its summary was unavailable would be a worse screen than one that says so.
  */
-async function crossCheckAgainstSquare(
+async function squareTotals(
   config: any,
   range: { startDate: string; endDate: string },
-  rows: TransactionRow[],
-): Promise<CrossCheck> {
-  const ourCollectedCents = rows.reduce((sum, r) => sum + r.totalCents, 0);
-  const ourOrderCount = rows.length;
+): Promise<SquareTotals> {
+  const empty = {
+    collectedCents: 0,
+    netSalesCents: 0,
+    taxCents: 0,
+    tipsCents: 0,
+    refundCents: 0,
+    refundCount: 0,
+    orderCount: 0,
+  };
 
   if (config.environment !== 'production') {
     return {
+      ...empty,
       available: false,
-      reason: "Square's Reporting API is production-only, so there is nothing to check against on staging.",
-      ourCollectedCents,
-      ourOrderCount,
+      reason:
+        "Square's Reporting API is production-only, so there are no totals to show on staging. The transactions below are real sandbox orders.",
     };
   }
 
+  const cubeRange = { start: range.startDate, end: range.endDate };
+
   try {
-    const data = await pollLoad({
-      environment: 'production',
-      accessToken: config.accessToken,
-      query: totalsQuery({ start: range.startDate, end: range.endDate }),
-      label: 'transactions cross-check',
-    });
-    const row = data?.[0] ?? {};
-    // The Reporting API answers in decimal dollars, not integer cents.
-    const squareCollectedCents = Math.round(
-      Number(row['Sales.total_collected_amount'] ?? 0) * 100,
+    const [salesRows, refundRows] = await Promise.all([
+      pollLoad({
+        environment: 'production',
+        accessToken: config.accessToken,
+        query: totalsQuery(cubeRange),
+        label: 'transaction totals',
+      }),
+      pollLoad({
+        environment: 'production',
+        accessToken: config.accessToken,
+        query: refundsQuery(cubeRange),
+        label: 'transaction refunds',
+      }),
+    ]);
+
+    const t = salesRows?.[0] ?? {};
+    const refund = (refundRows ?? []).find(
+      (r: any) => r?.['PaymentAndRefunds.type'] === 'REFUND',
     );
-    const squareOrderCount = Number(row['Sales.order_count'] ?? 0);
 
     return {
       available: true,
-      squareCollectedCents,
-      squareOrderCount,
-      ourCollectedCents,
-      ourOrderCount,
-      deltaCents: ourCollectedCents - squareCollectedCents,
-      // The count is the honest test of completeness; the money is not.
-      //
-      // Measured on the live account 23 Aug 2026: order counts agree within
-      // ~1% at every window from 7 days to year-to-date, while the money delta
-      // swings from -30% (7 days) through +17% (June alone) to +0.6% (180
-      // days). A shortfall that changes sign is not missing money — it is the
-      // same money in a different bucket. We range on `order.created_at`;
-      // Square's Sales cube ranges on when it collected. An invoice is created
-      // when it is drafted and paid weeks later, and this account's invoices
-      // average $566.
-      countDeltaPct: squareOrderCount > 0
-        ? ((ourOrderCount - squareOrderCount) / squareOrderCount) * 100
-        : 0,
+      // Square's own "Total collected" — the figure on the Dashboard.
+      collectedCents: cents(t['Sales.total_collected_amount']),
+      netSalesCents: cents(t['Sales.net_sales']),
+      taxCents: cents(t['Sales.sales_tax_amount']),
+      tipsCents: cents(t['Sales.tips_amount']),
+      // Refunds come back negative; the card reads better as a magnitude.
+      refundCents: refund ? absCents(refund['PaymentAndRefunds.refund_total_amount']) : 0,
+      refundCount: refund ? Number(refund['PaymentAndRefunds.count']) || 0 : 0,
+      orderCount: Number(t['Sales.order_count']) || 0,
     };
   } catch (err) {
-    console.error('[square-transactions] cross-check unavailable', err);
-    return {
-      available: false,
-      reason: String((err as Error)?.message ?? err),
-      ourCollectedCents,
-      ourOrderCount,
-    };
+    console.error('[square-transactions] Square totals unavailable', err);
+    return { ...empty, available: false, reason: String((err as Error)?.message ?? err) };
   }
 }
 
