@@ -3,9 +3,18 @@
 **23 August 2026.** Written after building `square-transactions` and the
 Transactions tab, and measuring both against staging.
 
-Three findings. One closes an open question from
-`FINDINGS-square-reporting-api.md`; one invalidates a decision that had already
-been made on this brief; one is a stale premise in the brief itself.
+Four findings. One **closes** the open question from
+`FINDINGS-square-reporting-api.md` §2 and replaces it with a narrower one; one
+invalidates a decision that had already been made on this brief; one is a stale
+premise in the brief itself.
+
+**The headline, measured on production (§8):** order counts now agree with
+Square within ~1% at every window from 7 days to year-to-date — the old
+implementation counted 2,377 where Square counted 2,894. `state_filter:
+["COMPLETED"]` was the cause, confirmed: the `OPEN` orders it discarded are
+worth $13,499 of a $49,200 month. The remaining money difference **changes
+sign** (−30% over 7 days, +17% in June, +0.6% over 180 days) and is a
+date-attribution difference, not missing money.
 
 ## 1. The brief's premise was already out of date
 
@@ -56,9 +65,10 @@ visible rather than silently included or silently dropped. The count of
 untendered orders excluded is returned as `untendered_orders` — on staging's
 sandbox, 29 excluded against 19 kept, so this is not a small population.
 
-**Suspect 2 is confirmed harmless here and suspect 1 is now moot**, but neither
-is *proven* to have been the cause. The instrument to settle it is now built:
-see §3.
+**Suspect 1 is now confirmed, on production — see §8.** In a 30-day window the
+`OPEN` orders this rule keeps are worth **$13,499.40** against a total of
+$49,199.62. `state_filter: ["COMPLETED"]` was discarding roughly **28% of
+revenue**, which is the right order of magnitude for the measured 35%.
 
 ## 3. The tab cross-checks itself against Square, every load
 
@@ -163,6 +173,90 @@ It self-skips without `--allow-read`, so the documented
 inert. The regex was probed against known violations
 (`POST /catalog/batch-retrieve`, `PUT /catalog/object`, `POST /payments`) before
 being trusted.
+
+## 8. On production: counts match, money is a DATE question
+
+Deployed to production 23 Aug and measured against the live account with an
+admin JWT. This is the acceptance test §3 was built to run.
+
+### The order count now agrees with Square, at every window
+
+| window | Square orders | ours | Δ |
+|---|---:|---:|---:|
+| 7 days | 786 | 784 | −0.3% |
+| 30 days | 2,825 | 2,838 | +0.5% |
+| 90 days | 8,910 | 8,988 | +0.9% |
+| 180 days | 15,858 | 15,963 | +0.7% |
+| year to date | 22,720 | 22,887 | +0.7% |
+
+For contrast, the implementation `FINDINGS-square-reporting-api.md` measured
+counted **2,377 where Square counted 2,894**. Dropping `state_filter` closed
+that. **Suspect 1 is confirmed.** In the 30-day window:
+
+| order state | orders | value |
+|---|---:|---:|
+| COMPLETED | 2,292 | $35,109.38 |
+| **OPEN** | **526** | **$13,499.40** |
+| CANCELED | 20 | $590.84 |
+
+The `OPEN` orders are overwhelmingly Square Online, and they are real money —
+paid checks nobody closed out. Excluding them, as the old filter did, loses 28%
+of the window's revenue on its own.
+
+### The money still differs — but it changes sign, so it is not missing
+
+| window | Square | ours | Δ |
+|---|---:|---:|---:|
+| 7 days | $19,347.91 | $13,553.87 | **−29.95%** |
+| 30 days | $57,597.61 | $49,199.62 | −14.58% |
+| 90 days | $168,053.51 | $158,494.23 | −5.69% |
+| **180 days** | **$281,804.41** | **$283,507.85** | **+0.60%** |
+| year to date | $401,277.86 | $392,673.96 | −2.14% |
+| Jan 2026 | $78,752.84 | $71,994.28 | −8.58% |
+| Apr 2026 | $29,663.67 | $30,363.93 | +2.36% |
+| **Jun 2026** | **$49,993.71** | **$58,725.12** | **+17.47%** |
+
+**A shortfall that becomes a surplus is not a shortfall.** Over 180 days the
+two agree to 0.6%. The money is not missing; it is in a different bucket.
+
+Ruled out along the way, on the live 30-day set:
+
+- **Not tenders disagreeing with orders.** Tenders equal `order.total_money`
+  exactly on all 2,838 orders — zero exceptions.
+- **Not tips.** $1,492.39 of them, already inside `order.total_money`.
+- **Not truncation.** `notes` empty, `truncated` false.
+
+### The cause: we date a sale when it was rung up, Square when it collected
+
+We filter and display `order.created_at`. Square's `Sales` cube ranges on its
+own reporting timestamp — when the money came in. For a POS sale those are the
+same instant. For an **invoice** they are weeks apart: it is created when
+drafted and paid whenever the customer gets round to it. This account's
+invoices average **$565.81**, so a handful landing either side of a boundary
+moves a month's total by thousands.
+
+That explains every feature of the table: worst over 7 days (few offsetting
+orders), converging as the window widens, and sign-flipping by month depending
+on which side of the boundary that month's invoices fell.
+
+### What was done about it
+
+`collectedAt` is now on every row — the earliest tender's `created_at`, falling
+back to `closed_at`. The table shows "paid <date>" under the date whenever the
+two differ, the CSV has both as separate columns, and the tender detail shows
+when each was taken.
+
+The provenance line now reports the **count** and the **money** separately,
+because the count is the honest test of completeness and the money is not. A
+money delta over a short range is explained on screen rather than alarmed
+about.
+
+**Not done: keying the range on collection time.** That is what would make the
+totals match Square at every window, and it is a real change — it needs the
+fetch window widened well beyond the requested range (an invoice paid today may
+have been created months ago) and then re-filtered, which multiplies the scan
+cost. It also changes what "Date" means on this screen. That is a decision,
+not a detail.
 
 ## 7. Why `GET /v2/catalog/list` and not `batch-retrieve`
 

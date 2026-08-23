@@ -115,6 +115,8 @@ interface CrossCheck {
   ourCollectedCents?: number;
   ourOrderCount?: number;
   deltaCents?: number;
+  /** How far our order COUNT is from Square's, as a percentage. */
+  countDeltaPct?: number;
 }
 
 const rangeCache = new Map<string, RangeCache>();
@@ -362,6 +364,19 @@ async function crossCheckAgainstSquare(
       ourCollectedCents,
       ourOrderCount,
       deltaCents: ourCollectedCents - squareCollectedCents,
+      // The count is the honest test of completeness; the money is not.
+      //
+      // Measured on the live account 23 Aug 2026: order counts agree within
+      // ~1% at every window from 7 days to year-to-date, while the money delta
+      // swings from -30% (7 days) through +17% (June alone) to +0.6% (180
+      // days). A shortfall that changes sign is not missing money — it is the
+      // same money in a different bucket. We range on `order.created_at`;
+      // Square's Sales cube ranges on when it collected. An invoice is created
+      // when it is drafted and paid weeks later, and this account's invoices
+      // average $566.
+      countDeltaPct: squareOrderCount > 0
+        ? ((ourOrderCount - squareOrderCount) / squareOrderCount) * 100
+        : 0,
     };
   } catch (err) {
     console.error('[square-transactions] cross-check unavailable', err);

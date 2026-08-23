@@ -1,12 +1,14 @@
 ---
 brief: transactions-tab
 title: A searchable Transactions log of confirmed Square and site sales, with reconciliation
-status: built
+status: shipped
 track: feature
 severity: P2
 date: 2026-08-18
+shipped_in: ["#161"]
+shipped_at: 2026-08-23
 findings: FINDINGS-transactions-tab.md
-verified: false
+verified: true
 ---
 
 # Brief (for Claude Code): Add a "Transactions" admin tab — searchable log of confirmed Square + site sales
@@ -97,9 +99,28 @@ all filters and sorts, paging, export, range guards, and the read-only guardrail
 (now an enforced test, not a grep). Full table in
 `FINDINGS-transactions-tab.md` §5.
 
-**Outstanding:** the headline criterion — matching Square's own totals — needs
-**production**. Square's Reporting API is production-only, and staging's sandbox
-has no real sales to match. The function now runs that comparison itself on
-every load and reports both figures as `cross_check`; on staging it correctly
-reports why it cannot. Also unverified on production: real-volume performance,
-and whether production isolates are reused (Decision 5).
+**Then deployed and measured on production, 23 Aug.** The headline criterion
+splits in two, and the split matters:
+
+- **Count: passes.** Square's order count and this tab's agree within ~1% at
+  every window from 7 days to year-to-date. The implementation this replaces
+  counted 2,377 where Square counted 2,894.
+- **Money: differs over short ranges, and it is a date question, not a
+  shortfall.** −29.95% over 7 days, +17.47% for June alone, **+0.60% over 180
+  days**. A discrepancy that changes sign is the same money in a different
+  bucket: we date a sale when it was rung up, Square dates it when it
+  collected, and this account's invoices — average $565.81 — are raised weeks
+  before they are paid. Tenders equal order totals on all 2,838 orders and tips
+  are already inside them, so nothing is being dropped.
+
+Rows now carry `collectedAt`, the table shows "paid <date>" whenever the two
+differ, the CSV has both as columns, and the provenance line reports count and
+money separately so the honest test is the visible one.
+
+**Open, and a real decision rather than a detail:** keying the range on
+collection time would make the totals match at every window, but it needs the
+fetch window widened far beyond the requested range and then re-filtered —
+multiplying scan cost — and it changes what "Date" means on this screen.
+See `FINDINGS-transactions-tab.md` §8.
+
+**Also open:** the caching question in Decision 5 above.
