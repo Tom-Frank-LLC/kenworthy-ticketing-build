@@ -14,7 +14,6 @@ import {
   type SiteRecord,
   siteOnlyRows,
   sortRows,
-  totalsFor,
   venueDayStart,
 } from './transactions.ts';
 import { venueDate } from './square-reporting.ts';
@@ -431,27 +430,9 @@ Deno.test('sorting by amount and by date', () => {
   assertEquals(sortRows(rows, 'amount_asc')[0].id, 'A');
 });
 
-Deno.test('totals exclude site-only rows from the money but count them', () => {
-  // A sale Square has no record of is not revenue the bank saw. Adding it to a
-  // total would report income that does not exist — while still needing to be
-  // visible as a row.
-  const rows = [normalizeOrder(order(), EMPTY), ...siteOnlyRows([record({ totalCents: 5000 })])];
-  const totals = totalsFor(rows);
-  assertEquals(totals.count, 2);
-  assertEquals(totals.grossCents, 1696);
-  assertEquals(totals.taxCents, 96);
-  assertEquals(totals.netCents, 1696);
-});
-
-Deno.test('net is gross less refunds', () => {
-  const rows = [
-    normalizeOrder(order({ refunds: [{ id: 'R', amount_money: { amount: 696 }, status: 'APPROVED' }] }), EMPTY),
-  ];
-  const totals = totalsFor(rows);
-  assertEquals(totals.grossCents, 1696);
-  assertEquals(totals.refundedCents, 696);
-  assertEquals(totals.netCents, 1000);
-});
+// There are no totals tests here any more, because this module no longer adds
+// money up — Square's Reporting API supplies the figures. The per-ROW amounts
+// are still parsed and still tested above; what has gone is the summing.
 
 // ---------------------------------------------------------------------------
 // Range

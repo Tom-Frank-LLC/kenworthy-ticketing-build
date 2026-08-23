@@ -105,22 +105,22 @@ splits in two, and the split matters:
 - **Count: passes.** Square's order count and this tab's agree within ~1% at
   every window from 7 days to year-to-date. The implementation this replaces
   counted 2,377 where Square counted 2,894.
-- **Money: differs over short ranges, and it is a date question, not a
-  shortfall.** −29.95% over 7 days, +17.47% for June alone, **+0.60% over 180
-  days**. A discrepancy that changes sign is the same money in a different
-  bucket: we date a sale when it was rung up, Square dates it when it
-  collected, and this account's invoices — average $565.81 — are raised weeks
-  before they are paid. Tenders equal order totals on all 2,838 orders and tips
-  are already inside them, so nothing is being dropped.
+- **Money: now passes, by not being computed here.** Our sum of the fetched
+  rows disagreed with Square by an amount that *changed sign* — −29.95% over 7
+  days, +17.47% for June alone, +0.60% over 180 days — because we range on when
+  an order was rung up and Square ranges on when it collected.
 
-Rows now carry `collectedAt`, the table shows "paid <date>" whenever the two
-differ, the CSV has both as columns, and the provenance line reports count and
-money separately so the honest test is the visible one.
+**The fix was to stop doing the arithmetic** (Tom, 23 Aug). The summary cards
+now come from Square's Reporting API — `Sales` and `PaymentAndRefunds` — so
+they agree with Square by construction. `totalsFor()` is deleted. June 2026
+reads **$49,993.71**, Square's figure to the cent, where our own sum said
+$58,725.12. Refunds also appear for the first time: `/v2/orders/search` never
+populated `order.refunds`, so the row-derived figure was $0.00 for every range.
 
-**Open, and a real decision rather than a detail:** keying the range on
-collection time would make the totals match at every window, but it needs the
-fetch window widened far beyond the requested range and then re-filtered —
-multiplying scan cost — and it changes what "Date" means on this screen.
-See `FINDINGS-transactions-tab.md` §8.
+The shape that leaves: **`/reporting/v1/load` for the money, `/v2/orders/search`
+for the rows.** The cards describe the whole range and deliberately do not
+narrow with the filters — verified on production, the collected figure holds at
+$57,669.21 while the row count moves from 2,855 to 12. The pager reports the
+filtered count.
 
-**Also open:** the caching question in Decision 5 above.
+**Still open:** the caching question in Decision 5 above.
