@@ -10,12 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import { CollapsibleSection } from '@/components/admin/CollapsibleSection';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
+import TransactionsTab from '@/components/admin/TransactionsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
 import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
 import FestivalProgramsTab from '@/components/admin/FestivalProgramsTab';
@@ -1095,6 +1096,11 @@ export default function AdminDashboard() {
           <Tabs defaultValue="overview" className="space-y-4">
             <TabsList>
               <TabsTrigger value="overview"><BarChart3 className="h-4 w-4 mr-1 inline" />Overview</TabsTrigger>
+              {/* Beside the Overview rather than as a thirteenth top-level tab:
+                  the two read the same Square account for the same range, one
+                  aggregated and one transaction by transaction, and they are
+                  the pair you check against each other. */}
+              <TabsTrigger value="transactions"><Receipt className="h-4 w-4 mr-1 inline" />Transactions</TabsTrigger>
               {FINANCIAL_IMPORTS_ENABLED && (
                 <TabsTrigger value="accounting"><Wallet className="h-4 w-4 mr-1 inline" />Imports</TabsTrigger>
               )}
@@ -1104,6 +1110,9 @@ export default function AdminDashboard() {
             </TabsList>
             <TabsContent value="overview">
               <AnalyticsTab />
+            </TabsContent>
+            <TabsContent value="transactions">
+              <TransactionsTab />
             </TabsContent>
             {/* Hidden, not deleted — the workbook import is not part of the
                 workflow yet (see FINANCIAL_IMPORTS_ENABLED). */}

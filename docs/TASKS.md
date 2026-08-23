@@ -5,12 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**55 briefs** — 52 shipped, 1 built, 2 open, 0 needs triage, 0 closed.
+**56 briefs** — 52 shipped, 2 built, 2 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
+- `P2` **A searchable Transactions log of confirmed Square and site sales, with reconciliation**<br>`feature` — [brief](briefs/BRIEF-transactions-tab.md) · [notes](briefs/FINDINGS-transactions-tab.md)
 - `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
 
 ## Open
