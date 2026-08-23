@@ -67,7 +67,8 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatShowtime, venueDayKey } from '@/lib/datetime';
+import { formatShowtime } from '@/lib/datetime';
+import { DEFAULT_RANGE, presetRange, RANGES, type RangeKey } from '@/lib/transactionRanges';
 
 // ---------------------------------------------------------------------------
 // What the function returns. Money is always integer cents.
@@ -204,15 +205,6 @@ interface TransactionsPayload {
 
 // ---------------------------------------------------------------------------
 
-const RANGES = [
-  { key: '30d', label: '30 days', days: 30 },
-  { key: '90d', label: '90 days', days: 90 },
-  { key: 'ytd', label: 'Year to date', days: 0 },
-  { key: 'custom', label: 'Custom', days: 0 },
-] as const;
-
-type RangeKey = typeof RANGES[number]['key'];
-
 const PAGE_SIZE = 50;
 
 const money = (cents: number) =>
@@ -239,25 +231,8 @@ const RECONCILIATION_LABELS: Record<Reconciliation, string> = {
   site_only: 'Site order with no Square payment',
 };
 
-/**
- * Preset ranges, resolved to venue-local calendar dates.
- *
- * The same convention the edge function and `square-analytics` both use, so
- * "30 days" means the same thirty evenings on every screen. Computing these
- * from the browser's own midnight would put the boundary in the wrong place for
- * anyone not sitting in Pacific time.
- */
-function presetRange(key: RangeKey): { start: string; end: string } {
-  const today = venueDayKey(new Date());
-  if (key === 'ytd') return { start: `${today.slice(0, 4)}-01-01`, end: today };
-  const days = key === '90d' ? 90 : 30;
-  // Inclusive of today, so "30 days" spans 30 dated buckets.
-  const start = venueDayKey(new Date(Date.now() - (days - 1) * 86400_000));
-  return { start, end: today };
-}
-
 export default function TransactionsTab() {
-  const [rangeKey, setRangeKey] = useState<RangeKey>('30d');
+  const [rangeKey, setRangeKey] = useState<RangeKey>(DEFAULT_RANGE);
   const [custom, setCustom] = useState({ start: '', end: '' });
 
   const [query, setQuery] = useState('');
