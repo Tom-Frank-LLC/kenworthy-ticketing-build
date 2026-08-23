@@ -668,8 +668,8 @@ export default function AdminDashboard() {
                 </Button>
                 <div className="flex-1 min-w-0 flex items-center justify-center gap-2 h-10 rounded-md border border-input bg-muted/40 px-3 font-display uppercase tracking-wider text-sm">
                   <span className="relative flex items-center justify-center shrink-0">
-                    <CurrentIcon aria-hidden="true" strokeWidth={2.5} className="absolute h-6 w-6 text-accent opacity-70 blur-[4px]" />
-                    <CurrentIcon className="relative h-6 w-6 glyph-lit" strokeWidth={2.5} />
+                    <CurrentIcon aria-hidden="true" strokeWidth={1.75} className="absolute h-6 w-6 text-accent opacity-70 blur-[4px]" />
+                    <CurrentIcon className="relative h-6 w-6 glyph-lit" strokeWidth={1.75} />
                   </span>
                   <span className="truncate">{current.label}</span>
                   <span className="text-xs text-muted-foreground ml-1 shrink-0">
@@ -734,7 +734,7 @@ export default function AdminDashboard() {
                             {isActive && (
                               <Icon
                                 aria-hidden="true"
-                                strokeWidth={2.5}
+                                strokeWidth={1.75}
                                 className="absolute h-10 w-10 text-accent opacity-70 blur-[5px]"
                               />
                             )}
@@ -742,7 +742,10 @@ export default function AdminDashboard() {
                               aria-hidden="true"
                               /* Bolder while selected, which a stroke weight does
                                  and a font weight cannot: these are strokes, not text. */
-                              strokeWidth={isActive ? 2.5 : 1.75}
+                              /* One weight for both states now. Selection is
+                                 carried by size, colour and the glow; a heavier
+                                 stroke on top of those read as clotted at 45px. */
+                              strokeWidth={1.75}
                               className={
                                 'relative shrink-0 transition-all duration-200 ' +
                                 /* The bar's own `bg-muted`, so the lit glyph reads as
