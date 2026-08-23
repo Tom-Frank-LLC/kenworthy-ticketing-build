@@ -223,6 +223,60 @@ Deno.test('a site-only row claims no Square state', () => {
 });
 
 // ---------------------------------------------------------------------------
+// When the money moved
+// ---------------------------------------------------------------------------
+
+Deno.test('a POS sale is collected when it is rung up', () => {
+  const row = normalizeOrder(
+    order({ tenders: [{ id: 'T', type: 'CASH', amount_money: { amount: 800 }, created_at: '2026-08-01T18:30:00Z' }] }),
+    EMPTY,
+  );
+  assertEquals(row.createdAt, '2026-08-01T18:30:00Z');
+  assertEquals(row.collectedAt, '2026-08-01T18:30:00Z');
+});
+
+Deno.test('an invoice is collected long after it is rung up', () => {
+  // The reason this tab and Square's reports disagree over a short range:
+  // Square dates this sale in September, we date it in August. Measured on the
+  // live account 23 Aug 2026 — see FINDINGS-transactions-tab.md §8.
+  const row = normalizeOrder(
+    order({
+      source: { name: 'Invoices' },
+      created_at: '2026-08-01T18:30:00Z',
+      tenders: [{ id: 'T', type: 'CARD', amount_money: { amount: 137597 }, created_at: '2026-09-14T16:02:00Z' }],
+    }),
+    EMPTY,
+  );
+  assertEquals(row.createdAt, '2026-08-01T18:30:00Z');
+  assertEquals(row.collectedAt, '2026-09-14T16:02:00Z');
+});
+
+Deno.test('the earliest tender wins, and closed_at is the fallback', () => {
+  const split = normalizeOrder(
+    order({
+      tenders: [
+        { id: 'B', type: 'CARD', amount_money: { amount: 500 }, created_at: '2026-08-02T10:00:00Z' },
+        { id: 'A', type: 'CASH', amount_money: { amount: 500 }, created_at: '2026-08-01T09:00:00Z' },
+      ],
+    }),
+    EMPTY,
+  );
+  assertEquals(split.collectedAt, '2026-08-01T09:00:00Z');
+
+  const undated = normalizeOrder(
+    order({ closed_at: '2026-08-03T00:00:00Z', tenders: [{ id: 'T', type: 'CARD', amount_money: { amount: 100 } }] }),
+    EMPTY,
+  );
+  assertEquals(undated.collectedAt, '2026-08-03T00:00:00Z');
+});
+
+Deno.test('a site-only row claims no collection time', () => {
+  // There is no Square tender, so there is nothing to vouch for.
+  const [row] = siteOnlyRows([record({ squarePaymentId: null })]);
+  assertEquals(row.collectedAt, null);
+});
+
+// ---------------------------------------------------------------------------
 // Catalog
 // ---------------------------------------------------------------------------
 

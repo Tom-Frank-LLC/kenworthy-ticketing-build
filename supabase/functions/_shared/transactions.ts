@@ -39,6 +39,8 @@ export interface TenderSummary {
   paymentId: string | null;
   cardBrand: string | null;
   last4: string | null;
+  /** When the money was actually taken. See `collectedAt` on the row. */
+  createdAt: string | null;
 }
 
 export interface LineSummary {
@@ -88,7 +90,23 @@ export interface SiteMatch {
 export interface TransactionRow {
   /** Square order id, or for a site-only row, `site:<table>:<key>`. */
   id: string;
+  /** When the order was rung up. This is what the range filters on. */
   createdAt: string;
+  /**
+   * When the money was actually taken — earliest tender, else `closed_at`.
+   *
+   * These are the same instant for a POS sale and can be weeks apart for an
+   * invoice, which is created when it is drafted and paid whenever the customer
+   * gets round to it. That difference is not cosmetic: it is the whole reason
+   * this tab's totals and Square's own reports disagree over short windows.
+   * Measured 23 Aug 2026 against the live account — order counts agree within
+   * ~1% at every window length, but the money delta swings from −30% over 7
+   * days to +17% for June alone and settles at +0.6% over 180 days. Money is
+   * not missing; it is landing in a different bucket, because we range on
+   * `created_at` and Square's Sales cube ranges on when it was collected.
+   * See docs/briefs/FINDINGS-transactions-tab.md §8.
+   */
+  collectedAt: string | null;
   source: string;
   /**
    * Square's own order state — COMPLETED, OPEN, DRAFT, CANCELED.
@@ -168,6 +186,7 @@ export function normalizeOrder(order: any, catalog: CatalogIndex): TransactionRo
     paymentId: t?.payment_id ?? t?.id ?? null,
     cardBrand: t?.card_details?.card?.card_brand ?? null,
     last4: t?.card_details?.card?.last_4 ?? null,
+    createdAt: t?.created_at ?? null,
   }));
 
   const items: LineSummary[] = (order?.line_items ?? []).map((li: any) => {
@@ -211,6 +230,7 @@ export function normalizeOrder(order: any, catalog: CatalogIndex): TransactionRo
   return {
     id: order?.id ?? '',
     createdAt: order?.created_at ?? order?.closed_at ?? '',
+    collectedAt: earliestTenderTime(tenders) ?? order?.closed_at ?? null,
     source: order?.source?.name?.trim() || POS_SOURCE,
     state: typeof order?.state === 'string' ? order.state : 'UNKNOWN',
     tenderTypes: [...new Set(tenders.map((t) => t.type))],
@@ -236,6 +256,12 @@ export function normalizeOrder(order: any, catalog: CatalogIndex): TransactionRo
     match: null,
     reconciliation: 'square_only',
   };
+}
+
+/** The first time money moved on this order, or null if none of them say. */
+function earliestTenderTime(tenders: TenderSummary[]): string | null {
+  const times = tenders.map((t) => t.createdAt).filter(Boolean) as string[];
+  return times.length > 0 ? times.reduce((a, b) => (a < b ? a : b)) : null;
 }
 
 function firstRecipient(fulfillments: any): { display_name?: string; email_address?: string } | null {
@@ -394,6 +420,8 @@ export function siteOnlyRows(records: SiteRecord[]): TransactionRow[] {
     return {
       id: `site:${rec.kind}:${rec.orderToken ?? rec.recordIds[0] ?? 'unknown'}`,
       createdAt: rec.createdAt,
+      // No Square tender, so no collection time we can vouch for.
+      collectedAt: null,
       source: 'Kenworthy Website',
       // No Square order means no Square state. Left blank rather than faked as
       // COMPLETED, which would read as "Square has this" — the opposite of what

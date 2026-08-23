@@ -5,13 +5,12 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**56 briefs** — 52 shipped, 2 built, 2 open, 0 needs triage, 0 closed.
+**56 briefs** — 53 shipped, 1 built, 2 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
-- `P2` **A searchable Transactions log of confirmed Square and site sales, with reconciliation**<br>`feature` — [brief](briefs/BRIEF-transactions-tab.md) · [notes](briefs/FINDINGS-transactions-tab.md)
 - `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
 
 ## Open
@@ -21,6 +20,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A searchable Transactions log of confirmed Square and site sales, with reconciliation**<br>`feature` — `#161` — [brief](briefs/BRIEF-transactions-tab.md) · [notes](briefs/FINDINGS-transactions-tab.md)
 - **Missing Ticket Confirmation & Account Emails**<br>`ops` — `a72aabe`, `23d6bd3`, `202c6a2`, `cb17100`, `fc44c33`, `6ddfa72`, `3de95a8`, `#91`, `2bb68d4` — [brief](briefs/BRIEF-ticket-email.md)
 - **Every admin table becomes a collapsible section, and the tabs get a consolidation map**<br>`ux` — `#151` — [brief](briefs/BRIEF-admin-collapsible-sections.md)
 - **The admin Overview reads the theatre's real revenue, from Square**<br>`bug` — `#142`, `#144`, `#145`, `#147` — [brief](briefs/BRIEF-analytics-square.md) · [notes](briefs/FINDINGS-analytics-square.md)

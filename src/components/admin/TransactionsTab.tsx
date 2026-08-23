@@ -71,6 +71,7 @@ interface Tender {
   paymentId: string | null;
   cardBrand: string | null;
   last4: string | null;
+  createdAt: string | null;
 }
 
 interface LineItem {
@@ -106,7 +107,10 @@ interface SiteMatch {
 
 interface TransactionRow {
   id: string;
+  /** When the order was rung up — what the date range filters on. */
   createdAt: string;
+  /** When the money was actually taken. Weeks later, for an invoice. */
+  collectedAt: string | null;
   source: string;
   state: string;
   tenderTypes: string[];
@@ -138,6 +142,8 @@ interface CrossCheck {
   ourCollectedCents?: number;
   ourOrderCount?: number;
   deltaCents?: number;
+  /** How far our order COUNT is from Square's, as a percentage. */
+  countDeltaPct?: number;
 }
 
 interface TransactionsPayload {
@@ -199,6 +205,18 @@ const money = (cents: number) =>
 
 /** `ANY` is a sentinel: Radix Select cannot hold an empty string as a value. */
 const ANY = '__any__';
+
+/**
+ * Was the money taken on a different day from when the order was rung up?
+ *
+ * A POS sale is both at once. An invoice is raised and paid weeks apart, and
+ * this account's invoices average $566 — enough that a handful landing either
+ * side of a range boundary moves the total noticeably.
+ */
+function collectedLater(row: TransactionRow): boolean {
+  if (!row.collectedAt || !row.createdAt) return false;
+  return row.collectedAt.slice(0, 10) !== row.createdAt.slice(0, 10);
+}
 
 const RECONCILIATION_LABELS: Record<Reconciliation, string> = {
   matched: 'Matched to a site order',
@@ -769,6 +787,14 @@ function TransactionRowView({
         </TableCell>
         <TableCell className="whitespace-nowrap">
           {row.createdAt ? formatShowtime(row.createdAt, 'd MMM yyyy, h:mm a') : '—'}
+          {/* An invoice is raised weeks before it is paid, and the gap is the
+              reason this tab's totals and Square's reports differ over a short
+              range. Say so on the row rather than only in the footnote. */}
+          {collectedLater(row) && (
+            <span className="block text-xs text-muted-foreground">
+              paid {formatShowtime(row.collectedAt!, 'd MMM yyyy')}
+            </span>
+          )}
         </TableCell>
         <TableCell className="whitespace-nowrap">
           {row.source}
@@ -901,6 +927,11 @@ function RowDetail({ row }: { row: TransactionRow }) {
                     {t.last4 && <span className="text-muted-foreground"> ••••{t.last4}</span>}
                     {t.tipCents > 0 && (
                       <span className="text-muted-foreground"> · tip {money(t.tipCents)}</span>
+                    )}
+                    {t.createdAt && (
+                      <span className="text-muted-foreground">
+                        {' '}· taken {formatShowtime(t.createdAt, 'd MMM yyyy, h:mm a')}
+                      </span>
                     )}
                   </span>
                   <span className="tabular-nums whitespace-nowrap">{money(t.amountCents)}</span>
@@ -1093,11 +1124,23 @@ function Pager({
  * for the same range. Rather than leave that as something to check by hand
  * once, the function asks Square's Reporting API — the engine behind that
  * dashboard — for the same range and reports both figures here.
+ *
+ * The COUNT is the test of completeness and the MONEY is not, which is the
+ * opposite of what you would guess. Measured on the live account 23 Aug 2026:
+ * counts agree within ~1% at every window from 7 days to year-to-date, while
+ * the money delta swings from −30% over 7 days through +17% for June alone to
+ * +0.6% over 180 days. A discrepancy that changes sign is not missing money —
+ * it is the same money in a different bucket, because this tab ranges on when
+ * an order was rung up and Square ranges on when it collected. So the two are
+ * reported separately, and a money delta over a short range is explained
+ * rather than alarmed about.
  */
 function Provenance({ data }: { data: TransactionsPayload }) {
   const check = data.cross_check;
   const delta = check?.deltaCents ?? 0;
-  const agrees = check?.available && Math.abs(delta) < 100;
+  const countPct = check?.countDeltaPct ?? 0;
+  const countAgrees = check?.available && Math.abs(countPct) <= 2;
+  const moneyAgrees = check?.available && Math.abs(delta) < 100;
 
   return (
     <div className="space-y-2 border-t pt-3 text-sm text-muted-foreground">
@@ -1112,17 +1155,30 @@ function Provenance({ data }: { data: TransactionsPayload }) {
 
       {check?.available
         ? (
-          <p className={agrees ? '' : 'text-foreground'}>
-            {agrees
-              ? <ShieldCheck className="h-4 w-4 inline mr-1 text-emerald-600" />
-              : <AlertTriangle className="h-4 w-4 inline mr-1 text-amber-600" />}
-            Square’s own reports put this range at{' '}
-            <strong>{money(check.squareCollectedCents ?? 0)}</strong> across{' '}
-            {(check.squareOrderCount ?? 0).toLocaleString()} orders. This tab shows{' '}
-            <strong>{money(check.ourCollectedCents ?? 0)}</strong> across{' '}
-            {(check.ourOrderCount ?? 0).toLocaleString()}.
-            {agrees ? ' They agree.' : ` A difference of ${money(Math.abs(delta))}.`}
-          </p>
+          <>
+            <p>
+              {countAgrees
+                ? <ShieldCheck className="h-4 w-4 inline mr-1 text-emerald-600" />
+                : <AlertTriangle className="h-4 w-4 inline mr-1 text-amber-600" />}
+              Square counts <strong>{(check.squareOrderCount ?? 0).toLocaleString()}</strong>{' '}
+              transactions in this range; this tab shows{' '}
+              <strong>{(check.ourOrderCount ?? 0).toLocaleString()}</strong>
+              {countAgrees ? ' — complete.' : ` — ${countPct > 0 ? '+' : ''}${countPct.toFixed(1)}%.`}
+            </p>
+            <p>
+              Square’s reports total <strong>{money(check.squareCollectedCents ?? 0)}</strong>{' '}
+              against this tab’s <strong>{money(check.ourCollectedCents ?? 0)}</strong>
+              {moneyAgrees ? '. They agree.' : `, a difference of ${money(Math.abs(delta))}.`}
+              {!moneyAgrees && (
+                <>
+                  {' '}That is expected over a short range and is not missing money: this tab
+                  dates a sale when it was <em>rung up</em>, Square’s reports date it when the
+                  money was <em>collected</em>, and an invoice is raised weeks before it is
+                  paid. The two converge as the range widens.
+                </>
+              )}
+            </p>
+          </>
         )
         : check?.reason
         ? <p>Not cross-checked against Square’s own reports: {check.reason}</p>
@@ -1138,7 +1194,10 @@ function Provenance({ data }: { data: TransactionsPayload }) {
 function downloadCsv(payload: TransactionsPayload) {
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const header = [
-    'Date',
+    'Date rung up',
+    // Separate columns on purpose: totalling by one or the other is exactly
+    // what makes this tab and Square's reports agree or disagree.
+    'Date collected',
     'Source',
     'Square state',
     'Tender',
@@ -1161,6 +1220,7 @@ function downloadCsv(payload: TransactionsPayload) {
   const lines = payload.rows.map(row =>
     [
       row.createdAt,
+      row.collectedAt ?? '',
       row.source,
       row.state,
       row.tenderTypes.join(' '),
