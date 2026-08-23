@@ -139,16 +139,23 @@
     box-shadow: 0 0 40px -8px hsl(var(--primary) / 0.45);
   }
 
-  /* The selected glyph: halfway between the lit gold and the unselected grey.
+  /* The selected glyph: lit gold, lightened toward the page's own warm white.
 
-     Mixed from the two tokens rather than frozen as `40 41% 61%`, so it stays
-     the midpoint if either end is re-themed — the trap `.glow-accent` below
-     fell into by restating `41 65% 56%`. The literal above the mix is only a
-     fallback for browsers without `color-mix`; it is that same midpoint, so
-     the worst case is a colour that stops tracking the palette, not a wrong one. */
+     It was mixed with `--muted-foreground` before, which kept the hue but not
+     the brightness — accent, muted-foreground and their midpoint all sit within
+     0.04 relative luminance of each other, so moving between them changes the
+     colour without ever making it brighter. `--foreground` is the near-white in
+     the same warm hue family (38), so mixing toward it raises luminance from
+     0.41 to 0.59 and still reads as gold rather than as cream.
+
+     Mixed from the tokens rather than frozen as `41 62% 71%`, so it follows a
+     re-theme — the trap `.glow-accent` below fell into by restating its colour.
+     The literal is only a fallback where `color-mix` is unsupported, and it is
+     that same value, so the worst case is a colour that stops tracking the
+     palette rather than a wrong one. */
   .glyph-lit {
-    color: hsl(40 41% 61%);
-    color: color-mix(in srgb, hsl(var(--accent)), hsl(var(--muted-foreground)));
+    color: hsl(41 62% 71%);
+    color: color-mix(in srgb, hsl(var(--accent)) 60%, hsl(var(--foreground)));
   }
 
   .glow-accent {
