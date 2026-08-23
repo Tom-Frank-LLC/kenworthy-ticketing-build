@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import {
   ShoppingCart, Film, User, Loader2, CheckCircle2, AlertTriangle,
   RotateCcw, Banknote, CreditCard, Minus, Plus, UtensilsCrossed, Ticket,
-  ScanLine, Send,
+  ScanLine, Send, History,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -25,10 +25,13 @@ import { PaymentMethodSelector, type PaymentMethod } from '@/components/pos/Paym
 import { ConcessionPOS } from '@/components/pos/ConcessionPOS';
 import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import TransactionsTab from '@/components/admin/TransactionsTab';
 import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, computeProcessingFee, newOrderToken, TAX_RATE } from '@/lib/booking';
 import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { COLLECT_PHONE, CONCESSION_POS_ENABLED } from '@/lib/flags';
 import { formatShowtime } from '@/lib/datetime';
@@ -130,12 +133,20 @@ export default function StaffPOS() {
     loadDailyStats();
 
     async function loadShowings() {
-      const { data } = await supabase
-        .from('showings')
-        .select('id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee)')
-        .eq('is_active', true)
-        .gte('start_time', new Date().toISOString())
-        .order('start_time');
+      // Paged, because PostgREST caps a select at 1000 rows with no error and
+      // no warning. A truncated list here does not look like a bug — it looks
+      // like the showing simply is not on the schedule, and the counter has a
+      // patron waiting while it is not there.
+      const { data } = await fetchAllRows<any, unknown>((from, to) =>
+        supabase
+          .from('showings')
+          .select('id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee)')
+          .eq('is_active', true)
+          .gte('start_time', new Date().toISOString())
+          .order('start_time')
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: any[] | null; error: unknown }>,
+      );
 
       setShowings(
         (data || []).map((s: any) => ({
@@ -215,6 +226,27 @@ export default function StaffPOS() {
 
   const selectedShowing = showings.find(s => s.id === selectedShowingId);
   const isAssignedSeating = selectedShowing?.requires_seat_selection;
+
+  /**
+   * Options for the showing picker.
+   *
+   * The title is the label and the showtime is the hint, so two screenings of
+   * the same film are told apart on the trigger as well as in the list — the
+   * old dropdown crammed all three into one line and every row of a long run
+   * looked the same.
+   *
+   * Both halves are searched, which is why the date is spelled out with its
+   * weekday: staff say "the Friday one".
+   */
+  const showingOptions = useMemo(
+    () =>
+      showings.map(s => ({
+        value: s.id,
+        label: s.movie_title,
+        hint: `${formatShowtime(s.start_time, 'EEE d MMM, h:mm a')} · $${Number(s.ticket_price).toFixed(2)}`,
+      })),
+    [showings],
+  );
 
   // Build line items from current selection
   const lineItems: TicketLineItem[] = (() => {
@@ -807,9 +839,11 @@ export default function StaffPOS() {
       />
 
       <Tabs defaultValue="tickets" className="space-y-6">
+        {/* max-w widens with the tab count: at max-w-sm a fourth tab squeezes
+            every label to an ellipsis. */}
         <TabsList
-          className={`grid w-full max-w-sm ${
-            CONCESSION_POS_ENABLED ? 'grid-cols-3' : 'grid-cols-2'
+          className={`grid w-full ${
+            CONCESSION_POS_ENABLED ? 'grid-cols-4 max-w-2xl' : 'grid-cols-3 max-w-lg'
           }`}
         >
           <TabsTrigger value="tickets"><ShoppingCart className="h-4 w-4 mr-1" /> Tickets</TabsTrigger>
@@ -817,6 +851,12 @@ export default function StaffPOS() {
             <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1" /> Concessions</TabsTrigger>
           )}
           <TabsTrigger value="film-passes"><Ticket className="h-4 w-4 mr-1" /> Film Passes</TabsTrigger>
+          <TabsTrigger value="transactions">
+            <History className="h-4 w-4 mr-1" /> Transactions
+            {transactions.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5">{transactions.length}</Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tickets">
@@ -832,18 +872,20 @@ export default function StaffPOS() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Select value={selectedShowingId} onValueChange={setSelectedShowingId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a showing..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {showings.map(s => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.movie_title} — {formatShowtime(s.start_time, 'MMM d, h:mm a')} — ${Number(s.ticket_price).toFixed(2)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Type-to-search, not a scrolling dropdown. A busy season puts
+                  hundreds of future showings in this list, and the box office
+                  is looking for one film at one time, usually with a patron
+                  waiting. The title, the date and the price are all searchable,
+                  so "emily fri" or "aug 24" both land. */}
+              <SearchableSelect
+                id="pos-showing"
+                options={showingOptions}
+                value={selectedShowingId}
+                onChange={setSelectedShowingId}
+                placeholder="Choose a showing…"
+                searchPlaceholder="Search by film, date or price…"
+                emptyText="No showing matches."
+              />
             </CardContent>
           </Card>
 
@@ -940,11 +982,10 @@ export default function StaffPOS() {
             )
           )}
 
-          <TransactionHistory
-            transactions={transactions}
-            onRefund={(tx) => { setRefundingTx(tx); setRefundDialogOpen(true); }}
-            onResend={openResend}
-          />
+          {/* Session Transactions used to sit here, under the seating map. It
+              lives on the Transactions tab now — the sale in progress and the
+              record of finished sales are two different jobs, and stacking them
+              pushed the seat picker up the page on a busy night. */}
         </div>
 
         {/* Right: Patron info + Payment + Order summary */}
@@ -1147,6 +1188,35 @@ export default function StaffPOS() {
 
         <TabsContent value="film-passes">
           <FilmPassPOS />
+        </TabsContent>
+
+        <TabsContent value="transactions" className="space-y-6">
+          {/* This session first: it is what the counter reaches for — the sale
+              just taken, to refund it or re-send a confirmation to a mistyped
+              address. It is in-memory and empties on reload, which is why it
+              says so rather than looking like a day with no sales. */}
+          <TransactionHistory
+            transactions={transactions}
+            onRefund={(tx) => { setRefundingTx(tx); setRefundDialogOpen(true); }}
+            onResend={openResend}
+          />
+
+          {/* The full Square log is admin-only: `square-transactions` gates on
+              has_role(caller,'admin') because it returns the theatre's whole
+              revenue history along with buyer names, emails and payment ids.
+              Rendering it for staff would only produce a 403 where a table
+              should be, so say what is true instead. */}
+          {isAdmin
+            ? <TransactionsTab />
+            : (
+              <Card className="glass">
+                <CardContent className="p-4 text-sm text-muted-foreground">
+                  The full transaction log — every Square sale, searchable, with
+                  refunds and reconciliation — is on the admin dashboard under
+                  Analytics → Transactions, and needs an admin account.
+                </CardContent>
+              </Card>
+            )}
         </TabsContent>
       </Tabs>
 
