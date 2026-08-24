@@ -11,12 +11,12 @@ import { toast } from 'sonner';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { PASS_IMAGE_BUCKET, passImageUrl } from '@/lib/passImage';
 import {
-  Plus, Trash2, CreditCard, DollarSign, Printer, Loader2, Ban, QrCode,
+  Plus, Trash2, CreditCard, DollarSign, Loader2, Ban,
   Package, Mail, Store, ScanLine, Pencil, Search, X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { invokeFunction } from '@/lib/functions';
-import { StickerSheet, type StickerPassType, type Sticker } from './StickerSheet';
+import { PrintQrPanel } from './PrintQrPanel';
 import { formatShowtime } from '@/lib/datetime';
 import {
   formatMailingAddress,
@@ -160,14 +160,6 @@ function contactLines(p: SearchedPass): string[] {
   return out;
 }
 
-interface BatchSummary {
-  batch_id: string;
-  pass_type_name: string;
-  created_at: string;
-  total: number;
-  unassigned: number;
-}
-
 const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   active: 'default',
   unassigned: 'outline',
@@ -210,15 +202,6 @@ export default function FilmPassesTab() {
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [queueError, setQueueError] = useState<string | null>(null);
 
-  // Printing
-  const [batches, setBatches] = useState<BatchSummary[]>([]);
-  const [batchTypeId, setBatchTypeId] = useState('');
-  const [batchQuantity, setBatchQuantity] = useState('30');
-  const [minting, setMinting] = useState(false);
-  const [sheet, setSheet] = useState<
-    { stickers: Sticker[]; passType: StickerPassType; batchId: string } | null
-  >(null);
-
   // Issued passes — searched server-side, because the list is longer than a page
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
@@ -238,7 +221,6 @@ export default function FilmPassesTab() {
       .order('created_at', { ascending: false });
     const types = (data || []) as FilmPassType[];
     setPassTypes(types);
-    if (types.length > 0 && !batchTypeId) setBatchTypeId(types[0].id);
 
     // How many passes each type has issued.
     //
@@ -261,7 +243,7 @@ export default function FilmPassesTab() {
       }),
     );
     setTypePassCounts(Object.fromEntries(counts));
-  }, [batchTypeId]);
+  }, []);
 
   // Typing is not a query. Without this, every keystroke is a round trip and
   // the answers race each other back — the list settling on whichever reply
@@ -310,25 +292,13 @@ export default function FilmPassesTab() {
 
   useEffect(() => { loadPasses(0); }, [loadPasses]);
 
-  const loadBatches = useCallback(async () => {
-    try {
-      const data = await invokeFunction<{ batches: BatchSummary[] }>('film-pass-batch', {
-        action: 'batches',
-      });
-      setBatches(data.batches || []);
-    } catch {
-      // Not fatal: print runs are a convenience list, and failing to load them
-      // must not take the pass-type editor down with it.
-    }
-  }, []);
-
   /**
    * The same `queue` action the box office reads, shown here as oversight.
    *
-   * Unlike the print-run list above, a failure here is surfaced rather than
-   * swallowed: this section exists to answer "is anything outstanding?", and
-   * an empty list that is really a failed fetch answers it wrongly, which is
-   * the exact failure this section is meant to catch.
+   * A failure here is surfaced rather than swallowed: this section exists to
+   * answer "is anything outstanding?", and an empty list that is really a
+   * failed fetch answers it wrongly, which is the exact failure this section
+   * is meant to catch.
    */
   const loadQueue = useCallback(async () => {
     setLoadingQueue(true);
@@ -373,7 +343,7 @@ export default function FilmPassesTab() {
     await loadQueue();
   }, [loadQueue]);
 
-  useEffect(() => { loadData(); loadBatches(); loadQueue(); }, [loadData, loadBatches, loadQueue]);
+  useEffect(() => { loadData(); loadQueue(); }, [loadData, loadQueue]);
 
   function startEdit(pt: FilmPassType) {
     setEditingId(pt.id);
@@ -538,65 +508,6 @@ export default function FilmPassesTab() {
     loadData();
   }
 
-  async function handleMint() {
-    const quantity = parseInt(batchQuantity, 10);
-    if (!batchTypeId) { toast.error('Choose a pass type'); return; }
-    if (!Number.isFinite(quantity) || quantity < 1) { toast.error('How many stickers?'); return; }
-
-    setMinting(true);
-    try {
-      const data = await invokeFunction<{
-        batch_id: string;
-        quantity: number;
-        pass_type: StickerPassType;
-        passes: { qr_code: string; pass_number: number | null }[];
-      }>('film-pass-batch', {
-        action: 'create',
-        pass_type_id: batchTypeId,
-        quantity,
-      });
-
-      setSheet({
-        stickers: data.passes.map(p => ({ code: p.qr_code, pass_number: p.pass_number ?? null })),
-        passType: data.pass_type,
-        batchId: data.batch_id,
-      });
-      toast.success(`${data.quantity} blank stickers ready to print`);
-      loadBatches();
-      // A fresh batch is the usual way a type stops being deletable.
-      loadData();
-      loadPasses(0);
-    } catch (err: any) {
-      toast.error(err.message || 'Could not create the batch');
-    } finally {
-      setMinting(false);
-    }
-  }
-
-  async function reprintBatch(batchId: string) {
-    try {
-      const data = await invokeFunction<{
-        batch_id: string;
-        pass_type: StickerPassType | null;
-        passes: { qr_code: string; pass_number: number | null; status: string }[];
-      }>('film-pass-batch', { action: 'list', batch_id: batchId });
-
-      if (!data.pass_type) { toast.error('That batch has no pass type'); return; }
-      // Reprinting only the blanks, never the activated ones. A second sticker
-      // carrying a code already stuck to somebody's pass is a duplicate pass.
-      const blanks = data.passes
-        .filter(p => p.status === 'unassigned')
-        .map(p => ({ code: p.qr_code, pass_number: p.pass_number ?? null }));
-      if (blanks.length === 0) {
-        toast.info('Every sticker in that batch has already been activated.');
-        return;
-      }
-      setSheet({ stickers: blanks, passType: data.pass_type, batchId: data.batch_id });
-    } catch (err: any) {
-      toast.error(err.message || 'Could not load that batch');
-    }
-  }
-
   /** "Pass 1042 (Jane Smith)" — what a confirmation dialog has to name. */
   function passLabel(pass: SearchedPass): string {
     const id = pass.pass_number ? `Pass ${pass.pass_number}` : pass.qr_code || 'this pass';
@@ -682,19 +593,6 @@ export default function FilmPassesTab() {
 
   return (
     <div className="space-y-6">
-      {/* Rendered alongside the tab rather than instead of it: StickerSheet
-          portals itself to <body>, which is what its print rule requires, and
-          returning it in place here would put it back inside #root — the bug
-          that printed a blank page. */}
-      {sheet && (
-        <StickerSheet
-          stickers={sheet.stickers}
-          passType={sheet.passType}
-          batchId={sheet.batchId}
-          onDone={() => setSheet(null)}
-        />
-      )}
-
       {/* ---- Waiting to be handed over ----
           A mirror of the box office queue (FilmPassPOS), read-only. Activation
           needs a blank sticker under a scanner, which is a counter job — but a
@@ -711,7 +609,7 @@ export default function FilmPassesTab() {
         actions={
           queue.length > 0 ? (
             <Button size="sm" variant="outline" asChild>
-              <Link to="/admin/pos">
+              <Link to="/staff/pos">
                 <ScanLine className="h-4 w-4 mr-1" /> Activate at the counter
               </Link>
             </Button>
@@ -1044,72 +942,23 @@ export default function FilmPassesTab() {
         )}
       </CollapsibleSection>
 
-      {/* Print runs */}
-      <CollapsibleSection id="passes.stickers" title="Sticker Print Runs" count={batches.length}>
-        <Card className="glass">
-          <CardContent className="p-4 space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Stickers are printed blank and worth nothing until a staff member scans one at the
-              counter. Print a sheet, stick them on the paper passes, and keep them behind the desk.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-              <div className="space-y-2">
-                <Label>Pass type</Label>
-                <Select value={batchTypeId} onValueChange={setBatchTypeId}>
-                  <SelectTrigger><SelectValue placeholder="Choose a pass type..." /></SelectTrigger>
-                  <SelectContent>
-                    {passTypes.filter(p => p.is_active).map(pt => (
-                      <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="batch-qty">How many</Label>
-                <Input
-                  id="batch-qty"
-                  type="number"
-                  min={1}
-                  max={500}
-                  className="sm:w-28"
-                  value={batchQuantity}
-                  onChange={e => setBatchQuantity(e.target.value)}
-                />
-              </div>
-              <Button onClick={handleMint} disabled={minting || !batchTypeId}>
-                {minting ? (
-                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Minting…</>
-                ) : (
-                  <><QrCode className="h-4 w-4 mr-1" /> Generate</>
-                )}
-              </Button>
-            </div>
+      {/* Print QRs — the same panel the Staff section mounts. Kept here
+          because pass types are managed on this tab, and choosing which type a
+          run of stickers belongs to is the one decision it needs.
 
-            {batches.length > 0 && (
-              <div className="space-y-2 pt-2 border-t">
-                {batches.map(b => (
-                  <div key={b.batch_id} className="flex items-center justify-between gap-3 text-sm">
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">{b.pass_type_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatShowtime(b.created_at, 'MMM d, yyyy')} · {b.unassigned} of {b.total}{' '}
-                        still blank
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={b.unassigned === 0}
-                      onClick={() => reprintBatch(b.batch_id)}
-                    >
-                      <Printer className="h-4 w-4 mr-1" /> Reprint blanks
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          The section id stays `passes.stickers` on purpose: it is the
+          localStorage key for the remembered open/closed state, and renaming
+          it would quietly reset everyone's preference. The heading is what
+          changed, not the switch behind it. */}
+      <CollapsibleSection id="passes.stickers" title="Print QRs">
+        <PrintQrPanel
+          onMinted={() => {
+            // A fresh batch writes pass rows: it is the usual way a type stops
+            // being deletable, and the Issued Passes list just got longer.
+            loadData();
+            loadPasses(0);
+          }}
+        />
       </CollapsibleSection>
 
       {/* ---- Issued passes ----

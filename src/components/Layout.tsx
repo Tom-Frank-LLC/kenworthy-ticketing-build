@@ -1,7 +1,7 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Ticket, LogOut, Shield, ShieldCheck, User, CreditCard, Home, MapPin, Mail, Phone, Heart, Building2, ChevronDown, ShoppingCart, ScanLine } from 'lucide-react';
+import { Ticket, LogOut, Shield, ShieldCheck, User, CreditCard, Home, MapPin, Mail, Phone, Heart, Building2, ChevronDown, Store } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,11 +66,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     accountLinks.push(['DVD Rentals', '/dvds', Ticket]);
     accountLinks.push(['Profile', '/profile', User]);
   } else {
+    // Staff first: for most of the people with a role it is the only one of
+    // these they open on a shift. Both entries matter between `sm` and `lg`,
+    // where this menu is showing and the header buttons below are not.
+    if (isStaff) accountLinks.push(['Staff', '/staff', Store]);
     if (isAdmin || isStaff) accountLinks.push(['Dashboard', '/admin', Shield]);
-    if (isStaff && !isAdmin) {
-      accountLinks.push(['Point of Sale', '/admin/pos', ShoppingCart]);
-      accountLinks.push(['Ticket Scanner', '/admin/scanner', ScanLine]);
-    }
     if (isSuperadmin) accountLinks.push(['Superadmin', '/superadmin', ShieldCheck]);
     if (isHost && !isAdmin) accountLinks.push(['Host Dashboard', '/host', Home]);
   }
@@ -148,44 +148,46 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <nav className="flex items-center gap-1.5" aria-label="Primary">
-            <Button
-              variant="outline"
-              size="sm"
-              asChild
-              className="hidden lg:inline-flex h-10 border-primary/60 text-primary hover:bg-primary hover:text-primary-foreground"
-            >
-              <Link to="/donate">
-                <Heart className="h-4 w-4 mr-1" /> Donate
-              </Link>
-            </Button>
+            {/* Signed out only. Nobody with a role is going to donate from
+                behind the counter, and the header runs out of room at `lg`
+                exactly where the Staff and Admin buttons need to sit — so the
+                ask that is aimed at patrons yields to the tools that are not.
+                Donate is still in the Support menu and the mobile drawer. */}
+            {!user && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="hidden lg:inline-flex h-10 border-primary/60 text-primary hover:bg-primary hover:text-primary-foreground"
+              >
+                <Link to="/donate">
+                  <Heart className="h-4 w-4 mr-1" /> Donate
+                </Link>
+              </Button>
+            )}
             {user ? (
               <>
-                {/* Role shortcuts live in the mobile drawer below `lg`. */}
+                {/* Role shortcuts live in the mobile drawer below `lg`.
+
+                    Two links where there were four. Staff is the counter —
+                    POS, scanner, Print QRs — and it shows for admins too,
+                    because an admin runs the counter as often as anyone.
+                    Admin is management, and stays admin-only; a staff-only
+                    account still reaches the parts of the dashboard that are
+                    theirs from "Dashboard" in the Me menu. */}
+                {isStaff && (
+                  <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
+                    <Link to="/staff">
+                      <Store className="h-4 w-4 mr-1" /> Staff
+                    </Link>
+                  </Button>
+                )}
                 {isAdmin && (
                   <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
                     <Link to="/admin">
                       <Shield className="h-4 w-4 mr-1" /> Admin
                     </Link>
                   </Button>
-                )}
-                {isStaff && !isAdmin && (
-                  <>
-                    <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
-                      <Link to="/admin">
-                        <Shield className="h-4 w-4 mr-1" /> Admin
-                      </Link>
-                    </Button>
-                    <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
-                      <Link to="/admin/pos">
-                        <ShoppingCart className="h-4 w-4 mr-1" /> POS
-                      </Link>
-                    </Button>
-                    <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
-                      <Link to="/admin/scanner">
-                        <ScanLine className="h-4 w-4 mr-1" /> Scan
-                      </Link>
-                    </Button>
-                  </>
                 )}
                 {isSuperadmin && (
                   <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10 text-primary">

@@ -571,10 +571,10 @@ export default function AdminDashboard() {
         <h1 className="font-display text-3xl font-bold">Admin Dashboard</h1>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" asChild>
-            <Link to="/admin/pos"><ShoppingCart className="h-4 w-4 mr-1" /> Staff POS</Link>
+            <Link to="/staff/pos"><ShoppingCart className="h-4 w-4 mr-1" /> Staff POS</Link>
           </Button>
           <Button size="sm" variant="outline" asChild>
-            <Link to="/admin/scanner"><ScanLine className="h-4 w-4 mr-1" /> Scanner</Link>
+            <Link to="/staff/scanner"><ScanLine className="h-4 w-4 mr-1" /> Scanner</Link>
           </Button>
           {isAdmin && (
             <Button size="sm" variant="outline" asChild>
