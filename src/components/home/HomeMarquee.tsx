@@ -72,7 +72,7 @@ export function HomeMarquee() {
           <div className="max-w-xl min-w-0">
             <h1 className="font-display uppercase text-[1.75rem] sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground break-words hyphens-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
               A Century of Stories,
-              <span className="block text-primary">Told One Screening at a Time.</span>
+              <span className="block text-primary">Shared One Showing at a Time.</span>
             </h1>
             <p className="mt-3 font-serif italic text-foreground/90 text-sm sm:text-base max-w-lg drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
               Independent film, live performance, and community gatherings inside
