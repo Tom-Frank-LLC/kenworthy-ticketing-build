@@ -1,11 +1,12 @@
 ---
 brief: richtext-descriptions
 title: Description fields get a formatting toolbar, and the render path is sanitised to match
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-08-18
-verified: false
+shipped_in: ["#170"]
+shipped_at: 2026-08-23
+verified: true
 findings: FINDINGS-richtext-description-surface.md
 ---
 
@@ -161,3 +162,29 @@ previews as the generic site blurb.
 The part that belongs to *this* brief is done and verified: the value handed to
 `<SEO>` is now plain text (`toMetaDescription`), and the JSON-LD `description`
 is stripped — so when Helmet is fixed, neither will carry markup.
+
+
+### Shipped
+
+Merged as **#170** (`cb2c2ae`) and deployed by hand on 23 Aug 2026 — merging does
+not deploy on this project, so the PR merge alone would not have shipped it.
+
+| | version / ref |
+|---|---|
+| staging worker | `5a8b446d-6e2c-4b37-9286-92e7c1c9f537` |
+| production worker | `419d8543-d3d7-4a61-a36d-fd565f7c4ef4` |
+| production rollback target | `625dd957-17a3-4e9e-8183-17594b679a41` |
+| `mailchimp-campaign` edge fn | deployed to both `rpqzrpboyhshdrfdwayk` and `vlmslygnimfbamrtwvyo` |
+
+Production was confirmed **not ahead of main** before deploying: its CSS already
+carried #169's `var(--accent)` swap and no app-level string existed in a main
+build that production lacked, so the deploy reverted nothing. Every chunk was
+then verified live by **content-type**, not status code — the SPA fallback
+answers a missing asset with `200 text/html`, and on the staging deploy it did
+exactly that for ~30 seconds before propagation caught up.
+
+End-to-end on staging, in the real admin: created a movie, bolded a word,
+saved. The column stored `<p>A <strong>restored</strong> 35mm print, with live
+organ.</p>`, and reopening the form rendered it as formatting rather than tags.
+Test row deleted, and the deletion confirmed against the database rather than
+the table — an RLS denial returns 204 here.
