@@ -5,13 +5,12 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**58 briefs** — 54 shipped, 2 built, 2 open, 0 needs triage, 0 closed.
+**58 briefs** — 55 shipped, 1 built, 2 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
-- `P2` **Split the counter tools into a Staff section, with Print QRs in it**<br>`ux` — [brief](briefs/BRIEF-staff-section-print-qr.md)
 - `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
 
 ## Open
@@ -21,6 +20,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Split the counter tools into a Staff section, with Print QRs in it**<br>`ux` — `#172` — [brief](briefs/BRIEF-staff-section-print-qr.md)
 - **Description fields get a formatting toolbar, and the render path is sanitised to match**<br>`feature` — `#170` — [brief](briefs/BRIEF-richtext-descriptions.md) · [notes](briefs/FINDINGS-richtext-description-surface.md)
 - **A searchable Transactions log of confirmed Square and site sales, with reconciliation**<br>`feature` — `#161` — [brief](briefs/BRIEF-transactions-tab.md) · [notes](briefs/FINDINGS-transactions-tab.md)
 - **Missing Ticket Confirmation & Account Emails**<br>`ops` — `a72aabe`, `23d6bd3`, `202c6a2`, `cb17100`, `fc44c33`, `6ddfa72`, `3de95a8`, `#91`, `2bb68d4` — [brief](briefs/BRIEF-ticket-email.md)

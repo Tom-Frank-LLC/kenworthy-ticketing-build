@@ -1,11 +1,12 @@
 ---
 brief: staff-section-print-qr
 title: Split the counter tools into a Staff section, with Print QRs in it
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-18
-verified: false
+shipped_in: ["#172"]
+shipped_at: 2026-08-24
+verified: true
 ---
 
 # Brief (for Claude Code): Split a Staff section from Admin, add "Print QRs" to it, rename it
@@ -148,9 +149,9 @@ credentials.
 
 ## Deployed (2026-08-24)
 
-`square-terminal` only — the frontend is still unshipped, and this order is the
-right one: deploy the function first, or a staff-only account taking a card
-payment on the new POS path would still meet the admin gate.
+The function first, then the frontend — that order on purpose: the reverse would
+leave a staff-only account taking a card payment on the new POS path still
+meeting the admin gate.
 
 | | before | after |
 |---|---|---|
@@ -165,6 +166,41 @@ Verified past the 2xx: `supabase functions download` on each project, and the
 deployed source reads `_role: "staff"` / `"Staff access required"` on both. Both
 answer `401 UNAUTHORIZED_NO_AUTH_HEADER` to an unsigned POST, which is the
 function booting rather than a BOOT_ERROR.
+
+**Frontend**, from `main` at `25042fa` after a rebase (#170 had landed and added
+tiptap + dompurify, so the build needed a real `npm ci`):
+
+| | rollback version | new version | entry chunk |
+|---|---|---|---|
+| staging | `5a8b446d-6e2c-4b37-9286-92e7c1c9f537` | `26dac7bd-3518-4a00-b7b4-9b0ee5474c47` | `index-vaddZAJ7.js` |
+| production | `419d8543-d3d7-4a61-a36d-fd565f7c4ef4` | `52f672ef-ea22-4fbb-b927-061d0c0600dd` | `index-C5CDDV9F.js` |
+
+Neither worker was ahead of `main` beforehand: a local build of `origin/main`
+reproduced each live entry hash exactly (`BcJBcF9V` prod, `lg5KjYkJ` staging),
+so there was no other session's unmerged work to revert.
+
+Every new chunk was then checked against the live origin by **content type and
+byte size**, not by status — an asset that is not there answers 200 with the SPA
+shell. Worth knowing: `StaffDashboard-*.js` did exactly that on the first
+request after the staging deploy and served correctly seconds later. A single
+post-deploy 200-with-`text/html` is a propagation gap, not proof of a bad
+deploy; re-request before concluding.
+
+## Verified in production
+
+Signed in as a superadmin on the live site:
+
+- Header carries **Staff · Admin · Superadmin · Me** and **no Donate**.
+- `/admin/pos` → `/staff/pos` and `/admin/scanner` → `/staff/scanner`.
+- `/staff` and `/staff/print-qr` render; the pass-type picker populates and
+  `film-pass-batch action:'batches'` authorizes, listing the two real past runs.
+- The Film Passes tab's collapsed "Print QRs" header renders as `Print QRs2` —
+  heading plus the count badge, which is the regression that got fixed.
+- `robots.txt` carries `Disallow: /staff` on both origins.
+
+Still unexercised: minting an actual run, and a card payment through the widened
+`square-terminal` gate from a staff-only account. Both write real records, so
+they belong to a real shift rather than to a deploy check.
 
 ## The count badge, and why it needed a hook
 
