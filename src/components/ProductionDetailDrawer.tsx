@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { formatShowtime } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
+import { RichText } from '@/components/RichText';
 
 interface ShowingInfo {
   id: string;
@@ -129,9 +130,10 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
             <p className="text-sm text-muted-foreground">No upcoming showings scheduled.</p>
           )}
 
-          {production.description && (
-            <p className="text-muted-foreground leading-relaxed">{production.description}</p>
-          )}
+          <RichText
+            html={production.description}
+            className="text-muted-foreground leading-relaxed"
+          />
         </div>
       </SheetContent>
     </Sheet>

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -179,8 +179,13 @@ export default function VenueForm() {
               <Input required value={name} onChange={e => setName(e.target.value)} placeholder="Main Theater" />
             </div>
             <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} />
+              <Label htmlFor="venue-description">Description</Label>
+              <RichTextEditor
+                id="venue-description"
+                value={description}
+                onChange={setDescription}
+                rows={4}
+              />
             </div>
             <div className="flex items-center gap-3 py-2">
               <Checkbox

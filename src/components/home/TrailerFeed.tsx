@@ -9,6 +9,7 @@ import { GREEN_CTA } from '@/lib/greenCta';
 import { resolveTrailer } from '@/lib/trailer';
 import { formatShowtime } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
+import { htmlToPlainText } from '@/lib/richText';
 
 export interface FeedItem {
   id: string;
@@ -198,7 +199,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                 </h2>
                 {item.curatorNote && (
                   <p className="font-serif italic text-white/80 mb-4 max-w-md line-clamp-2">
-                    "{item.curatorNote}"
+                    "{htmlToPlainText(item.curatorNote)}"
                   </p>
                 )}
                 <div className="flex flex-wrap items-center gap-2">

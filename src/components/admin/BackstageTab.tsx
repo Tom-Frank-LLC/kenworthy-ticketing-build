@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { CollapsibleSection } from './CollapsibleSection';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -425,20 +425,19 @@ export default function BackstageTab() {
       {/* ------------------------------------------- How the room gets used */}
       <CollapsibleSection id="pages.backstage.room" title="How the room gets used">
         <p className="text-xs text-muted-foreground">
-          The paragraph under the sign. Leave a blank line between paragraphs.
+          The paragraph under the sign. Enter starts a new paragraph.
           Clearing it hides the section — and the booking link with it.
           <strong className="text-foreground">
             {' '}What is in here now is placeholder copy written to sound right,
             not the real wording. Replace it.
           </strong>
         </p>
-        <Textarea
+        <RichTextEditor
           id="backstage-body"
           rows={10}
-          className="font-serif"
           aria-label="How the room gets used"
           value={bodyDraft}
-          onChange={e => setBodyDraft(e.target.value)}
+          onChange={setBodyDraft}
         />
         <Button size="sm" variant="outline" disabled={savingBody || !bodyDirty} onClick={saveBody}>
           <Save className="h-4 w-4 mr-1" />

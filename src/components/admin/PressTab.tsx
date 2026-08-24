@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { toast } from 'sonner';
 import {
   Newspaper, Plus, Trash2, Save, X, Star, ArrowUp, ArrowDown, Loader2, ExternalLink,
@@ -239,12 +240,13 @@ export default function PressTab() {
           alt="Press page banner preview"
         />
         <div className="space-y-1">
-          <Label>Intro text</Label>
-          <Textarea
+          <Label htmlFor="press-intro">Intro text</Label>
+          <RichTextEditor
+            id="press-intro"
             rows={5}
-            placeholder="A short introduction — who to contact for press enquiries, what the Kenworthy is, anything you want a journalist to read first. Line breaks are preserved."
+            placeholder="A short introduction — who to contact for press enquiries, what the Kenworthy is, anything you want a journalist to read first."
             value={page.intro_text}
-            onChange={e => setPage(p => ({ ...p, intro_text: e.target.value }))}
+            onChange={intro_text => setPage(p => ({ ...p, intro_text }))}
           />
         </div>
         <Button onClick={savePageContent} disabled={pageSaving}>

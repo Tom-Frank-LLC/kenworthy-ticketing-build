@@ -8,6 +8,7 @@ import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
 import type { FeedItem } from './TrailerFeed';
+import { htmlToPlainText } from '@/lib/richText';
 
 const TYPE_ICON = {
   movie: Film,
@@ -114,7 +115,7 @@ export function EditorialCalendar({
               </p>
               {featured.curatorNote && (
                 <p className="font-serif italic text-foreground/80 leading-relaxed">
-                  {featured.curatorNote}
+                  {htmlToPlainText(featured.curatorNote)}
                 </p>
               )}
             </button>
@@ -195,7 +196,7 @@ export function EditorialCalendar({
                             </div>
                             {item.curatorNote && (
                               <p className="font-serif text-sm italic text-muted-foreground line-clamp-2 mt-1">
-                                {item.curatorNote}
+                                {htmlToPlainText(item.curatorNote)}
                               </p>
                             )}
                           </div>

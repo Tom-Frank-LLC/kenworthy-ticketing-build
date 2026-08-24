@@ -6,6 +6,7 @@ import { SEO } from '@/components/SEO';
 import { Briefcase, Mail, Phone, Popcorn, Ticket } from 'lucide-react';
 import { VOLUNTEER_COORDINATOR, VOLUNTEER_DUTIES } from '@/lib/volunteering';
 import { useHiringEnabled } from '@/hooks/useHiringEnabled';
+import { RichText } from '@/components/RichText';
 
 // Ported from kenworthy.org/hiring ("job/volunteer Openings"). The volunteer
 // copy below is evergreen and stays in the source; the paid openings are rows
@@ -94,11 +95,10 @@ export default function Hiring() {
                 <h3 className="font-display uppercase text-xl md:text-2xl text-foreground">
                   {job.title}
                 </h3>
-                {job.description && (
-                  <p className="font-serif text-muted-foreground mt-3 leading-relaxed whitespace-pre-line">
-                    {job.description}
-                  </p>
-                )}
+                <RichText
+                  html={job.description}
+                  className="font-serif text-muted-foreground mt-3 leading-relaxed"
+                />
                 <Button asChild className="mt-6">
                   <a href={`mailto:${email}?subject=${encodeURIComponent(`Application: ${job.title}`)}`}>
                     <Mail className="h-4 w-4 mr-2" /> Apply by email

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { FeedItem } from '@/components/home/TrailerFeed';
+import { htmlToPlainText } from '@/lib/richText';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -118,7 +119,9 @@ export function filterFeed(items: FeedItem[], query: string): FeedItem[] {
   return items.filter(
     (i) =>
       i.title.toLowerCase().includes(q) ||
-      (i.curatorNote || '').toLowerCase().includes(q) ||
+      // Strip before matching, or a search for "li" hits every description
+      // with a bullet list in it and "strong" hits every bolded one.
+      htmlToPlainText(i.curatorNote).toLowerCase().includes(q) ||
       i.type.toLowerCase().includes(q),
   );
 }

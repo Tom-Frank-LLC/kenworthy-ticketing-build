@@ -22,6 +22,7 @@ import {
   type FestivalProgram,
   type FestivalYear,
 } from '@/lib/festival';
+import { RichText } from '@/components/RichText';
 
 /**
  * The Silent Film Festival's own page.
@@ -572,9 +573,10 @@ export default function SilentFilmFestival() {
             {/* This year's own words when someone has written them, the standing
                 description when nobody has. A year with nothing written about it
                 still reads as a finished page rather than as a gap. */}
-            <p className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl whitespace-pre-line lg:order-2">
-              {(heroYear && blurbs.get(heroYear)) || FESTIVAL_BLURB}
-            </p>
+            <RichText
+              html={(heroYear && blurbs.get(heroYear)) || FESTIVAL_BLURB}
+              className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl lg:order-2"
+            />
 
             {/* Rendered by the block the production drawer and ticketing page
                 already use, so a pasted YouTube or Vimeo link behaves here exactly

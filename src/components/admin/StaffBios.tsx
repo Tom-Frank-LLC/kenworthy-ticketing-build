@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import {
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { PosterUpload } from '@/components/admin/PosterUpload';
 import { byStaffOrder, STAFF_BIO_COLUMNS, type StaffBio } from '@/lib/staffBios';
+import { htmlToPlainText } from '@/lib/richText';
 
 /**
  * Admin control for the "Kenworthy Staff" section of the public About page.
@@ -244,12 +245,13 @@ export default function StaffBios() {
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Bio (optional)</Label>
-              <Textarea
+              <Label htmlFor="staff-bio">Bio (optional)</Label>
+              <RichTextEditor
+                id="staff-bio"
                 rows={5}
-                placeholder="A paragraph or two, in their own voice if you have it. Line breaks are preserved on the page."
+                placeholder="A paragraph or two, in their own voice if you have it."
                 value={draft.bio}
-                onChange={e => setDraft({ ...draft, bio: e.target.value })}
+                onChange={bio => setDraft({ ...draft, bio })}
               />
             </div>
             <PosterUpload
@@ -327,7 +329,7 @@ export default function StaffBios() {
                 {b.title && <p className="text-xs text-muted-foreground mt-1">{b.title}</p>}
                 {b.bio && (
                   <p className="text-xs text-muted-foreground font-serif mt-1 line-clamp-2">
-                    {b.bio}
+                    {htmlToPlainText(b.bio)}
                   </p>
                 )}
                 <label className="flex items-center gap-2 mt-2 cursor-pointer w-fit">

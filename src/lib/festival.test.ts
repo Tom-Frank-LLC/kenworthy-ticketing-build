@@ -98,6 +98,19 @@ describe('stripLeadingShowtime', () => {
   it('handles a missing description', () => {
     expect(stripLeadingShowtime(null)).toBe('');
   });
+
+  // The descriptions are written in the admin rich-text editor now, so the
+  // showtime arrives wrapped. The regex is ^-anchored: without flattening
+  // first, nothing matches and the festival card prints the date twice.
+  it('still finds the showtime when the description is HTML', () => {
+    expect(stripLeadingShowtime('<p>Wednesday, September 2 at 7 PM The fourth annual festival begins…</p>'))
+      .toBe('The fourth annual festival begins…');
+  });
+
+  it('returns plain text, never markup', () => {
+    expect(stripLeadingShowtime('<p>A <strong>4k</strong> restoration.</p>'))
+      .toBe('A 4k restoration.');
+  });
 });
 
 describe('describeYear', () => {
