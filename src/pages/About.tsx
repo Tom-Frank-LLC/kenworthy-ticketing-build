@@ -145,8 +145,10 @@ export default function About() {
           Kenworthy took place on January 4, 1926, some of the building was in use as the Crystal
           Theatre as early as 1908. A Robert Morgan theatre pipe organ was purchased in 1927 to
           accompany silent films and is now housed at the University of Idaho Auditorium. The
-          original brick structure was enlarged by twenty-four feet to the south in 1928. At that
-          time, the stage was used for vaudeville and other dramatic productions, and for silent
+          original brick structure was enlarged by twenty-four feet to the south in 1928.
+        </p>
+        <p className="font-serif text-lg text-muted-foreground leading-relaxed mt-4">
+          At that time, the stage was used for vaudeville and other dramatic productions, and for silent
           films. Talking pictures started in 1929. The theatre was remodeled in 1949 with a new
           terracotta tile façade and enlarged marquee. It was run as Moscow&rsquo;s premier movie
           theatre by the Kenworthy family until the late 1980s when it was leased until its gift to

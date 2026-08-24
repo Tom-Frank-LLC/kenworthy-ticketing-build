@@ -83,16 +83,14 @@ export function BackstageTeaser() {
           {/* Whisper */}
           <div className="space-y-5 text-center md:text-left">
             <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent">
-              After the credits roll
+              Behind the curtain
             </p>
             <h2 className="font-display text-4xl md:text-5xl text-foreground">
-              There's a room behind the room.
+              A different kind of backstage pass.
             </h2>
             <p className="font-serif text-lg leading-relaxed text-muted-foreground max-w-md mx-auto md:mx-0">
-              Backstage is the Kenworthy's after-hours speakeasy — low light,
-              live music, a proper drink. Look for the unmarked door on the
-              nights it's open. We'll be sharing what's on the chalkboard here
-              soon.
+              Kenworthy's after-hours speakeasy — intimate lighting, live
+              performances, private parties, all with a drink in hand.
             </p>
             <p className="font-serif italic text-sm text-muted-foreground/80">
               508 S Main St · Moscow, Idaho

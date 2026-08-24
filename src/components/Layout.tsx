@@ -258,7 +258,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div>
             <KenworthyLogo size="footer" className="mb-3" />
             <p className="font-serif italic text-muted-foreground">
-              A century of stories, told one screening at a time.
+              A century of stories, shared one showing at a time.
             </p>
           </div>
           <div className="space-y-2 text-muted-foreground">
