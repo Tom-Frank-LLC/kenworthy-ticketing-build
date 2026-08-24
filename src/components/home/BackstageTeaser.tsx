@@ -52,7 +52,7 @@ export function BackstageTeaser() {
                 className="absolute -inset-8 rounded-full blur-3xl"
                 style={{
                   background:
-                    'radial-gradient(circle, hsl(41 65% 56% / 0.25), transparent 70%)',
+                    'radial-gradient(circle, hsl(var(--accent) / 0.25), transparent 70%)',
                 }}
               />
               <Link
