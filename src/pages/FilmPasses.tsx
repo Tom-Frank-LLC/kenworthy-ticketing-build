@@ -15,6 +15,7 @@ import { SEO } from '@/components/SEO';
 import { invokeFunction } from '@/lib/functions';
 import { COLLECT_PHONE } from '@/lib/flags';
 import { passImageUrl } from '@/lib/passImage';
+import { RichText } from '@/components/RichText';
 
 /**
  * Buying a film pass online.
@@ -572,7 +573,7 @@ export default function FilmPasses() {
                 another pass's wording. */}
             <div className="text-sm text-muted-foreground border-t border-border pt-3 space-y-1">
               <p>Passes are used in person — they cannot book tickets online.</p>
-              {selected?.fine_print && <p>{selected.fine_print}</p>}
+              <RichText html={selected?.fine_print} />
             </div>
           </CardContent>
         </Card>

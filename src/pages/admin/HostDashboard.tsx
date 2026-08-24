@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { formatShowtime } from '@/lib/datetime';
@@ -293,8 +293,13 @@ function DetailsEditor({ production, onChanged }: { production: ProductionRecord
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label>Description</Label>
-        <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} />
+        <Label htmlFor="host-description">Description</Label>
+        <RichTextEditor
+          id="host-description"
+          value={description}
+          onChange={setDescription}
+          rows={5}
+        />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">

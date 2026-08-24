@@ -5,12 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**56 briefs** — 53 shipped, 1 built, 2 open, 0 needs triage, 0 closed.
+**57 briefs** — 53 shipped, 2 built, 2 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
+- `P2` **Description fields get a formatting toolbar, and the render path is sanitised to match**<br>`feature` — [brief](briefs/BRIEF-richtext-descriptions.md) · [notes](briefs/FINDINGS-richtext-description-surface.md)
 - `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
 
 ## Open

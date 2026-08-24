@@ -64,18 +64,17 @@ export function backstageAltText(photo: Pick<BackstagePhoto, 'caption'>): string
   return caption || 'An event in the Backstage speakeasy at the Kenworthy';
 }
 
-/**
- * The stored prose, split into paragraphs.
+/*
+ * `backstageParagraphs()` used to live here, splitting the stored copy on blank
+ * lines. The body is written in the admin rich-text editor now and stored as
+ * HTML, which has no blank lines to split on — it would have returned the whole
+ * document as a single paragraph and printed the tags. `<RichText>` renders it
+ * instead, and handles the rows written before the editor shipped by way of
+ * `toRichHtml`, which reproduces exactly the blank-line split this did.
  *
- * The copy is plain text in a textarea, so a paragraph break is a blank line.
- * Rendered as separate <p> elements rather than as `whitespace-pre-line` on
- * one, because a wall of text with soft line breaks in it reads as a wall of
- * text; and never as HTML, because an admin textarea is not a safe place to
- * accept markup from.
+ * Its docstring also claimed "never as HTML, because an admin textarea is not a
+ * safe place to accept markup from". That was true of a raw textarea. What
+ * makes it safe now is not that the writers became trustworthy — /host lets an
+ * external organiser write to these columns — but that every value is put
+ * through the allowlist in src/lib/richText.ts on the way to the screen.
  */
-export function backstageParagraphs(body: string | null | undefined): string[] {
-  return (body ?? '')
-    .split(/\n\s*\n/)
-    .map(p => p.trim())
-    .filter(Boolean);
-}

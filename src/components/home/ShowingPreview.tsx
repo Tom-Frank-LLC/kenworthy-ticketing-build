@@ -8,6 +8,7 @@ import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime, venueDayKey } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
 import type { FeedItem } from './TrailerFeed';
+import { htmlToPlainText } from '@/lib/richText';
 
 /**
  * The inline preview panel that sits beside a list of showings.
@@ -100,7 +101,7 @@ export function ShowingPreview({
                 stacked layout had, so the note gets to finish more often. */}
             {item.curatorNote && (
               <p className="font-serif text-sm md:text-base text-muted-foreground line-clamp-[10] mb-5">
-                {item.curatorNote}
+                {htmlToPlainText(item.curatorNote)}
               </p>
             )}
             <div className="flex flex-wrap gap-2">

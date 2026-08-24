@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   orderBackstagePhotos,
   backstageAltText,
-  backstageParagraphs,
   type BackstagePhoto,
 } from '@/lib/backstage';
 
@@ -58,19 +57,5 @@ describe('backstageAltText', () => {
     expect(backstageAltText({ caption })).toBe(
       'An event in the Backstage speakeasy at the Kenworthy',
     );
-  });
-});
-
-describe('backstageParagraphs', () => {
-  it('splits on blank lines', () => {
-    expect(backstageParagraphs('One.\n\nTwo.\n\n\nThree.')).toEqual(['One.', 'Two.', 'Three.']);
-  });
-
-  it('keeps a soft line break inside its paragraph', () => {
-    expect(backstageParagraphs('One,\nstill one.')).toEqual(['One,\nstill one.']);
-  });
-
-  it.each([null, undefined, '', '\n\n  \n'])('renders nothing for %p', (body) => {
-    expect(backstageParagraphs(body)).toEqual([]);
   });
 });

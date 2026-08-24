@@ -9,6 +9,7 @@ import { publishedStaff, STAFF_BIO_COLUMNS, type StaffBio } from '@/lib/staffBio
 import imgToday from '@/assets/optimized/history/kenworthy-today-marquee-night.webp';
 import img1908 from '@/assets/optimized/history/Crystal-Theatre-1908.webp';
 import img1926 from '@/assets/optimized/history/Kenworthy-1926.webp';
+import { RichText } from '@/components/RichText';
 
 // Copy ported from kenworthy.org/about — mission, goals, board roster, and the
 // opening entries of the history timeline. The full timeline lives on /history.
@@ -226,11 +227,10 @@ export default function About() {
                     {member.title}
                   </p>
                 )}
-                {member.bio && (
-                  <p className="font-serif text-sm text-muted-foreground leading-relaxed mt-3 whitespace-pre-line">
-                    {member.bio}
-                  </p>
-                )}
+                <RichText
+                  html={member.bio}
+                  className="font-serif text-sm text-muted-foreground leading-relaxed mt-3"
+                />
               </li>
             ))}
           </ul>

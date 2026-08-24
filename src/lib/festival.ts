@@ -1,4 +1,5 @@
 import { isPast, type ShowingTiming } from '@/lib/purchasable';
+import { htmlToPlainText } from '@/lib/richText';
 
 /**
  * The festival pages, and the two questions they cannot answer from a query
@@ -127,13 +128,21 @@ function festivalTime(screening: FestivalScreening): number {
  * Only a leading, complete showtime is taken, and only when what follows still
  * has prose in it — a description that is *nothing but* a date is left intact,
  * because an empty synopsis is a worse outcome than a repeated one.
+ *
+ * The regex is anchored at the start of the string, so it has to run on plain
+ * text: descriptions are HTML now, and `<p>Wednesday, June 4 at 7 PM…` does not
+ * match `^\s*(?:Wednes)day`. Flattening happens *inside* this function rather
+ * than at its one call site so that a future caller cannot quietly reintroduce
+ * the duplicated showtime. The result is plain text by design — the festival
+ * card clamps it to three lines, and `line-clamp` does not survive block
+ * elements anyway.
  */
 const LEADING_SHOWTIME =
   /^\s*(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day,\s+[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?\s+at\s+\d{1,2}(?::\d{2})?\s*(?:[AaPp]\.?[Mm]\.?)\s*[.—-]?\s*/;
 
 export function stripLeadingShowtime(description: string | null | undefined): string {
   if (!description) return '';
-  const trimmed = description.trim();
+  const trimmed = htmlToPlainText(description);
   const stripped = trimmed.replace(LEADING_SHOWTIME, '').trim();
   return stripped.length > 0 ? stripped : trimmed;
 }

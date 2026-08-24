@@ -5,13 +5,14 @@ import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import {
   Briefcase, Plus, Trash2, Save, X, ArrowUp, ArrowDown, Eye, EyeOff, Loader2,
 } from 'lucide-react';
 import { refreshHiringEnabled } from '@/hooks/useHiringEnabled';
+import { htmlToPlainText } from '@/lib/richText';
 
 /**
  * Admin control for the public /hiring page.
@@ -217,11 +218,12 @@ export default function HiringTab() {
               value={draft.title}
               onChange={e => setDraft({ ...draft, title: e.target.value })}
             />
-            <Textarea
-              placeholder="Description, hours, how to apply… Line breaks are preserved on the public page."
+            <RichTextEditor
+              aria-label="Job description"
+              placeholder="Description, hours, how to apply…"
               rows={8}
               value={draft.description}
-              onChange={e => setDraft({ ...draft, description: e.target.value })}
+              onChange={description => setDraft({ ...draft, description })}
             />
             <div className="flex gap-2">
               <Button onClick={saveDraft} disabled={saving}>
@@ -273,8 +275,8 @@ export default function HiringTab() {
                   {!p.is_active && <Badge variant="outline">Draft</Badge>}
                 </p>
                 {p.description && (
-                  <p className="text-xs text-muted-foreground font-serif mt-1 line-clamp-3 whitespace-pre-line">
-                    {p.description}
+                  <p className="text-xs text-muted-foreground font-serif mt-1 line-clamp-3">
+                    {htmlToPlainText(p.description)}
                   </p>
                 )}
               </div>

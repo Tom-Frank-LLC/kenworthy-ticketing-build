@@ -11,10 +11,11 @@ import backstageLogo from '@/assets/backstage-logo.svg';
 import {
   BACKSTAGE_BUCKET,
   backstageAltText,
-  backstageParagraphs,
   orderBackstagePhotos,
   type BackstagePhoto,
 } from '@/lib/backstage';
+import { RichText } from '@/components/RichText';
+import { isRichTextEmpty } from '@/lib/richText';
 
 /**
  * Backstage — the room behind the room.
@@ -105,7 +106,7 @@ export default function Backstage() {
   }, [photos.length]);
 
   const open = lightbox !== null ? photos[lightbox] ?? null : null;
-  const paragraphs = backstageParagraphs(body);
+  const hasBody = !isRichTextEmpty(body);
 
   /**
    * The page's own line, and its heading.
@@ -238,7 +239,7 @@ export default function Backstage() {
           a left edge. The prose is narrowed inside it rather than by a tighter
           container, because a measure wide enough for a three-column grid is
           too wide to read a paragraph across. */}
-      {paragraphs.length > 0 && (
+      {hasBody && (
         <section className="container max-w-5xl pt-16 md:pt-20" aria-labelledby="how-its-used">
           <h2
             id="how-its-used"
@@ -246,13 +247,10 @@ export default function Backstage() {
           >
             How the room gets used
           </h2>
-          <div className="mt-6 max-w-2xl space-y-5">
-            {paragraphs.map((paragraph, i) => (
-              <p key={i} className="font-serif text-lg leading-relaxed text-muted-foreground">
-                {paragraph}
-              </p>
-            ))}
-          </div>
+          <RichText
+            html={body}
+            className="mt-6 max-w-2xl font-serif text-lg leading-relaxed text-muted-foreground"
+          />
 
           {/* Backstage has been a rental option all along — `venue_area` on the
               request form has carried 'backstage_speakeasy' since before this

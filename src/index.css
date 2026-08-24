@@ -210,3 +210,115 @@
     }
   }
 }
+
+/* ---------------------------------------------------------------- Rich text
+   Formatted description copy, written by the admin rich-text editor and
+   printed by <RichText>. See docs/briefs/FINDINGS-richtext-description-surface.md.
+
+   Deliberately NOT @tailwindcss/typography's `prose`. The eight slots this
+   appears in each set their own size and colour on purpose — Showing.tsx is
+   text-sm, Press.tsx is text-lg md:text-xl, the admin previews are text-xs —
+   and `prose` would override all of them and restyle four finished pages.
+   So every rule here inherits font-size and colour from whatever wraps it and
+   adds structure only.
+
+   All sizes are in `em` for the same reason nothing in this app is in `px`:
+   they scale with the inherited size and with the 112.5% root, so browser
+   zoom and OS large-text keep working. */
+@layer components {
+  .rich-text > :first-child {
+    margin-top: 0;
+  }
+  .rich-text > :last-child {
+    margin-bottom: 0;
+  }
+
+  .rich-text p,
+  .rich-text ul,
+  .rich-text ol,
+  .rich-text blockquote {
+    margin-block: 0.75em;
+  }
+
+  /* Anton, matching every other heading on the site. Sub-headings inside body
+     copy only ever come out as h3 — the editor offers no other level, so a
+     staff member cannot outrank a page's own h1/h2 and break its outline. */
+  .rich-text h3 {
+    font-family: theme('fontFamily.display');
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 1.1em;
+    line-height: 1.2;
+    margin-block: 1.25em 0.5em;
+    color: hsl(var(--foreground));
+  }
+
+  .rich-text ul,
+  .rich-text ol {
+    padding-inline-start: 1.4em;
+  }
+  .rich-text ul {
+    list-style: disc;
+  }
+  .rich-text ol {
+    list-style: decimal;
+  }
+  .rich-text li {
+    margin-block: 0.25em;
+  }
+
+  /* TipTap wraps list and quote content in its own <p>, so `<li>` arrives as
+     `<li><p>…</p></li>`. Without this the paragraph rule above puts 0.75em
+     inside every bullet and the list spaces out like body copy. Only the first
+     and last are reset, so a genuinely multi-paragraph item still breaks. */
+  .rich-text li > p:first-child,
+  .rich-text blockquote > p:first-child {
+    margin-top: 0;
+  }
+  .rich-text li > p:last-child,
+  .rich-text blockquote > p:last-child {
+    margin-bottom: 0;
+  }
+  .rich-text li::marker {
+    color: hsl(var(--primary));
+  }
+
+  .rich-text strong,
+  .rich-text b {
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+  .rich-text em,
+  .rich-text i {
+    font-style: italic;
+  }
+
+  .rich-text blockquote {
+    border-inline-start: 2px solid hsl(var(--primary));
+    padding-inline-start: 1em;
+    font-style: italic;
+  }
+
+  .rich-text hr {
+    border: 0;
+    border-top: 1px solid hsl(var(--border));
+    margin-block: 1.5em;
+  }
+
+  /* Underlined rather than colour-only: colour alone is not a sufficient cue,
+     and the solid token is required here — the faded muted variants fail
+     WCAG AA on this background. */
+  .rich-text a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  .rich-text a:hover {
+    color: hsl(var(--foreground));
+  }
+  .rich-text a:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}

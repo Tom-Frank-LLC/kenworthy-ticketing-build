@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ExternalLink, Mail, Newspaper } from 'lucide-react';
 import { formatPlainDate } from '@/lib/datetime';
 import { safeHttpUrl, splitPressArticles, type PressArticle } from '@/lib/press';
+import { RichText } from '@/components/RichText';
 
 // Press coverage, edited from the Press tab of the admin dashboard.
 //
@@ -164,11 +165,10 @@ export default function Press() {
               className="w-full aspect-[16/9] object-cover rounded-lg mt-8 border border-accent/20"
             />
           )}
-          {page?.intro_text && (
-            <p className="font-serif text-lg md:text-xl text-muted-foreground mt-8 leading-relaxed whitespace-pre-line">
-              {page.intro_text}
-            </p>
-          )}
+          <RichText
+            html={page?.intro_text}
+            className="font-serif text-lg md:text-xl text-muted-foreground mt-8 leading-relaxed"
+          />
         </div>
       </section>
 

@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { brand, emailLockup, sans, VENUE_NAME, VENUE_SHORT, BOX_OFFICE_ADDRESS } from "../_shared/brand.ts";
 import { logAudit } from "../_shared/audit.ts";
+import { htmlToPlainText } from "../_shared/html_text.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,7 +72,14 @@ Deno.serve(async (req) => {
 
   const prod: any = showing.movie || showing.event || showing.performance || {};
   const title = prod.title || "This week at the Kenworthy";
-  const description = prod.description || "";
+  // Flattened, not passed through. The description is written in the admin
+  // rich-text editor and stored as HTML; the template below runs everything
+  // through esc(), so unflattened markup would go out as visible <p> tags in a
+  // real blast. Plain text also dodges the fact that email clients render
+  // lists and blockquotes inconsistently, and there is no safe place to
+  // discover either problem — staging shares production's Mailchimp key and
+  // audience, so a test campaign is a real campaign.
+  const description = htmlToPlainText(prod.description);
   const poster = prod.poster_url || "";
   const when = showing.show_datetime
     ? new Date(showing.show_datetime).toLocaleString("en-US", { dateStyle: "full", timeStyle: "short" })

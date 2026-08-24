@@ -23,6 +23,8 @@ import { fetchShowingAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
 import { SHOWING_PASSED_MESSAGE, isPast } from '@/lib/purchasable';
 import { SITE_URL } from '@/lib/site';
+import { htmlToPlainText, toMetaDescription } from '@/lib/richText';
+import { RichText } from '@/components/RichText';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -565,7 +567,9 @@ export default function Showing() {
       <SEO
         title={`${production?.title ?? 'Showing'} — ${formatShowtime(showing.start_time, 'MMM d, yyyy')} at Kenworthy`}
         description={
-          production?.description?.slice(0, 160) ??
+          // Must be plain text. A meta description containing <p> is a bug —
+          // it is what a search result and a shared link preview print.
+          toMetaDescription(production?.description) ||
           `Tickets for ${production?.title ?? 'this showing'} at the Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`
         }
         ogType="event"
@@ -578,7 +582,9 @@ export default function Showing() {
           eventStatus: "https://schema.org/EventScheduled",
           eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
           image: production?.poster_url || undefined,
-          description: production?.description || undefined,
+          // Structured data, read by crawlers rather than rendered — markup
+          // here would be indexed as part of the description text.
+          description: htmlToPlainText(production?.description) || undefined,
           location: {
             "@type": "Place",
             name: venue?.name || "Kenworthy Performing Arts Centre",
@@ -635,9 +641,10 @@ export default function Showing() {
               durationMinutes={production?.duration_minutes}
               className="mt-2"
             />
-            {production?.description && (
-              <p className="text-sm text-muted-foreground mt-2 max-w-2xl">{production.description}</p>
-            )}
+            <RichText
+              html={production?.description}
+              className="text-sm text-muted-foreground mt-2 max-w-2xl"
+            />
             <div className="flex flex-wrap gap-3 mt-3 text-muted-foreground text-sm">
               <span className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" /> {formatShowtime(showing.start_time, 'EEEE, MMMM d, yyyy')}

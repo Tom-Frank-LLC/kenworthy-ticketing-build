@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
@@ -111,8 +111,13 @@ export default function ConcertForm() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} />
+              <Label htmlFor="concert-description">Description</Label>
+              <RichTextEditor
+                id="concert-description"
+                value={description}
+                onChange={setDescription}
+                rows={5}
+              />
             </div>
             <PosterUpload currentUrl={posterUrl} onUrlChange={setPosterUrl} folder="live_performances" />
             <div className="grid grid-cols-2 gap-4">

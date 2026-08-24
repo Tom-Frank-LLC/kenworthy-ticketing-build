@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { PASS_IMAGE_BUCKET, passImageUrl } from '@/lib/passImage';
 import {
   Plus, Trash2, CreditCard, DollarSign, Printer, Loader2, Ban, QrCode,
@@ -917,12 +917,12 @@ export default function FilmPassesTab() {
                   valid at special events. */}
               <div className="border-t border-border pt-4">
                 <Label htmlFor="pass-fine-print">Validity note on the purchase page</Label>
-                <Textarea
+                <RichTextEditor
                   id="pass-fine-print"
                   rows={2}
                   placeholder="Valid on standard movies. Not on special events or premium screenings."
                   value={form.fine_print}
-                  onChange={e => setForm(f => ({ ...f, fine_print: e.target.value }))}
+                  onChange={fine_print => setForm(f => ({ ...f, fine_print }))}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   One line saying where this pass is and is not valid. Leave blank to
