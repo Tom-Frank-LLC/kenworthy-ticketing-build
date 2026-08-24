@@ -67,7 +67,7 @@ interface ScannerShowing {
 /**
  * The door scanner.
  *
- * Rendered two ways, which is what `onExit` distinguishes. As the /admin/scanner
+ * Rendered two ways, which is what `onExit` distinguishes. As the /staff/scanner
  * route it is the whole page and exiting means going back to the dashboard; as
  * an overlay opened from the POS it is a mode the till drops into and exiting
  * means returning to the sale that is still sitting there. Either way the
@@ -538,7 +538,7 @@ export default function TicketScanner({ onExit }: { onExit?: () => void } = {}) 
             variant="secondary"
             size="sm"
             className="ml-auto shrink-0"
-            onClick={() => (onExit ? onExit() : navigate('/admin'))}
+            onClick={() => (onExit ? onExit() : navigate('/staff'))}
           >
             <X className="h-4 w-4 mr-1" />
             {onExit ? 'Back to POS' : 'Close'}

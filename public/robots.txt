@@ -13,6 +13,7 @@ Allow: /
 User-agent: *
 Allow: /
 Disallow: /admin
+Disallow: /staff
 Disallow: /host
 Disallow: /auth
 Disallow: /profile

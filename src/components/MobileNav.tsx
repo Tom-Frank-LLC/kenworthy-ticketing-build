@@ -8,10 +8,9 @@ import {
   Home,
   LogOut,
   Menu,
-  ScanLine,
   Shield,
   ShieldCheck,
-  ShoppingCart,
+  Store,
   Ticket,
   User,
   Building2,
@@ -123,12 +122,13 @@ export function MobileNav() {
   // may reach. Filtering keeps it in place for the people who can.
   const visiblePrimaryLinks = primaryLinks.filter(item => !item.staffOnly || isStaff || isAdmin);
 
+  // One row per section, matching the header: Staff is the counter (POS,
+  // scanner, Print QRs) and Admin is management. The separate Point of Sale and
+  // Ticket Scanner rows are gone — they were the whole of the Staff section
+  // before it had a home of its own.
   const staffLinks: NavItem[] = [];
-  if (isAdmin || isStaff) staffLinks.push({ label: 'Admin', to: '/admin', icon: Shield });
-  if (isStaff && !isAdmin) {
-    staffLinks.push({ label: 'Point of Sale', to: '/admin/pos', icon: ShoppingCart });
-    staffLinks.push({ label: 'Ticket Scanner', to: '/admin/scanner', icon: ScanLine });
-  }
+  if (isStaff) staffLinks.push({ label: 'Staff', to: '/staff', icon: Store });
+  if (isAdmin) staffLinks.push({ label: 'Admin', to: '/admin', icon: Shield });
   if (isSuperadmin) staffLinks.push({ label: 'Superadmin', to: '/superadmin', icon: ShieldCheck });
   if (isHost && !isAdmin) staffLinks.push({ label: 'Host Dashboard', to: '/host', icon: Home });
 

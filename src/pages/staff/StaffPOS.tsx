@@ -100,7 +100,7 @@ export default function StaffPOS() {
   // The door, without leaving the till.
   //
   // An overlay rather than a fourth tab, and rather than a link to
-  // /admin/scanner. A tab would box the camera inside the page furniture, which
+  // /staff/scanner. A tab would box the camera inside the page furniture, which
   // is the thing the scanner was just rebuilt to stop doing; a link would throw
   // away a half-rung sale — selected seats, patron details, a donation the
   // patron just agreed to — every time someone at the counter is handed a

@@ -122,7 +122,7 @@ async function fetchAllPages<T>(
 const SCHEDULE_TABS = ['movies', 'live-events', 'venues'];
 
 export default function AdminDashboard() {
-  const { isAdmin, isStaff, isSuperadmin, loading: authLoading } = useAuth();
+  const { isAdmin, isSuperadmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [movies, setMovies] = useState<any[]>([]);
@@ -201,11 +201,21 @@ export default function AdminDashboard() {
     }
   }, [scheduleQuery, activeScheduleTab, activeTopTab, activePagesTab, statusFilter, ratingFilter, genreFilter, eventTypeFilter, concertSubcategoryFilter, liveEventKindFilter, sortOrder]);
 
+  // Admin, not staff. This read `!isStaff` for as long as the dashboard was
+  // the only door in the building — which is what put the till behind it. The
+  // counter has /staff now, so this side is management only.
+  //
+  // The route is wrapped in AdminOnly too, which refuses before this component
+  // mounts; this stays as the second half of the same statement, and as what
+  // catches a role that changes under an open tab. It also means the
+  // `show: isAdmin` flags on the tabs below are now always true — left alone
+  // deliberately, so that widening the gate later cannot silently widen the
+  // tabs with it.
   useEffect(() => {
     if (authLoading) return;
-    if (!isStaff) { navigate('/'); return; }
+    if (!isAdmin) { navigate('/'); return; }
     loadData();
-  }, [isStaff, authLoading, navigate]);
+  }, [isAdmin, authLoading, navigate]);
 
   async function loadData() {
     const [moviesRes, eventsRes, concertsRes, showingsRes, venuesRes, ticketsRes] = await Promise.all([
@@ -571,10 +581,10 @@ export default function AdminDashboard() {
         <h1 className="font-display text-3xl font-bold">Admin Dashboard</h1>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" asChild>
-            <Link to="/admin/pos"><ShoppingCart className="h-4 w-4 mr-1" /> Staff POS</Link>
+            <Link to="/staff/pos"><ShoppingCart className="h-4 w-4 mr-1" /> Staff POS</Link>
           </Button>
           <Button size="sm" variant="outline" asChild>
-            <Link to="/admin/scanner"><ScanLine className="h-4 w-4 mr-1" /> Scanner</Link>
+            <Link to="/staff/scanner"><ScanLine className="h-4 w-4 mr-1" /> Scanner</Link>
           </Button>
           {isAdmin && (
             <Button size="sm" variant="outline" asChild>

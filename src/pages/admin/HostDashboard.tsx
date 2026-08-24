@@ -155,7 +155,7 @@ export default function HostDashboard() {
       <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
         <h1 className="font-display text-3xl font-bold">Host Dashboard</h1>
         <Button asChild variant="outline" size="sm">
-          <Link to="/admin/scanner"><ScanLine className="h-4 w-4 mr-1" /> Open Door Scanner</Link>
+          <Link to="/staff/scanner"><ScanLine className="h-4 w-4 mr-1" /> Open Door Scanner</Link>
         </Button>
       </div>
 

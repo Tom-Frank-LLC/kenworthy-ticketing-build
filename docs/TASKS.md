@@ -5,12 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**57 briefs** — 54 shipped, 1 built, 2 open, 0 needs triage, 0 closed.
+**58 briefs** — 54 shipped, 2 built, 2 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
+- `P2` **Split the counter tools into a Staff section, with Print QRs in it**<br>`ux` — [brief](briefs/BRIEF-staff-section-print-qr.md)
 - `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
 
 ## Open

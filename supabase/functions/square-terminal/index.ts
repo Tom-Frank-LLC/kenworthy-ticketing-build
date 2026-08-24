@@ -41,13 +41,26 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Check admin role
-  const { data: hasAdmin } = await supabase.rpc("has_role", {
+  // Staff, not admin.
+  //
+  // This gate read `has_role(uid, 'admin')` and answered "Admin access
+  // required" — which meant a staff-only account could pick "Card" at the till
+  // and be refused by the card reader, on the one screen where the queue is
+  // watching. Both actions here are counter work: create_checkout pushes an
+  // amount to the terminal, get_checkout asks whether it was paid. Neither
+  // configures anything.
+  //
+  // 'staff' is the right test rather than a wider one: has_role honours the
+  // hierarchy, so admin and superadmin still satisfy it (see migration
+  // 20260812063211_has_role_hierarchy.sql), and every sibling in the POS —
+  // square-cash-sale, square-refund, square-donation, square-labor — already
+  // gates exactly here.
+  const { data: hasStaff } = await supabase.rpc("has_role", {
     _user_id: user.id,
-    _role: "admin",
+    _role: "staff",
   });
-  if (!hasAdmin) {
-    return new Response(JSON.stringify({ error: "Admin access required" }), {
+  if (!hasStaff) {
+    return new Response(JSON.stringify({ error: "Staff access required" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

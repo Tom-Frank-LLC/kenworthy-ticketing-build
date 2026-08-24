@@ -4,9 +4,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import { Layout } from "@/components/Layout";
+import { AdminOnly, StaffOnly } from "@/components/RoleGate";
 import { ColorLabProvider } from "@/components/colorlab/ColorLabProvider";
 
 // The home page is the overwhelming majority of first loads, so it ships in
@@ -48,14 +49,20 @@ const Backstage = lazyWithRecovery(() => import("./pages/Backstage"));
 const Privacy = lazyWithRecovery(() => import("./pages/Privacy"));
 const Terms = lazyWithRecovery(() => import("./pages/Terms"));
 
+// The counter tools. Their own section rather than a corner of /admin: selling
+// a ticket and editing the schedule are different jobs, and the people doing the
+// first one should not have to walk through the second.
+const StaffDashboard = lazyWithRecovery(() => import("./pages/staff/StaffDashboard"));
+const StaffPOS = lazyWithRecovery(() => import("./pages/staff/StaffPOS"));
+const TicketScanner = lazyWithRecovery(() => import("./pages/staff/TicketScanner"));
+const PrintQrs = lazyWithRecovery(() => import("./pages/staff/PrintQrs"));
+
 const AdminDashboard = lazyWithRecovery(() => import("./pages/admin/AdminDashboard"));
 const MovieForm = lazyWithRecovery(() => import("./pages/admin/MovieForm"));
 const EventForm = lazyWithRecovery(() => import("./pages/admin/EventForm"));
 const ConcertForm = lazyWithRecovery(() => import("./pages/admin/ConcertForm"));
 const VenueForm = lazyWithRecovery(() => import("./pages/admin/VenueForm"));
 const ShowingForm = lazyWithRecovery(() => import("./pages/admin/ShowingForm"));
-const StaffPOS = lazyWithRecovery(() => import("./pages/admin/StaffPOS"));
-const TicketScanner = lazyWithRecovery(() => import("./pages/admin/TicketScanner"));
 const HostDashboard = lazyWithRecovery(() => import("./pages/admin/HostDashboard"));
 const SponsorshipForm = lazyWithRecovery(() => import("./pages/admin/SponsorshipForm"));
 const AuditLog = lazyWithRecovery(() => import("./pages/admin/AuditLog"));
@@ -102,22 +109,45 @@ const App = () => (
                   <Route path="/film-passes" element={<FilmPassesPage />} />
                   <Route path="/my-passes" element={<MyPasses />} />
                   <Route path="/profile" element={<Profile />} />
-                  <Route path="/admin" element={<AdminDashboard />} />
-                  <Route path="/admin/movies/:id" element={<MovieForm />} />
-                  <Route path="/admin/movies/new" element={<MovieForm />} />
-                  <Route path="/admin/events/:id" element={<EventForm />} />
-                  <Route path="/admin/events/new" element={<EventForm />} />
-                  <Route path="/admin/concerts/:id" element={<ConcertForm />} />
-                  <Route path="/admin/concerts/new" element={<ConcertForm />} />
-                  <Route path="/admin/venues/:id" element={<VenueForm />} />
-                  <Route path="/admin/venues/new" element={<VenueForm />} />
-                  <Route path="/admin/showings/new" element={<ShowingForm />} />
-                  <Route path="/admin/showings/:id" element={<ShowingForm />} />
-                  <Route path="/admin/sponsorships/new" element={<SponsorshipForm />} />
-                  <Route path="/admin/sponsorships/:id" element={<SponsorshipForm />} />
-                  <Route path="/admin/audit-log" element={<AuditLog />} />
-                  <Route path="/admin/pos" element={<StaffPOS />} />
-                  <Route path="/admin/scanner" element={<TicketScanner />} />
+                  {/* Management, and only management. Every form here already
+                      refused a non-admin from inside its own effect; the gate
+                      makes /admin itself say the same thing, and says it before
+                      the page mounts and starts querying. Staff no longer reach
+                      any of it — the counter is /staff. */}
+                  <Route path="/admin" element={<AdminOnly><AdminDashboard /></AdminOnly>} />
+                  <Route path="/admin/movies/:id" element={<AdminOnly><MovieForm /></AdminOnly>} />
+                  <Route path="/admin/movies/new" element={<AdminOnly><MovieForm /></AdminOnly>} />
+                  <Route path="/admin/events/:id" element={<AdminOnly><EventForm /></AdminOnly>} />
+                  <Route path="/admin/events/new" element={<AdminOnly><EventForm /></AdminOnly>} />
+                  <Route path="/admin/concerts/:id" element={<AdminOnly><ConcertForm /></AdminOnly>} />
+                  <Route path="/admin/concerts/new" element={<AdminOnly><ConcertForm /></AdminOnly>} />
+                  <Route path="/admin/venues/:id" element={<AdminOnly><VenueForm /></AdminOnly>} />
+                  <Route path="/admin/venues/new" element={<AdminOnly><VenueForm /></AdminOnly>} />
+                  <Route path="/admin/showings/new" element={<AdminOnly><ShowingForm /></AdminOnly>} />
+                  <Route path="/admin/showings/:id" element={<AdminOnly><ShowingForm /></AdminOnly>} />
+                  <Route path="/admin/sponsorships/new" element={<AdminOnly><SponsorshipForm /></AdminOnly>} />
+                  <Route path="/admin/sponsorships/:id" element={<AdminOnly><SponsorshipForm /></AdminOnly>} />
+                  <Route path="/admin/audit-log" element={<AdminOnly><AuditLog /></AdminOnly>} />
+                  {/* Where the counter tools used to live. Kept as redirects
+                      because these two are bookmarked on the box-office iPad
+                      and written down in half a dozen briefs — a hard move
+                      would turn all of that into a 404 on a shift. */}
+                  <Route path="/admin/pos" element={<Navigate to="/staff/pos" replace />} />
+                  <Route path="/admin/scanner" element={<Navigate to="/staff/scanner" replace />} />
+
+                  {/* The Staff section. StaffOnly refuses before the child
+                      mounts, so a pasted URL never reaches a till that would
+                      then fail on every button; the pages keep their own
+                      guards, and RLS and the edge functions are the real
+                      boundary. */}
+                  <Route path="/staff" element={<StaffOnly><StaffDashboard /></StaffOnly>} />
+                  <Route path="/staff/pos" element={<StaffOnly><StaffPOS /></StaffOnly>} />
+                  {/* The one staff tool a host runs: their own event's door. */}
+                  <Route
+                    path="/staff/scanner"
+                    element={<StaffOnly allowHost><TicketScanner /></StaffOnly>}
+                  />
+                  <Route path="/staff/print-qr" element={<StaffOnly><PrintQrs /></StaffOnly>} />
                   <Route path="/host" element={<HostDashboard />} />
                   <Route path="/sponsors" element={<Sponsors />} />
                   <Route path="/history" element={<HistoryPage />} />
