@@ -158,8 +158,10 @@
     color: color-mix(in srgb, hsl(var(--accent)) 60%, hsl(var(--foreground)));
   }
 
+  /* Currently unused — kept as the accent counterpart to `.glow-primary`.
+     Follows the token for the same reason that one does. */
   .glow-accent {
-    box-shadow: 0 0 40px -8px hsl(41 65% 56% / 0.35);
+    box-shadow: 0 0 40px -8px hsl(var(--accent) / 0.35);
   }
 
 
@@ -171,7 +173,9 @@
   .marquee-rule::after {
     content: "";
     @apply absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full bg-accent;
-    box-shadow: 0 0 8px hsl(41 65% 56% / 0.8);
+    /* The dot itself is `bg-accent` while its halo restated the literal, so a
+       re-theme moved the bulb and left its glow behind. */
+    box-shadow: 0 0 8px hsl(var(--accent) / 0.8);
   }
 
   /* Snap container for the trailer feed */

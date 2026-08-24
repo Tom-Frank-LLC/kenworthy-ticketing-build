@@ -298,7 +298,7 @@ export default function ConcessionItemsTab() {
                         <UtensilsCrossed className="h-5 w-5 text-primary" />
                       )}
                       <div>
-                        <p className="font-medium flex items-center gap-2">
+                        <div className="font-medium flex items-center gap-2">
                           {item.name}
                           {item.is_combo && (
                             <Badge variant="outline" className="text-xs uppercase tracking-wide">Combo</Badge>
@@ -312,7 +312,7 @@ export default function ConcessionItemsTab() {
                               <CloudOff className="h-3 w-3 text-muted-foreground" />
                             </span>
                           ))}
-                        </p>
+                        </div>
                         <p className="text-sm text-muted-foreground">${Number(item.price).toFixed(2)}</p>
                       </div>
                     </div>
