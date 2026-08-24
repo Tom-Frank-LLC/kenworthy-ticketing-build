@@ -59,9 +59,18 @@ export function UpcomingList({
             <h2 className="font-display text-3xl md:text-4xl uppercase tracking-wide">
               Upcoming
             </h2>
+            {/* The helper line follows the view. In calendar view the old
+                "on the left" wording pointed at a preview pane that is not
+                rendered, and MonthCalendar stacked a second hint under it. */}
             <p className="font-serif text-sm text-muted-foreground mt-1">
-              <span className="lg:hidden">Tap a showing for details and tickets.</span>
-              <span className="hidden lg:inline">Pick a showing on the left to preview it.</span>
+              {view === 'calendar' ? (
+                "Click on a day to see what's playing"
+              ) : (
+                <>
+                  <span className="lg:hidden">Tap a showing for details and tickets.</span>
+                  <span className="hidden lg:inline">Click a listing on the left for a preview.</span>
+                </>
+              )}
             </p>
           </div>
           <div
@@ -97,7 +106,7 @@ export function UpcomingList({
         </div>
 
         {view === 'calendar' ? (
-          <MonthCalendar items={items} onSelect={handleCalendarPick} />
+          <MonthCalendar items={items} onSelect={handleCalendarPick} showHint={false} />
         ) : (
         // The preview is itself two columns now (portrait poster + info), so it
         // needs more room than 1.2fr left it — at the old ratio the poster
