@@ -69,8 +69,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
     // Staff first: for most of the people with a role it is the only one of
     // these they open on a shift. Both entries matter between `sm` and `lg`,
     // where this menu is showing and the header buttons below are not.
+    //
+    // Dashboard is admin-only, matching the route. It read `isAdmin || isStaff`
+    // while /admin admitted anyone with a role — offering it to staff now would
+    // be a link that bounces them home.
     if (isStaff) accountLinks.push(['Staff', '/staff', Store]);
-    if (isAdmin || isStaff) accountLinks.push(['Dashboard', '/admin', Shield]);
+    if (isAdmin) accountLinks.push(['Dashboard', '/admin', Shield]);
     if (isSuperadmin) accountLinks.push(['Superadmin', '/superadmin', ShieldCheck]);
     if (isHost && !isAdmin) accountLinks.push(['Host Dashboard', '/host', Home]);
   }
@@ -172,9 +176,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     Two links where there were four. Staff is the counter —
                     POS, scanner, Print QRs — and it shows for admins too,
                     because an admin runs the counter as often as anyone.
-                    Admin is management, and stays admin-only; a staff-only
-                    account still reaches the parts of the dashboard that are
-                    theirs from "Dashboard" in the Me menu. */}
+                    Admin is management, and admin-only in the nav and on
+                    the route alike — a staff-only account has no way into
+                    /admin at all now, by design. */}
                 {isStaff && (
                   <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex h-10">
                     <Link to="/staff">

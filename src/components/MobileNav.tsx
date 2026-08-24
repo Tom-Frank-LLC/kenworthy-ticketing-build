@@ -128,7 +128,7 @@ export function MobileNav() {
   // before it had a home of its own.
   const staffLinks: NavItem[] = [];
   if (isStaff) staffLinks.push({ label: 'Staff', to: '/staff', icon: Store });
-  if (isAdmin || isStaff) staffLinks.push({ label: 'Admin', to: '/admin', icon: Shield });
+  if (isAdmin) staffLinks.push({ label: 'Admin', to: '/admin', icon: Shield });
   if (isSuperadmin) staffLinks.push({ label: 'Superadmin', to: '/superadmin', icon: ShieldCheck });
   if (isHost && !isAdmin) staffLinks.push({ label: 'Host Dashboard', to: '/host', icon: Home });
 

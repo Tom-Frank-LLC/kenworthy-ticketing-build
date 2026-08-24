@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { invokeFunction } from '@/lib/functions';
 import { formatShowtime } from '@/lib/datetime';
 import { StickerSheet, type StickerPassType, type Sticker } from './StickerSheet';
+import { useFilmPassBatches, type BatchSummary } from '@/hooks/useFilmPassBatches';
 
 /**
  * Print QRs — mint a run of blank pass stickers and put it on paper.
@@ -27,14 +28,6 @@ import { StickerSheet, type StickerPassType, type Sticker } from './StickerSheet
  * only writer; nothing in this component can mint a code by itself.
  */
 
-interface BatchSummary {
-  batch_id: string;
-  pass_type_name: string;
-  created_at: string;
-  total: number;
-  unassigned: number;
-}
-
 /** Just enough of a pass type to fill the picker. */
 interface PickerPassType {
   id: string;
@@ -51,13 +44,18 @@ export interface PrintQrPanelProps {
    * refresh and leaves it off.
    */
   onMinted?: () => void;
+  /**
+   * Past runs, when the host page already holds them — see useFilmPassBatches.
+   * Omit both of these and the panel loads its own; pass both or neither.
+   */
+  batches?: BatchSummary[];
+  onReloadBatches?: () => void;
 }
 
-export function PrintQrPanel({ onMinted }: PrintQrPanelProps) {
+export function PrintQrPanel({ onMinted, batches: given, onReloadBatches }: PrintQrPanelProps) {
   const [passTypes, setPassTypes] = useState<PickerPassType[]>([]);
   const [typeId, setTypeId] = useState('');
   const [quantity, setQuantity] = useState('30');
-  const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [minting, setMinting] = useState(false);
   const [sheet, setSheet] = useState<
     { stickers: Sticker[]; passType: StickerPassType; batchId: string } | null
@@ -85,19 +83,9 @@ export function PrintQrPanel({ onMinted }: PrintQrPanelProps) {
     return () => { cancelled = true; };
   }, []);
 
-  const loadBatches = useCallback(async () => {
-    try {
-      const data = await invokeFunction<{ batches: BatchSummary[] }>('film-pass-batch', {
-        action: 'batches',
-      });
-      setBatches(data.batches || []);
-    } catch {
-      // Not fatal: past runs are a convenience list, and failing to load them
-      // must not take the generator above them down with it.
-    }
-  }, []);
-
-  useEffect(() => { loadBatches(); }, [loadBatches]);
+  const own = useFilmPassBatches(given === undefined);
+  const batches = given ?? own.batches;
+  const loadBatches = onReloadBatches ?? own.reload;
 
   async function handleMint() {
     const count = parseInt(quantity, 10);

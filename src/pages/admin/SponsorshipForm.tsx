@@ -40,14 +40,16 @@ const EMPTY = {
 export default function SponsorshipForm() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAdmin, isStaff, loading: authLoading } = useAuth();
+  const { isAdmin, loading: authLoading } = useAuth();
   const isNew = !id || id === 'new';
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isAdmin && !isStaff) {
+    // Admin only, like every other form under /admin. It admitted staff as
+    // well while the dashboard did; staff have /staff now.
+    if (!isAdmin) {
       navigate('/');
       return;
     }
@@ -62,7 +64,7 @@ export default function SponsorshipForm() {
           else if (data) setForm({ ...EMPTY, ...data, benefits: data.benefits || [] });
         });
     }
-  }, [id, isNew, isAdmin, isStaff, authLoading, navigate]);
+  }, [id, isNew, isAdmin, authLoading, navigate]);
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 

@@ -82,10 +82,27 @@ door is the one staff tool that is theirs.
 
 **Nav.** Header: Staff for `isStaff` (staff + admin + superadmin), Admin for
 `isAdmin` only, and four buttons become two. The POS/Scanner one-offs are gone
-from both the account menu and the mobile drawer. A staff-only account still
-reaches the parts of `/admin` that are theirs — 7 of the 12 tabs — from
-"Dashboard" in the Me menu; the brief's "Admin link is admin-only" was about the
-header button, and dropping their access entirely was not the ask.
+from both the account menu and the mobile drawer.
+
+**Staff are locked out of `/admin` entirely** (Tom, 2026-08-24 — the first pass
+had left them the 7 of 12 tabs they could already reach, via "Dashboard" in the
+Me menu). `src/components/RoleGate.tsx` now exports `AdminOnly` beside
+`StaffOnly`, and every `/admin/*` route is wrapped in it, so the refusal happens
+before the page mounts and queries. `AdminDashboard`'s own effect moved from
+`!isStaff` to `!isAdmin`, and `SponsorshipForm` — the one form that also
+admitted staff — moved with it. Every other `/admin` form was already
+admin-only.
+
+What a staff-only account loses: the Listings, Concessions, Passes, DVDs,
+Rentals, Sponsors and BOR tabs. Most of it has a counter equivalent — the pass
+pickup queue is mirrored in FilmPassPOS, the DVD catalogue is its own `/dvds`
+page (still `isStaff`), and the POS carries Daily Sales and Transactions. Box
+Office Receipts is the one with no `/staff` equivalent; move it if it turns out
+to be counter work.
+
+The `show: isAdmin` flags on the dashboard's tabs are now always true. Left in
+place deliberately, so that widening the gate later cannot silently widen the
+tabs with it.
 
 **Donate.** Removed from the header for anyone signed in (Tom's addition), which
 is what makes room for Staff beside Admin at `lg`. Still in the Support menu and
@@ -120,14 +137,23 @@ introduced: the POS was already linked for staff-only accounts.
   redirect firing. With the guard temporarily disabled, the dashboard and the
   Print QRs panel both render and the pass-type picker populates from staging.
 - `src/components/staffNav.test.tsx` covers the header for patron / staff-only /
-  admin and all five guard branches.
+  admin, that a staff-only header carries no `/admin` href at all, and every
+  guard branch including `AdminOnly` refusing staff.
+- Browser: `/admin`, `/admin/audit-log`, `/admin/movies/new` and
+  `/admin/sponsorships/new` all refuse before mount now.
 
 **Not verified:** minting a real run as a signed-in staff account, and the
 `square-terminal` widening against a live reader. Both need staff credentials.
 
-## One deliberate regression
+## The count badge, and why it needed a hook
 
-The Film Passes tab's Print QRs header no longer carries a count badge.
-`CollapsibleSection` does not mount its children until first opened, so keeping
-the badge would mean fetching the batch list a second time on every Film Passes
-mount to fill a number on a collapsed header. One request, not two.
+First pass dropped it. `CollapsibleSection` does not mount a closed section's
+children, so a panel that owned the batch list could not report its size until
+someone had already opened the section to see it — and fetching the list in the
+tab *as well* would have cost two requests where there was one.
+
+`src/hooks/useFilmPassBatches.ts` is the fix: the Film Passes tab calls it and
+hands `batches` + `reload` down to the panel, which uses them instead of
+fetching. The Staff page passes neither and the panel loads its own, the hook's
+`enabled` flag keeping that second fetch from firing in the controlled case.
+One request either way, and the badge is back.

@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import { Layout } from "@/components/Layout";
-import { StaffOnly } from "@/components/StaffOnly";
+import { AdminOnly, StaffOnly } from "@/components/RoleGate";
 import { ColorLabProvider } from "@/components/colorlab/ColorLabProvider";
 
 // The home page is the overwhelming majority of first loads, so it ships in
@@ -109,20 +109,25 @@ const App = () => (
                   <Route path="/film-passes" element={<FilmPassesPage />} />
                   <Route path="/my-passes" element={<MyPasses />} />
                   <Route path="/profile" element={<Profile />} />
-                  <Route path="/admin" element={<AdminDashboard />} />
-                  <Route path="/admin/movies/:id" element={<MovieForm />} />
-                  <Route path="/admin/movies/new" element={<MovieForm />} />
-                  <Route path="/admin/events/:id" element={<EventForm />} />
-                  <Route path="/admin/events/new" element={<EventForm />} />
-                  <Route path="/admin/concerts/:id" element={<ConcertForm />} />
-                  <Route path="/admin/concerts/new" element={<ConcertForm />} />
-                  <Route path="/admin/venues/:id" element={<VenueForm />} />
-                  <Route path="/admin/venues/new" element={<VenueForm />} />
-                  <Route path="/admin/showings/new" element={<ShowingForm />} />
-                  <Route path="/admin/showings/:id" element={<ShowingForm />} />
-                  <Route path="/admin/sponsorships/new" element={<SponsorshipForm />} />
-                  <Route path="/admin/sponsorships/:id" element={<SponsorshipForm />} />
-                  <Route path="/admin/audit-log" element={<AuditLog />} />
+                  {/* Management, and only management. Every form here already
+                      refused a non-admin from inside its own effect; the gate
+                      makes /admin itself say the same thing, and says it before
+                      the page mounts and starts querying. Staff no longer reach
+                      any of it — the counter is /staff. */}
+                  <Route path="/admin" element={<AdminOnly><AdminDashboard /></AdminOnly>} />
+                  <Route path="/admin/movies/:id" element={<AdminOnly><MovieForm /></AdminOnly>} />
+                  <Route path="/admin/movies/new" element={<AdminOnly><MovieForm /></AdminOnly>} />
+                  <Route path="/admin/events/:id" element={<AdminOnly><EventForm /></AdminOnly>} />
+                  <Route path="/admin/events/new" element={<AdminOnly><EventForm /></AdminOnly>} />
+                  <Route path="/admin/concerts/:id" element={<AdminOnly><ConcertForm /></AdminOnly>} />
+                  <Route path="/admin/concerts/new" element={<AdminOnly><ConcertForm /></AdminOnly>} />
+                  <Route path="/admin/venues/:id" element={<AdminOnly><VenueForm /></AdminOnly>} />
+                  <Route path="/admin/venues/new" element={<AdminOnly><VenueForm /></AdminOnly>} />
+                  <Route path="/admin/showings/new" element={<AdminOnly><ShowingForm /></AdminOnly>} />
+                  <Route path="/admin/showings/:id" element={<AdminOnly><ShowingForm /></AdminOnly>} />
+                  <Route path="/admin/sponsorships/new" element={<AdminOnly><SponsorshipForm /></AdminOnly>} />
+                  <Route path="/admin/sponsorships/:id" element={<AdminOnly><SponsorshipForm /></AdminOnly>} />
+                  <Route path="/admin/audit-log" element={<AdminOnly><AuditLog /></AdminOnly>} />
                   {/* Where the counter tools used to live. Kept as redirects
                       because these two are bookmarked on the box-office iPad
                       and written down in half a dozen briefs — a hard move

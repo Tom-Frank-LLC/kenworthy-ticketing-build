@@ -17,6 +17,7 @@ import {
 import { Link } from 'react-router-dom';
 import { invokeFunction } from '@/lib/functions';
 import { PrintQrPanel } from './PrintQrPanel';
+import { useFilmPassBatches } from '@/hooks/useFilmPassBatches';
 import { formatShowtime } from '@/lib/datetime';
 import {
   formatMailingAddress,
@@ -180,6 +181,12 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function FilmPassesTab() {
+  // Held here rather than inside PrintQrPanel because the count badge sits on a
+  // header that can be closed, and CollapsibleSection does not mount a closed
+  // section's children — a panel that owned this list could not report its size
+  // until someone had already opened the section to see it. Handed straight
+  // down, so it is still one request.
+  const { batches, reload: reloadBatches } = useFilmPassBatches();
   const [passTypes, setPassTypes] = useState<FilmPassType[]>([]);
   /** Passes issued per type — what makes a type undeletable. Keyed by type id. */
   const [typePassCounts, setTypePassCounts] = useState<Record<string, number>>({});
@@ -950,8 +957,10 @@ export default function FilmPassesTab() {
           localStorage key for the remembered open/closed state, and renaming
           it would quietly reset everyone's preference. The heading is what
           changed, not the switch behind it. */}
-      <CollapsibleSection id="passes.stickers" title="Print QRs">
+      <CollapsibleSection id="passes.stickers" title="Print QRs" count={batches.length}>
         <PrintQrPanel
+          batches={batches}
+          onReloadBatches={reloadBatches}
           onMinted={() => {
             // A fresh batch writes pass rows: it is the usual way a type stops
             // being deletable, and the Issued Passes list just got longer.

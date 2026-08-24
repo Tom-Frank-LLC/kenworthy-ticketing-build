@@ -49,7 +49,7 @@ vi.mock('@/components/MobileNav', () => ({ MobileNav: () => null }));
 
 import { Layout } from '@/components/Layout';
 import { ColorLabProvider } from '@/components/colorlab/ColorLabProvider';
-import { StaffOnly } from '@/components/StaffOnly';
+import { AdminOnly, StaffOnly } from '@/components/RoleGate';
 
 function signedOut() {
   mockAuth.user = null;
@@ -103,6 +103,17 @@ describe('the header', () => {
     expect(headerLink('Staff')?.getAttribute('href')).toBe('/staff');
     expect(headerLink('Admin')).toBeNull();
     expect(headerLink('Donate')).toBeNull();
+  });
+
+  it('offers a staff-only account no /admin link anywhere in the header', () => {
+    signedInAs({ staff: true });
+    renderHeader();
+    // The Me menu's contents are portalled and only exist once opened, so this
+    // is the header's rendered links — which is where a stray /admin would be.
+    const adminHrefs = [...header().querySelectorAll('a')]
+      .map(a => a.getAttribute('href'))
+      .filter(h => h?.startsWith('/admin'));
+    expect(adminHrefs).toEqual([]);
   });
 
   it('offers an admin both — they run the counter too', () => {
@@ -159,6 +170,28 @@ describe('the /staff guard', () => {
     signedInAs({ host: true });
     renderGuarded(true);
     expect(screen.getByText('the till')).toBeTruthy();
+  });
+
+  it('keeps a staff-only account out of /admin, and lets an admin in', () => {
+    function renderAdminGuarded() {
+      return render(
+        <MemoryRouter initialEntries={['/admin']}>
+          <Routes>
+            <Route path="/admin" element={<AdminOnly><p>the dashboard</p></AdminOnly>} />
+            <Route path="/" element={<p>the front page</p>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    }
+
+    signedInAs({ staff: true });
+    renderAdminGuarded();
+    expect(screen.queryByText('the dashboard')).toBeNull();
+    expect(screen.getByText('the front page')).toBeTruthy();
+
+    signedInAs({ admin: true });
+    renderAdminGuarded();
+    expect(screen.getByText('the dashboard')).toBeTruthy();
   });
 
   it('waits for the role lookup rather than bouncing on a hard refresh', () => {
