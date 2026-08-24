@@ -143,7 +143,28 @@ introduced: the POS was already linked for staff-only accounts.
   `/admin/sponsorships/new` all refuse before mount now.
 
 **Not verified:** minting a real run as a signed-in staff account, and the
-`square-terminal` widening against a live reader. Both need staff credentials.
+`square-terminal` widening against a live card reader. Both need staff
+credentials.
+
+## Deployed (2026-08-24)
+
+`square-terminal` only — the frontend is still unshipped, and this order is the
+right one: deploy the function first, or a staff-only account taking a card
+payment on the new POS path would still meet the admin gate.
+
+| | before | after |
+|---|---|---|
+| staging `rpqzrpboyhshdrfdwayk` | v22 | **v23** |
+| production `vlmslygnimfbamrtwvyo` | v28 | **v29** |
+
+Both projects had been running the identical old bundle
+(`58b51761a0c3672…`), so nothing newer was deployed than the repo and there was
+no other session's work to revert. Both now carry `e78a22f399369846…`.
+
+Verified past the 2xx: `supabase functions download` on each project, and the
+deployed source reads `_role: "staff"` / `"Staff access required"` on both. Both
+answer `401 UNAUTHORIZED_NO_AUTH_HEADER` to an unsigned POST, which is the
+function booting rather than a BOOT_ERROR.
 
 ## The count badge, and why it needed a hook
 
