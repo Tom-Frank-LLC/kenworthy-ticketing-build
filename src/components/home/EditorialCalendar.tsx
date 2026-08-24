@@ -1,12 +1,8 @@
-import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Film, Sparkles, Music, Calendar as CalendarIcon, ArrowRight } from 'lucide-react';
+import { Film, Sparkles, Music } from 'lucide-react';
 import { addDays, isThisWeek } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
-import { isPast } from '@/lib/purchasable';
 import type { FeedItem } from './TrailerFeed';
 import { htmlToPlainText } from '@/lib/richText';
 
@@ -16,7 +12,7 @@ const TYPE_ICON = {
   concert: Music,
 } as const;
 
-function dayLabel(iso: string) {
+export function dayLabel(iso: string) {
   // Relative labels are relative to the venue's day, not the reader's — see
   // the note in formatWhen in ShowingPreview.tsx.
   const day = venueDayKey(iso);
@@ -50,19 +46,12 @@ export function EditorialCalendar({
    */
   compact?: boolean;
 }) {
-  // Curator-controlled featured pick: prefer the earliest item flagged
-  // is_featured. If nothing is flagged, fall back to the first chronological
-  // item so the page never feels empty up top. The chronological calendar
-  // below always shows every item in order, including the featured one.
-  const featured =
-    items.find((i) => i.isFeatured) ?? items[0];
-  const rest = items.filter(
-    (i) => !(featured && i.id === featured.id),
-  );
-
-  // Group rest by day
+  // Every showing, grouped by day. The curator's pick used to be lifted out of
+  // this list and rendered above it, which meant the featured film was the one
+  // film missing from the page whose job is to list them all. That block moved
+  // to the home page (BoothNote), so nothing is held back here.
   const groups = new Map<string, FeedItem[]>();
-  for (const item of rest) {
+  for (const item of items) {
     const key = dayKey(item.startTime);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(item);
@@ -71,72 +60,6 @@ export function EditorialCalendar({
   return (
     <div className="h-full overflow-y-auto">
       <div className={cn('max-w-[640px] mx-auto', compact ? 'py-2' : 'px-6 md:px-10 py-10')}>
-        {/* Curator header */}
-        <div className="mb-10">
-          <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mb-3">
-            A note from the booth
-          </p>
-          <h1 className="font-display text-4xl md:text-5xl leading-[0.95] mb-4">
-            What we're watching this week
-          </h1>
-          <p className="font-serif text-muted-foreground">
-            One screen, a hundred years of stories. Here's what's lighting up
-            the marquee on Main Street.
-          </p>
-          <div className="marquee-rule mt-8" />
-        </div>
-
-        {/* Featured */}
-        {featured && (
-          <article className="mb-12">
-            <p className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-3">
-              {featured.isFeatured ? "Curator's pick" : 'Featured'} · {dayLabel(featured.startTime)}
-            </p>
-            <button
-              type="button"
-              onClick={() => onSelect?.(featured)}
-              className="text-left w-full group"
-            >
-              {featured.posterUrl && (
-                <div className="relative aspect-[16/10] overflow-hidden rounded-sm mb-4 bg-secondary">
-                  <img
-                    src={featured.posterUrl}
-                    alt={featured.title}
-                    className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                </div>
-              )}
-              <h2 className="font-display text-3xl md:text-4xl leading-tight mb-2 group-hover:text-primary transition-colors">
-                {featured.title}
-              </h2>
-              <p className="font-serif text-sm text-muted-foreground mb-2">
-                {formatShowtime(featured.startTime, "EEEE, MMMM d 'at' h:mm a")}
-              </p>
-              {featured.curatorNote && (
-                <p className="font-serif italic text-foreground/80 leading-relaxed">
-                  {htmlToPlainText(featured.curatorNote)}
-                </p>
-              )}
-            </button>
-            {/* useFeed filters past showings out at query time, so this only
-                bites in a tab left open across a start time — which is the one
-                case where the page would otherwise sell a finished screening.
-                The rule is src/lib/purchasable.ts. */}
-            {featured.showingId && !isPast({ start_time: featured.startTime }) && (
-              <div className="mt-4">
-                <Button asChild className={cn('h-11', GREEN_CTA)}>
-                  <Link to={`/showing/${featured.showingId}`}>
-                    Get Tickets <ArrowRight className="h-4 w-4 ml-1" />
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </article>
-        )}
-
-        <div className="marquee-rule mb-10" />
-
         {/* Calendar listing */}
         <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mb-6">
           The calendar

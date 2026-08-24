@@ -32,9 +32,14 @@ const TYPE_LABEL = {
 export function MonthCalendar({
   items,
   onSelect,
+  // The home page's Upcoming section renders its own view-aware helper line
+  // above this grid, so it opts out rather than stacking a second one. The
+  // /calendar page has no such line and keeps this on.
+  showHint = true,
 }: {
   items: FeedItem[];
   onSelect?: (item: FeedItem) => void;
+  showHint?: boolean;
 }) {
   // Anchor the visible month to the first upcoming dated item, falling back
   // to today so the calendar never opens on an empty month.
@@ -82,11 +87,15 @@ export function MonthCalendar({
               page's Upcoming section) already render their own title above
               this grid, so one of our own stacked a second "Calendar" under
               it. Only the helper line stays. */}
-          <div>
-            <p className="font-serif text-sm text-muted-foreground">
-              Tap a day to see what's on. Tap a title for tickets and details.
-            </p>
-          </div>
+          {showHint ? (
+            <div>
+              <p className="font-serif text-sm text-muted-foreground">
+                Tap a day to see what's on. Tap a title for tickets and details.
+              </p>
+            </div>
+          ) : (
+            <div />
+          )}
           <div className="flex items-center gap-2">
             <Button
               variant="outline"

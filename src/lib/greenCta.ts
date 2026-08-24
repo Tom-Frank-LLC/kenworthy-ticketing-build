@@ -20,7 +20,7 @@
  *
  *   1. `Layout.tsx`               — "Tickets", the header nav CTA
  *   2. `home/ShowingPreview.tsx`  — "Get Tickets"
- *   3. `home/EditorialCalendar.tsx` — "Get Tickets"
+ *   3. `home/BoothNote.tsx`       — "Get Tickets"
  *   4. `home/TrailerFeed.tsx`     — "Get Tickets"
  *
  * That is the whole set. Keeping it in one constant is what makes the choice
