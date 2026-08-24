@@ -29,11 +29,12 @@ export default function CalendarPage() {
   const splitLayout = useIsSplitLayout();
   const inlinePreview = view === 'list' && splitLayout;
 
-  // Mirrors EditorialCalendar's own featured rule so the panel opens showing
-  // the same production the reader's eye lands on at the top of the list.
+  // Opens on the first row, which is the one the reader's eye lands on. This
+  // used to prefer the is_featured item because EditorialCalendar lifted that
+  // item to the top of the list; the list is plain chronological order now, so
+  // preferring it would highlight a row somewhere down the page instead.
   const previewItem =
     filtered.find(i => i.id === previewId) ??
-    filtered.find(i => i.isFeatured) ??
     filtered[0] ??
     null;
 

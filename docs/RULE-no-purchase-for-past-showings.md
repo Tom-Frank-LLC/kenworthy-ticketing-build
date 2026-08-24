@@ -115,7 +115,7 @@ The purchase affordance **disappears** for a past showing rather than dimming.
 - `ProductionDetailDrawer.tsx` — past showings drop out of the list, which is
   what finally makes its "Upcoming Showings" heading true. An RSVP event whose
   showings have all passed loses its RSVP button.
-- `TrailerFeed.tsx`, `ShowingPreview.tsx`, `EditorialCalendar.tsx` — every
+- `TrailerFeed.tsx`, `ShowingPreview.tsx`, `BoothNote.tsx` — every
   "Get Tickets" / "RSVP" CTA is gated. These only bite in a tab left open
   across a start time, since the feed excludes past showings at query time,
   but that is precisely the tab that would otherwise sell a finished film.

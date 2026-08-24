@@ -76,7 +76,7 @@ export function HomeMarquee() {
             </h1>
             <p className="mt-3 font-serif italic text-foreground/90 text-sm sm:text-base max-w-lg drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
               Art-house classics to studio blockbusters, live performances and
-              community gatherings all inside Moscow's historic 1926 theater.
+              community gatherings all inside Moscow's historic 1926 theatre.
             </p>
           </div>
 

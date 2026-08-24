@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { TrailerFeed, type FeedItem } from '@/components/home/TrailerFeed';
-import { EditorialCalendar } from '@/components/home/EditorialCalendar';
+import { BoothNote } from '@/components/home/BoothNote';
 import { UpcomingList } from '@/components/home/UpcomingList';
 import { BackstageTeaser } from '@/components/home/BackstageTeaser';
 import { ConcessionsPreview } from '@/components/home/ConcessionsPreview';
@@ -197,6 +197,14 @@ export default function Index() {
               stays scannable. */}
             {!loading && filteredFeed.length > 0 && (
                                                      <UpcomingList items={filteredFeed} onSelect={handleSelect} />
+                                                     )}
+
+            {/* The booth's note and the curator's pick, directly under the
+                listing they comment on. This block used to render on
+                /calendar, where it buried the calendar under a featured
+                poster and gave that page a second <h1>. */}
+            {!loading && filteredFeed.length > 0 && (
+                                                     <BoothNote items={filteredFeed} onSelect={handleSelect} />
                                                      )}
             {/*
 
