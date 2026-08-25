@@ -90,7 +90,7 @@ export function MonthCalendar({
           {showHint ? (
             <div>
               <p className="font-serif text-sm text-muted-foreground">
-                Tap a day to see what's on. Tap a title for tickets and details.
+                Click on a day to see what's playing
               </p>
             </div>
           ) : (

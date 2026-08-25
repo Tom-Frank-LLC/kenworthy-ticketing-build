@@ -66,13 +66,13 @@ export default function CalendarPage() {
       <div className="container py-10 md:py-14">
         <div className="mb-6">
           <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
-            What's on
+            What's on the
           </p>
           <h1 className="font-display text-4xl md:text-5xl uppercase tracking-wide">
             Calendar
           </h1>
           <p className="font-serif text-muted-foreground mt-2 max-w-2xl">
-            Every showing, in order. Search for a title or use the month view to plan your visit.
+            Search for a title, or use the calendar view to see what's playing.
           </p>
         </div>
 
@@ -103,7 +103,7 @@ export default function CalendarPage() {
               className="gap-2 h-8"
               onClick={() => setView('month')}
             >
-              <CalendarIcon className="h-4 w-4" /> Month
+              <CalendarIcon className="h-4 w-4" /> Calendar
             </Button>
           </div>
         </div>

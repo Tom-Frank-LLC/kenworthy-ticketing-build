@@ -62,7 +62,7 @@ export function EditorialCalendar({
       <div className={cn('max-w-[640px] mx-auto', compact ? 'py-2' : 'px-6 md:px-10 py-10')}>
         {/* Calendar listing */}
         <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mb-6">
-          The calendar
+          Upcoming
         </p>
 
         {groups.size === 0 ? (
