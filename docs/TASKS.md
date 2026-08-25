@@ -5,13 +5,12 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**64 briefs** — 59 shipped, 2 built, 3 open, 0 needs triage, 0 closed.
+**64 briefs** — 60 shipped, 1 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
-- `P1` **Movies and events can be linked to a Square catalog item again, not only dismissed**<br>`bug` — [brief](briefs/BRIEF-square-link-movies-events-ui.md)
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
 
 ## Open
@@ -26,6 +25,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - **Listings show the other showtimes inline and play trailers in a lightbox**<br>`ux` — `#187` — [brief](briefs/BRIEF-listings-showtimes-trailer.md)
 - **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — `#143`, `#152`, `#153` — [brief](briefs/BRIEF-backstage-page.md)
 - **Show run times as hours + minutes, not raw minutes**<br>`ux` — `#181` — [brief](briefs/BRIEF-runtime-format.md)
+- **Movies and events can be linked to a Square catalog item again, not only dismissed**<br>`bug` — `#185` — [brief](briefs/BRIEF-square-link-movies-events-ui.md)
 - **Split the counter tools into a Staff section, with Print QRs in it**<br>`ux` — `#172` — [brief](briefs/BRIEF-staff-section-print-qr.md)
 - **Description fields get a formatting toolbar, and the render path is sanitised to match**<br>`feature` — `#170` — [brief](briefs/BRIEF-richtext-descriptions.md) · [notes](briefs/FINDINGS-richtext-description-surface.md)
 - **A searchable Transactions log of confirmed Square and site sales, with reconciliation**<br>`feature` — `#161` — [brief](briefs/BRIEF-transactions-tab.md) · [notes](briefs/FINDINGS-transactions-tab.md)

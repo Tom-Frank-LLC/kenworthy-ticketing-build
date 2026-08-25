@@ -1,11 +1,17 @@
 ---
 brief: square-link-movies-events-ui
 title: Movies and events can be linked to a Square catalog item again, not only dismissed
-status: built
+status: shipped
 track: bug
-severity: P1
 date: 2026-08-25
-verified: false
+shipped_in: ["#185"]
+shipped_at: 2026-08-25
+verified: true
+evidence: >-
+  Deployed by hand to both workers on 2026-08-25 and verified against the live
+  origins, not the upload log. Production version 4185cf55-26d6-4c78-a10f-ed54681a0f91
+  (rollback: 9c9c4d68-31a5-4f66-a94e-aea5ef061fa8); staging version
+  bd81384e-1034-4deb-8466-5b27b7fe0789 (rollback: 593567fd-db40-41af-af8a-2ed1d43a56e2).
 ---
 
 # Brief (for Claude Code): Restore the ability to link movies & events to Square from admin
@@ -166,4 +172,30 @@ confirmed in the emitted chunks, bundle carries the production Supabase ref ·
 eslint 21 problems against a 23-problem baseline on the same files (two fewer
 `any`, no new warnings).
 
-**Not yet deployed.** Merging does not deploy; this needs `npx wrangler deploy`.
+### Deployed 2026-08-25
+
+Both workers, by hand, verified against the live origins rather than the upload
+log — wrangler reported "No updated asset files to upload" on both, which is not
+evidence of anything.
+
+| | version | rollback to |
+|---|---|---|
+| production `kenworthy-ticketing-build` | `4185cf55-26d6-4c78-a10f-ed54681a0f91` | `9c9c4d68-31a5-4f66-a94e-aea5ef061fa8` |
+| staging `kenworthy-ticketing-staging` | `bd81384e-1034-4deb-8466-5b27b7fe0789` | `593567fd-db40-41af-af8a-2ed1d43a56e2` |
+
+Confirmed live on production: the entry chunk matches the build, the
+AdminDashboard and ShowingForm chunks serve as `text/javascript` rather than the
+SPA fallback shell, the ambiguous-item copy and the dismissals read are in the
+admin chunk, and all six save-time messages are in the shared chunk ShowingForm
+imports.
+
+**Before deploying**, production was checked for being *ahead* of `main`: its
+bundle had changed under this session (a deploy at 22:52Z from elsewhere) while
+`origin/main` had not moved. A normalized content diff — hashed chunk filenames
+rewritten to a constant — showed **zero** string differences in AdminDashboard,
+StaffPOS and searchable-select, and only minifier identifier mangling in the
+entry chunk, with one `dialog`/`dist` chunk split two ways. So production was
+content-identical to `main` and nothing was reverted. The differing hashes alone
+would have been a false alarm, exactly as CLAUDE.md warns.
+
+No edge functions were changed, so none were deployed.
