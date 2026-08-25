@@ -307,8 +307,8 @@ export function buildTributeText(d: DonationSummary): string {
   }
   lines.push('');
   lines.push(
-    'Gifts like this one keep a 1926 theatre running — the projector, the marquee, and the ' +
-      'seats a hundred years of this town has sat in.',
+    'Gifts like this one keep our 1926 theatre running — the projector, the screen, the ' +
+      'marquee, and the seats our town has sat in for a hundred years.',
   );
   lines.push('');
   lines.push('With gratitude,');
@@ -349,8 +349,8 @@ export function buildTributeHtml(d: DonationSummary): string {
 
           ${row(
             `<div style="font:400 14px/1.7 ${sans};color:${brand.body};">
-              Gifts like this one keep a 1926 theatre running — the projector, the marquee,
-              and the seats a hundred years of this town has sat in.
+              Gifts like this one keep our 1926 theatre running — the projector, the screen,
+              the marquee, and the seats our town has sat in for a hundred years.
             </div>`,
           )}
 
