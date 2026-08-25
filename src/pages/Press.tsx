@@ -153,7 +153,7 @@ export default function Press() {
       <section className="border-b border-accent/20 bg-card/40">
         <div className="container py-16 md:py-24 max-w-4xl">
           <p className="font-display uppercase tracking-[0.3em] text-sm text-primary mb-4">
-            The Kenworthy
+            Kenworthy
           </p>
           <h1 className="font-display uppercase text-4xl md:text-6xl leading-tight text-foreground">
             Press
