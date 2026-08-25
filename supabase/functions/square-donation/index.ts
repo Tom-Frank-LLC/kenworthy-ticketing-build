@@ -9,6 +9,7 @@ import {
 } from "../_shared/square.ts";
 import { buildTicketOrder, orderRequestBody } from "../_shared/square-order.ts";
 import { settleDonation } from "../_shared/donations.ts";
+import { LIMITS, checkRateLimit } from "../_shared/rate_limit.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -47,6 +48,31 @@ Deno.serve(async (req) => {
 
   if (action !== "create_payment") {
     return json({ error: `Unknown action: ${action}` }, 400);
+  }
+
+  // The public card path, and the only unauthenticated one that moves money.
+  // Checked before validation so a flood costs us one indexed upsert rather
+  // than a Square round trip each. Fifteen in ten minutes is far above a donor
+  // retrying a declined card, and far below anything worth scripting.
+  //
+  // This is a speed bump, not the control: it bounds cost and nuisance from one
+  // address and does nothing about a distributed attempt. Turnstile — already
+  // on the rental form — is what would actually close this endpoint, and it is
+  // the obvious next thing for the page that takes money.
+  {
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const rl = await checkRateLimit(
+      admin, req,
+      LIMITS.donation.bucket, LIMITS.donation.limit, LIMITS.donation.windowSeconds,
+    );
+    if (!rl.allowed) {
+      return json({
+        error: "That is a lot of attempts in a short time. Please wait a minute and try again, or call the box office on 208-882-4127.",
+      }, 429);
+    }
   }
 
   // Validate donation payload

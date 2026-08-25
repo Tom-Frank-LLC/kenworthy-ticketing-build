@@ -2,6 +2,7 @@ import "https://deno.land/std@0.224.0/dotenv/load.ts";
 import { createHash } from "node:crypto";
 import { z } from "npm:zod@3.23.8";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { LIMITS, checkRateLimit } from "../_shared/rate_limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -84,6 +85,32 @@ Deno.serve(async (req) => {
   }
 
   if (!isAuthenticated) {
+    // Anonymous only. A signed-in caller is a staff member using the Mailchimp
+    // tab, and throttling the admin surface would be all cost and no benefit.
+    //
+    // What this bounds is the one thing an anonymous caller can make happen off
+    // our infrastructure: Mailchimp sending a confirmation email to an address
+    // somebody else typed. The double opt-in below means they cannot actually
+    // subscribe a third party — but they can make the mail arrive, repeatedly,
+    // on a shared account with no sandbox. Ten in ten minutes is past any
+    // honest use of a newsletter box.
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const rl = await checkRateLimit(
+      admin, req,
+      LIMITS.mailchimpSubscribe.bucket,
+      LIMITS.mailchimpSubscribe.limit,
+      LIMITS.mailchimpSubscribe.windowSeconds,
+    );
+    if (!rl.allowed) {
+      return new Response(
+        JSON.stringify({ error: "Too many sign-up attempts. Please try again in a few minutes." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     // Force double opt-in and constrain tags/source for anonymous submissions
     status = "pending";
     const allowedTags = new Set(["newsletter", "account-signup", "ticket-buyer", "donor", "film-pass", "dvd-renter"]);

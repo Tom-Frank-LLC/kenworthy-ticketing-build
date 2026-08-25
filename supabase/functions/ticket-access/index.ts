@@ -21,6 +21,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
 import { loadOrder, renderQrPng, ticketPageUrl, type Order } from '../_shared/tickets.ts';
 import { buildIcs } from '../_shared/calendar.ts';
+import { LIMITS, checkRateLimit } from '../_shared/rate_limit.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -50,6 +51,35 @@ Deno.serve(async (req: Request) => {
     if (!token) return json({ error: 'Missing ticket token' }, 400);
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    // A ceiling on cost, not on guessing. The order token is a random UUID, so
+    // brute-forcing it was never realistic and this does not make it less so —
+    // what it bounds is somebody hammering the endpoint for free QR renders and
+    // database reads.
+    //
+    // Deliberately loose: one ticket page fetches a QR per ticket, mail clients
+    // re-fetch those images, and a party of four refreshing on the pavement
+    // outside is an ordinary evening. 120 a minute is far past that and still
+    // far short of a useful flood.
+    const rl = await checkRateLimit(
+      admin, req,
+      LIMITS.ticketAccess.bucket, LIMITS.ticketAccess.limit, LIMITS.ticketAccess.windowSeconds,
+    );
+    if (!rl.allowed) {
+      // A plain, non-technical answer: whoever sees this is holding a ticket
+      // and standing somewhere, not reading an API response.
+      return new Response(
+        JSON.stringify({ error: 'Too many requests just now — please wait a moment and reload.' }),
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            ...(rl.retryAfter ? { 'Retry-After': String(rl.retryAfter) } : {}),
+          },
+        },
+      );
+    }
 
     let order: Order | null;
     try {

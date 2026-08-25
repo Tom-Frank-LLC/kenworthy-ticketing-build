@@ -180,3 +180,73 @@ What is dangerous is either of these:
 - **Fast-forward the `staging` branch to `main`** so "deploy staging branch" and "deploy staging worker" stop diverging: `git checkout staging && git merge --ff-only main && git push origin staging` (resolve if it won't fast-forward).
 - The gitignored `.env.staging` / `.env.production` must exist in **every** clone/worktree you build from — a fresh checkout won't have them, and that silently produces the empty-URL build.
 - At **domain cutover to kenworthy.org**: change `VITE_SITE_URL` in `.env.production`, set the prod `SITE_URL` secret to `https://kenworthy.org`, rebuild, redeploy. No code change.
+
+---
+
+## Domain cutover to kenworthy.org
+
+Everything here is inert until `kenworthy.org` is a zone in the Cloudflare
+account (`43864e6c2920a220e2cceb86720d8d1c`) and the Worker answers on it. Today
+it is not: the domain resolves to `64.126.133.214` running Apache — the old
+WordPress site — and `wrangler.jsonc` declares no routes and no custom domain.
+
+### 1. The two settings already noted above
+`VITE_SITE_URL` in `.env.production`, and the prod `SITE_URL` secret. Rebuild
+and redeploy after both.
+
+### 2. Turnstile needs nothing
+The production widget was created with `kenworthy.org` and `www.kenworthy.org`
+in its domain list already, so the rental form keeps working across the move
+with no change. (Staging's widget covers the staging Worker and `localhost`.)
+
+### 3. Cloudflare rate-limiting rules — and what they cannot do
+
+**Read this before writing the rules, because the obvious expectation is
+wrong.** WAF rate-limiting attaches to a zone. Once `kenworthy.org` is one, a
+rule can throttle **requests the Worker serves** — page loads, assets. It cannot
+touch the endpoints that actually matter, because the browser calls
+`*.supabase.co` directly for every checkout, donation, ticket lookup and
+password reset. That traffic never enters the zone.
+
+So these rules blunt scraping and crude floods against the site itself. The
+protection for the API is `check_rate_limit` in the edge functions
+(`20260825143017`), which is deliberately independent of where the site is
+hosted.
+
+Rules to add, once the zone exists (Security → WAF → Rate limiting rules):
+
+| # | expression | limit | action |
+| --- | --- | --- | --- |
+| 1 | `http.host eq "kenworthy.org"` | 600 / 1 min per IP | Managed Challenge |
+| 2 | `http.host eq "kenworthy.org" and starts_with(http.request.uri.path, "/admin")` | 60 / 1 min per IP | Managed Challenge |
+
+Rule 1 is a crude ceiling — a real visitor loading a poster-heavy page issues
+tens of requests, so it sits far above that. Rule 2 is tighter because `/admin`
+has no anonymous audience at all; the client route guard is not a security
+boundary (the server checks are), but there is no reason to let anyone probe it
+at speed. Prefer Managed Challenge over Block: a challenge that a real person
+passes is recoverable, a block on a shared NAT is not.
+
+### 4. Putting the API behind the zone — optional, costs money
+If you ever want WAF rules to cover the Supabase endpoints too, the supported
+route is Supabase's **Custom Domain add-on** (Pro plan): point `api.kenworthy.org`
+at the project so its traffic crosses your zone. Checked 2026-08-25 — neither
+project has the entitlement (`feature: custom_domain`). Until then the
+app-level limiter is the only thing that reaches those endpoints, and it is
+sufficient for the abuse actually anticipated.
+
+A Worker proxy on `kenworthy.org/api/*` would achieve the same for free, and is
+deliberately **not** recommended: it inserts our own code into the card-payment
+path, where a bug costs a sale.
+
+### 5. Verify after the move
+```bash
+curl -sSI https://kenworthy.org/ | grep -iE 'x-frame-options|strict-transport|content-security'
+#   the security headers must survive the move — they come from public/_headers
+curl -s https://kenworthy.org/ | grep -o 'assets/index-[^"]*\.js'
+#   then fetch that file and confirm content-type is text/javascript, not text/html
+#   (a missing asset returns 200 + the app shell — see the SPA-fallback note)
+```
+Confirm a real rental submission still reaches "Thank you": the Turnstile widget
+must solve on the new hostname, and that is the one thing the domain list above
+is protecting against.
