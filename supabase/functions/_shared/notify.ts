@@ -248,8 +248,16 @@ export function buildEmailText(
  * characters into multiple billed segments, and a ticket link that arrives in
  * pieces reads as spam. No QR — a texted image cannot be relied on to scan, so
  * the link is the ticket.
+ *
+ * One link, deliberately. This used to append "Add to calendar: <ics url>",
+ * which cost a third segment on every send and duplicated a button the ticket
+ * page already carries (PublicTicket.tsx offers both the .ics and Google
+ * Calendar). Shortening that URL was measured and does not help — the 36-char
+ * order token is the bulk of it, not the path, so a /c/<token> redirect saved
+ * 31 characters and stayed at three segments. Dropping the line is what takes
+ * a typical send from three segments to two.
  */
-export function buildSmsBody(order: Order, ticketUrl: string, calendarUrl?: string | null): string {
+export function buildSmsBody(order: Order, ticketUrl: string): string {
   const count = order.tickets.length;
   const seats = order.tickets.some((t) => t.seat)
     ? ` ${order.tickets.map((t) => `${t.seat!.row}${t.seat!.number}`).join(', ')}`
@@ -259,8 +267,5 @@ export function buildSmsBody(order: Order, ticketUrl: string, calendarUrl?: stri
     `${order.start_time_display}${seats}`,
     `Your ticket${count === 1 ? '' : 's'}: ${ticketUrl}`,
   ];
-  // A second URL pushes most sends to a 2nd segment; the calendar link is worth
-  // it, and callers can omit it to stay in one segment.
-  if (calendarUrl) lines.push(`Add to calendar: ${calendarUrl}`);
   return lines.join('\n');
 }

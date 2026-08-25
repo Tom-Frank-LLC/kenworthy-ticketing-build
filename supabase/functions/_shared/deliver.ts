@@ -383,7 +383,7 @@ export async function deliverConfirmation(
       smsStatus = 400;
       console.error('[deliver]', smsError);
     } else {
-      const result = await sendViaTwilio(e164, buildSmsBody(order, ticketUrl, calendarUrl));
+      const result = await sendViaTwilio(e164, buildSmsBody(order, ticketUrl));
       if (!result.ok) {
         console.error('[deliver] sms send failed', result.error);
         smsError = result.error;

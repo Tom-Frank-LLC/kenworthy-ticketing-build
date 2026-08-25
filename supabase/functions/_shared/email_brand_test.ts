@@ -140,7 +140,7 @@ const TEXT_MESSAGES: Record<string, string> = {
   'donation tribute': buildTributeText(gift),
   'pass order': buildPassOrderEmailText(passOrder),
   'pass posted': buildPassPostedEmailText(passPosted),
-  sms: buildSmsBody(order, ticketOpts.ticketUrl, ticketOpts.calendarUrl),
+  sms: buildSmsBody(order, ticketOpts.ticketUrl),
 };
 
 /** Subject lines are the one part of a message everyone reads. */

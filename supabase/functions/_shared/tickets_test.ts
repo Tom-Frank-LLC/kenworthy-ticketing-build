@@ -188,6 +188,32 @@ Deno.test('buildSmsBody labels a single ticket in the singular', () => {
   assertEquals(body.includes('Your tickets:'), false);
 });
 
+Deno.test('buildSmsBody carries exactly one link and no calendar line', () => {
+  // The calendar URL cost a third billed segment and duplicated a button the
+  // ticket page already has. Pinned so it does not drift back in.
+  const body = buildSmsBody(
+    {
+      order_token: 'tok',
+      user_id: 'u',
+      purchased_at: '',
+      confirmation_sent_at: null,
+      sms_consent: null,
+      title: 'Casablanca',
+      start_time: '',
+      start_time_display: 'Fri, Aug 14, 2026 at 7:30 PM',
+      venue: 'Main Theatre',
+      duration_minutes: null,
+      tickets: [ticket()],
+      total: 12.72,
+    },
+    'https://example.com/t/tok',
+  );
+  assertEquals(body.includes('Add to calendar'), false);
+  assertEquals(body.includes('ics=1'), false);
+  assertEquals((body.match(/https?:\/\//g) || []).length, 1);
+  assertEquals(body.split('\n').length, 3);
+});
+
 Deno.test('buildSmsBody lists seats when the order has them', () => {
   const body = buildSmsBody(
     {
