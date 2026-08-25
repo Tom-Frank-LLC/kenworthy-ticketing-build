@@ -240,12 +240,12 @@ export default function Backstage() {
           container, because a measure wide enough for a three-column grid is
           too wide to read a paragraph across. */}
       {hasBody && (
-        <section className="container max-w-5xl pt-16 md:pt-20" aria-labelledby="how-its-used">
+        <section className="container max-w-5xl pt-16 md:pt-20" aria-labelledby="backstage-experience">
           <h2
-            id="how-its-used"
+            id="backstage-experience"
             className="font-display uppercase tracking-[0.2em] text-sm text-primary"
           >
-            How the room gets used
+            The Backstage experience
           </h2>
           <RichText
             html={body}
@@ -273,7 +273,7 @@ export default function Backstage() {
           id="past-events"
           className="font-display uppercase tracking-[0.2em] text-sm text-primary"
         >
-          Nights that already happened
+          The Backstage archive
         </h2>
 
         {loading ? (
