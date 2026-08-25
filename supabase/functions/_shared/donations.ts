@@ -118,16 +118,22 @@ export function formatMoneyCompact(cents: number): string {
 }
 
 /**
- * Confirmation that the tribute reached someone, for the donor who asked us to
- * tell them. Gated on exactly what the send is gated on — an address for the
- * recipient, and a dedication to tell them about — so the receipt cannot
+ * Confirmation that the tribute is going somewhere, for the donor who asked us
+ * to tell someone. Gated on exactly what the send is gated on — an address for
+ * the recipient, and a dedication to tell them about — so the receipt cannot
  * promise a message that was never addressed.
+ *
+ * Future tense on purpose. This receipt is composed and sent *before* the
+ * tribute, so at the moment the donor reads it the second email has been
+ * addressed but not necessarily delivered. "We will notify" is true when it is
+ * written; "we have notified" would be a claim about something that had not
+ * happened yet, and a failure afterwards would leave it standing as a lie.
  */
 export function notifiedLine(d: DonationSummary): string | null {
   const name = d.notifyName?.trim();
   if (!name || !d.notifyEmail?.trim()) return null;
   if (!dedicationPhrase(d.dedicationType, d.dedicateTo)) return null;
-  return `We have also notified ${name} of your gracious gift.`;
+  return `We will also notify ${name} of your gracious gift.`;
 }
 
 export function buildReceiptSubject(d: DonationSummary): string {

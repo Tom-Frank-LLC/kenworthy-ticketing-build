@@ -175,8 +175,8 @@ Deno.test('the receipt says who was told, and only when someone was', () => {
     notifyName: 'John Doe',
     notifyEmail: 'john@example.com',
   });
-  assertStringIncludes(buildReceiptText(told), 'We have also notified John Doe of your gracious gift.');
-  assertStringIncludes(buildReceiptHtml(told), 'We have also notified John Doe');
+  assertStringIncludes(buildReceiptText(told), 'We will also notify John Doe of your gracious gift.');
+  assertStringIncludes(buildReceiptHtml(told), 'We will also notify John Doe');
 
   // A name with no address means the tribute was never addressed — the send is
   // gated on notify_email, so claiming otherwise would be a lie on a receipt.
@@ -186,12 +186,12 @@ Deno.test('the receipt says who was told, and only when someone was', () => {
     notifyName: 'John Doe',
     notifyEmail: null,
   });
-  assertEquals(buildReceiptText(notTold).includes('We have also notified'), false);
+  assertEquals(buildReceiptText(notTold).includes('We will also notify'), false);
 
   // And a dedication is required too, for the same reason.
   const noDedication = gift({ notifyName: 'John Doe', notifyEmail: 'john@example.com' });
-  assertEquals(buildReceiptText(noDedication).includes('We have also notified'), false);
+  assertEquals(buildReceiptText(noDedication).includes('We will also notify'), false);
 
   // An ordinary gift never mentions it.
-  assertEquals(buildReceiptText(gift()).includes('We have also notified'), false);
+  assertEquals(buildReceiptText(gift()).includes('We will also notify'), false);
 });
