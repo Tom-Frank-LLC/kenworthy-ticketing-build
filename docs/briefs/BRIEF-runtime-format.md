@@ -47,6 +47,12 @@ verified: false
    genre, where width is the scarce thing; Fandango's `"2 hr 8 min"` was the
    alternative.
 2. **Sub-hour:** `"45m"` — one rule, no exception for shorts.
+3. **Admin forms** (added 2026-08-25, after the audit below): the entry fields
+   keep taking a total in minutes — the column stores a total, and a label
+   promising hours while the input takes one number would be worse than the
+   status quo. Instead each field echoes the patron-facing string live, and
+   every place a form *displays a runtime value* now uses `formatRuntime()`.
+   Splitting the input into `h` + `m` boxes was the alternative.
 
 ## What was built
 
@@ -63,7 +69,14 @@ verified: false
   rest of the repo already uses (`dialog.tsx`, `carousel.tsx`, `pagination.tsx`).
 
 - 16 assertions in `src/lib/datetime.test.ts`, including that the two formatters
-  are empty on exactly the same inputs.
+  are empty on exactly the same inputs, plus four in
+  `src/components/ProductionMedia.test.tsx` pinning the visible/announced pair
+  together. That pairing is the regression worth catching: change one and not
+  the other and it still looks right on screen while reading as nonsense aloud.
+- Both admin forms echo what the entry will look like — `112` →
+  "Shows as **1h 52m** on the site" — and `ShowingForm`'s inherit sentence now
+  reads "Leave blank to use this film's runtime (**1h 52m**)". Storage, the
+  input type and the submitted value are untouched.
 
 ## Audit result
 
@@ -76,8 +89,17 @@ label, and all of it was left alone:
 | `src/lib/calendar.ts`, `_shared/calendar.ts` | `.ics` event length | machine value |
 | `_shared/pricing.ts`, `purchasable.ts` | `showingEndsAt` arithmetic | machine value |
 | `_shared/tickets.ts` | carried to the ticket email for the `.ics` only — never printed | machine value |
-| `MovieForm` "Duration (min)" | the number input's own label | staff still type total minutes |
-| `ShowingForm` "…runtime (112 min)" | placeholder naming the inherited value | same unit the field takes |
+
+**Why the machine values can't take this format at all.** Both calendar paths
+turn `duration_minutes` into an *end timestamp* — `DTEND` in the `.ics`,
+`dates=<start>/<end>` for Google — so the number never becomes a string. What a
+patron sees in their calendar is a "4:00–5:48 PM" block rendered by their own
+app in their own locale; there is no string of ours to format. `pricing.ts` and
+`purchasable.ts` are the "sales close when the show ends" arithmetic and are
+never rendered. Traced every reader of `.duration_minutes`: the only consumer
+outside the badge and the admin forms is `calendar.ts`.
+| `MovieForm` "Duration (min)" | the number input's own label | staff still type total minutes — **now echoes `1h 52m` beneath** |
+| `ShowingForm` "Runs For (minutes)" | the number input's own label | same — **now echoes, and the inherit sentence is formatted** |
 
 **One straggler is content, not code:** some `movies.description` text carries a
 runtime staff typed by hand — On the Waterfront's reads
