@@ -7,6 +7,8 @@ import { Card } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, Link2, Loader2, Plus, RefreshCw, EyeOff, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PRODUCTION_KIND_TABLE, dismissedKeys } from '@/lib/squareLink';
+import type { ProductionKind } from '@/lib/squareLink';
 
 /**
  * The Square catalog link, shown where the thing being linked already lives.
@@ -26,13 +28,7 @@ import { toast } from 'sonner';
 
 export type SquareScope = 'passes' | 'movies' | 'events' | 'live_performances';
 
-/** Which table a scope's rows live in, for recording a dismissal against them. */
-const ENTITY_TABLE: Record<SquareScope, string> = {
-  passes: 'film_pass_types',
-  movies: 'movies',
-  events: 'events',
-  live_performances: 'live_performances',
-};
+const PASS_TABLE = 'film_pass_types';
 
 /**
  * Which production kinds a scope answers for.
@@ -44,11 +40,27 @@ const ENTITY_TABLE: Record<SquareScope, string> = {
  * separate Square screen. That screen is gone now, which turns a gap into a
  * disappearance, so the scope has to cover what its surface actually lists.
  */
-const SCOPE_KINDS: Record<Exclude<SquareScope, 'passes'>, ProductionRow['kind'][]> = {
+const SCOPE_KINDS: Record<Exclude<SquareScope, 'passes'>, ProductionKind[]> = {
   movies: ['movie'],
   events: ['event'],
   live_performances: ['event', 'live_performance'],
 };
+
+/**
+ * Which tables a scope's dismissals can land in.
+ *
+ * Note the plural. A dismissal is recorded against the table the row actually
+ * lives in, which is *not* a property of the surface: the Live Events panel
+ * lists events and live performances together, so it reads and writes both.
+ * Keying every row on the surface's own name — which this did — filed a
+ * dismissed event under `live_performances` with an `events` id. Self-
+ * consistent while this panel was the only reader, and wrong the moment
+ * anything else looked the dismissal up by the production's real kind.
+ */
+const scopeTables = (scope: SquareScope): string[] =>
+  scope === 'passes'
+    ? [PASS_TABLE]
+    : [...new Set(SCOPE_KINDS[scope].map(k => PRODUCTION_KIND_TABLE[k]))];
 
 interface PassRow {
   pass_type_id: string;
@@ -68,7 +80,7 @@ interface PassRow {
 
 interface ProductionRow {
   production_id: string;
-  kind: 'movie' | 'event' | 'live_performance';
+  kind: ProductionKind;
   title: string;
   category: string;
   showings: number;
@@ -84,6 +96,8 @@ interface Plan {
 /** An item the panel is warning about, flattened across the two shapes. */
 interface Pending {
   entityId: string;
+  /** The table this row's dismissal is filed under — its own, not the surface's. */
+  entityType: string;
   title: string;
   detail: string;
   options: PassRow['variations'];
@@ -101,31 +115,34 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
+  /** Dismissed rows as "table:id" — the same key `SquareCatalogTab` filters on. */
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
-
-  const entityTable = ENTITY_TABLE[scope];
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Derived in here rather than in the body so the callback depends on the
+      // scope string alone; a fresh array on every render would either churn
+      // the identity or need excusing from the dependency list.
+      const tables = scopeTables(scope);
       const [data, { data: dis }] = await Promise.all([
         invokeFunction('square-showing-variations', {
           action: scope === 'passes' ? 'plan_film_passes' : 'plan',
         }),
         supabase
           .from('square_link_dismissals')
-          .select('entity_id')
-          .eq('entity_type', entityTable),
+          .select('entity_type, entity_id')
+          .in('entity_type', tables),
       ]);
       setPlan(data as Plan);
-      setDismissed(new Set(((dis ?? []) as Array<{ entity_id: string }>).map(d => d.entity_id)));
+      setDismissed(dismissedKeys(dis));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not read the Square catalog');
     } finally {
       setLoading(false);
     }
-  }, [scope, entityTable]);
+  }, [scope]);
 
   const onOpenChange = (next: boolean) => {
     setOpen(next);
@@ -168,7 +185,7 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
     } finally { setBusy(null); }
   };
 
-  const dismiss = async (entityId: string, label: string) => {
+  const dismiss = async (entityType: string, entityId: string, label: string) => {
     setBusy(entityId);
     try {
       // The row is the record. film_pass_types, movies, events and
@@ -177,29 +194,29 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
       // one of its own, so the dismissal lands beside it in the same shape.
       const { data, error } = await supabase
         .from('square_link_dismissals')
-        .insert({ entity_type: entityTable, entity_id: entityId })
+        .insert({ entity_type: entityType, entity_id: entityId })
         .select('id');
       if (error) throw error;
       if (!data?.length) throw new Error('Nothing saved — you may not have admin rights.');
-      setDismissed(prev => new Set(prev).add(entityId));
+      setDismissed(prev => new Set(prev).add(`${entityType}:${entityId}`));
       toast.success(`Hidden. “${label}” will stop being flagged here.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not dismiss that');
     } finally { setBusy(null); }
   };
 
-  const restore = async (entityId: string) => {
+  const restore = async (entityType: string, entityId: string) => {
     setBusy(entityId);
     try {
       const { error } = await supabase
         .from('square_link_dismissals')
         .delete()
-        .eq('entity_type', entityTable)
+        .eq('entity_type', entityType)
         .eq('entity_id', entityId);
       if (error) throw error;
       setDismissed(prev => {
         const next = new Set(prev);
-        next.delete(entityId);
+        next.delete(`${entityType}:${entityId}`);
         return next;
       });
       toast.success('Warning restored.');
@@ -214,6 +231,7 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
         .filter(p => p.status !== 'linked')
         .map(p => ({
           entityId: p.pass_type_id,
+          entityType: PASS_TABLE,
           title: p.name,
           detail: (p.matching_items ?? 0) > 1
             ? `${p.matching_items} Square items share this name`
@@ -225,14 +243,16 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
         .filter(p => SCOPE_KINDS[scope as Exclude<SquareScope, 'passes'>].includes(p.kind))
         .map(p => ({
           entityId: p.production_id,
+          entityType: PRODUCTION_KIND_TABLE[p.kind],
           title: p.title,
           detail: `${p.showings} showing(s) · ${p.category}`,
           options: [],
           canCreate: false,
         }));
 
-  const visible = pending.filter(p => !dismissed.has(p.entityId));
-  const hidden = pending.filter(p => dismissed.has(p.entityId));
+  const key = (p: Pending) => `${p.entityType}:${p.entityId}`;
+  const visible = pending.filter(p => !dismissed.has(key(p)));
+  const hidden = pending.filter(p => dismissed.has(key(p)));
 
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
@@ -280,7 +300,7 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
                     size="sm"
                     variant="ghost"
                     disabled={busy === p.entityId}
-                    onClick={() => dismiss(p.entityId, p.title)}
+                    onClick={() => dismiss(p.entityType, p.entityId, p.title)}
                     title="Stop flagging this. Recorded in the activity log."
                   >
                     <EyeOff className="h-3 w-3 mr-1" /> Dismiss
@@ -322,7 +342,7 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
                   <div key={p.entityId} className="flex items-center justify-between gap-2 text-sm">
                     <span className="text-muted-foreground">{p.title}</span>
                     <Button size="sm" variant="ghost" disabled={busy === p.entityId}
-                      onClick={() => restore(p.entityId)}>
+                      onClick={() => restore(p.entityType, p.entityId)}>
                       <Undo2 className="h-3 w-3 mr-1" /> Restore
                     </Button>
                   </div>

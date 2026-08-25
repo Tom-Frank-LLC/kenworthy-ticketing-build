@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/card';
 import { CollapsibleSection } from './CollapsibleSection';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Link2, AlertTriangle, Plus } from 'lucide-react';
+import { PRODUCTION_KIND_TABLE, dismissedKeys, needsForScope } from '@/lib/squareLink';
+import type { ProductionKind } from '@/lib/squareLink';
 
 /**
  * Square catalog mapping, for a human.
@@ -50,18 +52,23 @@ type PassRow = {
   possible_matches?: Array<{ id: string; name: string; why: string }>;
 };
 
-type ProductionKind = 'movie' | 'event' | 'live_performance';
-
 type Plan = {
   showings: number;
   catalog_items: number;
   counts: Record<string, number>;
   needs_dashboard_item: Array<{
     production_id: string;
-    kind: 'movie' | 'event' | 'live_performance';
+    kind: ProductionKind;
     title: string;
     category: string;
     showings: number;
+    /*
+     * Why this production has no item. `needs_item` means the catalog has
+     * nothing by this name; `ambiguous_item` means it has more than one and the
+     * planner refused to pick. The distinction decides what to tell someone,
+     * and getting it wrong is expensive in one direction — see the render.
+     */
+    status?: 'needs_item' | 'ambiguous_item';
     possible_matches?: Array<{ id: string; name: string; why: string }>;
   }>;
   /*
@@ -92,10 +99,16 @@ interface SquareCatalogTabProps {
    *
    * Given, the panel stops being a screen of its own and becomes a section of
    * the Listings sub-tab it sits on: Movies shows movie showtimes, Live Events
-   * shows events and performances. It also drops the "productions with no
-   * Square item" list, because `SquareLinkPanel` is already on those surfaces
-   * doing exactly that job — two panels answering one question in the same tab
-   * is how an operator ends up unsure which one is authoritative.
+   * shows events and performances.
+   *
+   * It used to also drop the "productions with no Square item" list, on the
+   * grounds that `SquareLinkPanel` was already on those surfaces doing that
+   * job. It was not. That panel can only *dismiss* a production — the link and
+   * create-in-dashboard affordances live here — and since every mount of this
+   * component is scoped, the effect was that a movie or event could be waved
+   * away but never actually linked. The two panels now answer two different
+   * questions on the same tab, and share the dismissal list so they agree on
+   * what has been waved away.
    */
   kinds?: ProductionKind[];
 }
@@ -105,6 +118,15 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
   const [passes, setPasses] = useState<PassRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  /*
+   * Titles somebody has waved away in `SquareLinkPanel`, as "table:id".
+   *
+   * Read here so the two Square boxes on a tab agree. Dismissing is still done
+   * over there — this list only respects it — because a dismissal is a single
+   * decision and giving it two buttons in the same tab is how you end up with
+   * one of them not working.
+   */
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   /*
    * The scope, in the shape the edge function wants. Spread into every write so
@@ -127,12 +149,20 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, fp] = await Promise.all([
+      // The dismissal read is scoped to the tables this surface covers, and is
+      // deliberately not allowed to sink the panel: a failure there should cost
+      // you a hidden row reappearing, not the whole Square section.
+      const tables = [...new Set((kinds ?? []).map(k => PRODUCTION_KIND_TABLE[k]))];
+      const [p, fp, dis] = await Promise.all([
         call({ action: 'plan', horizon_days: 120, ...scopeArg }),
         call({ action: 'plan_film_passes' }),
+        (tables.length
+          ? supabase.from('square_link_dismissals').select('entity_type, entity_id').in('entity_type', tables)
+          : supabase.from('square_link_dismissals').select('entity_type, entity_id')),
       ]);
       setPlan(p);
       setPasses(fp.pass_types ?? []);
+      setDismissed(dismissedKeys(dis.data));
     } catch (e: any) {
       toast.error(e.message || 'Could not read the Square catalog');
     } finally {
@@ -251,8 +281,16 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
   const truncated = (rows: unknown[]) => (scoped && rows.length >= 50 ? '+' : '');
 
 
-  // Linkage belongs to SquareLinkPanel on the scoped surfaces; see the prop note.
-  const needs = scoped ? [] : (plan.needs_dashboard_item ?? []);
+  /*
+   * The unlinked productions this surface is responsible for.
+   *
+   * Note this cannot reuse `inScope` above: the other three lists are scoped
+   * server-side and carry `production_kind`, while `needs_dashboard_item` is
+   * assembled *before* the edge function applies `kinds` and carries `kind`.
+   * So this filter is not belt-and-braces like that one — it is the only thing
+   * keeping concerts off the Movies tab.
+   */
+  const needs = needsForScope(plan.needs_dashboard_item, kinds, dismissed);
 
   return (
     <div className="space-y-6">
@@ -357,6 +395,21 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
                     </div>
                   ))}
                 </div>
+              ) : n.status === 'ambiguous_item' ? (
+                /*
+                 * Square already has more than one Event item under this exact
+                 * title, which is why nothing was linked automatically. The
+                 * create-it guidance below would be actively wrong here — it
+                 * would make a third — and `possible_matches` is empty for this
+                 * row precisely because it excludes exact-name matches, so
+                 * there is nothing to offer as a button either. Say so plainly
+                 * rather than falling through to the wrong instruction.
+                 */
+                <p className="text-xs text-amber-500">
+                  More than one Square item is already named “{n.title}”, so nothing was
+                  linked. Archive the duplicate in Square, or link this title by hand —
+                  do not create another, or the takings split across items in every report.
+                </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
                   Nothing similar in the catalog. Create it in Square as an

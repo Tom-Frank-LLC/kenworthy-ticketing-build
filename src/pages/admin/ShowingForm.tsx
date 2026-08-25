@@ -14,6 +14,7 @@ import { SeatTierEditor, type SeatTierEditorHandle } from '@/components/admin/Se
 import { formatRuntime, instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
 import { DEFAULT_SHOWING_MINUTES } from '@/lib/purchasable';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { squareSaveOutcome } from '@/lib/squareLink';
 import {
   STANDARD_MOVIE_TICKET_PRICE,
   fetchPassTypes,
@@ -426,14 +427,19 @@ export default function ShowingForm() {
       const { data: sq, error: sqErr } = await supabase.functions.invoke('square-showing-variations', {
         body: { action: 'ensure_showing', showing_id: showingId },
       });
-      const tally = (sq as any)?.tally ?? {};
       if (sqErr || (sq as any)?.error) {
         console.error('[ShowingForm] Square variations not created', sqErr || sq);
         toast.warning('Saved, but Square did not get its ticket items. It will sell without item reporting.');
-      } else if ((sq as any)?.counts?.needs_item) {
-        toast.warning('Saved. This title has no Square item yet — link it under Square catalog.');
-      } else if (tally.accepted_but_not_stored) {
-        toast.warning('Saved, but Square did not keep the ticket items. Tell a manager.');
+      } else {
+        // Every way this can fall short, not just the one. `needs_item` used to
+        // be the only status checked, which left three other kinds of "this
+        // showing has no usable catalog item" — and a 200 carrying no work at
+        // all — reading exactly like a clean save. See src/lib/squareLink.ts.
+        const outcome = squareSaveOutcome(sq);
+        if (outcome) {
+          console.warn(`[ShowingForm] Square: ${outcome.code}`, sq);
+          toast.warning(outcome.message);
+        }
       }
     } catch (sqErr) {
       console.error('[ShowingForm] Square variations threw', sqErr);

@@ -5,12 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**63 briefs** — 59 shipped, 1 built, 3 open, 0 needs triage, 0 closed.
+**64 briefs** — 59 shipped, 2 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
+- `P1` **Movies and events can be linked to a Square catalog item again, not only dismissed**<br>`bug` — [brief](briefs/BRIEF-square-link-movies-events-ui.md)
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
 
 ## Open
