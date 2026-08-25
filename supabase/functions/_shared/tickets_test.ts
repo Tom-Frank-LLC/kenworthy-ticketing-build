@@ -70,6 +70,9 @@ Deno.test('describeSeat covers assigned, GA, and tiered tickets', () => {
   assertEquals(describeSeat(ticket()), 'General Admission');
   assertEquals(describeSeat(ticket({ seat: { row: 'C', number: 12 } })), 'Row C, Seat 12');
   assertEquals(describeSeat(ticket({ tier_name: 'Student' })), 'General Admission · Student');
+  // A tier named the same thing as the fallback is printed once, not twice.
+  assertEquals(describeSeat(ticket({ tier_name: 'General Admission' })), 'General Admission');
+  assertEquals(describeSeat(ticket({ tier_name: '  general admission ' })), 'General Admission');
   assertEquals(
     describeSeat(ticket({ seat: { row: 'A', number: 3 }, tier_name: 'Balcony' })),
     'Row A, Seat 3 · Balcony',
@@ -141,6 +144,7 @@ Deno.test('buildSmsBody carries title, time and link', () => {
       user_id: 'u',
       purchased_at: '',
       confirmation_sent_at: null,
+      sms_consent: null,
       title: 'Casablanca',
       start_time: '',
       start_time_display: 'Fri, Aug 14, 2026 at 7:30 PM',
@@ -151,9 +155,66 @@ Deno.test('buildSmsBody carries title, time and link', () => {
     },
     'https://example.com/t/tok',
   );
-  assertEquals(body.includes('2 tickets for Casablanca'), true);
+  assertEquals(body.startsWith('KPAC: 2 tickets for Casablanca'), true);
+  // Not VENUE_SHORT: "Kenworthy" stays the name in the email copy and the
+  // Mailchimp sender; the initialism is scoped to the billed-by-length channel.
+  assertEquals(body.includes('Kenworthy:'), false);
   assertEquals(body.includes('Fri, Aug 14, 2026 at 7:30 PM'), true);
   assertEquals(body.includes('https://example.com/t/tok'), true);
+  // "Show this at the door" pointed at a URL, so "this" was a link rather than
+  // something you could show. The label names what the link is instead, and
+  // agrees with the ticket count like the line above it.
+  assertEquals(body.includes('Your tickets: https://example.com/t/tok'), true);
+  assertEquals(body.includes('Show this at the door'), false);
+});
+
+Deno.test('buildSmsBody labels a single ticket in the singular', () => {
+  const body = buildSmsBody(
+    {
+      order_token: 'tok',
+      user_id: 'u',
+      purchased_at: '',
+      confirmation_sent_at: null,
+      sms_consent: null,
+      title: 'Casablanca',
+      start_time: '',
+      start_time_display: 'Fri, Aug 14, 2026 at 7:30 PM',
+      venue: 'Main Theatre',
+      duration_minutes: null,
+      tickets: [ticket()],
+      total: 12.72,
+    },
+    'https://example.com/t/tok',
+  );
+  assertEquals(body.includes('1 ticket for Casablanca'), true);
+  assertEquals(body.includes('Your ticket: https://example.com/t/tok'), true);
+  assertEquals(body.includes('Your tickets:'), false);
+});
+
+Deno.test('buildSmsBody carries exactly one link and no calendar line', () => {
+  // The calendar URL cost a third billed segment and duplicated a button the
+  // ticket page already has. Pinned so it does not drift back in.
+  const body = buildSmsBody(
+    {
+      order_token: 'tok',
+      user_id: 'u',
+      purchased_at: '',
+      confirmation_sent_at: null,
+      sms_consent: null,
+      title: 'Casablanca',
+      start_time: '',
+      start_time_display: 'Fri, Aug 14, 2026 at 7:30 PM',
+      venue: 'Main Theatre',
+      duration_minutes: null,
+      tickets: [ticket()],
+      total: 12.72,
+    },
+    'https://example.com/t/tok',
+  );
+  assertEquals(body.includes('Add to calendar'), false);
+  assertEquals(body.includes('ics=1'), false);
+  assertEquals((body.match(/https?:\/\//g) || []).length, 1);
+  assertEquals(body.split('\n').length, 3);
 });
 
 Deno.test('buildSmsBody lists seats when the order has them', () => {
@@ -163,6 +224,7 @@ Deno.test('buildSmsBody lists seats when the order has them', () => {
       user_id: 'u',
       purchased_at: '',
       confirmation_sent_at: null,
+      sms_consent: null,
       title: 'Hamlet',
       start_time: '',
       start_time_display: 'Sat, Sep 5, 2026 at 8:00 PM',
@@ -192,6 +254,10 @@ const order = (over: Partial<import('./tickets.ts').Order> = {}) => ({
   user_id: 'u',
   purchased_at: '',
   confirmation_sent_at: null,
+  // Required on Order since the SMS opt-in column landed. Omitting it made
+  // every order() call site fail type-check while the tests still ran, so
+  // `deno test` reported ten errors and a pass at the same time.
+  sms_consent: null,
   title: 'Casablanca',
   start_time: '',
   start_time_display: 'Fri, Aug 14, 2026 at 7:30 PM',
@@ -206,7 +272,6 @@ Deno.test('buildEmailHtml embeds one QR image per ticket, by absolute URL', () =
   const html = buildEmailHtml(order(), {
     ticketUrl: 'https://example.com/t/tok',
     qrUrlFor: (id) => `https://cdn.example.com/qr/${id}.png`,
-    passwordUrl: null,
     name: 'Tom Frank',
   });
   assertEquals(html.includes('src="https://cdn.example.com/qr/ticket-1.png"'), true);
@@ -227,27 +292,44 @@ Deno.test('buildEmailHtml escapes a title containing markup', () => {
   assertEquals(html.includes('&lt;img src=x'), true);
 });
 
-Deno.test('buildEmailHtml includes the set-password block only when there is a link', () => {
-  const withLink = buildEmailHtml(order(), {
+Deno.test('buildEmailHtml carries no account or set-password section', () => {
+  // Member accounts are off and the receipt no longer invites anyone to set a
+  // password — there is no patron sign-in to send them to. Pinned because the
+  // section was previously suppressed by a flag rather than removed, and a
+  // revert would mail patrons a link to a locked door.
+  const html = buildEmailHtml(order(), {
     ticketUrl: 'https://example.com/t/tok',
     qrUrlFor: (id) => id,
-    passwordUrl: 'https://auth.example.com/recover?token=xyz',
   });
-  assertEquals(withLink.includes('Set your password'), true);
-  assertEquals(withLink.includes('https://auth.example.com/recover?token=xyz'), true);
+  assertEquals(html.includes('Set your password'), false);
+  assertEquals(html.includes('created an account'), false);
+  assertEquals(html.includes('Finish setting up your account'), false);
+});
 
-  const withoutLink = buildEmailHtml(order(), {
+Deno.test('buildEmailHtml states how to use the ticket, without "You\'re all set"', () => {
+  const one = buildEmailHtml(order({ tickets: [ticket()] }), {
     ticketUrl: 'https://example.com/t/tok',
     qrUrlFor: (id) => id,
-    passwordUrl: null,
   });
-  assertEquals(withoutLink.includes('Set your password'), false);
+  assertEquals(
+    one.includes('Here is your ticket. Simply show this QR code when you arrive. We look forward to seeing you.'),
+    true,
+  );
+  assertEquals(one.includes("You're all set"), false);
+
+  const many = buildEmailHtml(order(), {
+    ticketUrl: 'https://example.com/t/tok',
+    qrUrlFor: (id) => id,
+  });
+  assertEquals(
+    many.includes('Here are your tickets. Simply show these QR codes when you arrive. We look forward to seeing you.'),
+    true,
+  );
 });
 
 Deno.test('buildEmailText stands alone without the HTML part', () => {
   const text = buildEmailText(order(), {
     ticketUrl: 'https://example.com/t/tok',
-    passwordUrl: 'https://auth.example.com/recover',
     name: 'Tom Frank',
   });
   assertEquals(text.includes('Casablanca'), true);
@@ -255,8 +337,13 @@ Deno.test('buildEmailText stands alone without the HTML part', () => {
   assertEquals(text.includes('Main Theatre'), true);
   assertEquals(text.includes('abc-123'), true);
   assertEquals(text.includes('https://example.com/t/tok'), true);
-  assertEquals(text.includes('https://auth.example.com/recover'), true);
   assertEquals(text.includes('Total paid: $25.44'), true);
+  assertEquals(
+    text.includes('Here are your tickets. Simply show these QR codes when you arrive. We look forward to seeing you.'),
+    true,
+  );
+  assertEquals(text.includes("You're all set"), false);
+  assertEquals(text.includes('Set a password'), false);
   assertEquals(text.includes('<'), false);
 });
 
@@ -266,6 +353,7 @@ Deno.test('buildSubject pluralizes on ticket count', () => {
     user_id: 'u',
     purchased_at: '',
     confirmation_sent_at: null,
+    sms_consent: null,
     title: 'Casablanca',
     start_time: '',
     start_time_display: '',

@@ -81,7 +81,19 @@ export function formatShowtime(iso: string, timeZone: string = VENUE_TIME_ZONE):
 /** "Row C, Seat 12" / "General Admission", with the tier name when there is one. */
 export function describeSeat(t: OrderTicket): string {
   const base = t.seat ? `Row ${t.seat.row}, Seat ${t.seat.number}` : 'General Admission';
-  return t.tier_name ? `${base} · ${t.tier_name}` : base;
+  if (!t.tier_name) return base;
+
+  // A tier named "General Admission" is the same words as the unseated base,
+  // and printing both gave "General Admission · General Admission".
+  // canonicalTier() in square-catalog.ts folds "GA", "general" and "general
+  // admission" onto exactly that string, so this is one admin naming a tier
+  // the obvious thing away, not a hypothetical. Compared loosely because the
+  // tier is free text.
+  //
+  // PublicTicket.tsx has the same defect and its own fix — it renders this
+  // pair itself rather than calling through here.
+  const same = t.tier_name.trim().toLowerCase() === base.toLowerCase();
+  return same ? base : `${base} · ${t.tier_name}`;
 }
 
 export function formatMoney(n: number): string {

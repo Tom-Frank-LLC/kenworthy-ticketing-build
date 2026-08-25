@@ -16,13 +16,11 @@ import {
   eyebrow,
   heading,
   outlineButton,
-  panel,
   paragraph,
   primaryButton,
   row,
   textFooter,
   VENUE_NAME,
-  VENUE_SHORT,
 } from './email-layout.ts';
 
 // The shell, the palette and the venue name all live in email-layout.ts /
@@ -89,9 +87,6 @@ export function buildEmailHtml(
     calendarUrl?: string | null;
     /** One-tap Google Calendar template link. */
     googleCalendarUrl?: string | null;
-    passwordUrl?: string | null;
-    /** True only when this checkout is what created the account. */
-    accountJustCreated?: boolean;
     name?: string | null;
   },
 ): string {
@@ -150,36 +145,13 @@ export function buildEmailHtml(
     )
     .join('');
 
-  // Only shown to someone who cannot yet sign in. Two different truths: we
-  // just made the account, versus one already existed that they have never
-  // used. Telling a returning customer "we created an account for you" is
-  // wrong and reads like phishing.
-  const passwordBlock = opts.passwordUrl
-    ? row(
-        panel(`
-          <div style="font:600 15px/1.5 ${sans};color:${brand.ink};padding-bottom:6px;">
-            ${opts.accountJustCreated ? 'We created an account for you' : 'Finish setting up your account'}
-          </div>
-          <div style="font:400 14px/1.6 ${sans};color:${brand.body};padding-bottom:14px;">
-            ${
-              opts.accountJustCreated
-                ? 'Your tickets are saved to it. Set a password to sign in any time and see every ticket you have with us.'
-                : 'Your tickets are saved to your account, but you have not set a password yet. Set one to sign in any time and see every ticket you have with us.'
-            }
-          </div>
-          ${primaryButton(opts.passwordUrl, 'Set your password')}
-        `),
-        '22px 28px 0',
-      )
-    : '';
-
   const content = `
           ${row(
             `${paragraph(greeting)}
              <div style="padding-top:8px;">${paragraph(
-               `You're all set. Here ${
-                 order.tickets.length === 1 ? 'is your ticket' : 'are your tickets'
-               } — show the QR code${order.tickets.length === 1 ? '' : 's'} at the door.`,
+               order.tickets.length === 1
+                 ? 'Here is your ticket. Simply show this QR code when you arrive. We look forward to seeing you.'
+                 : 'Here are your tickets. Simply show these QR codes when you arrive. We look forward to seeing you.',
              )}</div>`,
             '28px 28px 4px',
           )}
@@ -212,15 +184,11 @@ export function buildEmailHtml(
           <tr>
             <td align="center" style="padding:22px 28px 0;">
               ${primaryButton(opts.ticketUrl, 'View tickets on your phone')}
-              <div style="font:400 12px/1.6 ${sans};color:${brand.faint};padding-top:10px;">
-                Keep this link — it opens your tickets without signing in.
-              </div>
             </td>
           </tr>
 
           ${calendarBlock}
 
-          ${passwordBlock}
 
           <tr><td style="height:28px;line-height:28px;font-size:0;">&nbsp;</td></tr>`;
 
@@ -239,8 +207,6 @@ export function buildEmailText(
   opts: {
     ticketUrl: string;
     calendarUrl?: string | null;
-    passwordUrl?: string | null;
-    accountJustCreated?: boolean;
     name?: string | null;
   },
 ): string {
@@ -248,7 +214,9 @@ export function buildEmailText(
   lines.push(opts.name ? `Hi ${opts.name.split(/\s+/)[0]},` : 'Hi there,');
   lines.push('');
   lines.push(
-    `You're all set. Here ${order.tickets.length === 1 ? 'is your ticket' : 'are your tickets'} for:`,
+    order.tickets.length === 1
+      ? 'Here is your ticket. Simply show this QR code when you arrive. We look forward to seeing you.'
+      : 'Here are your tickets. Simply show these QR codes when you arrive. We look forward to seeing you.',
   );
   lines.push('');
   lines.push(order.title);
@@ -269,16 +237,6 @@ export function buildEmailText(
     lines.push('Add it to your calendar:');
     lines.push(opts.calendarUrl);
   }
-  if (opts.passwordUrl) {
-    lines.push('');
-    lines.push(
-      opts.accountJustCreated
-        ? 'We created an account for you and saved your tickets to it.'
-        : 'Your tickets are saved to your account, but you have not set a password yet.',
-    );
-    lines.push('Set a password to sign in any time:');
-    lines.push(opts.passwordUrl);
-  }
   lines.push('');
   lines.push(...textFooter());
   return lines.join('\n');
@@ -289,19 +247,35 @@ export function buildEmailText(
  * characters into multiple billed segments, and a ticket link that arrives in
  * pieces reads as spam. No QR — a texted image cannot be relied on to scan, so
  * the link is the ticket.
+ *
+ * One link, deliberately. This used to append "Add to calendar: <ics url>",
+ * which cost a third segment on every send and duplicated a button the ticket
+ * page already carries (PublicTicket.tsx offers both the .ics and Google
+ * Calendar). Shortening that URL was measured and does not help — the 36-char
+ * order token is the bulk of it, not the path, so a /c/<token> redirect saved
+ * 31 characters and stayed at three segments. Dropping the line is what takes
+ * a typical send from three segments to two.
  */
-export function buildSmsBody(order: Order, ticketUrl: string, calendarUrl?: string | null): string {
+/**
+ * Sender name for the text, and deliberately not VENUE_SHORT.
+ *
+ * VENUE_SHORT is "Kenworthy" and reads as a noun in the email copy that uses
+ * it — "Your $50 gift to the Kenworthy" — as well as being the Mailchimp
+ * from_name. "the KPAC" reads wrong in those sentences, and renaming the
+ * marketing sender is not a texting decision, so the initialism is scoped to
+ * the one place length is billed.
+ */
+const SMS_SENDER = 'KPAC';
+
+export function buildSmsBody(order: Order, ticketUrl: string): string {
   const count = order.tickets.length;
   const seats = order.tickets.some((t) => t.seat)
     ? ` ${order.tickets.map((t) => `${t.seat!.row}${t.seat!.number}`).join(', ')}`
     : '';
   const lines = [
-    `${VENUE_SHORT}: ${count} ticket${count === 1 ? '' : 's'} for ${order.title}`,
+    `${SMS_SENDER}: ${count} ticket${count === 1 ? '' : 's'} for ${order.title}`,
     `${order.start_time_display}${seats}`,
-    `Show this at the door: ${ticketUrl}`,
+    `Your ticket${count === 1 ? '' : 's'}: ${ticketUrl}`,
   ];
-  // A second URL pushes most sends to a 2nd segment; the calendar link is worth
-  // it, and callers can omit it to stay in one segment.
-  if (calendarUrl) lines.push(`Add to calendar: ${calendarUrl}`);
   return lines.join('\n');
 }

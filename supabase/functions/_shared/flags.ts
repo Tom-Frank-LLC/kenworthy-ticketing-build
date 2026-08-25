@@ -10,6 +10,13 @@
  *
  * Default **off**: an unset secret means no member accounts. A missing
  * variable must not be the thing that mails a stranger a password link.
+ *
+ * **No server-side consumer as of 2026-08-24.** This gated one thing — the
+ * "set your password" section of the ticket receipt — and that section has
+ * been deleted, not just switched off, because there is no patron sign-in for
+ * it to lead to. Setting MEMBER_ACCOUNTS=true will therefore not bring it
+ * back; the copy would have to be written again. Kept because the frontend
+ * counterpart in `src/lib/flags.ts` still reads as the paired switch.
  */
 export function memberAccountsEnabled(): boolean {
   return (Deno.env.get('MEMBER_ACCOUNTS') ?? '').trim().toLowerCase() === 'true';
