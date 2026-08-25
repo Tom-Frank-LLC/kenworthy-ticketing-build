@@ -20,7 +20,7 @@ export function NewsletterSignup({ className = '' }: { className?: string }) {
     });
     setLoading(false);
     if (ok) {
-      toast.success("You're on the list. Welcome to the Kenworthy.");
+      toast.success("You're on the list. Welcome to Kenworthy.");
       setEmail('');
     } else {
       toast.error("We couldn't add you just now. Please try again in a moment.");

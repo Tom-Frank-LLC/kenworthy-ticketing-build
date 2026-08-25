@@ -246,7 +246,7 @@ export default function FilmPasses() {
       <div className="container py-16 px-4 max-w-xl text-center">
         <SEO
           title="Film Passes — Kenworthy"
-          description="Prepaid film passes for the Kenworthy Performing Arts Centre in Moscow, Idaho."
+          description="Prepaid film passes for Kenworthy Performing Arts Centre in Moscow, Idaho."
         />
         <Ticket className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
         <h1 className="font-display text-2xl font-bold mb-2">Film Passes</h1>
@@ -261,13 +261,13 @@ export default function FilmPasses() {
     <div className="container py-8 px-4 max-w-3xl">
       <SEO
         title="Film Passes — Kenworthy"
-        description="Buy a prepaid film pass for the Kenworthy in Moscow, Idaho. Collect it at the box office or have it posted, then hand it over at the door."
+        description="Buy a prepaid film pass for KPAC in Moscow, Idaho. Collect it at the box office or have it posted, then hand it over at the door."
       />
 
       <h1 className="font-display text-3xl font-bold mb-2">Film Passes</h1>
       <p className="text-muted-foreground mb-8">
-        A film pass is a physical card you hand to our staff at the door. Buy one here and
-        collect it at the box office, or have it posted to you.
+        Our film passes are printed, activated, and either handed to you at the box office
+        or mailed to you, depending on your preference.
       </p>
 
       <div className="grid lg:grid-cols-[1fr_20rem] gap-6 items-start">
@@ -352,7 +352,7 @@ export default function FilmPasses() {
               <Button
                 variant="outline"
                 size="icon"
-                aria-label="One fewer"
+                aria-label="One less"
                 onClick={() => setQuantity(q => Math.max(1, q - 1))}
                 disabled={quantity <= 1}
               >
@@ -381,7 +381,7 @@ export default function FilmPasses() {
               {([
                 { key: 'pickup', icon: Store, title: 'Collect at the box office',
                   blurb: 'Ready when you next visit. We activate it as we hand it over.' },
-                { key: 'mail', icon: Mail, title: 'Post it to me',
+                { key: 'mail', icon: Mail, title: 'Ship it to me',
                   blurb: 'Activated before it goes in the envelope, so it works on arrival.' },
               ] as const).map(opt => {
                 const Icon = opt.icon;
@@ -529,7 +529,7 @@ export default function FilmPasses() {
                   <span>{money(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Sales tax</span>
+                  <span>Idaho sales tax (6%)</span>
                   <span>{money(taxDue)}</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
@@ -583,7 +583,7 @@ export default function FilmPasses() {
                 with nothing to say prints nothing rather than inheriting
                 another pass's wording. */}
             <div className="text-sm text-muted-foreground border-t border-border pt-3 space-y-1">
-              <p>Passes are used in person — they cannot book tickets online.</p>
+              <p>Passes are redeemed in person — they cannot book tickets online.</p>
               <RichText html={selected?.fine_print} />
             </div>
           </CardContent>

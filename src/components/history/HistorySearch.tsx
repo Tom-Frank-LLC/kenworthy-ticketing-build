@@ -101,7 +101,7 @@ export function HistorySearch({
           onKeyDown={onKeyDown}
           placeholder="Search a year or a moment&hellip;"
           className="pl-9 h-12 text-base"
-          aria-label="Search the Kenworthy's history by year or milestone"
+          aria-label="Search Kenworthy's history by year or milestone"
           aria-expanded={open && results.length > 0}
           role="combobox"
           aria-controls="history-search-results"

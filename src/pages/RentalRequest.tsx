@@ -135,7 +135,7 @@ export default function RentalRequest() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild variant="outline"><Link to="/">Back to the Kenworthy</Link></Button>
+            <Button asChild variant="outline"><Link to="/">Back to Kenworthy</Link></Button>
           </CardContent>
         </Card>
       </div>
@@ -260,7 +260,7 @@ export default function RentalRequest() {
         <Section title="Ticketing">
           <ToggleRow label="This is a ticketed event" checked={form.is_ticketed} onChange={v => set('is_ticketed', v)} />
           <ToggleRow label="Open to the public" checked={form.is_public} onChange={v => set('is_public', v)} />
-          <ToggleRow label="Use the Kenworthy's digital platform for selling tickets" checked={form.needs_digital_ticketing} onChange={v => set('needs_digital_ticketing', v)} />
+          <ToggleRow label="Use Kenworthy's digital platform for selling tickets" checked={form.needs_digital_ticketing} onChange={v => set('needs_digital_ticketing', v)} />
         </Section>
 
         {/* Guests */}

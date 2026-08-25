@@ -138,7 +138,7 @@ export default function Auth() {
       ) : (
         <SEO
           title="Staff sign in — Kenworthy"
-          description="Staff and volunteer sign-in for the Kenworthy Performing Arts Centre. Tickets bought online are delivered by email — no account needed."
+          description="Staff and volunteer sign-in for Kenworthy Performing Arts Centre. Tickets bought online are delivered by email — no account needed."
         />
       )}
       <h1 className="sr-only">{MEMBER_ACCOUNTS_ENABLED ? 'Sign In or Create Account' : 'Staff sign in'}</h1>

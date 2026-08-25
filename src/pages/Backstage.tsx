@@ -140,7 +140,7 @@ export default function Backstage() {
     <div className="min-h-screen bg-background">
       <SEO
         title="Backstage — The Kenworthy"
-        description="Backstage is the Kenworthy's after-hours speakeasy in Moscow, Idaho — a room behind the room for private events, live music and late nights."
+        description="Backstage is Kenworthy's after-hours speakeasy in Moscow, Idaho — a room behind the room for private events, live music and late nights."
         path="/backstage"
         noindex
       />

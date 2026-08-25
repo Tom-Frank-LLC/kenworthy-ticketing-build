@@ -36,7 +36,7 @@ export default function Volunteer() {
         </div>
         <div className="relative container py-16 md:py-24 max-w-4xl">
           <p className="font-display uppercase tracking-[0.3em] text-sm text-primary mb-4">
-            Support the Kenworthy
+            Support Kenworthy
           </p>
           <h1 className="font-display uppercase text-4xl md:text-6xl leading-tight text-foreground">
             Volunteer

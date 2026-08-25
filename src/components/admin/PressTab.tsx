@@ -244,7 +244,7 @@ export default function PressTab() {
           <RichTextEditor
             id="press-intro"
             rows={5}
-            placeholder="A short introduction — who to contact for press enquiries, what the Kenworthy is, anything you want a journalist to read first."
+            placeholder="A short introduction — who to contact for press enquiries, what Kenworthy is, anything you want a journalist to read first."
             value={page.intro_text}
             onChange={intro_text => setPage(p => ({ ...p, intro_text }))}
           />

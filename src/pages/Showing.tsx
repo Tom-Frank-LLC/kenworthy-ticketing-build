@@ -573,7 +573,7 @@ export default function Showing() {
           // Must be plain text. A meta description containing <p> is a bug —
           // it is what a search result and a shared link preview print.
           toMetaDescription(production?.description) ||
-          `Tickets for ${production?.title ?? 'this showing'} at the Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`
+          `Tickets for ${production?.title ?? 'this showing'} at Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`
         }
         ogType="event"
         image={production?.poster_url || undefined}

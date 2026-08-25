@@ -62,7 +62,7 @@ export default function Sponsors() {
     <div className="container py-16 max-w-5xl">
       <SEO
         title="Our Sponsors — Kenworthy Performing Arts Centre"
-        description="Meet the foundations, businesses, and friends whose support sustains the Kenworthy, Moscow Idaho's historic non-profit cinema and performing arts centre."
+        description="Meet the foundations, businesses, and friends whose support sustains Kenworthy, Moscow Idaho's historic non-profit cinema and performing arts centre."
       />
       <header className="text-center mb-14">
         <p className="text-xs uppercase tracking-[0.3em] text-accent font-display mb-3">
@@ -144,7 +144,7 @@ export default function Sponsors() {
         <p className="font-serif text-muted-foreground leading-relaxed mb-8">
           For your annual investment in the historic cinema in downtown Moscow,
           your business will receive a valuable ROI that maintains the same
-          creative and collaborative spirit the Kenworthy has been known to
+          creative and collaborative spirit Kenworthy has been known to
           provide for nearly a century.
         </p>
         <a

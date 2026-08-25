@@ -125,7 +125,7 @@ export default function Rentals() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Rent the Kenworthy — Historic Theatre & Marquee"
+        title="Rent Kenworthy — Historic Theatre & Marquee"
         description="Rent the historic Kenworthy theatre, Main Stage, Backstage Speakeasy, or marquee for private events. Rates, fees, and live availability calendar."
       />
 
