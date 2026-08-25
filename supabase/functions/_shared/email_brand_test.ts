@@ -91,8 +91,6 @@ const passPosted: PassPostedSummary = {
   quantity: 1,
   mailingAddress: null,
   buyerName: 'Ada Lovelace',
-  initialBalance: 60,
-  redemptionPrice: 6,
 };
 
 const ticketOpts = {
