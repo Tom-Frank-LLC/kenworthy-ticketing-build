@@ -1,11 +1,14 @@
 ---
 brief: staff-section-print-qr
 title: Split the counter tools into a Staff section, with Print QRs in it
-status: built
+status: shipped
 track: ux
 severity: P2
 date: 2026-08-18
-verified: false
+shipped_in: ["#172"]
+shipped_at: 2026-08-24
+evidence: PrintQrs and StaffDashboard chunks served by the production worker; #172 is an ancestor of the deployed tip 8071209
+verified: true
 ---
 
 # Brief (for Claude Code): Split a Staff section from Admin, add "Print QRs" to it, rename it
