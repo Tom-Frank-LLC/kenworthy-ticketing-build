@@ -89,7 +89,7 @@ const SEED: Milestone[] = [
     category: 'milestone',
     title: 'A decade in: the family movie house',
     description:
-      'By the mid-1930s the Kenworthy is woven into downtown — the vertical blade sign and chained marquee a fixture of Main Street.',
+      'By the mid-1930s Kenworthy is woven into downtown — the vertical blade sign and chained marquee a fixture of Main Street.',
     image_url: img1935,
     source_url: KENWORTHY_SOURCE,
   },
@@ -481,7 +481,7 @@ export default function HistoryPage() {
     <div className="min-h-screen">
       <SEO
         title="A Century on Main Street | Kenworthy History"
-        description="One hundred years of films, renovations, and community at the Kenworthy Performing Arts Centre in Moscow, Idaho — told as an animated vertical timeline."
+        description="One hundred years of films, renovations, and community at Kenworthy Performing Arts Centre in Moscow, Idaho — told as an animated vertical timeline."
         path="/history"
       />
 
