@@ -30,6 +30,7 @@ const order = (over: Partial<Order> = {}): Order => ({
   user_id: 'u',
   purchased_at: '',
   confirmation_sent_at: null,
+  sms_consent: null,
   title: 'Casablanca',
   start_time: '2026-09-04T02:30:00.000Z',
   start_time_display: 'Thu, Sep 3, 2026 at 7:30 PM',

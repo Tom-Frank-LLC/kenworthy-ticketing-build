@@ -16,7 +16,6 @@ import {
   eyebrow,
   heading,
   outlineButton,
-  panel,
   paragraph,
   primaryButton,
   row,
@@ -89,9 +88,6 @@ export function buildEmailHtml(
     calendarUrl?: string | null;
     /** One-tap Google Calendar template link. */
     googleCalendarUrl?: string | null;
-    passwordUrl?: string | null;
-    /** True only when this checkout is what created the account. */
-    accountJustCreated?: boolean;
     name?: string | null;
   },
 ): string {
@@ -150,36 +146,13 @@ export function buildEmailHtml(
     )
     .join('');
 
-  // Only shown to someone who cannot yet sign in. Two different truths: we
-  // just made the account, versus one already existed that they have never
-  // used. Telling a returning customer "we created an account for you" is
-  // wrong and reads like phishing.
-  const passwordBlock = opts.passwordUrl
-    ? row(
-        panel(`
-          <div style="font:600 15px/1.5 ${sans};color:${brand.ink};padding-bottom:6px;">
-            ${opts.accountJustCreated ? 'We created an account for you' : 'Finish setting up your account'}
-          </div>
-          <div style="font:400 14px/1.6 ${sans};color:${brand.body};padding-bottom:14px;">
-            ${
-              opts.accountJustCreated
-                ? 'Your tickets are saved to it. Set a password to sign in any time and see every ticket you have with us.'
-                : 'Your tickets are saved to your account, but you have not set a password yet. Set one to sign in any time and see every ticket you have with us.'
-            }
-          </div>
-          ${primaryButton(opts.passwordUrl, 'Set your password')}
-        `),
-        '22px 28px 0',
-      )
-    : '';
-
   const content = `
           ${row(
             `${paragraph(greeting)}
              <div style="padding-top:8px;">${paragraph(
-               `You're all set. Here ${
-                 order.tickets.length === 1 ? 'is your ticket' : 'are your tickets'
-               } — show the QR code${order.tickets.length === 1 ? '' : 's'} at the door.`,
+               order.tickets.length === 1
+                 ? 'Here is your ticket. Simply show this QR code when you arrive. We look forward to seeing you.'
+                 : 'Here are your tickets. Simply show these QR codes when you arrive. We look forward to seeing you.',
              )}</div>`,
             '28px 28px 4px',
           )}
@@ -220,7 +193,6 @@ export function buildEmailHtml(
 
           ${calendarBlock}
 
-          ${passwordBlock}
 
           <tr><td style="height:28px;line-height:28px;font-size:0;">&nbsp;</td></tr>`;
 
@@ -239,8 +211,6 @@ export function buildEmailText(
   opts: {
     ticketUrl: string;
     calendarUrl?: string | null;
-    passwordUrl?: string | null;
-    accountJustCreated?: boolean;
     name?: string | null;
   },
 ): string {
@@ -248,7 +218,9 @@ export function buildEmailText(
   lines.push(opts.name ? `Hi ${opts.name.split(/\s+/)[0]},` : 'Hi there,');
   lines.push('');
   lines.push(
-    `You're all set. Here ${order.tickets.length === 1 ? 'is your ticket' : 'are your tickets'} for:`,
+    order.tickets.length === 1
+      ? 'Here is your ticket. Simply show this QR code when you arrive. We look forward to seeing you.'
+      : 'Here are your tickets. Simply show these QR codes when you arrive. We look forward to seeing you.',
   );
   lines.push('');
   lines.push(order.title);
@@ -268,16 +240,6 @@ export function buildEmailText(
     lines.push('');
     lines.push('Add it to your calendar:');
     lines.push(opts.calendarUrl);
-  }
-  if (opts.passwordUrl) {
-    lines.push('');
-    lines.push(
-      opts.accountJustCreated
-        ? 'We created an account for you and saved your tickets to it.'
-        : 'Your tickets are saved to your account, but you have not set a password yet.',
-    );
-    lines.push('Set a password to sign in any time:');
-    lines.push(opts.passwordUrl);
   }
   lines.push('');
   lines.push(...textFooter());

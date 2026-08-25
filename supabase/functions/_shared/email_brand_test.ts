@@ -100,8 +100,6 @@ const ticketOpts = {
   qrUrlFor: (id: string) => `https://kenworthy.test/qr/${id}`,
   calendarUrl: 'https://kenworthy.test/ics/tok-1',
   googleCalendarUrl: 'https://calendar.google.com/x',
-  passwordUrl: 'https://kenworthy.test/reset',
-  accountJustCreated: true,
   name: 'Ada Lovelace',
 };
 

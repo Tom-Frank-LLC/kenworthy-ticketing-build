@@ -39,7 +39,6 @@
 import { loadOrder, ticketPageUrl, ticketQrUrl } from './tickets.ts';
 import { ticketCalendarUrl, googleCalendarUrl } from './calendar.ts';
 import { toE164, buildSubject, buildEmailHtml, buildEmailText, buildSmsBody } from './notify.ts';
-import { memberAccountsEnabled } from './flags.ts';
 import { SITE_URL } from './brand.ts';
 import { logAudit } from './audit.ts';
 
@@ -317,7 +316,6 @@ export async function deliverConfirmation(
     name = name || profile?.display_name || '';
   }
 
-  const hasSignedIn = !!authUser?.last_sign_in_at;
   const ticketUrl = ticketPageUrl(SITE_URL, orderToken);
   const calendarUrl = ticketCalendarUrl(SUPABASE_URL, orderToken);
   const googleCalUrl = googleCalendarUrl(order, ticketUrl);
@@ -332,53 +330,16 @@ export async function deliverConfirmation(
 
   let emailError: string | null = null;
   if (email) {
-    // A recovery link doubles as "set your password" for an account the holder
-    // has never signed into. Skipped for anyone who has signed in before —
-    // they have a password already, and an unsolicited password link in a
-    // receipt reads like phishing. Skipped too when delivery has been
-    // redirected elsewhere: minting an account-recovery link for whoever that
-    // address belongs to is not a ticket receipt's business.
-    //
-    // And skipped entirely while member accounts are off. The account behind
-    // this ticket still exists — buyers.ts creates one either way — but there
-    // is no patron sign-in to send anyone to, so inviting them to set a
-    // password would be an invitation to a door that is locked. `buildEmailHtml`
-    // and `buildEmailText` render the set-password section only when there is a
-    // link, so a null here drops the section and nothing else. The QR ticket
-    // email is unaffected.
-    const isAccountHolder =
-      !!authUser?.email && authUser.email.toLowerCase() === email.toLowerCase();
-
-    let passwordUrl: string | null = null;
-    if (memberAccountsEnabled() && !hasSignedIn && isAccountHolder) {
-      try {
-        const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
-          type: 'recovery',
-          email,
-          options: { redirectTo: `${SITE_URL.replace(/\/$/, '')}/reset-password` },
-        });
-        if (linkError) console.warn('[deliver] recovery link failed', linkError);
-        passwordUrl = linkData?.properties?.action_link ?? null;
-      } catch (e) {
-        // Never let the account-access extra block the ticket itself.
-        console.warn('[deliver] recovery link threw', e);
-      }
-    }
-
     const html = buildEmailHtml(order, {
       ticketUrl,
       qrUrlFor: (ticketId) => ticketQrUrl(SUPABASE_URL, orderToken, ticketId),
       calendarUrl,
       googleCalendarUrl: googleCalUrl,
-      passwordUrl,
-      accountJustCreated: opts.accountCreated === true,
       name,
     });
     const text = buildEmailText(order, {
       ticketUrl,
       calendarUrl,
-      passwordUrl,
-      accountJustCreated: opts.accountCreated === true,
       name,
     });
 
