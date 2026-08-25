@@ -37,6 +37,7 @@ interface PassType {
   price: number;
   initial_balance: number;
   redemption_price: number;
+  ticket_face_value: number | null;
   expiration_days: number | null;
   /** Artwork in the pass-images bucket. Null on a pass nobody has given one. */
   image_path: string | null;
@@ -92,7 +93,7 @@ export default function FilmPasses() {
   useEffect(() => {
     supabase
       .from('film_pass_types')
-      .select('id, name, price, initial_balance, redemption_price, expiration_days, image_path, fine_print')
+      .select('id, name, price, initial_balance, redemption_price, ticket_face_value, expiration_days, image_path, fine_print')
       .eq('is_active', true)
       .order('price')
       .then(({ data }) => {
@@ -318,9 +319,17 @@ export default function FilmPasses() {
                           {money(Number(pt.price))}
                         </span>
                       </div>
+                      {/* What the pass is worth, not what it deducts. The old line
+                          read "about 10 films at $6 each", which quoted
+                          redemption_price — the balance spent per admission. That
+                          is the pass's internal accounting, and as a sales line it
+                          states the offer inside out: the reason to buy is the $8
+                          seat you get for that $6, not the $6 itself. Falls back to
+                          the bare count when a pass has no face value set. */}
                       <p className="text-sm text-muted-foreground">
-                        {money(Number(pt.initial_balance))} of credit — about {films} films at{' '}
-                        {money(Number(pt.redemption_price))} each.
+                        {pt.ticket_face_value
+                          ? <>Good for {films} films — tickets that cost {money(Number(pt.ticket_face_value))} each at the door.</>
+                          : <>Good for {films} films.</>}
                       </p>
                       {pt.expiration_days && (
                         <Badge variant="secondary" className="mt-2 text-xs">
@@ -524,8 +533,10 @@ export default function FilmPasses() {
                   <span>{money(taxDue)}</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Each carries {money(Number(selected.initial_balance))} — about {admissions}{' '}
-                  films at {money(Number(selected.redemption_price))} each.
+                  {selected.ticket_face_value
+                    ? <>Each is good for {admissions} films — tickets that cost{' '}
+                        {money(Number(selected.ticket_face_value))} each at the door.</>
+                    : <>Each is good for {admissions} films.</>}
                 </p>
                 <div className="flex justify-between font-bold text-base pt-2 border-t border-border mt-2">
                   <span>Total</span>

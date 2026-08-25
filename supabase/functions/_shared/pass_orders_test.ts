@@ -276,14 +276,36 @@ Deno.test('the posted notice never implies the email itself is the pass', () => 
   assertStringIncludes(text, 'nothing to print');
   assertStringIncludes(html, 'nothing to print');
   assertOnlyImageIsTheLogo(html, 'no QR image belongs in a posted notice');
-  assertStringIncludes(text, 'cannot be used to book online');
+  assertStringIncludes(text, 'cannot be used online');
 });
 
 Deno.test('the posted notice states the value in films, derived not hardcoded', () => {
-  assertStringIncludes(buildPassPostedEmailText(posted()), 'about 10 films');
+  assertStringIncludes(buildPassPostedEmailText(posted()), 'ten film tickets');
   assertStringIncludes(
     buildPassPostedEmailText(posted({ initialBalance: 30, redemptionPrice: 6 })),
-    'about 5 films',
+    'five film tickets',
+  );
+  // With a face value set it names what a ticket is worth, never what the pass
+  // deducts — redemption_price here would state the offer inside out.
+  const withFace = buildPassPostedEmailText(posted({ ticketFaceValue: 8 }));
+  assertStringIncludes(withFace, 'ten $8 film tickets');
+  assertEquals(withFace.includes('$6 film tickets'), false);
+});
+
+Deno.test('both pass emails carry the pass type\'s own restrictions', () => {
+  // The rules genuinely differ: the standard pass excludes special events, the
+  // Festival Pass excludes everything except one festival. A sentence written
+  // once was guaranteed to be wrong for whichever pass it was not about.
+  const festival = 'Valid only at this festival\'s screenings. Not valid on standard movies.';
+  const order_ = order({ finePrint: festival, ticketFaceValue: 8 });
+  assertStringIncludes(buildPassOrderEmailText(order_), festival);
+  assertStringIncludes(buildPassOrderEmailText(order_), 'ten $8 film tickets');
+  assertEquals(buildPassOrderEmailText(order_).includes('not eligible for special events'), false);
+
+  // Unset falls back to the general sentence rather than saying nothing.
+  assertStringIncludes(
+    buildPassOrderEmailText(order({ finePrint: null })),
+    'cannot be used online and is not eligible',
   );
 });
 
