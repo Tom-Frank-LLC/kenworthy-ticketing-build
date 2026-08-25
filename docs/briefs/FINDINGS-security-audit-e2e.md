@@ -344,12 +344,42 @@ because several of these were the brief's explicit re-verifications.
 
 ## Residual risk — accepted or deferred
 
-1. **No rate limiting anywhere.** `ticket-access` took 40 bad tokens with no
-   throttle; `/auth/v1/recover` took 6 password resets; `mailchimp-subscribe` is
-   public by design and can make Mailchimp send a confirmation email to any
-   address, repeatedly. Token entropy makes guessing infeasible, so this is
-   cost-and-nuisance rather than compromise. The Cloudflare rules to fix it are
-   in *Left for you* — they are dashboard configuration, not code.
+1. ~~**No rate limiting anywhere.**~~ **Closed 2026-08-25, and the original
+   recommendation was wrong twice over.** Recorded in full because the reasoning
+   is the useful part.
+
+   The finding was right: `ticket-access` took 40 bad tokens with no throttle,
+   and `mailchimp-subscribe` could make Mailchimp send a confirmation email to
+   any address, repeatedly. The **fix** was wrong.
+
+   *Wrong the first way — there is no zone.* Cloudflare WAF rate limiting
+   attaches to a domain you have added to Cloudflare. The Worker is served from
+   `*.workers.dev`, which is Cloudflare's zone, not ours; `kenworthy.org`
+   resolves to Apache on `64.126.133.214` and is not in the account at all.
+   There was nothing to attach a rule to, and the move to kenworthy.org would
+   not have changed the part that matters.
+
+   *Wrong the second way — the rules pointed at the wrong hosts.* Three of the
+   four proposed rules named Supabase URLs or SPA page routes. `/rental-request`
+   and `/donate` are **pages**; throttling them limits people loading HTML while
+   the actual write goes to `*.supabase.co` and never enters any zone of ours.
+   Those Supabase endpoints do answer with `server: cloudflare` — but that is
+   *Supabase's* Cloudflare. I read that header as reassurance; it is not.
+
+   *And one of the endpoints was never unlimited.* `/auth/v1/recover` is capped
+   by Supabase's own `rate_limit_email_sent` (~2/hour at the default — see
+   `FINDINGS-staging-auth-email-rate-limit.md`). The 14 consecutive `200`s that
+   suggested otherwise were nonexistent addresses, which Supabase answers
+   without generating a send. It is excluded from the fix rather than
+   double-limited.
+
+   **What actually shipped:** `check_rate_limit` plus a `rate_limits` table
+   (`20260825143017`), wired into `square-donation`, `ticket-access` and
+   `mailchimp-subscribe`. It lives where the request lands, so it is independent
+   of where the site is hosted. A per-IP fixed window is a speed bump — it does
+   nothing about a distributed attempt — and Turnstile remains the stronger
+   control. Cloudflare rules for the *page* layer are in the runbook's cutover
+   section, correctly scoped this time.
 2. **Any staff user can refund any order.** By design: that is a box office.
    Refunds are captured in `admin_audit_log` via the `tickets` trigger.
 3. **CORS is `*` on every function.** Acceptable because authorisation is by
@@ -370,14 +400,12 @@ because several of these were the brief's explicit re-verifications.
    `VITE_TURNSTILE_SITE_KEY` (build env) **together** — one without the other is
    the bad state. Both ends skip the check until they are set.
 
-2. **Add the Cloudflare rate-limiting rules** (dashboard, per your decision):
-
-   | path | limit |
-   | --- | --- |
-   | `/rental-request` | 5 per 10 min per IP |
-   | `/donate` | 10 per 10 min per IP |
-   | `functions/v1/ticket-access` | 60 per min per IP |
-   | `/auth/v1/recover` | 5 per hour per IP |
+2. ~~**Add the Cloudflare rate-limiting rules.**~~ **Superseded — the table that
+   stood here named the wrong hosts and assumed a zone that does not exist. See
+   residual-risk item 1.** App-level limiting shipped instead
+   (`20260825143017`); the correctly-scoped page-layer rules are in
+   `RUNBOOK-deploy-staging-prod.md` under *Domain cutover to kenworthy.org*, to
+   apply once the domain is on Cloudflare.
 
 3. **Graduate the CSP.** Watch staging's console through a checkout, a trailer
    and the scanner. It is already clean for all three; when you are satisfied,
