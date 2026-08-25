@@ -21,7 +21,6 @@ import {
   row,
   textFooter,
   VENUE_NAME,
-  VENUE_SHORT,
 } from './email-layout.ts';
 
 // The shell, the palette and the venue name all live in email-layout.ts /
@@ -257,13 +256,24 @@ export function buildEmailText(
  * 31 characters and stayed at three segments. Dropping the line is what takes
  * a typical send from three segments to two.
  */
+/**
+ * Sender name for the text, and deliberately not VENUE_SHORT.
+ *
+ * VENUE_SHORT is "Kenworthy" and reads as a noun in the email copy that uses
+ * it — "Your $50 gift to the Kenworthy" — as well as being the Mailchimp
+ * from_name. "the KPAC" reads wrong in those sentences, and renaming the
+ * marketing sender is not a texting decision, so the initialism is scoped to
+ * the one place length is billed.
+ */
+const SMS_SENDER = 'KPAC';
+
 export function buildSmsBody(order: Order, ticketUrl: string): string {
   const count = order.tickets.length;
   const seats = order.tickets.some((t) => t.seat)
     ? ` ${order.tickets.map((t) => `${t.seat!.row}${t.seat!.number}`).join(', ')}`
     : '';
   const lines = [
-    `${VENUE_SHORT}: ${count} ticket${count === 1 ? '' : 's'} for ${order.title}`,
+    `${SMS_SENDER}: ${count} ticket${count === 1 ? '' : 's'} for ${order.title}`,
     `${order.start_time_display}${seats}`,
     `Your ticket${count === 1 ? '' : 's'}: ${ticketUrl}`,
   ];

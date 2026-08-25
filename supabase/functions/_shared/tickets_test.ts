@@ -155,7 +155,10 @@ Deno.test('buildSmsBody carries title, time and link', () => {
     },
     'https://example.com/t/tok',
   );
-  assertEquals(body.includes('2 tickets for Casablanca'), true);
+  assertEquals(body.startsWith('KPAC: 2 tickets for Casablanca'), true);
+  // Not VENUE_SHORT: "Kenworthy" stays the name in the email copy and the
+  // Mailchimp sender; the initialism is scoped to the billed-by-length channel.
+  assertEquals(body.includes('Kenworthy:'), false);
   assertEquals(body.includes('Fri, Aug 14, 2026 at 7:30 PM'), true);
   assertEquals(body.includes('https://example.com/t/tok'), true);
   // "Show this at the door" pointed at a URL, so "this" was a link rather than

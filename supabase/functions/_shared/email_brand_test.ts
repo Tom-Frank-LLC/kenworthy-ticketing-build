@@ -181,7 +181,10 @@ Deno.test('every email signs off with the full venue name', () => {
 
 Deno.test('the SMS uses the short form, since every character is billed', () => {
   const sms = TEXT_MESSAGES.sms;
-  assert(sms.startsWith('Kenworthy:'), `SMS opens with: ${sms.slice(0, 24)}`);
+  // The initialism, not VENUE_SHORT. "Kenworthy" stays the name everywhere it
+  // reads as a noun — "Your $50 gift to the Kenworthy" — and stays the
+  // Mailchimp from_name; only the channel billed by the character abbreviates.
+  assert(sms.startsWith('KPAC:'), `SMS opens with: ${sms.slice(0, 24)}`);
 });
 
 // --- the shared shell -------------------------------------------------------
