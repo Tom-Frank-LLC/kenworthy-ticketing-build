@@ -45,7 +45,7 @@ import {
  * The charity's EIN, stated on every receipt.
  *
  * Same number the Donate page prints, and the reason a receipt exists at all: a
- * donor substantiating a deduction needs the organisation's tax ID and a
+ * donor substantiating a deduction needs the organization's tax ID and a
  * statement about what they got back for the gift.
  */
 export const TAX_ID = '82-0519693';
@@ -58,6 +58,14 @@ export interface DonationSummary {
   dedicationType: DedicationType | null;
   dedicateTo: string | null;
   notifyName: string | null;
+  /**
+   * Whether we hold an address for the person named above. The receipt claims
+   * "we have also notified them" only when this is set, because that is the
+   * same condition the tribute send is gated on — a name with no address means
+   * nobody was told, and saying otherwise on a receipt is a lie the donor
+   * cannot check.
+   */
+  notifyEmail?: string | null;
   message: string | null;
   /** Square's own receipt, when the charge produced one. */
   receiptUrl: string | null;
@@ -103,13 +111,33 @@ export function dedicationPhrase(
 // Donor receipt
 // ---------------------------------------------------------------------------
 
+/** "$50", not "$50.00" — a subject line is read at a glance. */
+export function formatMoneyCompact(cents: number): string {
+  const dollars = (cents || 0) / 100;
+  return Number.isInteger(dollars) ? `$${dollars}` : formatMoney(cents);
+}
+
+/**
+ * Confirmation that the tribute reached someone, for the donor who asked us to
+ * tell them. Gated on exactly what the send is gated on — an address for the
+ * recipient, and a dedication to tell them about — so the receipt cannot
+ * promise a message that was never addressed.
+ */
+export function notifiedLine(d: DonationSummary): string | null {
+  const name = d.notifyName?.trim();
+  if (!name || !d.notifyEmail?.trim()) return null;
+  if (!dedicationPhrase(d.dedicationType, d.dedicateTo)) return null;
+  return `We have also notified ${name} of your gracious gift.`;
+}
+
 export function buildReceiptSubject(d: DonationSummary): string {
-  return `Your ${formatMoney(d.amountCents)} gift to the ${VENUE_SHORT}`;
+  return `Your ${formatMoneyCompact(d.amountCents)} gift to the ${VENUE_SHORT}`;
 }
 
 export function buildReceiptText(d: DonationSummary): string {
   const first = d.donorName ? d.donorName.trim().split(/\s+/)[0] : null;
   const dedication = dedicationPhrase(d.dedicationType, d.dedicateTo);
+  const notified = notifiedLine(d);
   const lines: string[] = [];
 
   lines.push(first ? `Hi ${first},` : 'Hi there,');
@@ -125,7 +153,7 @@ export function buildReceiptText(d: DonationSummary): string {
   if (dedication) lines.push(dedication);
   lines.push('');
   lines.push(
-    `${VENUE_NAME} is a 501(c)(3) non-profit organisation, Tax ID ${TAX_ID}. ` +
+    `${VENUE_NAME} is a 501(c)(3) non-profit organization, Tax ID ${TAX_ID}. ` +
       'No goods or services were provided in exchange for this contribution, so it is ' +
       'tax-deductible to the full extent allowed by law. Keep this receipt for your records.',
   );
@@ -135,6 +163,10 @@ export function buildReceiptText(d: DonationSummary): string {
       'Your tickets are confirmed separately and were emailed to you on their own — this ' +
         'message covers only the donation. Sales tax applies to tickets; your gift was not taxed.',
     );
+  }
+  if (notified) {
+    lines.push('');
+    lines.push(notified);
   }
   if (d.receiptUrl) {
     lines.push('');
@@ -183,7 +215,7 @@ export function buildReceiptHtml(d: DonationSummary): string {
             panel(`
               <div style="padding-bottom:8px;">${eyebrow('Your tax receipt')}</div>
               <div style="font:400 14px/1.7 ${sans};color:${brand.body};">
-                ${esc(VENUE_NAME)} is a 501(c)(3) non-profit organisation,
+                ${esc(VENUE_NAME)} is a 501(c)(3) non-profit organization,
                 Tax ID <strong style="color:${brand.ink};">${esc(TAX_ID)}</strong>.
                 No goods or services were provided in exchange for this contribution,
                 so it is tax-deductible to the full extent allowed by law.
@@ -198,6 +230,17 @@ export function buildReceiptHtml(d: DonationSummary): string {
             `<div style="font:400 13px/1.7 ${sans};color:${brand.soft};">
               Your tickets are confirmed and were sent in their own email — this one covers
               only the donation. Sales tax applies to tickets; your gift was not taxed.
+            </div>`,
+            '18px 28px 0',
+          )}`
+              : ''
+          }${
+            notifiedLine(d)
+              ? `
+
+          ${row(
+            `<div style="font:400 14px/1.7 ${sans};color:${brand.body};">
+              ${esc(notifiedLine(d))}
             </div>`,
             '18px 28px 0',
           )}`
@@ -366,6 +409,7 @@ export async function deliverDonationEmails(
     dedicationType: (d.dedication_type as DedicationType | null) ?? null,
     dedicateTo: d.dedicate_to ?? null,
     notifyName: d.notify_name ?? null,
+    notifyEmail: d.notify_email ?? null,
     message: d.message ?? null,
     receiptUrl: d.square_receipt_url ?? null,
     createdAt: d.created_at,
