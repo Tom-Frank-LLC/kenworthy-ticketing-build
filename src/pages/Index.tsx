@@ -170,7 +170,7 @@ export default function Index() {
             <>
             <SEO
             title="Kenworthy — Films, Performances & Events in Moscow, ID"
-            description="A century of stories on Main Street. Browse upcoming films, live performances, and events at the Kenworthy Performing Arts Centre in Moscow, Idaho."
+            description="A century of stories on Main Street. Browse upcoming films, live performances, and events at Kenworthy Performing Arts Centre in Moscow, Idaho."
             path="/"
             />
             <HomeMarquee />

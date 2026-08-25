@@ -140,7 +140,7 @@ export default function Backstage() {
     <div className="min-h-screen bg-background">
       <SEO
         title="Backstage — The Kenworthy"
-        description="Backstage is the Kenworthy's after-hours speakeasy in Moscow, Idaho — a room behind the room for private events, live music and late nights."
+        description="Backstage is Kenworthy's after-hours speakeasy in Moscow, Idaho — a room behind the room for private events, live music and late nights."
         path="/backstage"
         noindex
       />
@@ -240,12 +240,12 @@ export default function Backstage() {
           container, because a measure wide enough for a three-column grid is
           too wide to read a paragraph across. */}
       {hasBody && (
-        <section className="container max-w-5xl pt-16 md:pt-20" aria-labelledby="how-its-used">
+        <section className="container max-w-5xl pt-16 md:pt-20" aria-labelledby="backstage-experience">
           <h2
-            id="how-its-used"
+            id="backstage-experience"
             className="font-display uppercase tracking-[0.2em] text-sm text-primary"
           >
-            How the room gets used
+            The Backstage experience
           </h2>
           <RichText
             html={body}
@@ -273,7 +273,7 @@ export default function Backstage() {
           id="past-events"
           className="font-display uppercase tracking-[0.2em] text-sm text-primary"
         >
-          Nights that already happened
+          The Backstage archive
         </h2>
 
         {loading ? (

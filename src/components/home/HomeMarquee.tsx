@@ -1,4 +1,4 @@
-import { MapPin, Sparkles } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 // Responsive variants of src/assets/KPACmarquee.jpg (3810×2542, 1.9MB). A
 // phone now pulls ~38KB instead of the full-res original. The archival
 // master stays in src/assets/ — it is just no longer shipped to browsers.
@@ -59,16 +59,21 @@ export function HomeMarquee() {
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
 
       <div className="container relative w-full flex flex-col justify-between py-8 sm:py-10 md:py-12">
-        {/* Top eyebrow — small, sits in the upper scrim above the marquee */}
-        <p className="font-display uppercase tracking-[0.3em] text-xs sm:text-sm text-accent flex items-center gap-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
-          <Sparkles className="h-3.5 w-3.5 shrink-0" />
-          Now Playing on Main Street
-        </p>
-
         {/* Bottom — headline tucked into the dark crowd silhouettes, with
             the address balancing on the right. The marquee itself stays
             unobstructed in the middle band. */}
-        <div className="mt-auto pt-32 sm:pt-40 md:pt-48 lg:pt-56 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+        {/* From `md` up the headline is tucked into the dark crowd
+            silhouettes at the foot, with the address balancing on the right,
+            and the marquee stays unobstructed in the middle band.
+
+            On a phone it sits at the top instead, in the slot the "Now Playing
+            on Main Street" eyebrow used to hold. There is no room below on a
+            narrow screen — the headline, the line under it and the address
+            stack to most of the viewport — and the scrim is darkest at the top
+            of the image, above the sign, so the type is legible there without
+            covering the marquee. Hence `md:mt-auto`: nothing pushes it down
+            until there is height to spend. */}
+        <div className="md:mt-auto md:pt-48 lg:pt-56 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div className="max-w-xl lg:max-w-2xl min-w-0">
             <h1 className="font-display uppercase text-[1.75rem] sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground break-words hyphens-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
               A Century of Stories,

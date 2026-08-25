@@ -59,7 +59,7 @@ export default function Hiring() {
     <div className="min-h-screen bg-background">
       <SEO
         title="Job Opportunities — Kenworthy"
-        description="Staff and volunteer openings at the Kenworthy Performing Arts Centre in Moscow, Idaho. Concessions, box office, clean-up, and special events — 16 and older."
+        description="Staff and volunteer openings at Kenworthy Performing Arts Centre in Moscow, Idaho. Concessions, box office, clean-up, and special events — 16 and older."
         path="/hiring"
       />
 
@@ -75,7 +75,7 @@ export default function Hiring() {
           <p className="font-serif italic text-lg md:text-xl text-muted-foreground mt-6 max-w-3xl">
             Kenworthy staff members and volunteers help fulfill the mission by preparing the theatre
             for various film screenings, rentals, performances, special events and meetings. They
-            are integral members to the success of the Kenworthy.
+            are integral members to the success of Kenworthy.
           </p>
         </div>
       </section>

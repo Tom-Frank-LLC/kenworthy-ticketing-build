@@ -144,7 +144,7 @@ export default function Press() {
     <div className="min-h-screen bg-background">
       <SEO
         title="Press — The Kenworthy"
-        description="Press coverage of the Kenworthy Performing Arts Centre in Moscow, Idaho, and how to reach us for media enquiries."
+        description="Press coverage of Kenworthy Performing Arts Centre in Moscow, Idaho, and how to reach us for media enquiries."
         path="/press"
         image={page?.photo_url ?? undefined}
       />
@@ -153,7 +153,7 @@ export default function Press() {
       <section className="border-b border-accent/20 bg-card/40">
         <div className="container py-16 md:py-24 max-w-4xl">
           <p className="font-display uppercase tracking-[0.3em] text-sm text-primary mb-4">
-            The Kenworthy
+            Kenworthy
           </p>
           <h1 className="font-display uppercase text-4xl md:text-6xl leading-tight text-foreground">
             Press
@@ -221,7 +221,7 @@ export default function Press() {
           <section className="border-t border-accent/20 bg-card/40">
             <div className="container py-12 max-w-4xl">
               <p className="font-serif text-muted-foreground">
-                Writing about the Kenworthy? We’re glad to help with images, history, and interviews.
+                Writing about Kenworthy? We’re glad to help with images, history, and interviews.
               </p>
               <Button asChild variant="outline" className="mt-4">
                 <a href="mailto:events@kenworthy.org">

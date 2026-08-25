@@ -55,7 +55,7 @@ describe('backstageAltText', () => {
   // alt="" would claim the photograph is decorative. It is the content.
   it.each([null, '', '   '])('describes the room when the caption is %p', (caption) => {
     expect(backstageAltText({ caption })).toBe(
-      'An event in the Backstage speakeasy at the Kenworthy',
+      'An event in the Backstage speakeasy at Kenworthy',
     );
   });
 });

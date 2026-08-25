@@ -125,7 +125,7 @@ export default function Rentals() {
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Rent the Kenworthy — Historic Theatre & Marquee"
+        title="Rent Kenworthy — Historic Theatre & Marquee"
         description="Rent the historic Kenworthy theatre, Main Stage, Backstage Speakeasy, or marquee for private events. Rates, fees, and live availability calendar."
       />
 
@@ -134,11 +134,11 @@ export default function Rentals() {
         <div className="container py-16 md:py-24 max-w-5xl">
           <p className="font-display uppercase tracking-[0.3em] text-sm text-primary mb-4">Rent the Historic Theatre</p>
           <h1 className="font-display uppercase text-4xl md:text-6xl leading-tight text-foreground">
-            Your event, on Main Street since 1926.
+            Your event, on Main Street.
           </h1>
           <p className="font-serif italic text-lg md:text-xl text-muted-foreground mt-6 max-w-3xl">
-            The Kenworthy is pleased to offer the historic theatre and Backstage for private rentals — family movie nights,
-            birthday surprises, business retreats, recitals, weddings, and everything between. Concessions, including beer
+            Kenworthy is pleased to offer its historic theatre space and Backstage area for private rentals — family
+            movie nights, birthdays, recitals, private parties, and everything in between. Concessions, including beer
             and wine, are available for purchase during your event.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -162,9 +162,8 @@ export default function Rentals() {
               <CalendarDays className="h-6 w-6 text-primary" /> Availability
             </h2>
             <p className="font-serif text-muted-foreground mb-4 max-w-md">
-              Days highlighted in magenta are already booked with a public screening, performance, or confirmed private
-              rental. Gold days are annual black-out dates. Anything else is fair game — submit a request and we’ll
-              confirm within a few business days.
+              Highlighted days are unavailable. Submit a request for any available day, and we’ll confirm within a few
+              business days.
             </p>
             <div className="rounded-lg border border-accent/20 bg-card/40 p-2 inline-block">
               <Calendar
@@ -221,8 +220,8 @@ export default function Rentals() {
             <Building2 className="h-6 w-6 text-primary" /> Rental Rates
           </h2>
           <p className="font-serif text-muted-foreground mb-8 max-w-2xl">
-            Base rates cover the room, one Kenworthy staff member, standard house lighting, and use of the marquee for
-            day-of signage. Final pricing is confirmed on your contract.
+            Base rates cover the space, one Kenworthy staff member, standard house lighting, and use of the marquee for
+            day-of signage. Final pricing will be confirmed on your contract.
           </p>
           <div className="grid sm:grid-cols-2 gap-4">
             {RATES.map((r) => (
@@ -273,7 +272,7 @@ export default function Rentals() {
       <section className="container py-16 max-w-4xl text-center">
         <h2 className="font-display uppercase text-2xl md:text-3xl mb-4">See your name in lights</h2>
         <p className="font-serif text-lg text-muted-foreground">
-          For $150, share a special message on Downtown Moscow’s biggest, most visible sign — wish a happy birthday,
+          For $150, share a special message on downtown Moscow’s historic sign — wish someone a happy birthday,
           congratulate a new parent, or even propose. Rental includes one side for one day; market days and holidays
           carry a small surcharge.
         </p>
@@ -287,8 +286,8 @@ export default function Rentals() {
         <div className="container py-16 max-w-3xl text-center">
           <h2 className="font-display uppercase text-3xl md:text-4xl mb-4">Ready to book?</h2>
           <p className="font-serif text-lg text-muted-foreground mb-6">
-            Send a rental request and we’ll be in touch with available times, a draft contract, and answers to anything
-            you’re still wondering about.
+            Submit a rental request, and we’ll be in touch with available times, a drafted contract, and answers to any
+            questions you have.
           </p>
           <div className="flex flex-wrap gap-3 justify-center">
             <Button asChild size="lg">

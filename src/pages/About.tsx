@@ -14,7 +14,7 @@ import { RichText } from '@/components/RichText';
 // Copy ported from kenworthy.org/about — mission, goals, board roster, and the
 // opening entries of the history timeline. The full timeline lives on /history.
 const GOALS = [
-  'To restore and preserve the Kenworthy Theatre as an historic building, maintaining it as a living theatre while retaining its historic beauty and financial value.',
+  'To restore and preserve Kenworthy Theatre as an historic building, maintaining it as a living theatre while retaining its historic beauty and financial value.',
   'To encourage film and other performing arts that would not otherwise be available in the area.',
   'To provide opportunities for quality family entertainment.',
   'To prohibit discrimination, in the entertainment and in the audience, on the basis of race, religion, color, national origin, gender, sexual orientation, disability, or age.',
@@ -102,7 +102,7 @@ export default function About() {
     <div className="min-h-screen bg-background">
       <SEO
         title="About — Kenworthy"
-        description="The mission, goals, board of directors, and history of the Kenworthy Performing Arts Centre — Moscow's historic downtown theatre and cinematic art house."
+        description="The mission, goals, board of directors, and history of Kenworthy Performing Arts Centre — Moscow's historic downtown theatre and cinematic art house."
         path="/about"
       />
 
@@ -120,13 +120,13 @@ export default function About() {
         </div>
         <div className="relative container py-16 md:py-24 max-w-4xl">
           <p className="font-display uppercase tracking-[0.3em] text-sm text-primary mb-4">
-            About the Kenworthy
+            About Kenworthy
           </p>
           <h1 className="font-display uppercase text-4xl md:text-6xl leading-tight text-foreground">
             Moscow&rsquo;s historic downtown theatre.
           </h1>
           <p className="font-serif italic text-lg md:text-xl text-muted-foreground mt-6 max-w-3xl">
-            The mission of the Kenworthy Performing Arts Centre is to be Moscow&rsquo;s premier
+            The mission of Kenworthy Performing Arts Centre is to be Moscow&rsquo;s premier
             historic, downtown, community performing arts venue and cinematic art house dedicated
             to hosting and providing high quality arts experiences to residents of and visitors to
             the Palouse Region.
@@ -141,7 +141,7 @@ export default function About() {
         </h2>
         <p className="font-serif text-lg text-muted-foreground leading-relaxed">
           The Kenworthy theatre occupies a dominant position in the turn-of-the-century cityscape of
-          downtown Moscow. Although the opening of the Kenworthy as a public theatre by Milburn
+          downtown Moscow. Although the opening of Kenworthy as a public theatre by Milburn
           Kenworthy took place on January 4, 1926, some of the building was in use as the Crystal
           Theatre as early as 1908. A Robert Morgan theatre pipe organ was purchased in 1927 to
           accompany silent films and is now housed at the University of Idaho Auditorium. The
@@ -152,7 +152,7 @@ export default function About() {
           films. Talking pictures started in 1929. The theatre was remodeled in 1949 with a new
           terracotta tile façade and enlarged marquee. It was run as Moscow&rsquo;s premier movie
           theatre by the Kenworthy family until the late 1980s when it was leased until its gift to
-          the Kenworthy Performing Arts Centre, Inc. in 2000. The theatre was placed on the National
+          Kenworthy Performing Arts Centre, Inc. in 2000. The theatre was placed on the National
           Register of Historic Places in 2002.
         </p>
       </section>

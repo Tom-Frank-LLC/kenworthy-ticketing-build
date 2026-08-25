@@ -61,7 +61,7 @@ export function orderBackstagePhotos<T extends BackstagePhoto>(photos: T[]): T[]
  */
 export function backstageAltText(photo: Pick<BackstagePhoto, 'caption'>): string {
   const caption = photo.caption?.trim();
-  return caption || 'An event in the Backstage speakeasy at the Kenworthy';
+  return caption || 'An event in the Backstage speakeasy at Kenworthy';
 }
 
 /*

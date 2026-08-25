@@ -66,7 +66,6 @@ export default function RentalRequest() {
     needs_digital_ticketing: false,
     expected_guests: '',
     age_range: '',
-    special_needs: '',
     accessibility_requirements: '',
     renter_provides_media: false,
     kenworthy_provides_media: false,
@@ -135,7 +134,7 @@ export default function RentalRequest() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild variant="outline"><Link to="/">Back to the Kenworthy</Link></Button>
+            <Button asChild variant="outline"><Link to="/">Back to Kenworthy</Link></Button>
           </CardContent>
         </Card>
       </div>
@@ -198,7 +197,7 @@ export default function RentalRequest() {
 
         {/* Marquee */}
         <Section title="Marquee">
-          <Field label="What would you like the marquee to read?" hint="The Kenworthy reserves the right to refuse any message placed publicly on the marquee. Staff may suggest an alternate option due to limited space.">
+          <Field label="What would you like the marquee to read?" hint="Kenworthy reserves the right to refuse any message placed publicly on the marquee. Staff may suggest an alternate option due to limited space.">
             <Textarea rows={2} value={form.marquee_text} onChange={e => set('marquee_text', e.target.value)} />
           </Field>
         </Section>
@@ -260,7 +259,7 @@ export default function RentalRequest() {
         <Section title="Ticketing">
           <ToggleRow label="This is a ticketed event" checked={form.is_ticketed} onChange={v => set('is_ticketed', v)} />
           <ToggleRow label="Open to the public" checked={form.is_public} onChange={v => set('is_public', v)} />
-          <ToggleRow label="Use the Kenworthy's digital platform for selling tickets" checked={form.needs_digital_ticketing} onChange={v => set('needs_digital_ticketing', v)} />
+          <ToggleRow label="Use Kenworthy's digital platform for selling tickets" checked={form.needs_digital_ticketing} onChange={v => set('needs_digital_ticketing', v)} />
         </Section>
 
         {/* Guests */}
@@ -273,9 +272,6 @@ export default function RentalRequest() {
               <Input value={form.age_range} onChange={e => set('age_range', e.target.value)} placeholder="e.g. all ages, 18+" />
             </Field>
           </div>
-          <Field label="Special needs">
-            <Textarea rows={2} value={form.special_needs} onChange={e => set('special_needs', e.target.value)} />
-          </Field>
           <Field label="Accessibility requirements">
             <Textarea rows={2} value={form.accessibility_requirements} onChange={e => set('accessibility_requirements', e.target.value)} />
           </Field>

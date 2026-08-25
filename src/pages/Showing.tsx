@@ -407,10 +407,13 @@ export default function Showing() {
 
       if (!data?.success) throw new Error('Checkout failed');
 
+      // "1 ticket" / "2 tickets", not "ticket(s)". This was the last place on
+      // the site that punted on the plural with parentheses.
+      const bought = data.ticket_count === 1 ? '1 ticket' : `${data.ticket_count} tickets`;
       toast.success(
         donationCents > 0
-          ? `${data.ticket_count} ticket(s) purchased — and thank you for your $${(donationCents / 100).toFixed(2)} gift!`
-          : `${data.ticket_count} ticket(s) purchased!`,
+          ? `${bought} purchased — and thank you for your $${(donationCents / 100).toFixed(2)} gift!`
+          : `${bought} purchased!`,
       );
 
       // Fire-and-forget marketing sync (the order itself is recorded
@@ -570,7 +573,7 @@ export default function Showing() {
           // Must be plain text. A meta description containing <p> is a bug —
           // it is what a search result and a shared link preview print.
           toMetaDescription(production?.description) ||
-          `Tickets for ${production?.title ?? 'this showing'} at the Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`
+          `Tickets for ${production?.title ?? 'this showing'} at Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`
         }
         ogType="event"
         image={production?.poster_url || undefined}
@@ -871,7 +874,7 @@ export default function Showing() {
                       <span>${subtotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tax (6% ID)</span>
+                      <span className="text-muted-foreground">Idaho sales tax (6%)</span>
                       <span>${tax.toFixed(2)}</span>
                     </div>
                     {processingFee > 0 && (

@@ -112,7 +112,7 @@ export default function Donate() {
       <div className="container max-w-2xl py-20 text-center">
         <SEO
           title="Thank You — Kenworthy Performing Arts Centre"
-          description="Thank you for supporting the Kenworthy Performing Arts Centre."
+          description="Thank you for supporting Kenworthy Performing Arts Centre."
         />
         <CheckCircle2 className="h-16 w-16 text-accent mx-auto mb-6" />
         <p className="text-xs uppercase tracking-[0.3em] text-accent font-display mb-3">
@@ -146,7 +146,7 @@ export default function Donate() {
     <div className="container max-w-5xl py-16">
       <SEO
         title="Donate — Kenworthy Performing Arts Centre"
-        description="Support the Kenworthy Performing Arts Centre, Moscow Idaho's historic non-profit cinema, with a tax-deductible donation."
+        description="Support Kenworthy Performing Arts Centre, Moscow Idaho's historic non-profit cinema, with a tax-deductible donation."
       />
 
       <header className="text-center mb-12">
@@ -334,7 +334,7 @@ export default function Donate() {
               <div>
                 <dt className="text-foreground font-semibold">In-Kind Gifts</dt>
                 <dd>
-                  We need many items to host the multitude of events at the Kenworthy each year.
+                  We need many items to host the multitude of events at Kenworthy each year.
                   Purchase an item from our Amazon wish list and donate it to the theatre.{' '}
                   <a href="http://a.co/e3VuGbF" target="_blank" rel="noopener noreferrer" className="text-accent underline underline-offset-2 hover:text-primary">
                     View the wish list
@@ -347,7 +347,7 @@ export default function Donate() {
                   A direct transfer of funds from your IRA custodian, payable to a qualified charity.
                   QCDs can count toward satisfying your required minimum distributions (RMDs) for the
                   year. Instruct the firm that manages your IRA to direct some or all of your RMD to
-                  the Kenworthy.
+                  Kenworthy.
                 </dd>
               </div>
               <div>

@@ -179,8 +179,8 @@ export default function Dvds() {
       title="DVD Rentals — Kenworthy"
       description={
         MEMBER_ACCOUNTS_ENABLED
-          ? "Browse and reserve DVDs from the Kenworthy's lending library. Pick up at the box office on Main Street, Moscow."
-          : "Browse the Kenworthy's DVD lending library. Ask at the box office on Main Street, Moscow, to borrow a title."
+          ? "Browse and reserve DVDs from Kenworthy's lending library. Pick up at the box office on Main Street, Moscow."
+          : "Browse Kenworthy's DVD lending library. Ask at the box office on Main Street, Moscow, to borrow a title."
       }
       noindex
     />

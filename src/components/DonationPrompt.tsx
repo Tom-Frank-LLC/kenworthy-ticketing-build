@@ -69,7 +69,7 @@ export function DonationPrompt({
     <div className={`border-t border-border pt-3 ${className ?? ''}`}>
       <p className="text-sm font-medium mb-1 flex items-center gap-1">
         <Heart className="h-4 w-4 text-primary" />
-        {variant === 'staff' ? 'Add a donation?' : 'Add a donation to support the Kenworthy?'}
+        {variant === 'staff' ? 'Add a donation?' : 'Add a donation to support Kenworthy?'}
       </p>
       <p className="text-sm text-muted-foreground mb-3">
         {variant === 'staff'

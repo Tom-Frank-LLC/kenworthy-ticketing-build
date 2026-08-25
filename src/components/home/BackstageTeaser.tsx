@@ -15,13 +15,13 @@ import backstageLogo from '@/assets/backstage-logo.svg';
  *
  * That puts the whole accessible name on the link itself. A sighted
  * reader gets the hover glow and the cursor; everyone else gets
- * "Backstage — a speakeasy room inside the Kenworthy" read out as a
+ * "Backstage — a speakeasy room inside Kenworthy" read out as a
  * link, and a focus ring bright enough to find with a keyboard.
  */
 export function BackstageTeaser() {
   return (
     <section
-      aria-label="Backstage at the Kenworthy"
+      aria-label="Backstage at Kenworthy"
       className="relative overflow-hidden border-t border-accent/20 bg-[hsl(var(--background))]"
     >
       {/* Soft vignette + warm lamp glow to evoke a back-room speakeasy */}
@@ -69,7 +69,7 @@ export function BackstageTeaser() {
                     adding an underline or a border the styling would fight. */}
                 <img
                   src={backstageLogo}
-                  alt="Backstage — a speakeasy room inside the Kenworthy"
+                  alt="Backstage — a speakeasy room inside Kenworthy"
                   width={3012}
                   height={1388}
                   className="absolute inset-0 h-full w-full object-contain transition-[filter] duration-500 [filter:drop-shadow(0_0_6px_hsl(333_90%_60%/0.85))_drop-shadow(0_0_18px_hsl(333_85%_55%/0.6))_drop-shadow(0_0_38px_hsl(333_80%_50%/0.45))_drop-shadow(0_8px_30px_rgba(0,0,0,0.6))] group-hover:[filter:drop-shadow(0_0_8px_hsl(333_90%_62%/1))_drop-shadow(0_0_26px_hsl(333_85%_58%/0.8))_drop-shadow(0_0_54px_hsl(333_80%_52%/0.6))_drop-shadow(0_8px_30px_rgba(0,0,0,0.6))] group-focus-visible:[filter:drop-shadow(0_0_8px_hsl(333_90%_62%/1))_drop-shadow(0_0_26px_hsl(333_85%_58%/0.8))_drop-shadow(0_0_54px_hsl(333_80%_52%/0.6))_drop-shadow(0_8px_30px_rgba(0,0,0,0.6))]"
