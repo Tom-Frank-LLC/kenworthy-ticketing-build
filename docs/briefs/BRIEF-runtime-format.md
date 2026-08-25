@@ -1,11 +1,13 @@
 ---
 brief: runtime-format
 title: Show run times as hours + minutes, not raw minutes
-status: built
+status: shipped
 track: ux
 severity: P3
 date: 2026-08-18
-verified: false
+shipped_in: ["#181"]
+shipped_at: 2026-08-25
+verified: true
 ---
 
 # Brief (for Claude Code): Show run times as hours + minutes, not raw minutes
