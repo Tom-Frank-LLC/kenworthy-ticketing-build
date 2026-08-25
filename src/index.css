@@ -322,3 +322,87 @@
     border-radius: 2px;
   }
 }
+
+@layer components {
+  /* ------------------------------------------------------------------
+     Marquee bulb frame — the ring of lamps around the Kenworthy's own
+     marquee, drawn in CSS rather than from the source SVG.
+
+     The SVG (src/assets/marquee-border-bulbs.svg) is the visual spec, not
+     the asset: `border-image` cannot render it without ovaling the bulbs.
+     A border-image tile is scaled independently on each axis — to the
+     border-width across, and to a whole-number fit along — and those two
+     factors are never equal, so the bulbs stretch and the side runs smear
+     into stripes. Measured, not assumed; see docs/briefs/.
+
+     Each bulb here is a radial-gradient whose ending shape is an absolute
+     length, so it is a circle by construction at every container size.
+     `background-repeat: space` then fits a whole number of them and spreads
+     the remainder into the gaps — even spacing, flush at both ends, and no
+     rescaling, which is what keeps them round. (`round` is the trap: it
+     resizes the tile to fit, and once the tile is narrower than a bulb the
+     bulb is clipped.)
+
+     Top and bottom run the full width and therefore own the corners; the
+     sides are inset by one band so nothing double-draws.
+     ------------------------------------------------------------------ */
+  .marquee-frame {
+    /* One knob. The bulb radius and spacing are the proportions measured off
+       marquee.ai — band 60, bulb r17, pitch 47 — so re-scaling the band keeps
+       the original's rhythm. rem, so it tracks the 112.5% root and OS zoom. */
+    --mq-band: 1.75rem;
+    --mq-r: calc(var(--mq-band) * 0.2833);
+    --mq-gap: calc(var(--mq-band) * 0.7833);
+    --mq-bulb: hsl(var(--accent));
+
+    position: relative;
+    padding: calc(var(--mq-band) + 1.25rem);
+  }
+
+  .marquee-frame::before,
+  .marquee-frame::after,
+  .marquee-frame > .marquee-frame__sides::before,
+  .marquee-frame > .marquee-frame__sides::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    background-image: radial-gradient(
+      circle var(--mq-r) at center,
+      var(--mq-bulb) calc(var(--mq-r) - 1px),
+      transparent var(--mq-r)
+    );
+  }
+
+  /* Top and bottom: full width, corners included. */
+  .marquee-frame::before,
+  .marquee-frame::after {
+    left: 0;
+    right: 0;
+    height: var(--mq-band);
+    background-size: var(--mq-gap) 100%;
+    background-repeat: space no-repeat;
+  }
+  .marquee-frame::before { top: 0; }
+  .marquee-frame::after { bottom: 0; }
+
+  /* Sides: inset by a band so they do not fight the corner bulbs. */
+  .marquee-frame > .marquee-frame__sides::before,
+  .marquee-frame > .marquee-frame__sides::after {
+    top: var(--mq-band);
+    bottom: var(--mq-band);
+    width: var(--mq-band);
+    background-size: 100% var(--mq-gap);
+    background-repeat: no-repeat space;
+  }
+  .marquee-frame > .marquee-frame__sides::before { left: 0; }
+  .marquee-frame > .marquee-frame__sides::after { right: 0; }
+
+  /* A narrower band on small screens: the desktop band eats a phone's width,
+     and the content needs that room more than the bulbs do. */
+  @media (max-width: 767px) {
+    .marquee-frame {
+      --mq-band: 1.15rem;
+      padding: calc(var(--mq-band) + 0.75rem);
+    }
+  }
+}

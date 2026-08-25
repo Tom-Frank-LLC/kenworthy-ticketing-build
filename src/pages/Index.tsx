@@ -5,7 +5,6 @@ import { TrailerFeed, type FeedItem } from '@/components/home/TrailerFeed';
 import { BoothNote } from '@/components/home/BoothNote';
 import { UpcomingList } from '@/components/home/UpcomingList';
 import { BackstageTeaser } from '@/components/home/BackstageTeaser';
-import { ConcessionsPreview } from '@/components/home/ConcessionsPreview';
 import { InstagramFeed } from '@/components/home/InstagramFeed';
 import { RenovationCard } from '@/components/home/RenovationCard';
 import { HomeMarquee } from '@/components/home/HomeMarquee';
@@ -235,10 +234,6 @@ export default function Index() {
             <RenovationCard />
             </section>
             */}
-      {/* Concessions menu — pulled live from the editable concession_items
-          table, so the admin Concessions tab is the single source of truth. */}
-      <ConcessionsPreview />
-
       {/* A quiet whisper at the bottom of the page — the speakeasy room
           tucked inside the Kenworthy. On desktop the split-scroll fills the
           viewport, so this section is the natural reward for scrolling past

@@ -42,6 +42,7 @@ const AboutPage = lazyWithRecovery(() => import("./pages/About"));
 const HiringPage = lazyWithRecovery(() => import("./pages/Hiring"));
 const VolunteerPage = lazyWithRecovery(() => import("./pages/Volunteer"));
 const PressPage = lazyWithRecovery(() => import("./pages/Press"));
+const ConcessionsPage = lazyWithRecovery(() => import("./pages/Concessions"));
 const SilentFilmFestivalPage = lazyWithRecovery(() => import("./pages/SilentFilmFestival"));
 // Unlisted: linked only from the neon sign at the bottom of the home page, and
 // noindex'd so being linked does not make it a search result.
@@ -159,6 +160,7 @@ const App = () => (
                   <Route path="/silent-film-festival" element={<SilentFilmFestivalPage />} />
                   <Route path="/backstage" element={<Backstage />} />
                   <Route path="/press" element={<PressPage />} />
+                  <Route path="/concessions" element={<ConcessionsPage />} />
                   <Route path="/hiring" element={<HiringPage />} />
                   <Route path="/accessibility" element={<AccessibilityPage />} />
                   <Route path="/volunteer" element={<VolunteerPage />} />
