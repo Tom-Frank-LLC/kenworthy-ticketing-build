@@ -14,7 +14,7 @@ import { RichText } from '@/components/RichText';
 // Copy ported from kenworthy.org/about — mission, goals, board roster, and the
 // opening entries of the history timeline. The full timeline lives on /history.
 const GOALS = [
-  'To restore and preserve the Kenworthy Theatre as an historic building, maintaining it as a living theatre while retaining its historic beauty and financial value.',
+  'To restore and preserve Kenworthy Theatre as an historic building, maintaining it as a living theatre while retaining its historic beauty and financial value.',
   'To encourage film and other performing arts that would not otherwise be available in the area.',
   'To provide opportunities for quality family entertainment.',
   'To prohibit discrimination, in the entertainment and in the audience, on the basis of race, religion, color, national origin, gender, sexual orientation, disability, or age.',
