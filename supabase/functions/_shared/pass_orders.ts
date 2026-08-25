@@ -53,6 +53,19 @@ export interface PassOrderSummary {
   fulfillment: Fulfillment;
   mailingAddress: MailingAddress | null;
   buyerName: string | null;
+  /**
+   * Window price of one ticket this pass admits you to — what the holder would
+   * otherwise have paid. Null for a pass type that has not set one, in which
+   * case the email states the count without a price rather than guess.
+   */
+  ticketFaceValue?: number | null;
+  /**
+   * The pass type's own restrictions, verbatim from film_pass_types.fine_print.
+   * The rules genuinely differ — the standard pass excludes special events, the
+   * Festival Pass excludes everything *except* one festival — so a sentence
+   * written once in this file was guaranteed to be wrong for one of them.
+   */
+  finePrint?: string | null;
 }
 
 /**
@@ -120,41 +133,104 @@ export function admissionsFor(initialBalance: number, redemptionPrice: number): 
   return Math.floor(initialBalance / redemptionPrice);
 }
 
-export function buildPassOrderSubject(order: PassOrderSummary): string {
-  const what = order.quantity === 1 ? 'film pass' : `${order.quantity} film passes`;
-  return order.fulfillment === 'pickup'
-    ? `Your ${what} is ready to collect`
-    : `Your ${what} is on its way`;
+const NUMBER_WORDS = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen',
+  'eighteen', 'nineteen', 'twenty',
+];
+
+/** "ten", not "10" — the count reads as prose in the sentence that uses it. */
+export function numberWord(n: number): string {
+  return NUMBER_WORDS[n] ?? String(n);
 }
 
-/** The sentence that decides whether the buyer turns up at the door or waits. */
+/**
+ * Money without dead cents: "$6", not "$6.00", but "$59.50" when there are
+ * cents to state. formatMoney() still pads, and is right for a total on its own
+ * line; this is for money sitting inside a sentence.
+ */
+export function formatMoneyCompact(n: number): string {
+  const v = Number(n || 0);
+  return Number.isInteger(v) ? `$${v}` : `$${v.toFixed(2)}`;
+}
+
+export function buildPassOrderSubject(order: PassOrderSummary): string {
+  // The verb has to agree with the count. It used to be hardcoded singular, so
+  // a two-pass order subject read "Your 2 film passes is ready to collect".
+  const one = order.quantity === 1;
+  const what = one ? 'film pass' : `${order.quantity} film passes`;
+  // Only the pickup branch can promise anything yet. This email is sent when
+  // the order is placed, and a mailed pass does not leave the building until a
+  // staff member puts it in an envelope — which is what buildPassPostedSubject
+  // announces. Saying "on its way" here made the same promise twice, the first
+  // time untruthfully.
+  return order.fulfillment === 'pickup'
+    ? `Your ${what} ${one ? 'is' : 'are'} ready to collect`
+    : `We have your order for ${one ? 'a film pass' : `${order.quantity} film passes`}`;
+}
+
+/**
+ * The sentence that decides whether the buyer turns up at the door or waits.
+ *
+ * Every pronoun in here agrees with the count. The previous version pluralised
+ * only its opening — "Your passes will be waiting … ask for it … activate it
+ * and hand it over" — which is the shape a sentence takes when the first clause
+ * is fixed and the rest is not.
+ */
 export function fulfillmentLine(order: PassOrderSummary): string {
-  const plural = order.quantity === 1 ? 'Your pass' : 'Your passes';
+  const one = order.quantity === 1;
+  const subject = one ? 'Your pass is' : 'Your passes are';
   if (order.fulfillment === 'pickup') {
-    return `${plural} will be waiting for you at the box office. Ask for it by name when you next visit — we will activate it and hand it over then.`;
+    return `${subject} waiting for you at the box office, under your name.`;
   }
   const to = order.mailingAddress ? formatAddress(order.mailingAddress) : 'the address you gave us';
-  return `${plural} will be posted to ${to}. We activate it before it goes in the envelope, so it is ready to use the moment it arrives.`;
+  return one
+    ? `Your pass will be mailed to you at ${to}.`
+    : `Your passes will be mailed to you at ${to}.`;
+}
+
+/**
+ * What the pass is worth and where it does not work.
+ *
+ * States the count and not the price, because the price that belongs here is
+ * the *face value of the ticket the pass buys* — the $8 seat a $6 deduction
+ * gets you, which is the whole offer — and that number is not stored anywhere.
+ * film_pass_types has price, initial_balance and redemption_price; a showing's
+ * own ticket_price varies ($8 is merely the most common of eleven values). The
+ * one number in reach, redemption_price, is what the pass *costs* per film
+ * rather than what it is *worth*, so printing it here would state the offer
+ * backwards. It needs a per-type field before the sentence can carry it.
+ */
+export function redemptionLine(order: PassOrderSummary): string {
+  const one = order.quantity === 1;
+  const films = numberWord(admissionsFor(order.initialBalance, order.redemptionPrice));
+  const face = order.ticketFaceValue;
+  // "ten $8 film tickets" when the pass says what a ticket is worth; "ten film
+  // tickets" when it does not. Never redemption_price — that is what the pass
+  // spends per film, and putting it here states the offer inside out.
+  const worth = face && face > 0 ? `${films} ${formatMoneyCompact(face)} film tickets` : `${films} film tickets`;
+  const subject = one ? 'Your pass is' : 'Each pass is';
+
+  const restriction = (order.finePrint ?? '').trim();
+  if (restriction) return `${subject} redeemable in person for ${worth}. ${restriction}`;
+
+  const pronoun = one
+    ? 'It cannot be used online and is not eligible'
+    : 'They cannot be used online and are not eligible';
+  return `${subject} redeemable in person for ${worth}. ${pronoun} for special events nor premium screenings.`;
 }
 
 export function buildPassOrderEmailText(order: PassOrderSummary): string {
   const first = order.buyerName ? order.buyerName.split(/\s+/)[0] : null;
-  const admissions = admissionsFor(order.initialBalance, order.redemptionPrice);
 
   return [
     first ? `Hi ${first},` : 'Hi there,',
     '',
-    `Thank you — we have your order for ${order.quantity} × ${order.passTypeName}.`,
+    `We have received your order for ${order.quantity} \u00d7 ${order.passTypeName}. ${fulfillmentLine(order)}`,
     '',
-    fulfillmentLine(order),
+    redemptionLine(order),
     '',
-    `Each pass carries ${formatMoney(order.initialBalance)} and covers ${formatMoney(
-      order.redemptionPrice,
-    )} of a standard movie ticket — about ${admissions} films.`,
-    'Film passes are redeemed in person: hand the pass to our staff at the door and they will scan it.',
-    'They cannot be used to book online, and they are not valid for special events or premium screenings.',
-    '',
-    `Paid: ${formatMoney(order.amountPaid)}`,
+    `Paid: ${formatMoneyCompact(order.amountPaid)}`,
     '',
     ...textFooter(NOTHING_TO_PRINT),
   ].join('\n');
@@ -180,6 +256,9 @@ export interface PassPostedSummary {
   /** Balance one pass carries. Repeated here so the email stands alone. */
   initialBalance: number;
   redemptionPrice: number;
+  /** See PassOrderSummary — same two per-type facts, same reasons. */
+  ticketFaceValue?: number | null;
+  finePrint?: string | null;
 }
 
 export function buildPassPostedSubject(order: PassPostedSummary): string {
@@ -197,7 +276,6 @@ export function postedLine(order: PassPostedSummary): string {
 
 export function buildPassPostedEmailText(order: PassPostedSummary): string {
   const first = order.buyerName ? order.buyerName.split(/\s+/)[0] : null;
-  const admissions = admissionsFor(order.initialBalance, order.redemptionPrice);
 
   return [
     first ? `Hi ${first},` : 'Hi there,',
@@ -206,11 +284,14 @@ export function buildPassPostedEmailText(order: PassPostedSummary): string {
     '',
     postedLine(order),
     '',
-    `Each pass is already activated and carries ${formatMoney(order.initialBalance)}, covering ${formatMoney(
-      order.redemptionPrice,
-    )} of a standard movie ticket — about ${admissions} films.`,
+    `Each pass arrives already activated. ${redemptionLine({
+      ...order,
+      quantity: order.quantity,
+      amountPaid: 0,
+      fulfillment: 'mail',
+      mailingAddress: order.mailingAddress,
+    } as PassOrderSummary)}`,
     'Hand it to our staff at the door and they will scan it. Nothing to set up before it arrives.',
-    'Passes cannot be used to book online, and are not valid for special events or premium screenings.',
     '',
     ...textFooter(NOTHING_TO_PRINT),
   ].join('\n');
@@ -219,7 +300,6 @@ export function buildPassPostedEmailText(order: PassPostedSummary): string {
 export function buildPassPostedEmailHtml(order: PassPostedSummary): string {
   const first = order.buyerName ? esc(order.buyerName.split(/\s+/)[0]) : null;
   const greeting = first ? `Hi ${first},` : 'Hi there,';
-  const admissions = admissionsFor(order.initialBalance, order.redemptionPrice);
 
   // Same shell as the order confirmation on purpose — a patron sees these two
   // back to back, and emailLayout is what guarantees they match.
@@ -246,12 +326,15 @@ export function buildPassPostedEmailHtml(order: PassPostedSummary): string {
           ${row(`
             <div style="padding-bottom:8px;">${eyebrow('When it arrives')}</div>
             <div style="font:400 14px/1.7 ${sans};color:${brand.body};">
-              It is already activated and carries ${esc(formatMoney(order.initialBalance))}, covering
-              ${esc(formatMoney(order.redemptionPrice))} of a standard movie ticket —
-              about ${esc(admissions)} films.<br />
-              Hand it to our staff at the door and they will scan it. Nothing to set up first.<br />
-              Passes cannot be used to book online, and are not valid for special events
-              or premium screenings.
+              It arrives already activated. ${esc(
+                redemptionLine({
+                  ...order,
+                  amountPaid: 0,
+                  fulfillment: 'mail',
+                  mailingAddress: order.mailingAddress,
+                } as PassOrderSummary),
+              )}<br />
+              Hand it to our staff at the door and they will scan it. Nothing to set up first.
             </div>
           `)}
 
@@ -268,43 +351,27 @@ export function buildPassPostedEmailHtml(order: PassPostedSummary): string {
 export function buildPassOrderEmailHtml(order: PassOrderSummary): string {
   const first = order.buyerName ? esc(order.buyerName.split(/\s+/)[0]) : null;
   const greeting = first ? `Hi ${first},` : 'Hi there,';
-  const admissions = admissionsFor(order.initialBalance, order.redemptionPrice);
 
-  // Same shell as every other transactional email — see email-layout.ts.
+  // Mirrors buildPassOrderEmailText sentence for sentence. The two are separate
+  // functions and drift silently, so they are kept in the same shape: greeting,
+  // what was ordered and where it goes, what it is worth, what was paid.
   const content = `
           ${row(
             `${paragraph(greeting)}
-             <div style="padding-top:8px;">${paragraph('Thank you — your order is in.')}</div>`,
+             <div style="padding-top:8px;">${paragraph(
+               `We have received your order for ${esc(order.quantity)} &times; ${esc(
+                 order.passTypeName,
+               )}. ${esc(fulfillmentLine(order))}`,
+             )}</div>
+             <div style="padding-top:8px;">${paragraph(esc(redemptionLine(order)))}</div>`,
             '28px 28px 4px',
           )}
 
-          ${row(`
-            ${heading(`${order.quantity} × ${order.passTypeName}`)}
-            <div style="padding-top:8px;">${paragraph(`${esc(formatMoney(order.amountPaid))} paid`)}</div>
-          `)}
-
           ${row(
-            panel(`
-              <div style="font:600 15px/1.5 ${sans};color:${brand.ink};padding-bottom:6px;">
-                ${order.fulfillment === 'pickup' ? 'Collect it at the box office' : 'On its way to you'}
-              </div>
-              <div style="font:400 14px/1.6 ${sans};color:${brand.body};">
-                ${esc(fulfillmentLine(order))}
-              </div>
-            `),
+            `<div style="font:600 15px/1.5 ${sans};color:${brand.ink};">Paid: ${esc(
+              formatMoneyCompact(order.amountPaid),
+            )}</div>`,
           )}
-
-          ${row(`
-            <div style="padding-bottom:8px;">${eyebrow('How the pass works')}</div>
-            <div style="font:400 14px/1.7 ${sans};color:${brand.body};">
-              Each pass carries ${esc(formatMoney(order.initialBalance))} and covers
-              ${esc(formatMoney(order.redemptionPrice))} of a standard movie ticket —
-              about ${esc(admissions)} films.<br />
-              Hand it to our staff at the door and they will scan it.<br />
-              Passes cannot be used to book online, and are not valid for special events
-              or premium screenings.
-            </div>
-          `)}
 
           <tr><td style="height:28px;line-height:28px;font-size:0;">&nbsp;</td></tr>`;
 

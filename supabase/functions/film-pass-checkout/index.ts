@@ -247,7 +247,7 @@ Deno.serve(async (req: Request) => {
       .eq('status', 'fulfilled')
       .is('posted_at', null)
       .select(
-        'id, quantity, buyer_name, buyer_email, mailing_address, posted_at, film_pass_types!film_pass_orders_pass_type_id_fkey(name, initial_balance, redemption_price)',
+        'id, quantity, buyer_name, buyer_email, mailing_address, posted_at, film_pass_types!film_pass_orders_pass_type_id_fkey(name, initial_balance, redemption_price, ticket_face_value, fine_print)',
       )
       .maybeSingle();
 
@@ -302,6 +302,9 @@ Deno.serve(async (req: Request) => {
         buyerName: marked.buyer_name ?? null,
         initialBalance: Number(type?.initial_balance ?? 0),
         redemptionPrice: Number(type?.redemption_price ?? 0),
+        ticketFaceValue:
+          type?.ticket_face_value == null ? null : Number(type.ticket_face_value),
+        finePrint: type?.fine_print ?? null,
       };
 
       const result = await sendTransactionalEmail(
@@ -735,7 +738,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: passType } = await admin
     .from('film_pass_types')
-    .select('id, name, price, initial_balance, redemption_price, expiration_days, is_active, square_variation_id')
+    .select('id, name, price, initial_balance, redemption_price, ticket_face_value, fine_print, expiration_days, is_active, square_variation_id')
     .eq('id', passTypeId)
     .maybeSingle();
 
@@ -984,6 +987,12 @@ Deno.serve(async (req: Request) => {
     amountPaid: total,
     initialBalance: Number(passType.initial_balance),
     redemptionPrice: Number(passType.redemption_price),
+    // Per-type, because both differ per pass: what a ticket is worth, and what
+    // the pass is not valid for. A sentence written once in pass_orders.ts was
+    // wrong for whichever pass it was not written about.
+    ticketFaceValue:
+      passType.ticket_face_value == null ? null : Number(passType.ticket_face_value),
+    finePrint: passType.fine_print ?? null,
     fulfillment,
     mailingAddress,
     buyerName: contact.name || null,

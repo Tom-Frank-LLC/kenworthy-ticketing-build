@@ -36,6 +36,8 @@ interface FilmPassType {
   price: number;
   initial_balance: number;
   redemption_price: number;
+  /** Window price of one ticket this pass admits you to. NULL = don't claim one. */
+  ticket_face_value: number | null;
   expiration_days: number | null;
   is_active: boolean;
   /** NULL = unlimited: the balance is the only bound, so a holder can bring friends. */
@@ -55,6 +57,7 @@ const BLANK_FORM = {
   price: '60',
   initial_balance: '60',
   redemption_price: '6',
+  ticket_face_value: '',
   expiration_days: '',
   per_showing_use_limit: '',
   is_default_for_movies: true,
@@ -361,6 +364,7 @@ export default function FilmPassesTab() {
       price: String(pt.price),
       initial_balance: String(pt.initial_balance),
       redemption_price: String(pt.redemption_price),
+      ticket_face_value: pt.ticket_face_value == null ? '' : String(pt.ticket_face_value),
       expiration_days: pt.expiration_days === null ? '' : String(pt.expiration_days),
       per_showing_use_limit:
         pt.per_showing_use_limit === null ? '' : String(pt.per_showing_use_limit),
@@ -415,6 +419,10 @@ export default function FilmPassesTab() {
       price: parseFloat(form.price) || 60,
       initial_balance: parseFloat(form.initial_balance) || 60,
       redemption_price: parseFloat(form.redemption_price) || 6,
+      // Blank stays NULL: the email and the passes page then state how many
+      // films the pass is worth without claiming a price, which is true of any
+      // pass. A wrong number here is worse than no number.
+      ticket_face_value: form.ticket_face_value.trim() ? parseFloat(form.ticket_face_value) : null,
       expiration_days: form.expiration_days ? parseInt(form.expiration_days) : null,
       per_showing_use_limit: limit,
       is_default_for_movies: form.is_default_for_movies,
@@ -752,6 +760,23 @@ export default function FilmPassesTab() {
                   <Input type="number" step="0.01" value={form.redemption_price} onChange={e => setForm(f => ({ ...f, redemption_price: e.target.value }))} />
                   <p className="text-xs text-muted-foreground">
                     Deducted at the door. Balance ÷ this is how many films the pass is worth.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Ticket Face Value ($, blank = don't say)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.ticket_face_value}
+                    onChange={e => setForm(f => ({ ...f, ticket_face_value: e.target.value }))}
+                    placeholder="8"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    What one of these seats costs at the window — the price the holder
+                    avoids paying, not the {'\u201C'}cost per admission{'\u201D'} above. This is what makes
+                    the pass a deal, and it is what the confirmation email and the
+                    passes page quote. Leave blank and both state the film count
+                    without a price.
                   </p>
                 </div>
                 <div className="space-y-2">

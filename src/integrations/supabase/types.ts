@@ -925,6 +925,7 @@ export type Database = {
           per_showing_use_limit: number | null
           price: number
           redemption_price: number
+          ticket_face_value: number | null
           updated_at: string
         }
         Insert: {
@@ -941,6 +942,7 @@ export type Database = {
           per_showing_use_limit?: number | null
           price?: number
           redemption_price?: number
+          ticket_face_value?: number | null
           updated_at?: string
         }
         Update: {
@@ -957,6 +959,7 @@ export type Database = {
           per_showing_use_limit?: number | null
           price?: number
           redemption_price?: number
+          ticket_face_value?: number | null
           updated_at?: string
         }
         Relationships: []
