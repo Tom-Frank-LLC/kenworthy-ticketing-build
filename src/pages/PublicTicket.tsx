@@ -150,12 +150,26 @@ export default function PublicTicket() {
               />
 
               <div className="mt-4 space-y-1">
-                <p className="font-medium">
-                  {ticket.seat ? `Row ${ticket.seat.row}, Seat ${ticket.seat.number}` : 'General Admission'}
-                </p>
-                {ticket.tier_name && (
-                  <p className="text-sm text-muted-foreground">{ticket.tier_name}</p>
-                )}
+                {/* The tier line is dropped when it only repeats the line
+                    above it. A tier named "General Admission" is the same
+                    words as the unseated fallback, and the page printed both,
+                    stacked. Same defect as describeSeat() in the ticket email,
+                    fixed separately because this page renders its own markup. */}
+                {(() => {
+                  const seatLabel = ticket.seat
+                    ? `Row ${ticket.seat.row}, Seat ${ticket.seat.number}`
+                    : 'General Admission';
+                  const tier = ticket.tier_name?.trim();
+                  const tierRepeats = !!tier && tier.toLowerCase() === seatLabel.toLowerCase();
+                  return (
+                    <>
+                      <p className="font-medium">{seatLabel}</p>
+                      {tier && !tierRepeats && (
+                        <p className="text-sm text-muted-foreground">{tier}</p>
+                      )}
+                    </>
+                  );
+                })()}
                 <p className="text-sm text-primary font-medium">${Number(ticket.total_price).toFixed(2)}</p>
                 <p className="text-sm font-mono text-muted-foreground break-all pt-1">{ticket.qr_code}</p>
               </div>

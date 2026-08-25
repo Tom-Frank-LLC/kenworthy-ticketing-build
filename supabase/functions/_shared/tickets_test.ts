@@ -70,6 +70,9 @@ Deno.test('describeSeat covers assigned, GA, and tiered tickets', () => {
   assertEquals(describeSeat(ticket()), 'General Admission');
   assertEquals(describeSeat(ticket({ seat: { row: 'C', number: 12 } })), 'Row C, Seat 12');
   assertEquals(describeSeat(ticket({ tier_name: 'Student' })), 'General Admission · Student');
+  // A tier named the same thing as the fallback is printed once, not twice.
+  assertEquals(describeSeat(ticket({ tier_name: 'General Admission' })), 'General Admission');
+  assertEquals(describeSeat(ticket({ tier_name: '  general admission ' })), 'General Admission');
   assertEquals(
     describeSeat(ticket({ seat: { row: 'A', number: 3 }, tier_name: 'Balcony' })),
     'Row A, Seat 3 · Balcony',

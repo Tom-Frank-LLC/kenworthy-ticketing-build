@@ -185,9 +185,6 @@ export function buildEmailHtml(
           <tr>
             <td align="center" style="padding:22px 28px 0;">
               ${primaryButton(opts.ticketUrl, 'View tickets on your phone')}
-              <div style="font:400 12px/1.6 ${sans};color:${brand.faint};padding-top:10px;">
-                Keep this link — it opens your tickets without signing in.
-              </div>
             </td>
           </tr>
 
