@@ -1,12 +1,14 @@
 ---
 brief: backstage-page
 title: A hidden Backstage page, reached only by clicking the neon sign
-status: built
+status: shipped
 track: feature
 severity: P3
 date: 2026-08-18
-evidence: migration 20260820203112_backstage_page.sql; src/pages/Backstage.tsx; src/components/admin/BackstageTab.tsx
-verified: false
+evidence: migration 20260820203112_backstage_page.sql; /backstage returns 200 in production and renders its headings; existing evidence line retained below; prior note — migration 20260820203112_backstage_page.sql; src/pages/Backstage.tsx; src/components/admin/BackstageTab.tsx
+shipped_in: ["#143", "#152", "#153"]
+shipped_at: 2026-08-25
+verified: true
 ---
 
 # Brief (for Claude Code): Add the hidden "Backstage" page
