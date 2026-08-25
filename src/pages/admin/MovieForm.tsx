@@ -141,10 +141,12 @@ export default function MovieForm() {
                 />
                 {/* Staff enter a total; the listing reads it back as hours +
                     minutes. Echoing that makes a slipped digit visible here
-                    rather than on the live site. */}
+                    rather than on the live site. Kept to two words because this
+                    sits in a third-width grid column — "on the site" wrapped
+                    the phrase across two lines. */}
                 {formatRuntime(duration) ? (
                   <p id="movie-duration-echo" className="text-xs text-muted-foreground">
-                    Shows as <strong>{formatRuntime(duration)}</strong> on the site
+                    Shows as <strong>{formatRuntime(duration)}</strong>
                   </p>
                 ) : null}
               </div>
