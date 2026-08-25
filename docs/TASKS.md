@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**61 briefs** — 54 shipped, 4 built, 3 open, 0 needs triage, 0 closed.
+**61 briefs** — 55 shipped, 3 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -14,7 +14,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
 - `P2` **Split the counter tools into a Staff section, with Print QRs in it**<br>`ux` — [brief](briefs/BRIEF-staff-section-print-qr.md)
 - `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
-- `P3` **Show run times as hours + minutes, not raw minutes**<br>`ux` — [brief](briefs/BRIEF-runtime-format.md)
 
 ## Open
 
@@ -24,6 +23,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Show run times as hours + minutes, not raw minutes**<br>`ux` — `#181` — [brief](briefs/BRIEF-runtime-format.md)
 - **Description fields get a formatting toolbar, and the render path is sanitised to match**<br>`feature` — `#170` — [brief](briefs/BRIEF-richtext-descriptions.md) · [notes](briefs/FINDINGS-richtext-description-surface.md)
 - **A searchable Transactions log of confirmed Square and site sales, with reconciliation**<br>`feature` — `#161` — [brief](briefs/BRIEF-transactions-tab.md) · [notes](briefs/FINDINGS-transactions-tab.md)
 - **Missing Ticket Confirmation & Account Emails**<br>`ops` — `a72aabe`, `23d6bd3`, `202c6a2`, `cb17100`, `fc44c33`, `6ddfa72`, `3de95a8`, `#91`, `2bb68d4` — [brief](briefs/BRIEF-ticket-email.md)
