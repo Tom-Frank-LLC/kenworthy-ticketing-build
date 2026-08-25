@@ -257,7 +257,7 @@ export function buildSmsBody(order: Order, ticketUrl: string, calendarUrl?: stri
   const lines = [
     `${VENUE_SHORT}: ${count} ticket${count === 1 ? '' : 's'} for ${order.title}`,
     `${order.start_time_display}${seats}`,
-    `Show this at the door: ${ticketUrl}`,
+    `Your ticket${count === 1 ? '' : 's'}: ${ticketUrl}`,
   ];
   // A second URL pushes most sends to a 2nd segment; the calendar link is worth
   // it, and callers can omit it to stay in one segment.

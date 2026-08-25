@@ -158,6 +158,34 @@ Deno.test('buildSmsBody carries title, time and link', () => {
   assertEquals(body.includes('2 tickets for Casablanca'), true);
   assertEquals(body.includes('Fri, Aug 14, 2026 at 7:30 PM'), true);
   assertEquals(body.includes('https://example.com/t/tok'), true);
+  // "Show this at the door" pointed at a URL, so "this" was a link rather than
+  // something you could show. The label names what the link is instead, and
+  // agrees with the ticket count like the line above it.
+  assertEquals(body.includes('Your tickets: https://example.com/t/tok'), true);
+  assertEquals(body.includes('Show this at the door'), false);
+});
+
+Deno.test('buildSmsBody labels a single ticket in the singular', () => {
+  const body = buildSmsBody(
+    {
+      order_token: 'tok',
+      user_id: 'u',
+      purchased_at: '',
+      confirmation_sent_at: null,
+      sms_consent: null,
+      title: 'Casablanca',
+      start_time: '',
+      start_time_display: 'Fri, Aug 14, 2026 at 7:30 PM',
+      venue: 'Main Theatre',
+      duration_minutes: null,
+      tickets: [ticket()],
+      total: 12.72,
+    },
+    'https://example.com/t/tok',
+  );
+  assertEquals(body.includes('1 ticket for Casablanca'), true);
+  assertEquals(body.includes('Your ticket: https://example.com/t/tok'), true);
+  assertEquals(body.includes('Your tickets:'), false);
 });
 
 Deno.test('buildSmsBody lists seats when the order has them', () => {
