@@ -11,6 +11,7 @@ import { HomeMarquee } from '@/components/home/HomeMarquee';
 import { SEO } from '@/components/SEO';
 import { SearchBar } from '@/components/SearchBar';
 import { filterFeed } from '@/hooks/useFeed';
+import { attachUpcomingShowings } from '@/lib/feed';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -104,7 +105,7 @@ function buildFeed(
   }
 
   items.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-  return { feed: items, productionsById: byId };
+  return { feed: attachUpcomingShowings(items), productionsById: byId };
 }
 
 export default function Index() {

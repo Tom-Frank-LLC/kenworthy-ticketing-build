@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime, venueDayKey } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
+import { TrailerModal } from '@/components/TrailerModal';
 import type { FeedItem } from './TrailerFeed';
 import { htmlToPlainText } from '@/lib/richText';
 
@@ -19,11 +20,15 @@ import { htmlToPlainText } from '@/lib/richText';
  * with a slide-out drawer instead, which is the wrong instrument when there is
  * a whole empty column to the right.
  *
- * `onViewDetails` is optional and that optionality is the contract: pass it
- * where a ProductionDetailDrawer exists to receive the click, omit it where
- * the preview *is* the detail view. When it is omitted the drawer-only actions
- * (View details, Watch trailer) simply aren't rendered rather than rendering
- * dead.
+ * This pane is now self-contained: it used to take an `onViewDetails` callback
+ * and spend two of its three buttons opening ProductionDetailDrawer — one to
+ * list the other showtimes, one to play the trailer. Both are answered here
+ * instead, by showtime chips and a lightbox, because a sheet that slides in
+ * from the right to say "it also plays Saturday at 2" costs a click and a
+ * whole screen to deliver one line of text.
+ *
+ * The drawer is not gone: below `lg` this pane does not render at all, and
+ * tapping a row there still opens it. See UpcomingList.
  */
 
 function formatWhen(iso: string) {
@@ -40,14 +45,23 @@ function formatWhen(iso: string) {
 
 export function ShowingPreview({
   item,
-  onViewDetails,
   className,
 }: {
   item: FeedItem;
-  /** Opens the production drawer. Omit where no drawer is mounted. */
-  onViewDetails?: (item: FeedItem) => void;
   className?: string;
 }) {
+  // Every *other* date this production plays. The previewed showing already
+  // has the green button below, so repeating it as a chip would offer the
+  // same link twice under two different labels.
+  //
+  // Filtered by `isPast` here rather than at feed-build time so that this
+  // agrees with the Get Tickets button it sits under — both ask the question
+  // at render, of the same clock. The rule is src/lib/purchasable.ts.
+  const alsoPlaying = (item.upcomingShowings ?? []).filter(
+    (s) => s.id !== item.showingId && !isPast({ start_time: s.start_time }),
+  );
+  const alsoPlayingHeadingId = `also-playing-${item.id}`;
+
   return (
     <div className={className}>
       <div className="rounded-lg border border-accent/20 bg-card overflow-hidden">
@@ -110,10 +124,10 @@ export function ShowingPreview({
                   showing a second time — for a preview of one specific showing
                   that is a step with nothing in it.
 
-                  Gone entirely once the showing is over: "All showings" below
-                  still gets the reader somewhere useful, so a past preview is
-                  a readable panel rather than a dead button. The rule is
-                  src/lib/purchasable.ts. */}
+                  Gone entirely once the showing is over: the chips below still
+                  get the reader to a date they can actually buy, so a past
+                  preview is a readable panel rather than a dead button. The
+                  rule is src/lib/purchasable.ts. */}
               {item.showingId && !isPast({ start_time: item.startTime }) && (
                 <Button asChild className={cn('gap-2', GREEN_CTA)}>
                   <Link to={`/showing/${item.showingId}`}>
@@ -123,26 +137,55 @@ export function ShowingPreview({
                   </Link>
                 </Button>
               )}
-              {onViewDetails && (
-                <Button
-                  variant={item.showingId ? 'outline' : 'default'}
-                  onClick={() => onViewDetails(item)}
-                  className="gap-2"
-                >
-                  All showings
-                </Button>
-              )}
-              {item.trailerUrl && onViewDetails && (
-                <Button
-                  variant="outline"
-                  onClick={() => onViewDetails(item)}
-                  className="gap-2"
-                >
+              {/* TrailerModal owns this button — it renders it as its own
+                  dialog trigger, and renders nothing when the production has
+                  no trailer. */}
+              <TrailerModal
+                title={item.title}
+                trailerUrl={item.trailerUrl}
+                posterUrl={item.posterUrl}
+              >
+                <Button variant="outline" className="gap-2">
                   <PlayCircle className="h-4 w-4" />
                   Watch trailer
                 </Button>
-              )}
+              </TrailerModal>
             </div>
+
+            {/* The rest of the run, inline. This is the whole of what the
+                "All showings" button used to travel to the drawer to fetch,
+                and a film that plays once — the common case — renders nothing
+                here at all rather than a heading over a single chip that
+                duplicates the button above it. */}
+            {alsoPlaying.length > 0 && (
+              <div className="mt-5">
+                <h4
+                  id={alsoPlayingHeadingId}
+                  className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2"
+                >
+                  Also playing
+                </h4>
+                {/* A list, so a screen reader announces how many dates there
+                    are before reading them. */}
+                <ul aria-labelledby={alsoPlayingHeadingId} className="flex flex-wrap gap-2">
+                  {alsoPlaying.map((s) => (
+                    <li key={s.id}>
+                      <Link
+                        to={`/showing/${s.id}`}
+                        // The visible text is a date and a time, which out of
+                        // context reads as a label rather than a destination.
+                        // The accessible name keeps the visible string intact
+                        // and says what the link does with it.
+                        aria-label={`Get tickets for ${formatShowtime(s.start_time, 'EEE, MMM d · h:mm a')}`}
+                        className="inline-flex items-center rounded-full border border-accent/40 bg-background px-3 py-1.5 font-serif text-sm text-foreground transition-colors hover:border-accent hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      >
+                        {formatShowtime(s.start_time, 'EEE, MMM d · h:mm a')}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </div>

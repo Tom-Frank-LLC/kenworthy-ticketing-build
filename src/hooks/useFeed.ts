@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { FeedItem } from '@/components/home/TrailerFeed';
+import { attachUpcomingShowings } from '@/lib/feed';
 import { htmlToPlainText } from '@/lib/richText';
 
 type ProductionType = 'movie' | 'event' | 'concert';
@@ -104,7 +105,7 @@ export function useFeed() {
       }
 
       items.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-      setFeed(items);
+      setFeed(attachUpcomingShowings(items));
       setProductionsById(byId);
       setLoading(false);
     })();
