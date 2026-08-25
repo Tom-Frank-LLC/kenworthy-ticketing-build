@@ -68,7 +68,8 @@ Deno.test('receipt carries what makes it a tax receipt', () => {
     assertStringIncludes(body, 'No goods or services were provided');
     assertStringIncludes(body, 'August 13, 2026');
   }
-  assertStringIncludes(buildReceiptSubject(d), '$50.00');
+  // The subject drops dead cents; the body keeps the exact figure.
+  assertStringIncludes(buildReceiptSubject(d), '$50 gift');
   assertStringIncludes(text, 'Hi Ada,');
 });
 
@@ -149,4 +150,48 @@ Deno.test('donor-supplied text is escaped into the HTML', () => {
   assert(!html.includes('<script>'), 'donor name must not reach the DOM as markup');
   assert(!html.includes('<img src=x'), 'the message must not reach the DOM as markup');
   assertStringIncludes(html, 'Ada &amp; Co');
+});
+
+Deno.test('the receipt spells organization the way the IRS does', () => {
+  // This sentence exists to substantiate a deduction, so its spelling is not a
+  // house-style choice.
+  const text = buildReceiptText(gift());
+  assertStringIncludes(text, '501(c)(3) non-profit organization');
+  assertEquals(text.includes('organisation'), false);
+  assertEquals(buildReceiptHtml(gift()).includes('organisation'), false);
+});
+
+Deno.test('the subject drops cents it does not need, and keeps the ones it does', () => {
+  assertStringIncludes(buildReceiptSubject(gift({ amountCents: 5000 })), '$50 gift');
+  assertStringIncludes(buildReceiptSubject(gift({ amountCents: 5250 })), '$52.50 gift');
+  // The receipt body still states the exact amount — it is a tax record.
+  assertStringIncludes(buildReceiptText(gift({ amountCents: 5000 })), 'Gift: $50.00');
+});
+
+Deno.test('the receipt says who was told, and only when someone was', () => {
+  const told = gift({
+    dedicationType: 'in_memory',
+    dedicateTo: 'Jane Doe',
+    notifyName: 'John Doe',
+    notifyEmail: 'john@example.com',
+  });
+  assertStringIncludes(buildReceiptText(told), 'We will also notify John Doe of your gracious gift.');
+  assertStringIncludes(buildReceiptHtml(told), 'We will also notify John Doe');
+
+  // A name with no address means the tribute was never addressed — the send is
+  // gated on notify_email, so claiming otherwise would be a lie on a receipt.
+  const notTold = gift({
+    dedicationType: 'in_memory',
+    dedicateTo: 'Jane Doe',
+    notifyName: 'John Doe',
+    notifyEmail: null,
+  });
+  assertEquals(buildReceiptText(notTold).includes('We will also notify'), false);
+
+  // And a dedication is required too, for the same reason.
+  const noDedication = gift({ notifyName: 'John Doe', notifyEmail: 'john@example.com' });
+  assertEquals(buildReceiptText(noDedication).includes('We will also notify'), false);
+
+  // An ordinary gift never mentions it.
+  assertEquals(buildReceiptText(gift()).includes('We will also notify'), false);
 });

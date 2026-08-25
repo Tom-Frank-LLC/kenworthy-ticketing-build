@@ -247,8 +247,6 @@ const posted = (over: Partial<PassPostedSummary> = {}): PassPostedSummary => ({
   quantity: 1,
   mailingAddress: address,
   buyerName: 'Ada Lovelace',
-  initialBalance: 60,
-  redemptionPrice: 6,
   ...over,
 });
 
@@ -276,37 +274,33 @@ Deno.test('the posted notice never implies the email itself is the pass', () => 
   assertStringIncludes(text, 'nothing to print');
   assertStringIncludes(html, 'nothing to print');
   assertOnlyImageIsTheLogo(html, 'no QR image belongs in a posted notice');
-  assertStringIncludes(text, 'cannot be used online');
+  // The rule the physical card depends on: it is used at the door, not online.
+  assertStringIncludes(text, 'redeemable in person only');
 });
 
-Deno.test('the posted notice states the value in films, derived not hardcoded', () => {
-  assertStringIncludes(buildPassPostedEmailText(posted()), 'ten film tickets');
-  assertStringIncludes(
-    buildPassPostedEmailText(posted({ initialBalance: 30, redemptionPrice: 6 })),
-    'five film tickets',
-  );
-  // With a face value set it names what a ticket is worth, never what the pass
-  // deducts — redemption_price here would state the offer inside out.
-  const withFace = buildPassPostedEmailText(posted({ ticketFaceValue: 8 }));
-  assertStringIncludes(withFace, 'ten $8 film tickets');
-  assertEquals(withFace.includes('$6 film tickets'), false);
+Deno.test('the posted notice answers one question and leaves the rest to the confirmation', () => {
+  const text = buildPassPostedEmailText(posted());
+  // It says it has been sent, and where.
+  assertStringIncludes(text, 'is on its way to you, at');
+  assertStringIncludes(text, 'Please allow time for delivery');
+  // It does not re-describe the pass. The order confirmation already did, and
+  // repeating the economics here is how the two drifted apart.
+  assertEquals(text.includes('film tickets'), false);
+  assertEquals(text.includes('carries'), false);
+  assertEquals(text.includes('redeemable in person for'), false);
+  // Not a bare /\$\d/ check: the pass type is *named* "$60 Film Pass", so a
+  // dollar sign in this email is not evidence of a price claim.
+  assertEquals(text.includes('already activated'), false);
 });
 
-Deno.test('both pass emails carry the pass type\'s own restrictions', () => {
-  // The rules genuinely differ: the standard pass excludes special events, the
-  // Festival Pass excludes everything except one festival. A sentence written
-  // once was guaranteed to be wrong for whichever pass it was not about.
-  const festival = 'Valid only at this festival\'s screenings. Not valid on standard movies.';
-  const order_ = order({ finePrint: festival, ticketFaceValue: 8 });
-  assertStringIncludes(buildPassOrderEmailText(order_), festival);
-  assertStringIncludes(buildPassOrderEmailText(order_), 'ten $8 film tickets');
-  assertEquals(buildPassOrderEmailText(order_).includes('not eligible for special events'), false);
+Deno.test('the posted notice agrees with itself about the count', () => {
+  const one = buildPassPostedEmailText(posted({ quantity: 1 }));
+  assertStringIncludes(one, 'Your pass is redeemable in person only');
+  assertStringIncludes(one, 'hand it to our staff');
 
-  // Unset falls back to the general sentence rather than saying nothing.
-  assertStringIncludes(
-    buildPassOrderEmailText(order({ finePrint: null })),
-    'cannot be used online and is not eligible',
-  );
+  const many = buildPassPostedEmailText(posted({ quantity: 2 }));
+  assertStringIncludes(many, 'Your passes are redeemable in person only');
+  assertStringIncludes(many, 'hand them to our staff');
 });
 
 Deno.test('a buyer name with markup cannot reach the posted notice as markup', () => {

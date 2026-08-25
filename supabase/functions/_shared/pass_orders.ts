@@ -15,9 +15,6 @@ import { brand, sans } from './brand.ts';
 import {
   emailLayout,
   esc,
-  eyebrow,
-  heading,
-  panel,
   paragraph,
   row,
   textFooter,
@@ -253,25 +250,34 @@ export interface PassPostedSummary {
   /** Where it was actually sent — the address on the envelope. */
   mailingAddress: MailingAddress | null;
   buyerName: string | null;
-  /** Balance one pass carries. Repeated here so the email stands alone. */
-  initialBalance: number;
-  redemptionPrice: number;
-  /** See PassOrderSummary — same two per-type facts, same reasons. */
-  ticketFaceValue?: number | null;
-  finePrint?: string | null;
 }
+
+// The posted notice used to restate the pass's economics and its rules. It no
+// longer describes the pass at all — the order confirmation did that, and this
+// email answers one question: has it been sent. So it needs no balance, no
+// redemption price, no face value and no fine print.
 
 export function buildPassPostedSubject(order: PassPostedSummary): string {
   const what = order.quantity === 1 ? 'film pass' : 'film passes';
   return `Your ${what} ${order.quantity === 1 ? 'is' : 'are'} in the mail`;
 }
 
-/** The one sentence that matters: it has left the building, and where it went. */
+/**
+ * Where it went and what to expect. One sentence, because this email exists to
+ * answer one question — has it been sent — and the order confirmation has
+ * already described the pass itself.
+ */
 export function postedLine(order: PassPostedSummary): string {
-  const subject = order.quantity === 1 ? 'Your pass' : 'Your passes';
-  const verb = order.quantity === 1 ? 'is' : 'are';
   const to = order.mailingAddress ? formatAddress(order.mailingAddress) : 'the address you gave us';
-  return `${subject} ${verb} on the way to ${to}. Allow a few days for the post, and give us a shout if nothing arrives within a week.`;
+  return `Good news \u2014 your order for ${order.quantity} \u00d7 ${order.passTypeName} is on its way to you, at ${to}. Please allow time for delivery, and contact us if you have any questions about it.`;
+}
+
+/** How it is used, once it lands. */
+export function postedUseLine(order: PassPostedSummary): string {
+  const one = order.quantity === 1;
+  const subject = one ? 'Your pass is' : 'Your passes are';
+  const it = one ? 'it' : 'them';
+  return `${subject} redeemable in person only. Simply hand ${it} to our staff at the door for them to scan, and then enjoy the show!`;
 }
 
 export function buildPassPostedEmailText(order: PassPostedSummary): string {
@@ -280,18 +286,9 @@ export function buildPassPostedEmailText(order: PassPostedSummary): string {
   return [
     first ? `Hi ${first},` : 'Hi there,',
     '',
-    `Good news — ${order.quantity} × ${order.passTypeName} went in the post today.`,
-    '',
     postedLine(order),
     '',
-    `Each pass arrives already activated. ${redemptionLine({
-      ...order,
-      quantity: order.quantity,
-      amountPaid: 0,
-      fulfillment: 'mail',
-      mailingAddress: order.mailingAddress,
-    } as PassOrderSummary)}`,
-    'Hand it to our staff at the door and they will scan it. Nothing to set up before it arrives.',
+    postedUseLine(order),
     '',
     ...textFooter(NOTHING_TO_PRINT),
   ].join('\n');
@@ -301,42 +298,15 @@ export function buildPassPostedEmailHtml(order: PassPostedSummary): string {
   const first = order.buyerName ? esc(order.buyerName.split(/\s+/)[0]) : null;
   const greeting = first ? `Hi ${first},` : 'Hi there,';
 
-  // Same shell as the order confirmation on purpose — a patron sees these two
-  // back to back, and emailLayout is what guarantees they match.
+  // Mirrors buildPassPostedEmailText sentence for sentence — the two are
+  // separate functions and drift silently.
   const content = `
           ${row(
             `${paragraph(greeting)}
-             <div style="padding-top:8px;">${paragraph('Good news — this went in the post today.')}</div>`,
+             <div style="padding-top:8px;">${paragraph(esc(postedLine(order)))}</div>
+             <div style="padding-top:8px;">${paragraph(esc(postedUseLine(order)))}</div>`,
             '28px 28px 4px',
           )}
-
-          ${row(heading(`${order.quantity} × ${order.passTypeName}`))}
-
-          ${row(
-            panel(`
-              <div style="font:600 15px/1.5 ${sans};color:${brand.ink};padding-bottom:6px;">
-                In the mail
-              </div>
-              <div style="font:400 14px/1.6 ${sans};color:${brand.body};">
-                ${esc(postedLine(order))}
-              </div>
-            `),
-          )}
-
-          ${row(`
-            <div style="padding-bottom:8px;">${eyebrow('When it arrives')}</div>
-            <div style="font:400 14px/1.7 ${sans};color:${brand.body};">
-              It arrives already activated. ${esc(
-                redemptionLine({
-                  ...order,
-                  amountPaid: 0,
-                  fulfillment: 'mail',
-                  mailingAddress: order.mailingAddress,
-                } as PassOrderSummary),
-              )}<br />
-              Hand it to our staff at the door and they will scan it. Nothing to set up first.
-            </div>
-          `)}
 
           <tr><td style="height:28px;line-height:28px;font-size:0;">&nbsp;</td></tr>`;
 

@@ -247,7 +247,7 @@ Deno.serve(async (req: Request) => {
       .eq('status', 'fulfilled')
       .is('posted_at', null)
       .select(
-        'id, quantity, buyer_name, buyer_email, mailing_address, posted_at, film_pass_types!film_pass_orders_pass_type_id_fkey(name, initial_balance, redemption_price, ticket_face_value, fine_print)',
+        'id, quantity, buyer_name, buyer_email, mailing_address, posted_at, film_pass_types!film_pass_orders_pass_type_id_fkey(name)',
       )
       .maybeSingle();
 
@@ -300,11 +300,6 @@ Deno.serve(async (req: Request) => {
         quantity: marked.quantity,
         mailingAddress: (marked.mailing_address ?? null) as MailingAddress | null,
         buyerName: marked.buyer_name ?? null,
-        initialBalance: Number(type?.initial_balance ?? 0),
-        redemptionPrice: Number(type?.redemption_price ?? 0),
-        ticketFaceValue:
-          type?.ticket_face_value == null ? null : Number(type.ticket_face_value),
-        finePrint: type?.fine_print ?? null,
       };
 
       const result = await sendTransactionalEmail(
