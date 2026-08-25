@@ -154,21 +154,60 @@ Deno.test('the confirmation never implies the email itself is the pass', () => {
     assertOnlyImageIsTheLogo(html, 'no QR image belongs in a pass confirmation');
 
     // And the two rules they will otherwise discover at the door.
-    assertStringIncludes(text, 'in person');
-    assertStringIncludes(text, 'cannot be used to book online');
+    assertStringIncludes(text, 'redeemable in person');
+    assertStringIncludes(text, 'cannot be used online');
   }
 });
 
 Deno.test('the confirmation states the value in films, derived not hardcoded', () => {
-  assertStringIncludes(buildPassOrderEmailText(order()), 'about 10 films');
+  // Both halves are derived: how many admissions, and what each one costs. The
+  // two live pass types disagree on both ($6 and $4), so a hardcoded either
+  // would be wrong for one of them.
+  assertStringIncludes(buildPassOrderEmailText(order()), 'ten $6 film tickets');
   assertStringIncludes(
     buildPassOrderEmailText(order({ initialBalance: 90, redemptionPrice: 9 })),
-    'about 10 films',
+    'ten $9 film tickets',
+  );
+  assertStringIncludes(
+    buildPassOrderEmailText(order({ initialBalance: 40, redemptionPrice: 4 })),
+    'ten $4 film tickets',
   );
   assertStringIncludes(
     buildPassOrderEmailText(order({ initialBalance: 30, redemptionPrice: 6 })),
-    'about 5 films',
+    'five $6 film tickets',
   );
+  // Above the spelled-out range it falls back to the numeral rather than
+  // printing undefined.
+  assertStringIncludes(
+    buildPassOrderEmailText(order({ initialBalance: 150, redemptionPrice: 6 })),
+    '25 $6 film tickets',
+  );
+});
+
+Deno.test('the confirmation agrees with itself about the count', () => {
+  const one = buildPassOrderEmailText(order({ quantity: 1 }));
+  assertStringIncludes(one, 'Your pass is waiting for you at the box office, under your name.');
+  assertStringIncludes(one, 'Your pass is redeemable in person');
+  assertStringIncludes(one, 'It cannot be used online and is not eligible');
+
+  const many = buildPassOrderEmailText(order({ quantity: 2 }));
+  assertStringIncludes(many, 'Your passes are waiting for you at the box office, under your name.');
+  assertStringIncludes(many, 'Each pass is redeemable in person');
+  assertStringIncludes(many, 'They cannot be used online and are not eligible');
+  // The bug this replaces: "Your 2 film passes is ready to collect".
+  assertStringIncludes(buildPassOrderSubject(order({ quantity: 2 })), '2 film passes are ready');
+  assertStringIncludes(
+    buildPassOrderSubject(order({ quantity: 2, fulfillment: 'mail', mailingAddress: address })),
+    '2 film passes are on their way',
+  );
+});
+
+Deno.test('a mailed order names the address in the sentence the buyer acts on', () => {
+  const text = buildPassOrderEmailText(
+    order({ fulfillment: 'mail', mailingAddress: address, quantity: 1 }),
+  );
+  assertStringIncludes(text, 'Your pass will be mailed to you at');
+  assertStringIncludes(text, formatAddress(address));
 });
 
 Deno.test('a buyer name with markup in it cannot reach the email as markup', () => {
@@ -186,7 +225,8 @@ Deno.test('quantity is reflected everywhere it is stated', () => {
   const o = order({ quantity: 3, amountPaid: 180 });
   assertStringIncludes(buildPassOrderSubject(o), '3 film passes');
   assertStringIncludes(buildPassOrderEmailText(o), '3 × $60 Film Pass');
-  assertStringIncludes(buildPassOrderEmailHtml(o), '$180.00 paid');
+  assertStringIncludes(buildPassOrderEmailText(o), 'Paid: $180');
+  assertStringIncludes(buildPassOrderEmailHtml(o), 'Paid: $180');
 });
 
 // ---------------------------------------------------------------------------
