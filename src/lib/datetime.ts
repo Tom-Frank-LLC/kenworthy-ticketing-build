@@ -143,3 +143,69 @@ export function formatPlainDateRange(
   }
   return `${single} – ${formatPlainDate(b, `${M} d, yyyy`)}`;
 }
+
+/**
+ * Normalise a stored `duration_minutes` to a whole, positive count of minutes.
+ *
+ * The column is a nullable integer, but the runtime formatters are handed
+ * whatever a query returned — including `null` for every event and live
+ * performance, which carry no runtime anywhere in the schema. Anything that
+ * isn't a real, positive duration formats as the empty string, which is what
+ * lets a caller write `{formatRuntime(x)}` without also guarding the render.
+ */
+function wholeMinutes(minutes: number | null | undefined): number | null {
+  const n = Number(minutes);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.round(n);
+}
+
+/**
+ * A run time for reading: `"1h 30m"`, `"2h"`, `"45m"`.
+ *
+ * Staff enter — and the database stores — a total minute count, because that is
+ * the one representation that survives arithmetic (`showingEndsAt`, the `.ics`
+ * duration). But "128 min" is a number the reader has to divide before it means
+ * anything, and the patron base skews older. So the storage stays in minutes
+ * and only the reading changes.
+ *
+ * The compact form is the streaming/Letterboxd/Google convention rather than
+ * Fandango's "2 hr 8 min": this sits in a badge row beside the rating and
+ * genre, where width is the scarce thing.
+ *
+ * An exact hour drops the minutes entirely — "2h", never "2h 0m".
+ *
+ * Screen readers say this badly ("one-h thirty-m"), so anything rendering it
+ * should carry `runtimeLabel()` as an `aria-label`. Returns `''` when there is
+ * no runtime to show.
+ */
+export function formatRuntime(minutes: number | null | undefined): string {
+  const total = wholeMinutes(minutes);
+  if (total === null) return '';
+
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (!h) return `${m}m`;
+  if (!m) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+/**
+ * The same run time spelled out: `"1 hour 30 minutes"`, `"2 hours"`,
+ * `"45 minutes"`.
+ *
+ * The compact form is an abbreviation, and a screen reader has no way to know
+ * that — VoiceOver reads "1h 30m" as letters. This is the `aria-label` twin, so
+ * the visual stays compact while the announced version stays a sentence.
+ * Returns `''` when there is no runtime to show.
+ */
+export function runtimeLabel(minutes: number | null | undefined): string {
+  const total = wholeMinutes(minutes);
+  if (total === null) return '';
+
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  const parts: string[] = [];
+  if (h) parts.push(`${h} ${h === 1 ? 'hour' : 'hours'}`);
+  if (m) parts.push(`${m} ${m === 1 ? 'minute' : 'minutes'}`);
+  return parts.join(' ');
+}

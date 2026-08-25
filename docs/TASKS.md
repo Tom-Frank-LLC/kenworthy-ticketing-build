@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**60 briefs** — 54 shipped, 3 built, 3 open, 0 needs triage, 0 closed.
+**61 briefs** — 54 shipped, 4 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -14,6 +14,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
 - `P2` **Split the counter tools into a Staff section, with Print QRs in it**<br>`ux` — [brief](briefs/BRIEF-staff-section-print-qr.md)
 - `P3` **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — [brief](briefs/BRIEF-backstage-page.md)
+- `P3` **Show run times as hours + minutes, not raw minutes**<br>`ux` — [brief](briefs/BRIEF-runtime-format.md)
 
 ## Open
 
