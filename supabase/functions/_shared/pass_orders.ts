@@ -146,9 +146,14 @@ export function buildPassOrderSubject(order: PassOrderSummary): string {
   // a two-pass order subject read "Your 2 film passes is ready to collect".
   const one = order.quantity === 1;
   const what = one ? 'film pass' : `${order.quantity} film passes`;
+  // Only the pickup branch can promise anything yet. This email is sent when
+  // the order is placed, and a mailed pass does not leave the building until a
+  // staff member puts it in an envelope — which is what buildPassPostedSubject
+  // announces. Saying "on its way" here made the same promise twice, the first
+  // time untruthfully.
   return order.fulfillment === 'pickup'
     ? `Your ${what} ${one ? 'is' : 'are'} ready to collect`
-    : `Your ${what} ${one ? 'is on its way' : 'are on their way'}`;
+    : `We have your order for ${one ? 'a film pass' : `${order.quantity} film passes`}`;
 }
 
 /**
@@ -171,16 +176,26 @@ export function fulfillmentLine(order: PassOrderSummary): string {
     : `Your passes will be mailed to you at ${to}.`;
 }
 
-/** What the pass is worth and where it does not work. */
+/**
+ * What the pass is worth and where it does not work.
+ *
+ * States the count and not the price, because the price that belongs here is
+ * the *face value of the ticket the pass buys* — the $8 seat a $6 deduction
+ * gets you, which is the whole offer — and that number is not stored anywhere.
+ * film_pass_types has price, initial_balance and redemption_price; a showing's
+ * own ticket_price varies ($8 is merely the most common of eleven values). The
+ * one number in reach, redemption_price, is what the pass *costs* per film
+ * rather than what it is *worth*, so printing it here would state the offer
+ * backwards. It needs a per-type field before the sentence can carry it.
+ */
 export function redemptionLine(order: PassOrderSummary): string {
   const one = order.quantity === 1;
   const films = numberWord(admissionsFor(order.initialBalance, order.redemptionPrice));
-  const each = formatMoneyCompact(order.redemptionPrice);
   const subject = one ? 'Your pass is' : 'Each pass is';
   const pronoun = one
     ? 'It cannot be used online and is not eligible'
     : 'They cannot be used online and are not eligible';
-  return `${subject} redeemable in person for ${films} ${each} film tickets. ${pronoun} for special events nor premium screenings.`;
+  return `${subject} redeemable in person for ${films} film tickets. ${pronoun} for special events nor premium screenings.`;
 }
 
 export function buildPassOrderEmailText(order: PassOrderSummary): string {

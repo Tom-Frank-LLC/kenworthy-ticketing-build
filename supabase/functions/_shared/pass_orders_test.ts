@@ -127,10 +127,15 @@ Deno.test('admissionsFor derives the count from the configured numbers', () => {
 
 Deno.test('the subject says which way the pass is coming', () => {
   assertStringIncludes(buildPassOrderSubject(order()), 'ready to collect');
-  assertStringIncludes(
-    buildPassOrderSubject(order({ fulfillment: 'mail', mailingAddress: address })),
-    'on its way',
+  // Not "on its way": this fires when the order is placed, and a mailed pass
+  // has not left the building until a staff member posts it. That is what
+  // buildPassPostedSubject is for, and it says "in the mail".
+  const mailed = buildPassOrderSubject(
+    order({ fulfillment: 'mail', mailingAddress: address }),
   );
+  assertStringIncludes(mailed, 'We have your order');
+  assertEquals(mailed.includes('on its way'), false);
+  assertEquals(buildPassPostedSubject(posted()).includes('in the mail'), true);
 });
 
 Deno.test('a posted order names the address it is going to', () => {
@@ -163,24 +168,24 @@ Deno.test('the confirmation states the value in films, derived not hardcoded', (
   // Both halves are derived: how many admissions, and what each one costs. The
   // two live pass types disagree on both ($6 and $4), so a hardcoded either
   // would be wrong for one of them.
-  assertStringIncludes(buildPassOrderEmailText(order()), 'ten $6 film tickets');
+  assertStringIncludes(buildPassOrderEmailText(order()), 'ten film tickets');
   assertStringIncludes(
     buildPassOrderEmailText(order({ initialBalance: 90, redemptionPrice: 9 })),
-    'ten $9 film tickets',
+    'ten film tickets',
   );
   assertStringIncludes(
     buildPassOrderEmailText(order({ initialBalance: 40, redemptionPrice: 4 })),
-    'ten $4 film tickets',
+    'ten film tickets',
   );
   assertStringIncludes(
     buildPassOrderEmailText(order({ initialBalance: 30, redemptionPrice: 6 })),
-    'five $6 film tickets',
+    'five film tickets',
   );
   // Above the spelled-out range it falls back to the numeral rather than
   // printing undefined.
   assertStringIncludes(
     buildPassOrderEmailText(order({ initialBalance: 150, redemptionPrice: 6 })),
-    '25 $6 film tickets',
+    '25 film tickets',
   );
 });
 
@@ -198,7 +203,7 @@ Deno.test('the confirmation agrees with itself about the count', () => {
   assertStringIncludes(buildPassOrderSubject(order({ quantity: 2 })), '2 film passes are ready');
   assertStringIncludes(
     buildPassOrderSubject(order({ quantity: 2, fulfillment: 'mail', mailingAddress: address })),
-    '2 film passes are on their way',
+    'We have your order for 2 film passes',
   );
 });
 
