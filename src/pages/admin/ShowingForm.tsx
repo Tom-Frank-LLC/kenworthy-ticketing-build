@@ -11,7 +11,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
 import { SeatTierEditor, type SeatTierEditorHandle } from '@/components/admin/SeatTierEditor';
-import { instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
+import { formatRuntime, instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
 import { DEFAULT_SHOWING_MINUTES } from '@/lib/purchasable';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import {
@@ -223,6 +223,13 @@ export default function ShowingForm() {
       : null;
   const durationInheritedFrom: 'movie' | 'default' = selectedMovieRuntime ? 'movie' : 'default';
   const inheritedDuration = selectedMovieRuntime ?? DEFAULT_SHOWING_MINUTES;
+
+  // The field takes a total because that is what the column stores, but the
+  // listing reads it back as hours + minutes. Echoing the patron-facing string
+  // is what turns a slipped digit into something visible at entry rather than
+  // on the live site. Empty while the field is blank, which is the state that
+  // means "inherit" — the sentence below explains that case instead.
+  const durationEcho = formatRuntime(Number(durationMinutes));
 
   /**
    * Editing the price re-applies the pass default for a movie.
@@ -574,19 +581,22 @@ export default function ShowingForm() {
                 so leaving this blank gives it the two-hour default — fine for
                 most, worth setting for a festival or a double bill. */}
             <div className="space-y-2">
-              <Label>Runs For (minutes)</Label>
+              <Label htmlFor="showing-duration">Runs For (minutes)</Label>
               <Input
+                id="showing-duration"
                 type="number"
                 min="1"
                 step="1"
                 placeholder={String(inheritedDuration)}
                 value={durationMinutes}
+                aria-describedby="showing-duration-help"
                 onChange={e => setDurationMinutes(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
+              <p id="showing-duration-help" className="text-xs text-muted-foreground">
+                {durationEcho ? <>Shows as <strong>{durationEcho}</strong> on the site. </> : null}
                 {durationInheritedFrom === 'movie'
-                  ? `Leave blank to use this film's runtime (${inheritedDuration} min). Set it for a double bill, an intermission, or a Q&A after.`
-                  : `Leave blank to assume ${inheritedDuration} minutes. Tickets stop being sold once the showing ends.`}
+                  ? `Leave blank to use this film's runtime (${formatRuntime(inheritedDuration)}). Set it for a double bill, an intermission, or a Q&A after.`
+                  : `Leave blank to assume ${formatRuntime(inheritedDuration)}. Tickets stop being sold once the showing ends.`}
               </p>
             </div>
 

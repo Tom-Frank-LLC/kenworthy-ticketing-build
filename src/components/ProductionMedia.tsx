@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Clock, Film, Music, Sparkles } from 'lucide-react';
+import { formatRuntime, runtimeLabel } from '@/lib/datetime';
 import { resolveTrailer } from '@/lib/trailer';
 
 export type ProductionMediaType = 'movie' | 'event' | 'concert';
@@ -95,15 +96,21 @@ interface ProductionMetaBadgesProps {
 
 /** Rating / genre / runtime row. Renders nothing when all three are missing. */
 export function ProductionMetaBadges({ rating, genre, durationMinutes, className }: ProductionMetaBadgesProps) {
-  if (!rating && !genre && !durationMinutes) return null;
+  const runtime = formatRuntime(durationMinutes);
+  if (!rating && !genre && !runtime) return null;
 
   return (
     <div className={`flex items-center gap-2 flex-wrap ${className ?? ''}`}>
       {rating && <Badge>{rating}</Badge>}
       {genre && <Badge variant="secondary">{genre}</Badge>}
-      {durationMinutes ? (
+      {runtime ? (
         <span className="text-sm text-muted-foreground flex items-center gap-1">
-          <Clock className="h-3.5 w-3.5" /> {durationMinutes} min
+          <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+          {/* "1h 30m" is announced as letters ("one-h thirty-m"), so the
+              spoken version is the spelled-out twin. An aria-label would not
+              do it: this is a bare span, with no role to hang a name on. */}
+          <span className="sr-only">{runtimeLabel(durationMinutes)}</span>
+          <span aria-hidden="true">{runtime}</span>
         </span>
       ) : null}
     </div>

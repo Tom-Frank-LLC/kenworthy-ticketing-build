@@ -3,8 +3,10 @@ import {
   VENUE_TIME_ZONE,
   formatPlainDate,
   formatPlainDateRange,
+  formatRuntime,
   formatShowtime,
   instantToVenueLocalInput,
+  runtimeLabel,
   venueDayKey,
   venueLocalToInstant,
 } from './datetime';
@@ -123,5 +125,61 @@ describe('formatPlainDateRange', () => {
   it('has nothing to say without a start date', () => {
     expect(formatPlainDateRange(null, '2026-08-16')).toBe('');
     expect(formatPlainDateRange('', null)).toBe('');
+  });
+});
+
+/**
+ * Run times are stored as a total minute count and read as hours + minutes.
+ * The pair of formatters has to stay in step: the badge shows one and
+ * announces the other, so a film that reads "1h 30m" must not be spoken as
+ * anything but "1 hour 30 minutes".
+ */
+describe('formatRuntime', () => {
+  it('splits a feature-length runtime into hours and minutes', () => {
+    expect(formatRuntime(90)).toBe('1h 30m');
+    expect(formatRuntime(100)).toBe('1h 40m');
+    expect(formatRuntime(128)).toBe('2h 8m');
+  });
+
+  it('drops the minutes on an exact hour — "2h", never "2h 0m"', () => {
+    expect(formatRuntime(60)).toBe('1h');
+    expect(formatRuntime(120)).toBe('2h');
+  });
+
+  it('keeps a short under an hour in the same compact style', () => {
+    expect(formatRuntime(45)).toBe('45m');
+    expect(formatRuntime(1)).toBe('1m');
+  });
+
+  it('formats nothing when there is no runtime, so the badge can hide', () => {
+    // Events and live performances carry no runtime anywhere in the schema,
+    // and the caller renders on the returned string rather than guarding.
+    expect(formatRuntime(null)).toBe('');
+    expect(formatRuntime(undefined)).toBe('');
+    expect(formatRuntime(0)).toBe('');
+    expect(formatRuntime(-30)).toBe('');
+    expect(formatRuntime(Number.NaN)).toBe('');
+  });
+});
+
+describe('runtimeLabel', () => {
+  it('spells out what the compact form abbreviates', () => {
+    expect(runtimeLabel(90)).toBe('1 hour 30 minutes');
+    expect(runtimeLabel(100)).toBe('1 hour 40 minutes');
+    expect(runtimeLabel(120)).toBe('2 hours');
+    expect(runtimeLabel(45)).toBe('45 minutes');
+  });
+
+  it('says one hour and one minute in the singular', () => {
+    expect(runtimeLabel(60)).toBe('1 hour');
+    expect(runtimeLabel(61)).toBe('1 hour 1 minute');
+    expect(runtimeLabel(1)).toBe('1 minute');
+  });
+
+  it('is empty exactly when formatRuntime is', () => {
+    for (const v of [null, undefined, 0, -30, Number.NaN]) {
+      expect(runtimeLabel(v)).toBe('');
+      expect(formatRuntime(v)).toBe('');
+    }
   });
 });

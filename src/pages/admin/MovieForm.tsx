@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatRuntime } from '@/lib/datetime';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
@@ -130,8 +131,24 @@ export default function MovieForm() {
             <PosterUpload currentUrl={posterUrl} onUrlChange={setPosterUrl} folder="movies" />
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Duration (min)</Label>
-                <Input type="number" value={duration} onChange={e => setDuration(Number(e.target.value))} />
+                <Label htmlFor="movie-duration">Duration (min)</Label>
+                <Input
+                  id="movie-duration"
+                  type="number"
+                  value={duration}
+                  aria-describedby="movie-duration-echo"
+                  onChange={e => setDuration(Number(e.target.value))}
+                />
+                {/* Staff enter a total; the listing reads it back as hours +
+                    minutes. Echoing that makes a slipped digit visible here
+                    rather than on the live site. Kept to two words because this
+                    sits in a third-width grid column — "on the site" wrapped
+                    the phrase across two lines. */}
+                {formatRuntime(duration) ? (
+                  <p id="movie-duration-echo" className="text-xs text-muted-foreground">
+                    Shows as <strong>{formatRuntime(duration)}</strong>
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label>Rating</Label>
