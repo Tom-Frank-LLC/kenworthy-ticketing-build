@@ -4,47 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { SponsorshipOpportunityCard } from '@/components/SponsorshipOpportunityCard';
 import type { SponsorshipOpportunity } from '@/lib/sponsorshipPdf';
-import iccu from '@/assets/sponsors/iccu.jpg.asset.json';
-import ihc from '@/assets/sponsors/ihc.jpeg.asset.json';
-import lsi from '@/assets/sponsors/lsi.jpg.asset.json';
-import allstate from '@/assets/sponsors/allstate.png.asset.json';
-import nrs from '@/assets/sponsors/nrs.png.asset.json';
-import innovia from '@/assets/sponsors/innovia.png.asset.json';
-import mt from '@/assets/sponsors/mt.png.asset.json';
-import gritman from '@/assets/sponsors/gritman.png.asset.json';
-import avista from '@/assets/sponsors/avista.png.asset.json';
-import lmcf from '@/assets/sponsors/lmcf.jpg.asset.json';
-import artsIdaho from '@/assets/sponsors/arts-idaho.jpg.asset.json';
-import logo2018 from '@/assets/sponsors/logo-2018.png.asset.json';
-import logo1 from '@/assets/sponsors/logo-1.png.asset.json';
-import usbank from '@/assets/sponsors/usbank.png.asset.json';
-import mwgc from '@/assets/sponsors/mwgc.jpg.asset.json';
-import steppingstones from '@/assets/sponsors/steppingstones.jpg.asset.json';
-import inb from '@/assets/sponsors/inb.png.asset.json';
-import sponsorFb from '@/assets/sponsors/sponsor-fb.png.asset.json';
-import dac from '@/assets/sponsors/dac.png.asset.json';
 
-const SPONSORS: { name: string; src: string }[] = [
-  { name: 'Idaho Humanities Council', src: ihc.url },
-  { name: 'Idaho Central Credit Union', src: iccu.url },
-  { name: 'Northwest River Supplies', src: nrs.url },
-  { name: 'Innovia Foundation', src: innovia.url },
-  { name: 'Avista', src: avista.url },
-  { name: 'Gritman Medical Center', src: gritman.url },
-  { name: 'U.S. Bank', src: usbank.url },
-  { name: 'Inland Northwest Bank', src: inb.url },
-  { name: 'Allstate', src: allstate.url },
-  { name: 'LSI', src: lsi.url },
-  { name: 'Moscow Title', src: mt.url },
-  { name: 'Latah Moscow Community Foundation', src: lmcf.url },
-  { name: 'Arts Idaho', src: artsIdaho.url },
-  { name: 'MWGC', src: mwgc.url },
-  { name: 'Stepping Stones', src: steppingstones.url },
-  { name: 'DAC', src: dac.url },
-  { name: 'Community supporter', src: logo1.url },
-  { name: 'Community supporter', src: logo2018.url },
-  { name: 'Community supporter', src: sponsorFb.url },
-];
 
 export default function Sponsors() {
   const [opportunities, setOpportunities] = useState<(SponsorshipOpportunity & { id: string })[]>([]);
@@ -98,24 +58,6 @@ export default function Sponsors() {
         </section>
       )}
 
-      <section className="mb-16">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {SPONSORS.map((s, i) => (
-            <div
-              key={`${s.name}-${i}`}
-              className="aspect-[3/2] bg-white rounded-sm flex items-center justify-center p-5 hover:scale-[1.02] transition-transform"
-            >
-              <img
-                src={s.src}
-                alt={s.name}
-                loading="lazy"
-                className="max-h-full max-w-full object-contain"
-              />
-            </div>
-          ))}
-        </div>
-      </section>
-
       <figure className="border-l-2 border-accent/40 pl-6 max-w-2xl mx-auto mb-16">
         <blockquote className="font-serif italic text-lg text-foreground/90 leading-relaxed">
           "This is such a cool opportunity! Thanks for letting us be a part of
@@ -135,7 +77,7 @@ export default function Sponsors() {
         </h2>
         <p className="font-serif text-muted-foreground leading-relaxed mb-4">
           Our business investors and friends are dedicated to the historical,
-          cultural, and economic vitality of Moscow's Main Street. The Kenworthy
+          cultural, and economic vitality of Moscow's Main Street. Kenworthy
           presents an array of innovative programs — film, theatre, opera and
           more — that bring recognition and exposure to the businesses,
           foundations, and agencies whose financial support keeps it all
