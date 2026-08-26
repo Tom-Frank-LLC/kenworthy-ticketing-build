@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { CollapsibleSection } from './CollapsibleSection';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, Link2, AlertTriangle, Plus } from 'lucide-react';
-import { PRODUCTION_KIND_TABLE, dismissedKeys, needsForScope } from '@/lib/squareLink';
+import { dismissedKeys, needsForScope } from '@/lib/squareLink';
 import type { ProductionKind } from '@/lib/squareLink';
 
 /**
@@ -149,16 +149,17 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // The dismissal read is scoped to the tables this surface covers, and is
-      // deliberately not allowed to sink the panel: a failure there should cost
-      // you a hidden row reappearing, not the whole Square section.
-      const tables = [...new Set((kinds ?? []).map(k => PRODUCTION_KIND_TABLE[k]))];
+      // Only the unscoped screen renders the unlinked list, so only it needs to
+      // know what was dismissed. Deliberately not allowed to sink the panel: a
+      // failure here should cost a hidden row reappearing, not the Square
+      // section — a PostgREST error resolves rather than throws, so an empty
+      // set is what a denial produces.
       const [p, fp, dis] = await Promise.all([
         call({ action: 'plan', horizon_days: 120, ...scopeArg }),
         call({ action: 'plan_film_passes' }),
-        (tables.length
-          ? supabase.from('square_link_dismissals').select('entity_type, entity_id').in('entity_type', tables)
-          : supabase.from('square_link_dismissals').select('entity_type, entity_id')),
+        kinds?.length
+          ? Promise.resolve({ data: [] })
+          : supabase.from('square_link_dismissals').select('entity_type, entity_id'),
       ]);
       setPlan(p);
       setPasses(fp.pass_types ?? []);
@@ -282,15 +283,22 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
 
 
   /*
-   * The unlinked productions this surface is responsible for.
+   * The unlinked productions, for the unscoped screen only.
    *
-   * Note this cannot reuse `inScope` above: the other three lists are scoped
-   * server-side and carry `production_kind`, while `needs_dashboard_item` is
-   * assembled *before* the edge function applies `kinds` and carries `kind`.
-   * So this filter is not belt-and-braces like that one — it is the only thing
-   * keeping concerts off the Movies tab.
+   * Scoped, `SquareLinkPanel` sits directly above this on the same tab and now
+   * genuinely does this job — it offers the candidate items, the create-in-the-
+   * dashboard sentence and the duplicate-title warning, not just Dismiss. This
+   * comment used to say the same thing while that was untrue, which is exactly
+   * how movies ended up with nowhere to be linked: both components deferred to
+   * the other and neither rendered anything. If the panel is ever removed from
+   * a surface, drop the `scoped` test here rather than leaving both silent.
+   *
+   * Note `needsForScope` cannot be replaced by `inScope` above: the other three
+   * lists are scoped server-side and carry `production_kind`, while
+   * `needs_dashboard_item` is assembled *before* the edge function applies
+   * `kinds`, and carries `kind`.
    */
-  const needs = needsForScope(plan.needs_dashboard_item, kinds, dismissed);
+  const needs = scoped ? [] : needsForScope(plan.needs_dashboard_item, kinds, dismissed);
 
   return (
     <div className="space-y-6">
