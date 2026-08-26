@@ -1,7 +1,7 @@
 ---
 brief: rentals-page-overhaul
 title: Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid
-status: in-progress
+status: built
 track: feature
 severity: P2
 date: 2026-08-25
@@ -28,10 +28,16 @@ verified: false
 > so they are `HH:MM`. The column is still `text` and is still parsed
 > defensively, but no time-normalisation migration was needed.
 >
-> **Outstanding:** the hero photograph. The `#KENWORTHYCUPID` image is not in
-> the repo; `src/components/rentals/RentalsHero.tsx` imports
-> `src/assets/optimized/marquee-cupid-{768,1280,1920}.{jpg,webp}`, which do not
-> exist yet, so the build fails until they are generated from the source photo.
+> **Hero photograph.** Added as `src/assets/marquee-cupid.jpg` with the usual
+> `sips`+`cwebp` set at 768/1280/1920. Its composition is the inverse of the
+> home hero's — marquee low, blank brick above — so the copy is top-aligned and
+> the scrim top-weighted, where HomeMarquee is the other way up. Bottom-aligned
+> copy sat on "I LOVE YOU" and buried the #KENWORTHYCUPID line.
+>
+> **Not yet deployed.** The `get_public_availability` migration is applied to
+> **staging only**; production needs it at deploy time. Mobile (375px) is built
+> and unit-tested but unverified in a browser — the driven Chrome tab's viewport
+> is pinned at 1280.
 
 # Brief (for Claude Code): Rentals page overhaul — hero image, marquee form, day-view availability, official rates
 

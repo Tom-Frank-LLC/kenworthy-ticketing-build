@@ -26,11 +26,19 @@ const jpegSrcSet = `${hero768} 768w, ${hero1280} 1280w, ${hero1920} 1920w`;
  * audience, so it leads now, and the hero image is a night the sign was doing
  * exactly what it is being sold for.
  *
- * The structure deliberately mirrors HomeMarquee: same `<picture>` with a
+ * The mechanics mirror HomeMarquee deliberately: same `<picture>` with a
  * webp/jpg pair at the same three widths, same `object-cover` fill, same
- * top-and-bottom scrim, same min-heights. Matching it is the point — Tom asked
- * for the crop to match the home hero, and two heroes built two different ways
- * drift apart the first time either is touched.
+ * min-heights, same eager/high-priority load. Two heroes built two different
+ * ways drift apart the first time either is touched.
+ *
+ * The composition is the mirror image of it, though, and has to be. The home
+ * photograph puts the marquee high with dark crowd silhouettes underneath, so
+ * its headline tucks into the bottom. This one puts the marquee low with blank
+ * brick above, so the same bottom-aligned treatment lands the headline on top
+ * of "I LOVE YOU" and buries the #KENWORTHYCUPID line — covering the exact
+ * thing worth showing. Hence top-aligned copy and a top-weighted scrim: same
+ * intent as the home hero (text on the quiet part, subject left alone), which
+ * this photo happens to reach by turning the layout upside down.
  */
 export function RentalsHero() {
   return (
@@ -47,24 +55,30 @@ export function RentalsHero() {
             sizes="100vw"
             alt="The Kenworthy marquee at night reading “I LOVE YOU” on one side and “I KNOW” on the other, above the hashtag KENWORTHYCUPID"
             className="h-full w-full object-cover"
-            // The sign sits low in the frame, under the bare tree. Pulling the
-            // crop below centre keeps both faces of the marquee — and the
-            // message, which is the whole reason this photo is here — inside
-            // the frame as the viewport gets shorter.
-            style={{ objectPosition: 'center 62%' }}
+            // Biased above centre, which pushes the sign *down* the frame:
+            // object-position aligns the same percentage of image and box, so a
+            // lower number keeps more of the brick at the top and sheds the
+            // pavement at the bottom. That is the trade wanted here — the brick
+            // is where the copy lives, and the buttons clear the marquee's top
+            // edge because of it. Horizontally centred because on a phone the
+            // frame narrows to the middle, where the K and both faces are.
+            style={{ objectPosition: 'center 42%' }}
             loading="eager"
             fetchPriority="high"
             decoding="async"
           />
         </picture>
-        {/* Darkness at the top and bottom, daylight across the middle band
-            where the sign itself is. Same shape as the home hero's scrim. */}
+        {/* Weighted to the top, unlike the home hero's, because this photo is
+            composed the other way up: the copy sits over the blank brick in the
+            upper half and the sign holds the lower half, so the darkness has to
+            follow the text rather than bracket the image. It lifts off by
+            halfway so the marquee itself is never veiled. */}
         <div
           aria-hidden
           className="absolute inset-0"
           style={{
             background:
-              'linear-gradient(180deg, hsl(var(--background) / 0.72) 0%, hsl(var(--background) / 0.2) 24%, hsl(var(--background) / 0.05) 48%, hsl(var(--background) / 0.6) 78%, hsl(var(--background) / 0.94) 100%)',
+              'linear-gradient(180deg, hsl(var(--background) / 0.92) 0%, hsl(var(--background) / 0.8) 28%, hsl(var(--background) / 0.45) 46%, hsl(var(--background) / 0.12) 62%, hsl(var(--background) / 0.35) 88%, hsl(var(--background) / 0.8) 100%)',
           }}
         />
       </div>
@@ -72,13 +86,22 @@ export function RentalsHero() {
       {/* gold hairline, like a marquee filament */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
 
-      <div className="container relative w-full flex flex-col justify-between py-8 sm:py-10 md:py-12">
+      {/*
+        Top-aligned, where the home hero is bottom-aligned. That is not a style
+        choice: this photograph puts the marquee low and leaves blank brick
+        above it, so text tucked into the bottom lands squarely on "I LOVE YOU"
+        and buries the #KENWORTHYCUPID line — covering the exact thing the photo
+        is here to show. The copy goes in the brick instead, and the sign is
+        left to read.
+      */}
+      <div className="container relative w-full flex flex-col justify-start py-8 sm:py-10 md:py-12">
         <p className="font-display uppercase tracking-[0.3em] text-xs sm:text-sm text-accent flex items-center gap-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
           <Sparkles className="h-3.5 w-3.5 shrink-0" />
           Rent the Historic Theatre
         </p>
 
-        <div className="mt-auto pt-32 sm:pt-40 md:pt-48 lg:pt-56 max-w-2xl">
+        {/* Held to roughly the upper half so it never reaches the sign. */}
+        <div className="mt-4 sm:mt-6 max-w-xl">
           <h1 className="font-display uppercase text-[1.75rem] sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground break-words drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
             See your name
             <span className="block text-primary">in lights.</span>
