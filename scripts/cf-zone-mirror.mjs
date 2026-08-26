@@ -164,10 +164,13 @@ async function readCloudflare(id) {
     content: r.type === 'TXT' ? joinTxt(r.content) : r.content.replace(/\.$/, ''),
     priority: r.priority,
     proxied: r.proxied,
+    ttl: r.ttl,
   }));
 }
 
 const key = (r) => `${r.type} ${r.name} ${r.priority ?? ''} ${r.content}`;
+
+const MIGRATION_TTL = 300;
 
 function compare(live, remote) {
   const have = new Map(remote.map((r) => [key(r), r]));
@@ -176,18 +179,28 @@ function compare(live, remote) {
     missing: live.filter((r) => !have.has(key(r))),
     extra: remote.filter((r) => !want.has(key(r)) && r.type !== 'NS' && r.type !== 'SOA'),
     proxied: remote.filter((r) => r.proxied),
+    // ttl 1 is Cloudflare's "Auto", which is 300s for a DNS-only record — the
+    // rollback speed we want, so it is not slow and must not be rewritten.
+    slow: remote.filter(
+      (r) => r.ttl !== 1 && r.ttl > MIGRATION_TTL && r.type !== 'NS' && r.type !== 'SOA',
+    ),
   };
 }
 
 function report(live, remote) {
-  const { missing, extra, proxied } = compare(live, remote);
+  const c = compare(live, remote);
   console.log(`live zone (@${AUTH_NS}): ${live.length} records`);
   console.log(`cloudflare:              ${remote.length} records\n`);
-  for (const r of missing) console.log(`  MISSING  ${key(r)}`);
-  for (const r of extra) console.log(`  EXTRA    ${key(r)}`);
-  for (const r of proxied) console.log(`  PROXIED  ${r.type} ${r.name}  <- must be DNS-only before the NS change`);
-  if (!missing.length && !extra.length && !proxied.length) console.log('  in parity, all DNS-only.');
-  return { missing, extra, proxied };
+  for (const r of c.missing) console.log(`  MISSING  ${key(r)}`);
+  // EXTRA is not an accusation. NAMES below is a hand-written probe list and
+  // cannot see a subdomain nobody thought to guess, so Cloudflare's own scan
+  // routinely finds records this script does not. They are real records of the
+  // old zone and must be KEPT — nothing here ever deletes one.
+  for (const r of c.extra) console.log(`  EXTRA    ${key(r)}  <- not in our probe list; keep it`);
+  for (const r of c.proxied) console.log(`  PROXIED  ${r.type} ${r.name}  <- must be DNS-only before the NS change`);
+  for (const r of c.slow) console.log(`  TTL ${String(r.ttl).padEnd(5)} ${r.type} ${r.name}  <- want ${MIGRATION_TTL} for a fast rollback`);
+  if (!c.missing.length && !c.proxied.length && !c.slow.length) console.log('  in parity, DNS-only, fast TTLs.');
+  return c;
 }
 
 const [, , mode = 'plan'] = process.argv;
@@ -212,35 +225,49 @@ if (mode === 'plan') {
   report(live, remote);
   console.log('\nread-only. `apply` creates the MISSING rows; EXTRA and PROXIED are left for a human.');
 } else if (mode === 'apply') {
-  const { missing } = report(live, remote);
+  const { missing, proxied, slow } = report(live, remote);
   console.log('');
   for (const r of missing) {
     const body = {
       type: r.type,
       name: r.name === '@' ? ZONE : `${r.name}.${ZONE}`,
       content: r.content,
-      ttl: 300,
+      ttl: MIGRATION_TTL,
       proxied: false,
     };
     if (r.priority !== undefined) body.priority = r.priority;
     await cf(`/zones/${zone.id}/dns_records`, { method: 'POST', body: JSON.stringify(body) });
-    console.log(`  created  ${key(r)}`);
+    console.log(`  created    ${key(r)}`);
   }
+
+  // Anything Cloudflare imported proxied would, the moment the nameservers
+  // move, put the OLD WordPress site behind Cloudflare's proxy — new IP, new
+  // TLS, and that site is our rollback target. Grey-cloud everything, and drop
+  // TTLs so a rollback propagates in five minutes rather than a day.
+  for (const r of new Set([...proxied, ...slow])) {
+    await cf(`/zones/${zone.id}/dns_records/${r.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ttl: MIGRATION_TTL, ...(r.proxied ? { proxied: false } : {}) }),
+    });
+    console.log(`  ${r.proxied ? 'unproxied  ' : 'ttl->300   '}${r.type} ${r.name}`);
+  }
+
   // Never trust the 2xx. Re-read and compare.
   remote = await readCloudflare(zone.id);
   console.log('');
   const after = report(live, remote);
-  process.exit(after.missing.length ? 1 : 0);
+  process.exit(after.missing.length || after.proxied.length ? 1 : 0);
 } else if (mode === 'verify') {
-  const { missing, extra, proxied } = report(live, remote);
-  const ns = zone.name_servers || [];
-  console.log(`\nassigned nameservers: ${ns.join(' ')}`);
-  console.log(
-    missing.length || proxied.length
-      ? '\nNOT SAFE to change nameservers yet.'
-      : '\nParity holds and everything is DNS-only. Safe to change nameservers at eNom.',
-  );
-  process.exit(missing.length || proxied.length ? 1 : 0);
+  const { missing, proxied, slow } = report(live, remote);
+  console.log(`\nassigned nameservers: ${(zone.name_servers || []).join(' ')}`);
+  const blocked = missing.length || proxied.length;
+  if (blocked) {
+    console.log('\nNOT SAFE to change nameservers yet.');
+  } else {
+    if (slow.length) console.log(`\n${slow.length} record(s) still above a ${MIGRATION_TTL}s TTL — rollback will be slower.`);
+    console.log('\nParity holds and everything is DNS-only. Safe to change nameservers at eNom.');
+  }
+  process.exit(blocked ? 1 : 0);
 } else {
   console.error(`unknown mode "${mode}" — expected plan | apply | verify`);
   process.exit(2);

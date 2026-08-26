@@ -157,6 +157,44 @@ mail, quietly, days later.
    `verify` printing *"Safe to change nameservers at eNom"* is the gate for
    step 6. Do not proceed without it.
 
+### Phase 0 outcome — done 26 Aug 2026
+
+Zone `kenworthy.org` = `08c627c9b7f7602f6960cc7db88291c7`, Free plan, status
+**pending**. Assigned nameservers: **`justin.ns.cloudflare.com`** and
+**`ursula.ns.cloudflare.com`**.
+
+Cloudflare's scan imported **all 17** records this runbook had inventoried —
+nothing missing — plus **two the probe list could not have guessed**:
+
+| Type | Name | Value | Keep? |
+|---|---|---|---|
+| A | `localhost` | `127.0.0.1` | yes — harmless legacy row from the old host |
+| TXT | `_acme-challenge.www` | `YI2rsK7HrYE61MqCnYj9iUaIzj8pIERf8O_0pWomuNM` | **yes — do not delete** |
+
+That `_acme-challenge.www` record is how the **old WordPress site** validates its
+TLS certificate over DNS-01. It is our rollback target for the next 30 days, so
+removing it could leave the fallback without a renewable certificate.
+
+Only two changes were needed: the scan had imported the apex `A` and `www`
+`CNAME` **proxied**. Both were set DNS-only. Left proxied, the nameserver change
+would have put the *old* WordPress site behind Cloudflare's proxy — new IP, new
+TLS — while it is still the thing we roll back to. All other records were on
+Cloudflare's `Auto` TTL, which is 300s for a DNS-only record, so nothing needed
+rewriting for rollback speed.
+
+**Parity proven three ways**, not just by the API's 2xx:
+
+1. `cf-zone-mirror.mjs verify` — record-for-record against `ns.fsr.com`, exit 0.
+2. Direct queries to `justin.ns.cloudflare.com` for the eleven records that
+   matter (apex MX/TXT/A, `www`, `send` TXT+MX, `_dmarc`, and all three DKIM
+   selectors) — **11 identical, 0 differing**, including the split Google key.
+3. Cert Spotter CT logs list only `kenworthy.org` and `www.kenworthy.org` as
+   ever certificated, so there is no unknown web-facing host to strand.
+
+Residual risk: a subdomain with no certificate and a name none of the three
+methods would guess. crt.sh was returning 502 throughout and could not be used
+as a fourth source — worth one more look before decommissioning the old site.
+
 ## Phase 1 — move the nameservers (still no user-visible change)
 
 6. At **eNom**, replace the three `*.fsr.com` nameservers with the two
