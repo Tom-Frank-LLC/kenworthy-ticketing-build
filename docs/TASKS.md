@@ -5,13 +5,14 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**64 briefs** — 60 shipped, 1 built, 3 open, 0 needs triage, 0 closed.
+**65 briefs** — 60 shipped, 2 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
+- `P2` **Tighten the hero, put search on the Upcoming row, and give the curator's pick a carousel**<br>`ux` — [brief](briefs/BRIEF-home-layout-search-carousel-preview.md)
 
 ## Open
 

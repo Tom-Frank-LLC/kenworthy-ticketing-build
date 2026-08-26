@@ -1,6 +1,13 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from '@/components/ui/carousel';
 import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime } from '@/lib/datetime';
@@ -10,7 +17,7 @@ import { dayLabel } from './EditorialCalendar';
 import type { FeedItem } from './TrailerFeed';
 
 /**
- * The one showing the curator wants you to see, under the listing on the home
+ * The showings the curator wants you to see, under the listing on the home
  * page.
  *
  * This used to live at the top of EditorialCalendar, which meant it rendered
@@ -19,7 +26,150 @@ import type { FeedItem } from './TrailerFeed';
  * calendar page is for finding a specific showing; the pick belongs on the
  * home page, under the listing, where it reads as a recommendation rather
  * than an obstacle.
+ *
+ * It used to show exactly one pick. Flagging a second film is_featured simply
+ * hid it behind the first, so the flag silently did nothing past the earliest
+ * item — every pick now gets a slide.
  */
+
+/** Roughly the height of the Upcoming list beside it, so the two sections
+ *  read as bands of the same weight rather than one dwarfing the other. A
+ *  long note scrolls inside its slide instead of growing the band. */
+const BAND = 'lg:h-[440px]';
+
+function Pick({
+  item,
+  onSelect,
+}: {
+  item: FeedItem;
+  onSelect?: (item: FeedItem) => void;
+}) {
+  const note = item.curatorNote ? htmlToPlainText(item.curatorNote) : null;
+  const hasPoster = Boolean(item.posterUrl);
+
+  // useFeed filters past showings out at query time, so this only bites in a
+  // tab left open across a start time — which is the one case where the page
+  // would otherwise sell a finished screening. The rule is
+  // src/lib/purchasable.ts.
+  const cta =
+    item.showingId && !isPast({ start_time: item.startTime }) ? (
+      <Button asChild className={cn('h-11', GREEN_CTA)}>
+        <Link to={`/showing/${item.showingId}`}>
+          Get Tickets <ArrowRight className="h-4 w-4 ml-1" />
+        </Link>
+      </Button>
+    ) : null;
+
+  return (
+    <>
+      <p className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-5">
+        {item.isFeatured ? "Curator's pick" : 'Featured'} · {dayLabel(item.startTime)}
+      </p>
+
+      {/* Poster beside the copy, not above it — the same split ShowingPreview
+          settled on, and for the same reason: stacked, the artwork can only be
+          a wide band, and a one-sheet cropped to 16:10 is a strip of someone's
+          chin. Stacks below `md`, where two columns would leave the poster too
+          narrow to read.
+
+          The button is its own cell under the poster rather than a child of
+          the poster's, so that when the grid collapses to one column the three
+          cells fall in reading order — artwork, what it is, then how to buy it
+          — instead of offering a ticket before naming the film. The copy spans
+          both rows, so a long curator's note grows downward past the button
+          instead of pushing it away from the poster.
+
+          The row sizes flip at `lg`. Below that the poster row is `auto` and
+          the copy row takes the slack, which is what keeps a long note from
+          inflating row 1 and leaving the button floating under the poster. At
+          `lg` the band has a fixed height instead, so the poster row is the
+          flexible one (`1fr`) and the button keeps only what it needs. */}
+      <div
+        className={cn(
+          'grid gap-6',
+          hasPoster &&
+            'md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-4 md:items-start',
+          hasPoster &&
+            `lg:grid-cols-[minmax(0,16rem)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto] lg:items-stretch ${BAND}`,
+          !hasPoster && BAND,
+        )}
+      >
+        {item.posterUrl && (
+          <button
+            type="button"
+            onClick={() => onSelect?.(item)}
+            aria-label={`Details for ${item.title}`}
+            className="group block w-full max-w-[300px] md:max-w-none mx-auto md:mx-0 md:col-start-1 md:row-start-1 lg:h-full lg:min-h-0"
+          >
+            {/* `contain` on a muted plinth, not `cover`: the artwork is not
+                reliably a one-sheet. Square and landscape promo graphics are
+                common here, and cropping those to 2:3 cuts the title clean
+                off. Inside the fixed band the frame stops being 2:3 and
+                becomes whatever height is left — `contain` means the artwork
+                still shows whole, just letterboxed on the plinth. */}
+            <div className="relative overflow-hidden rounded-sm bg-muted lg:h-full">
+              <img
+                src={item.posterUrl}
+                alt={item.title}
+                loading="lazy"
+                decoding="async"
+                className="w-full aspect-[2/3] object-contain transition-transform duration-700 group-hover:scale-[1.02] lg:aspect-auto lg:h-full"
+              />
+            </div>
+          </button>
+        )}
+
+        <div
+          className={cn(
+            'min-w-0 flex flex-col',
+            hasPoster && 'md:col-start-2 md:row-start-1 md:row-span-2',
+            'lg:min-h-0 lg:pr-6',
+          )}
+        >
+          {/* h2: with the section's old "What we're watching this week"
+              heading gone, this is the section's heading, and the marquee
+              still owns the page's only h1. */}
+          <h2 className="font-display text-3xl md:text-4xl leading-tight mb-2">
+            <button
+              type="button"
+              onClick={() => onSelect?.(item)}
+              className="text-left hover:text-primary transition-colors"
+            >
+              {item.title}
+            </button>
+          </h2>
+          <p className="font-serif text-sm text-muted-foreground mb-3">
+            {formatShowtime(item.startTime, "EEEE, MMMM d 'at' h:mm a")}
+          </p>
+          {note && (
+            // Scrolls rather than clamps, so a long note grows a scrollbar
+            // instead of the band. tabIndex makes the region reachable by
+            // keyboard — Chrome does not focus a scroll container on its own.
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label={`About ${item.title}`}
+              className="themed-scroll min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <p className="font-serif italic text-foreground/80 leading-relaxed">
+                {note}
+              </p>
+            </div>
+          )}
+          {/* With no artwork there is no left column to sit under, so the
+              button stays with the copy rather than claiming a cell of its
+              own in a single-column grid. */}
+          {!hasPoster && cta && <div className="mt-5 shrink-0">{cta}</div>}
+        </div>
+
+        {hasPoster && cta && (
+          <div className="md:col-start-1 md:row-start-2 lg:self-end">{cta}</div>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function BoothNote({
   items,
   onSelect,
@@ -27,123 +177,77 @@ export function BoothNote({
   items: FeedItem[];
   onSelect?: (item: FeedItem) => void;
 }) {
-  // Curator-controlled pick: prefer the earliest item flagged is_featured,
-  // falling back to the first chronological item so the section never renders
-  // empty. Unlike the old placement, nothing is removed from the calendar to
-  // build this — the listing on /calendar shows every showing including this
-  // one, so a featured film is no longer missing from the page that exists to
-  // list them all.
-  const featured = items.find((i) => i.isFeatured) ?? items[0];
+  // Curator-controlled picks, in feed order (earliest first). Falls back to
+  // the first chronological item so the section never renders empty. Unlike
+  // the old placement, nothing is removed from the calendar to build this —
+  // the listing on /calendar shows every showing including these, so a
+  // featured film is no longer missing from the page that exists to list
+  // them all.
+  const flagged = items.filter((i) => i.isFeatured);
+  const picks = flagged.length > 0 ? flagged : items.slice(0, 1);
 
-  if (!featured) return null;
+  if (picks.length === 0) return null;
 
-  const note = featured.curatorNote ? htmlToPlainText(featured.curatorNote) : null;
-  const hasPoster = Boolean(featured.posterUrl);
-
-  // useFeed filters past showings out at query time, so this only bites in a
-  // tab left open across a start time — which is the one case where the page
-  // would otherwise sell a finished screening. The rule is
-  // src/lib/purchasable.ts.
-  const cta =
-    featured.showingId && !isPast({ start_time: featured.startTime }) ? (
-      <Button asChild className={cn('h-11', GREEN_CTA)}>
-        <Link to={`/showing/${featured.showingId}`}>
-          Get Tickets <ArrowRight className="h-4 w-4 ml-1" />
-        </Link>
-      </Button>
-    ) : null;
+  const single = picks.length === 1;
 
   return (
-    <section className="border-b border-accent/20 bg-background">
-      <div className="container py-10 md:py-14">
-        <div className="max-w-4xl mx-auto">
-          <p className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-5">
-            {featured.isFeatured ? "Curator's pick" : 'Featured'} · {dayLabel(featured.startTime)}
-          </p>
+    <section className="relative border-b border-accent/20 bg-background">
+      {/* Full-bleed now, so the band needs its own edges.
 
-          {/* Poster beside the copy, not above it — the same split
-              ShowingPreview settled on, and for the same reason: stacked, the
-              artwork can only be a wide band, and a one-sheet cropped to 16:10
-              is a strip of someone's chin. Stacks below `md`, where two
-              columns would leave the poster too narrow to read.
+          It darkens towards black rather than towards `--background`. Fading
+          the edges to the background colour is the obvious way to write this
+          and it paints nothing whatsoever — the band already *is* that colour.
+          `--background` is 6% lightness, so black is the only direction with
+          any room left in it.
 
-              The button is its own cell under the poster rather than a child of
-              the poster's, so that when the grid collapses to one column the
-              three cells fall in reading order — artwork, what it is, then how
-              to buy it — instead of offering a ticket before naming the film.
-              The copy spans both rows, so a long curator's note grows downward
-              past the button instead of pushing it away from the poster — but
-              only with the rows pinned to `[auto_1fr]`. Left to auto/auto a
-              grid shares a spanning item's extra height between both rows, so
-              a long note inflated row 1 past the poster and left the button
-              floating 96px under it. */}
-          <div
-            className={cn(
-              'grid gap-6',
-              hasPoster &&
-                'md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-4 md:items-start',
-            )}
+          Darkening cannot cost text contrast here: every glyph in the band is
+          light on dark, so a darker ground raises the ratio rather than
+          lowering it. It also sits behind the content (the inner wrapper is
+          `relative`), which keeps the poster and the green CTA at full
+          strength while the empty margins carry the falloff. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(120% 100% at 50% 50%, hsl(0 0% 0% / 0) 45%, hsl(0 0% 0% / 0.55) 100%)',
+        }}
+      />
+
+      <div className="container relative py-10 md:py-14">
+        {single ? (
+          <Pick item={picks[0]} onSelect={onSelect} />
+        ) : (
+          // No autoplay, so there is no motion the reader did not ask for and
+          // nothing to gate on prefers-reduced-motion. The arrows clamp at the
+          // ends rather than looping — a disabled Next is how the reader
+          // learns there are three picks and they have seen all three.
+          <Carousel
+            opts={{ align: 'start', loop: false }}
+            aria-label="Curator's picks"
+            className="relative"
           >
-            {featured.posterUrl && (
-              <button
-                type="button"
-                onClick={() => onSelect?.(featured)}
-                aria-label={`Details for ${featured.title}`}
-                className="group block w-full max-w-[300px] md:max-w-none mx-auto md:mx-0 md:col-start-1 md:row-start-1"
-              >
-                {/* `contain` on a muted plinth, not `cover`: the artwork is not
-                    reliably a one-sheet. Square and landscape promo graphics
-                    are common here, and cropping those to 2:3 cuts the title
-                    clean off. */}
-                <div className="relative overflow-hidden rounded-sm bg-muted">
-                  <img
-                    src={featured.posterUrl}
-                    alt={featured.title}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full aspect-[2/3] object-contain transition-transform duration-700 group-hover:scale-[1.02]"
-                  />
-                </div>
-              </button>
-            )}
+            <CarouselContent>
+              {picks.map((item) => (
+                <CarouselItem key={item.id}>
+                  <Pick item={item} onSelect={onSelect} />
+                </CarouselItem>
+              ))}
+            </CarouselContent>
 
-            <div
-              className={cn(
-                'min-w-0',
-                hasPoster && 'md:col-start-2 md:row-start-1 md:row-span-2',
-              )}
-            >
-              {/* h2: with the section's old "What we're watching this week"
-                  heading gone, this is the section's heading, and the marquee
-                  still owns the page's only h1. */}
-              <h2 className="font-display text-3xl md:text-4xl leading-tight mb-2">
-                <button
-                  type="button"
-                  onClick={() => onSelect?.(featured)}
-                  className="text-left hover:text-primary transition-colors"
-                >
-                  {featured.title}
-                </button>
-              </h2>
-              <p className="font-serif text-sm text-muted-foreground mb-3">
-                {formatShowtime(featured.startTime, "EEEE, MMMM d 'at' h:mm a")}
+            {/* The primitive parks its arrows at -left-12/-right-12, which in a
+                full-bleed band puts them off the side of the page. They go
+                under the band instead, beside a count that says how far along
+                the reader is. */}
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <p className="font-serif text-sm text-muted-foreground">
+                {picks.length} picks
               </p>
-              {note && (
-                <p className="font-serif italic text-foreground/80 leading-relaxed">
-                  {note}
-                </p>
-              )}
-              {/* With no artwork there is no left column to sit under, so the
-                  button stays with the copy rather than claiming a cell of its
-                  own in a single-column grid. */}
-              {!hasPoster && cta && <div className="mt-5">{cta}</div>}
+              <CarouselPrevious className="static translate-y-0 h-9 w-9" />
+              <CarouselNext className="static translate-y-0 h-9 w-9" />
             </div>
-
-            {hasPoster && cta && (
-              <div className="md:col-start-1 md:row-start-2">{cta}</div>
-            )}
-          </div>
-        </div>
+          </Carousel>
+        )}
       </div>
     </section>
   );

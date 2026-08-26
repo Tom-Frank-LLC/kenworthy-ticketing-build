@@ -3,6 +3,7 @@ import { List as ListIcon, Calendar as CalendarIcon, Film, Sparkles, Music, Chev
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MonthCalendar } from './MonthCalendar';
+import { SearchBar } from '@/components/SearchBar';
 import { ShowingPreview } from './ShowingPreview';
 import { useIsSplitLayout } from '@/hooks/use-mobile';
 import { formatShowtime } from '@/lib/datetime';
@@ -14,9 +15,17 @@ const TYPE_LABEL = { movie: 'Film', event: 'Event', concert: 'Live' } as const;
 export function UpcomingList({
   items,
   onSelect,
+  query,
+  onQueryChange,
+  matchCount,
 }: {
   items: FeedItem[];
   onSelect?: (item: FeedItem) => void;
+  /** Live search text. Owned by Index so the same query can filter other rails. */
+  query: string;
+  onQueryChange: (v: string) => void;
+  /** Matches across the whole feed, not just the dated slice rendered below. */
+  matchCount: number;
 }) {
   // Only dated upcoming items in the list; cap to keep it scannable.
   const dated = useMemo(
@@ -46,7 +55,6 @@ export function UpcomingList({
     onSelect?.(item);
   };
 
-  if (dated.length === 0) return null;
 
   return (
     <section className="border-t border-b border-accent/20 bg-background">
@@ -61,23 +69,40 @@ export function UpcomingList({
             </h2>
             {/* The helper line follows the view. In calendar view the old
                 "on the left" wording pointed at a preview pane that is not
-                rendered, and MonthCalendar stacked a second hint under it. */}
-            <p className="font-serif text-sm text-muted-foreground mt-1">
-              {view === 'calendar' ? (
-                "Click on a day to see what's playing"
-              ) : (
-                <>
-                  <span className="lg:hidden">Tap a showing for details and tickets.</span>
-                  <span className="hidden lg:inline">Click a listing on the left for a preview.</span>
-                </>
-              )}
-            </p>
+                rendered, and MonthCalendar stacked a second hint under it.
+                With nothing listed it points at rows that aren't there. */}
+            {dated.length > 0 && (
+              <p className="font-serif text-sm text-muted-foreground mt-1">
+                {view === 'calendar' ? (
+                  "Click on a day to see what's playing"
+                ) : (
+                  <>
+                    <span className="lg:hidden">Tap a showing for details and tickets.</span>
+                    <span className="hidden lg:inline">Click a listing on the left for a preview.</span>
+                  </>
+                )}
+              </p>
+            )}
           </div>
-          <div
-            role="tablist"
-            aria-label="Choose view"
-            className="inline-flex items-center rounded-md border border-accent/30 bg-card p-1"
-          >
+
+          {/* Search sits on this row rather than in a band of its own above the
+              section, so the box and the list it filters read as one control.
+              That is also why this section no longer unmounts when the filter
+              matches nothing — see the empty state below. */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="w-full sm:w-64 lg:w-72">
+              <SearchBar value={query} onChange={onQueryChange} />
+            </div>
+            {query && (
+              <p className="font-serif text-sm text-muted-foreground whitespace-nowrap">
+                {matchCount} match{matchCount === 1 ? '' : 'es'}
+              </p>
+            )}
+            <div
+              role="tablist"
+              aria-label="Choose view"
+              className="inline-flex items-center rounded-md border border-accent/30 bg-card p-1"
+            >
             <Button
               type="button"
               role="tab"
@@ -102,10 +127,39 @@ export function UpcomingList({
               <CalendarIcon className="h-4 w-4" />
               Calendar
             </Button>
+            </div>
           </div>
         </div>
 
-        {view === 'calendar' ? (
+        {/* The section used to return null when nothing was listed, which was
+            fine while search lived in its own band above. Now that the box is
+            on the header row, unmounting would take the reader's query away
+            with it and leave no way to see or clear it. */}
+        {dated.length === 0 ? (
+          <div className="rounded-md border border-accent/20 bg-card px-5 py-10 text-center">
+            {query ? (
+              <>
+                <p className="font-serif text-muted-foreground">
+                  No showings match &ldquo;{query}&rdquo;.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => onQueryChange('')}
+                >
+                  Clear search
+                </Button>
+              </>
+            ) : (
+              <p className="font-serif text-muted-foreground">
+                The marquee is dark for the moment. Check back soon for what&rsquo;s
+                coming next on Main Street.
+              </p>
+            )}
+          </div>
+        ) : view === 'calendar' ? (
           <MonthCalendar items={items} onSelect={handleCalendarPick} showHint={false} />
         ) : (
         // The preview is itself two columns now (portrait poster + info), so it
