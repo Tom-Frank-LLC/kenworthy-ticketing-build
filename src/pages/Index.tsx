@@ -9,7 +9,6 @@ import { InstagramFeed } from '@/components/home/InstagramFeed';
 import { RenovationCard } from '@/components/home/RenovationCard';
 import { HomeMarquee } from '@/components/home/HomeMarquee';
 import { SEO } from '@/components/SEO';
-import { SearchBar } from '@/components/SearchBar';
 import { filterFeed } from '@/hooks/useFeed';
 import { attachUpcomingShowings } from '@/lib/feed';
 
@@ -175,29 +174,21 @@ export default function Index() {
             />
             <HomeMarquee />
             
-            {/* Guest search — filter the calendar and trailer rails by keyword */}
-            {!loading && feed.length > 0 && (
-                                             <section className="border-b border-accent/20 bg-background">
-                                             <div className="container py-5 flex flex-wrap items-center gap-4">
-                                             <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold">
-                                             Find a showing
-                                             </p>
-                                             <SearchBar value={query} onChange={setQuery} />
-                                             {query && (
-                                                        <p className="font-serif text-sm text-muted-foreground">
-                                                        {filteredFeed.length} match{filteredFeed.length === 1 ? '' : 'es'}
-                                                        </p>
-                                                        )}
-                                             </div>
-                                             </section>
-                                             )}
-            
             {/* Clean upcoming list with a live preview pane. The full month
               calendar is tucked behind a "Calendar" button so the default view
               stays scannable. */}
-            {!loading && filteredFeed.length > 0 && (
-                                                     <UpcomingList items={filteredFeed} onSelect={handleSelect} />
-                                                     )}
+            {/* Gated on the unfiltered feed, not the filtered one: this
+                section owns the search box now, so a zero-match query must
+                still render it. UpcomingList shows its own empty state. */}
+            {!loading && feed.length > 0 && (
+                                             <UpcomingList
+                                             items={filteredFeed}
+                                             onSelect={handleSelect}
+                                             query={query}
+                                             onQueryChange={setQuery}
+                                             matchCount={filteredFeed.length}
+                                             />
+                                             )}
 
             {/* The booth's note and the curator's pick, directly under the
                 listing they comment on. This block used to render on

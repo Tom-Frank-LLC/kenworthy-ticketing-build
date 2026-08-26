@@ -209,6 +209,29 @@
       scroll-snap-type: none;
     }
   }
+
+  /* Scroll containers inside cards — the synopsis in the Upcoming preview,
+     the curator's note in a pick. A default scrollbar reads as a raw OS
+     chrome bar dropped into the card; this one is thin and accent-tinted so
+     it reads as part of the panel. Firefox takes the two-value shorthand,
+     WebKit needs the pseudo-elements, and both are given the same colours. */
+  .themed-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--accent) / 0.45) transparent;
+  }
+  .themed-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+  .themed-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .themed-scroll::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--accent) / 0.45);
+    border-radius: 3px;
+  }
+  .themed-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--accent) / 0.7);
+  }
 }
 
 /* ---------------------------------------------------------------- Rich text

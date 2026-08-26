@@ -22,11 +22,24 @@ export function HomeMarquee() {
   return (
     <section
       aria-label="The Kenworthy — now playing"
-      className="relative overflow-hidden border-b border-accent/25 bg-background min-h-[68vh] lg:min-h-[78vh] flex"
+      className="relative overflow-hidden border-b border-accent/25 bg-background min-h-[61vh] lg:min-h-[70vh] flex"
     >
       {/* Hero photograph — the 2025 marquee relighting on Main Street.
           object-position is tuned so the marquee sign sits roughly centered
-          vertically (cropping the silhouetted tree canopy off the top). */}
+          vertically (cropping the silhouetted tree canopy off the top).
+
+          It has to move whenever the band's height does, and in the opposite
+          direction to intuition. `object-cover` scales this image to the
+          band's *width*, so the band's height only decides how much of the
+          rendered image is cut — and the percentage decides which end loses
+          it. Anchored near the bottom (the old 92%), shortening the band ate
+          into the top and clipped the sign's own frame. 80% takes the trim off
+          the bottom instead, which is what shortening the hero was for, and
+          keeps the top framing the 78vh band had.
+
+          Below `md` none of this applies: the band is taller than it is wide,
+          so the image scales to the height and there is no vertical overflow
+          left for the percentage to distribute. */}
       <div className="absolute inset-0">
         <picture>
           <source type="image/webp" srcSet={heroWebpSrcSet} sizes="100vw" />
@@ -36,7 +49,7 @@ export function HomeMarquee() {
             sizes="100vw"
             alt="The Kenworthy marquee glowing on Main Street during the 2025 relighting ceremony"
             className="h-full w-full object-cover"
-            style={{ objectPosition: 'center 92%' }}
+            style={{ objectPosition: 'center 80%' }}
             loading="eager"
             fetchPriority="high"
             decoding="async"
@@ -75,7 +88,7 @@ export function HomeMarquee() {
             `mt-auto` on the tagline can push it and the address down. From `md`
             the wrappers come back (`md:flex`, `md:block`) and the original row
             is restored — one copy of each line, not a hidden duplicate. */}
-        <div className="contents md:mt-auto md:flex md:pt-48 lg:pt-56 md:flex-row md:gap-5 md:items-end md:justify-between">
+        <div className="contents md:mt-auto md:flex md:pt-44 lg:pt-52 md:flex-row md:gap-5 md:items-end md:justify-between">
           <div className="contents md:block md:max-w-xl lg:max-w-2xl md:min-w-0">
             <h1 className="font-display uppercase text-[1.75rem] sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground break-words hyphens-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
               A Century of Stories,

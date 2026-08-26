@@ -112,11 +112,25 @@ export function ShowingPreview({
               {item.title}
             </h3>
             {/* A full-height poster next door buys roughly twice the room the
-                stacked layout had, so the note gets to finish more often. */}
+                stacked layout had. Past that the note scrolls rather than
+                clamping at ten lines: a clamp ends a synopsis mid-sentence
+                with no way to read the rest, and the pane is the only place
+                this copy appears on the page.
+
+                tabIndex makes the region reachable by keyboard — Chrome does
+                not focus a scroll container on its own, so without it the
+                hidden text is mouse-only. */}
             {item.curatorNote && (
-              <p className="font-serif text-sm md:text-base text-muted-foreground line-clamp-[10] mb-5">
-                {htmlToPlainText(item.curatorNote)}
-              </p>
+              <div
+                tabIndex={0}
+                role="region"
+                aria-label={`About ${item.title}`}
+                className="themed-scroll max-h-[15rem] overflow-y-auto pr-3 mb-5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <p className="font-serif text-sm md:text-base text-muted-foreground">
+                  {htmlToPlainText(item.curatorNote)}
+                </p>
+              </div>
             )}
             <div className="flex flex-wrap gap-2">
               {/* Straight to the ticket page. Previously the only route out of
