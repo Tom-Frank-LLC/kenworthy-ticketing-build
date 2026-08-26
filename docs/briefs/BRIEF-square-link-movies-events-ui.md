@@ -5,7 +5,7 @@ status: shipped
 track: bug
 date: 2026-08-25
 shipped_in: ["#185"]
-shipped_at: 2026-08-25
+shipped_at: 2026-08-26
 verified: true
 evidence: >-
   Merged to main as #185 (15dc251) and deployed from main to both workers,
@@ -16,7 +16,9 @@ evidence: >-
 
 # Brief (for Claude Code): Restore the ability to link movies & events to Square from admin
 
-**Status:** 🔴 Confirmed bug, go-live relevant. The admin UI currently offers **no way to link a movie or event to a Square catalog item** — only "Dismiss." The linking UI already exists in the codebase; one guard suppresses it on the surfaces where it's needed.
+**Status:** ✅ Shipped in #185, deployed to production and staging on 26 Aug 2026 and confirmed in the running admin UI. The frontmatter above is authoritative; everything below this line is the brief **as originally written**, kept for the record — read it in the past tense, and see the Outcome and Correction sections at the end for what was actually true.
+
+*Originally filed as:* 🔴 Confirmed bug, go-live relevant. The admin UI offered **no way to link a movie or event to a Square catalog item** — only "Dismiss." The linking UI already existed in the codebase; one guard suppressed it on the surfaces where it was needed.
 **Date:** August 25, 2026
 **Requested by:** Tom — created a new movie + showing, got no "needs linking" warning, then found the "Square catalog — movies" panel only lets him **Dismiss** the 5 unlinked titles, never link them.
 
