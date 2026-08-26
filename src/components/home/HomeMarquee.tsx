@@ -58,34 +58,36 @@ export function HomeMarquee() {
       {/* gold hairline at the very top, like a marquee filament */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
 
-      <div className="container relative w-full flex flex-col justify-between py-8 sm:py-10 md:py-12">
-        {/* Bottom — headline tucked into the dark crowd silhouettes, with
-            the address balancing on the right. The marquee itself stays
-            unobstructed in the middle band. */}
-        {/* From `md` up the headline is tucked into the dark crowd
-            silhouettes at the foot, with the address balancing on the right,
-            and the marquee stays unobstructed in the middle band.
+      <div className="container relative w-full flex flex-col py-8 sm:py-10 md:py-12">
+        {/* From `md` up this is one row tucked into the dark crowd silhouettes
+            at the foot: headline and tagline on the left, address balancing on
+            the right, and the marquee left unobstructed in the middle band.
 
-            On a phone it sits at the top instead, in the slot the "Now Playing
-            on Main Street" eyebrow used to hold. There is no room below on a
-            narrow screen — the headline, the line under it and the address
-            stack to most of the viewport — and the scrim is darkest at the top
-            of the image, above the sign, so the type is legible there without
-            covering the marquee. Hence `md:mt-auto`: nothing pushes it down
-            until there is height to spend. */}
-        <div className="md:mt-auto md:pt-48 lg:pt-56 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div className="max-w-xl lg:max-w-2xl min-w-0">
+            A phone splits it. The headline keeps the top slot the "Now Playing
+            on Main Street" eyebrow used to hold — the scrim is darkest there,
+            above the sign, so it reads without covering anything. The tagline
+            and the address do not: at the top they landed straight across the
+            lit marquee and the address was unreadable against it. They drop to
+            the foot instead, over the crowd silhouettes.
+
+            Both wrappers below are `contents` on a phone, which dissolves their
+            boxes so the three lines become direct children of this column and
+            `mt-auto` on the tagline can push it and the address down. From `md`
+            the wrappers come back (`md:flex`, `md:block`) and the original row
+            is restored — one copy of each line, not a hidden duplicate. */}
+        <div className="contents md:mt-auto md:flex md:pt-48 lg:pt-56 md:flex-row md:gap-5 md:items-end md:justify-between">
+          <div className="contents md:block md:max-w-xl lg:max-w-2xl md:min-w-0">
             <h1 className="font-display uppercase text-[1.75rem] sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground break-words hyphens-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
               A Century of Stories,
               <span className="block text-primary">Shared One Showing at a Time.</span>
             </h1>
-            <p className="mt-3 font-serif italic text-foreground/90 text-sm sm:text-base max-w-lg drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+            <p className="mt-auto pt-8 md:mt-3 md:pt-0 font-serif italic text-foreground/90 text-sm sm:text-base max-w-lg drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
               Art-house classics to studio blockbusters, live performances and
               community gatherings all inside Moscow's historic 1926 theatre.
             </p>
           </div>
 
-          <p className="font-serif text-sm text-foreground/90 flex items-center gap-2 min-w-0 md:justify-end drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+          <p className="mt-4 md:mt-0 font-serif text-sm text-foreground/90 flex items-center gap-2 min-w-0 md:justify-end drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
             <MapPin className="h-4 w-4 text-accent shrink-0" />
             <span className="break-words">508 S Main St · Moscow, ID</span>
           </p>

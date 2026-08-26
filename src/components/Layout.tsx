@@ -26,6 +26,7 @@ const infoLinks: Array<[string, string]> = [
   ['History', '/history'],
   ['About Us', '/about'],
   ['Silent Film Festival', '/silent-film-festival'],
+  ['Concessions', '/concessions'],
   ['Press', '/press'],
   ['Hiring', '/hiring'],
   ['Accessibility', '/accessibility'],

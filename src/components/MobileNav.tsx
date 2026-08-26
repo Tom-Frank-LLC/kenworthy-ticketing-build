@@ -50,6 +50,7 @@ const infoLinks: NavItem[] = [
   { label: 'History', to: '/history' },
   { label: 'About Us', to: '/about' },
   { label: 'Silent Film Festival', to: '/silent-film-festival' },
+  { label: 'Concessions', to: '/concessions' },
   { label: 'Press', to: '/press' },
   { label: 'Hiring', to: '/hiring' },
   { label: 'Accessibility', to: '/accessibility' },
