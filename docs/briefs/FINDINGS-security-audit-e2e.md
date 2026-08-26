@@ -198,6 +198,25 @@ production project.
 Not fixed here — merging and redeploying other sessions' branches is not this
 audit's call to make. See *Left for you*.
 
+> **Closed 2026-08-26.** Re-measured against production: **zero** deployed
+> functions are absent from the repo. All eleven arrived on `main` as their
+> branches merged over the following week, and `ticket-checkout`,
+> `film-pass-checkout` and `square-donation` now deploy from `main` like
+> everything else.
+>
+> The gap that remains runs the other way — five functions in the repo are
+> deployed nowhere (`mailchimp-bootstrap`, `poster-identify`, `qbo-sync`,
+> `square-event-create-probe`, `square-order-probe`) — which is the harmless
+> direction: code that is not running cannot be exploited. Two of the five are
+> debug probes that arguably should never be deployed. Of the three probes the
+> original finding flagged, two are now gone from production; `square-event-probe`
+> is still deployed there.
+>
+> This mattered more than its severity suggested, because it **bounded the whole
+> report**: an audit of a repository is only an audit of production if the two
+> agree. They now agree. Every finding above can be read as a statement about
+> production, which on 2026-08-19 it could not.
+
 ### M3 · `mailchimp-webhook` trusted the request body to rewrite account identity — **fixed**
 
 Not deployed on either project, so never exploitable; fixed before it ships.
@@ -380,6 +399,20 @@ because several of these were the brief's explicit re-verifications.
    nothing about a distributed attempt — and Turnstile remains the stronger
    control. Cloudflare rules for the *page* layer are in the runbook's cutover
    section, correctly scoped this time.
+
+   Measured, on the real databases: 150 requests at `ticket-access` (limit 120)
+   allowed **exactly 120**; 20 at `square-donation` (limit 15) allowed
+   **exactly 15**, on production, without reaching Square. Under 20-way
+   concurrency in Postgres, 40 claims against a limit of 10 allowed **exactly
+   10** — the property a read-then-write would have lost, since PostgREST gives
+   every RPC its own transaction.
+
+   `mailchimp-subscribe` was the one I declined to fire myself: its limiter sits
+   after body validation, so exercising it writes to the shared production
+   Mailchimp audience — one key, one audience, no sandbox. **Tom confirmed it
+   live on 2026-08-26.** Recorded because the earlier note said unproven, and an
+   unverified claim left standing in a security report is worse than one that
+   was never made.
 2. **Any staff user can refund any order.** By design: that is a box office.
    Refunds are captured in `admin_audit_log` via the `tickets` trigger.
 3. **CORS is `*` on every function.** Acceptable because authorisation is by
@@ -412,8 +445,14 @@ because several of these were the brief's explicit re-verifications.
    rename `Content-Security-Policy-Report-Only` to `Content-Security-Policy` in
    `public/_headers`.
 
-4. **Reconcile production's deployed functions with `main`** (M2), and decide
-   whether the three `*-probe` functions should stay live on production.
+4. ~~**Reconcile production's deployed functions with `main`** (M2).~~ **Mostly
+   done, by ordinary merges rather than by anything this audit did.**
+   Re-measured 2026-08-26: zero deployed functions are absent from the repo.
+   Two of the three debug probes are gone from production —
+   **`square-event-probe` is still deployed there.** It is admin-gated like the
+   rest, so this is housekeeping rather than exposure, but a debug endpoint on
+   the production project is still worth a deliberate decision to keep or
+   remove.
 
 5. **Decide whether `/verify/:id` should work** (L1).
 
