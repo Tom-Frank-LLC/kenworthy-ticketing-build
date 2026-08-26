@@ -353,10 +353,19 @@
     --mq-band: 1.75rem;
     --mq-r: calc(var(--mq-band) * 0.2833);
     --mq-gap: calc(var(--mq-band) * 0.7833);
+    /* How far the content clears the ring, on top of the band the bulbs
+       occupy. The bulbs are the frame, not a border on the text. */
+    --mq-inset: 2.5rem;
+
+    /* A lit filament reads brighter than the gold it is made of, so the bulb
+       is the accent mixed toward white rather than the flat token. The plain
+       token stays as the first declaration: anything without `color-mix`
+       falls back to the old solid gold rather than to nothing. */
     --mq-bulb: hsl(var(--accent));
+    --mq-bulb: color-mix(in srgb, hsl(var(--accent)) 72%, white);
 
     position: relative;
-    padding: calc(var(--mq-band) + 1.25rem);
+    padding: calc(var(--mq-band) + var(--mq-inset));
   }
 
   .marquee-frame::before,
@@ -371,6 +380,18 @@
       var(--mq-bulb) calc(var(--mq-r) - 1px),
       transparent var(--mq-r)
     );
+    /* The halo. `drop-shadow` and not `box-shadow`: the bulbs are painted by a
+       gradient, so there is no box to shadow — drop-shadow follows the alpha
+       of what was actually drawn, which is the circles. It also renders
+       outside the strip's own box, which a background layer could not: a glow
+       drawn as a second gradient is clipped at the tile edge, and with
+       `background-repeat: space` the tile is only `--mq-gap` wide.
+
+       Two passes, tight over wide, because one even blur reads as fog. The
+       inner is the same 8px/0.8 the marquee-rule bulb already uses. */
+    filter:
+      drop-shadow(0 0 0.45rem hsl(var(--accent) / 0.8))
+      drop-shadow(0 0 1.1rem hsl(var(--accent) / 0.45));
   }
 
   /* Top and bottom: full width, corners included. */
@@ -402,7 +423,7 @@
   @media (max-width: 767px) {
     .marquee-frame {
       --mq-band: 1.15rem;
-      padding: calc(var(--mq-band) + 0.75rem);
+      --mq-inset: 1.35rem;
     }
   }
 }
