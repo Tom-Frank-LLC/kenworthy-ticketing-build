@@ -23,9 +23,9 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - **Concessions moves off the home page to /concessions, framed in the marquee bulbs**<br>`ux` — `#186` — [brief](briefs/BRIEF-concessions-marquee-border.md) · [notes](briefs/FINDINGS-marquee-bulb-border.md)
 - **Listings show the other showtimes inline and play trailers in a lightbox**<br>`ux` — `#187` — [brief](briefs/BRIEF-listings-showtimes-trailer.md)
+- **Movies and events can be linked to a Square catalog item again, not only dismissed**<br>`bug` — `#185` — [brief](briefs/BRIEF-square-link-movies-events-ui.md)
 - **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — `#143`, `#152`, `#153` — [brief](briefs/BRIEF-backstage-page.md)
 - **Show run times as hours + minutes, not raw minutes**<br>`ux` — `#181` — [brief](briefs/BRIEF-runtime-format.md)
-- **Movies and events can be linked to a Square catalog item again, not only dismissed**<br>`bug` — `#185` — [brief](briefs/BRIEF-square-link-movies-events-ui.md)
 - **Split the counter tools into a Staff section, with Print QRs in it**<br>`ux` — `#172` — [brief](briefs/BRIEF-staff-section-print-qr.md)
 - **Description fields get a formatting toolbar, and the render path is sanitised to match**<br>`feature` — `#170` — [brief](briefs/BRIEF-richtext-descriptions.md) · [notes](briefs/FINDINGS-richtext-description-surface.md)
 - **A searchable Transactions log of confirmed Square and site sales, with reconciliation**<br>`feature` — `#161` — [brief](briefs/BRIEF-transactions-tab.md) · [notes](briefs/FINDINGS-transactions-tab.md)
