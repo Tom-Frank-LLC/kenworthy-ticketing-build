@@ -1,11 +1,12 @@
 ---
 brief: home-layout-search-carousel-preview
 title: Tighten the hero, put search on the Upcoming row, and give the curator's pick a carousel
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-25
-verified: false
+shipped_in: ["#195"]
+shipped_at: 2026-08-26
+verified: true
 ---
 
 # Brief (for Claude Code): Home page — tighten hero, merge search, curator carousel, scrollable preview
