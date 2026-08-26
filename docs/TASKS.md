@@ -21,7 +21,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
-- **Concessions moves off the home page to /concessions, framed in the marquee bulbs**<br>`ux` — `#186` — [brief](briefs/BRIEF-concessions-marquee-border.md) · [notes](briefs/FINDINGS-marquee-bulb-border.md)
+- **Concessions moves off the home page to /concessions, framed in the marquee bulbs**<br>`ux` — `#186`, `#188`, `#189`, `#190` — [brief](briefs/BRIEF-concessions-marquee-border.md) · [notes](briefs/FINDINGS-marquee-bulb-border.md)
 - **Listings show the other showtimes inline and play trailers in a lightbox**<br>`ux` — `#187` — [brief](briefs/BRIEF-listings-showtimes-trailer.md)
 - **Movies and events can be linked to a Square catalog item again, not only dismissed**<br>`bug` — `#185` — [brief](briefs/BRIEF-square-link-movies-events-ui.md)
 - **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — `#143`, `#152`, `#153` — [brief](briefs/BRIEF-backstage-page.md)
