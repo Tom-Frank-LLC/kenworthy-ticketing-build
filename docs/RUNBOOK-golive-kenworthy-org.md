@@ -58,17 +58,25 @@ error 1014, and partial (CNAME-only) setup is a Business-plan feature.
 - **(a)** Add the site in the Cloudflare dashboard → *Add a site* →
   `kenworthy.org` → Free plan; or
 - **(b)** Create an API token scoped `Zone:Zone:Edit` + `Zone:DNS:Edit` and
-  hand it over — then the mirror and the record-by-record parity proof below
-  can be done programmatically rather than by hand. **(b) is safer**, because
-  the risk in this whole cutover is a mistyped DKIM string, not a mistyped IP.
+  hand it over — then `scripts/cf-zone-mirror.mjs` does the mirror and the
+  record-by-record parity proof programmatically. **Do both, in that order:**
+  (a) creates the zone, and a token cannot be scoped to a zone that does not
+  exist yet. (b) matters because the risk in this cutover is a mistyped DKIM
+  string, not a mistyped IP.
+
+  Adding the site changes nothing on its own. The zone sits in *Pending
+  Nameserver Update* — the registry still delegates to `ns.fsr.com`, so no
+  resolver ever queries it. It cannot compete with the live site.
 
 ---
 
 ## The zone as it stands today
 
-Thirteen records, measured 25 Aug 2026 (SOA serial `2026081102`). No AXFR is
-offered, so this was assembled by direct query — **treat it as complete only
-after Cloudflare's own scan is compared against it.**
+Seventeen records (counting each MX separately), measured 25 Aug 2026 (SOA
+serial `2026081102`). No AXFR is offered, so this was assembled by direct
+query — **treat it as complete only after Cloudflare's own scan is compared
+against it.** `node scripts/cf-zone-mirror.mjs dump` regenerates it live and
+needs no credentials.
 
 | Type | Name | Value | TTL |
 |---|---|---|---|
@@ -131,22 +139,23 @@ mail, quietly, days later.
    Nothing should route through Cloudflare yet.
 4. Drop the apex A record's TTL to **300**. It is 86400 today; at that value a
    rollback would take a day to propagate.
-5. **Prove parity before touching the registrar.** Query Cloudflare's assigned
-   nameservers directly and diff against the live answers:
+5. **Prove parity before touching the registrar.** `scripts/cf-zone-mirror.mjs`
+   reads the live zone from `ns.fsr.com` every run — it never trusts a frozen
+   list — and compares it to Cloudflare:
 
    ```bash
-   CF_NS=<assigned>.ns.cloudflare.com
-   for r in A MX TXT; do
-     diff <(dig @ns.fsr.com kenworthy.org $r +short | sort) \
-          <(dig @$CF_NS      kenworthy.org $r +short | sort) && echo "$r OK"
-   done
-   for n in www send _dmarc google._domainkey resend._domainkey k2._domainkey k3._domainkey; do
-     diff <(dig @ns.fsr.com $n.kenworthy.org ANY +short | sort) \
-          <(dig @$CF_NS      $n.kenworthy.org ANY +short | sort) && echo "$n OK"
-   done
+   node scripts/cf-zone-mirror.mjs plan     # read-only: what is missing
+   node scripts/cf-zone-mirror.mjs apply    # create the missing rows, re-read, re-check
+   node scripts/cf-zone-mirror.mjs verify   # exits non-zero until parity holds
    ```
 
-   Do not proceed until every line reads OK.
+   It joins split TXT strings correctly, drops the phantom records `dig`
+   invents at a CNAME'd name, and flags anything still proxied. Needs a token
+   with `Zone:DNS:Edit` + `Zone:Zone:Read` on this zone — `CF_API_TOKEN`, or a
+   file at `~/.cf-kenworthy-token`.
+
+   `verify` printing *"Safe to change nameservers at eNom"* is the gate for
+   step 6. Do not proceed without it.
 
 ## Phase 1 — move the nameservers (still no user-visible change)
 
