@@ -1,11 +1,12 @@
 ---
 brief: concessions-marquee-border
 title: Concessions moves off the home page to /concessions, framed in the marquee bulbs
-status: built
+status: shipped
 track: ux
 date: 2026-08-18
-shipped_at: 2026-08-25
-verified: false
+shipped_in: ["#186"]
+shipped_at: 2026-08-26
+verified: true
 findings: FINDINGS-marquee-bulb-border.md
 ---
 
