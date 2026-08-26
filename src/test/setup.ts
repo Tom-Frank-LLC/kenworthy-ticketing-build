@@ -39,3 +39,58 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+/**
+ * jsdom implements neither `IntersectionObserver` nor `ResizeObserver`, and
+ * embla constructs both during init — one to track slides in view, one to
+ * remeasure on resize. So *rendering* a carousel throws before a test can
+ * assert anything about it. Same category as the two above: real browser APIs
+ * the environment is missing, restored rather than mocked away.
+ *
+ * Both stubs report nothing, which is correct here — these tests assert on
+ * markup, and jsdom has no layout for a real observer to measure. A test that
+ * wants to assert embla actually *moved* needs a browser, not a better stub:
+ * the transform is driven by requestAnimationFrame against measured widths,
+ * and jsdom reports every element as 0x0.
+ */
+if (typeof window.IntersectionObserver === "undefined") {
+  class StubIntersectionObserver implements IntersectionObserver {
+    readonly root = null;
+    readonly rootMargin = "";
+    readonly thresholds: ReadonlyArray<number> = [];
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  }
+  Object.defineProperty(window, "IntersectionObserver", {
+    writable: true,
+    configurable: true,
+    value: StubIntersectionObserver,
+  });
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    writable: true,
+    configurable: true,
+    value: StubIntersectionObserver,
+  });
+}
+
+if (typeof window.ResizeObserver === "undefined") {
+  class StubResizeObserver implements ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(window, "ResizeObserver", {
+    writable: true,
+    configurable: true,
+    value: StubResizeObserver,
+  });
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    writable: true,
+    configurable: true,
+    value: StubResizeObserver,
+  });
+}

@@ -170,6 +170,17 @@ function Pick({
   );
 }
 
+/** First sighting of each production wins; the feed is already date-sorted. */
+function dedupeByProduction(items: FeedItem[]): FeedItem[] {
+  const seen = new Set<string>();
+  return items.filter((i) => {
+    const key = `${i.type}:${i.productionId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function BoothNote({
   items,
   onSelect,
@@ -183,7 +194,14 @@ export function BoothNote({
   // the listing on /calendar shows every showing including these, so a
   // featured film is no longer missing from the page that exists to list
   // them all.
-  const flagged = items.filter((i) => i.isFeatured);
+  //
+  // One slide per *production*, not per showing. A FeedItem is a showing (see
+  // the type), so a featured film playing four times arrived here as four
+  // items differing only by date — and the carousel dutifully built four
+  // identical slides of the same poster and the same note. The feed is sorted
+  // ascending, so keeping the first sighting of each production keeps the
+  // soonest date, which is the one the Get Tickets button should point at.
+  const flagged = dedupeByProduction(items.filter((i) => i.isFeatured));
   const picks = flagged.length > 0 ? flagged : items.slice(0, 1);
 
   if (picks.length === 0) return null;
@@ -222,10 +240,15 @@ export function BoothNote({
           // nothing to gate on prefers-reduced-motion. The arrows clamp at the
           // ends rather than looping — a disabled Next is how the reader
           // learns there are three picks and they have seen all three.
+          // `lg:px-16` opens a lane down each side for the arrows. Without
+          // it they would sit on the poster, which starts at the container's
+          // own gutter — there is no spare margin in a full-bleed band to
+          // hang them in, which is also why the primitive's default
+          // `-left-12` is wrong here: it parks them off the page.
           <Carousel
             opts={{ align: 'start', loop: false }}
             aria-label="Curator's picks"
-            className="relative"
+            className="relative lg:px-16"
           >
             <CarouselContent>
               {picks.map((item) => (
@@ -235,16 +258,19 @@ export function BoothNote({
               ))}
             </CarouselContent>
 
-            {/* The primitive parks its arrows at -left-12/-right-12, which in a
-                full-bleed band puts them off the side of the page. They go
-                under the band instead, beside a count that says how far along
-                the reader is. */}
+            {/* Two placements, one pair of buttons. From `lg` they are tall
+                pills flanking the slide, where the band has a fixed height to
+                centre them against. Below that they stay in this row: the
+                slide is stacked and full-bleed there, so a centred side arrow
+                would land on the copy rather than beside it — and touch has
+                the swipe anyway. Going absolute at `lg` takes them out of
+                this flex row, leaving the count behind. */}
             <div className="mt-6 flex items-center justify-end gap-3">
               <p className="font-serif text-sm text-muted-foreground">
                 {picks.length} picks
               </p>
-              <CarouselPrevious className="static translate-y-0 h-9 w-9" />
-              <CarouselNext className="static translate-y-0 h-9 w-9" />
+              <CarouselPrevious className="static translate-y-0 h-11 w-11 lg:absolute lg:left-0 lg:top-1/2 lg:-translate-y-1/2 lg:h-16 lg:w-11" />
+              <CarouselNext className="static translate-y-0 h-11 w-11 lg:absolute lg:right-0 lg:top-1/2 lg:-translate-y-1/2 lg:h-16 lg:w-11" />
             </div>
           </Carousel>
         )}
