@@ -5,14 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**65 briefs** — 60 shipped, 2 built, 3 open, 0 needs triage, 0 closed.
+**65 briefs** — 61 shipped, 1 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
-- `P2` **Tighten the hero, put search on the Upcoming row, and give the curator's pick a carousel**<br>`ux` — [brief](briefs/BRIEF-home-layout-search-carousel-preview.md)
 
 ## Open
 
@@ -23,6 +22,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Shipped
 
 - **Concessions moves off the home page to /concessions, framed in the marquee bulbs**<br>`ux` — `#186`, `#188`, `#189`, `#190` — [brief](briefs/BRIEF-concessions-marquee-border.md) · [notes](briefs/FINDINGS-marquee-bulb-border.md)
+- **Tighten the hero, put search on the Upcoming row, and give the curator's pick a carousel**<br>`ux` — `#195` — [brief](briefs/BRIEF-home-layout-search-carousel-preview.md)
 - **Listings show the other showtimes inline and play trailers in a lightbox**<br>`ux` — `#187` — [brief](briefs/BRIEF-listings-showtimes-trailer.md)
 - **Movies and events can be linked to a Square catalog item again, not only dismissed**<br>`bug` — `#185` — [brief](briefs/BRIEF-square-link-movies-events-ui.md)
 - **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — `#143`, `#152`, `#153` — [brief](briefs/BRIEF-backstage-page.md)
