@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**62 briefs** — 58 shipped, 1 built, 3 open, 0 needs triage, 0 closed.
+**63 briefs** — 59 shipped, 1 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -22,6 +22,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Shipped
 
 - **Concessions moves off the home page to /concessions, framed in the marquee bulbs**<br>`ux` — `#186` — [brief](briefs/BRIEF-concessions-marquee-border.md) · [notes](briefs/FINDINGS-marquee-bulb-border.md)
+- **Listings show the other showtimes inline and play trailers in a lightbox**<br>`ux` — `#187` — [brief](briefs/BRIEF-listings-showtimes-trailer.md)
 - **A hidden Backstage page, reached only by clicking the neon sign**<br>`feature` — `#143`, `#152`, `#153` — [brief](briefs/BRIEF-backstage-page.md)
 - **Show run times as hours + minutes, not raw minutes**<br>`ux` — `#181` — [brief](briefs/BRIEF-runtime-format.md)
 - **Split the counter tools into a Staff section, with Print QRs in it**<br>`ux` — `#172` — [brief](briefs/BRIEF-staff-section-print-qr.md)

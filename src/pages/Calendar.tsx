@@ -127,9 +127,10 @@ export default function CalendarPage() {
               compact
             />
             {previewItem && (
-              // No onViewDetails: in this mode the preview *is* the detail
-              // view, and the drawer it would open is exactly what this
-              // column replaces.
+              // In this mode the preview *is* the detail view — it carries the
+              // showtimes and the trailer itself now, which is what the drawer
+              // this column replaces was for. The drawer below is still mounted
+              // for the month grid and for anything narrower than `lg`.
               <ShowingPreview
                 item={previewItem}
                 className="min-w-0 sticky top-4 self-start"

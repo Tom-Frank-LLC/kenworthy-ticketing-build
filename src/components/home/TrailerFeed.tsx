@@ -11,6 +11,13 @@ import { formatShowtime } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
 import { htmlToPlainText } from '@/lib/richText';
 
+/** One purchasable date on a production, as the listings render it. */
+export interface UpcomingShowing {
+  id: string;
+  start_time: string;
+  ticket_price: number;
+}
+
 export interface FeedItem {
   id: string;
   productionId: string;
@@ -25,6 +32,20 @@ export interface FeedItem {
   curatorNote?: string | null;
   isFeatured?: boolean;
   ticketPrice?: number;
+  /**
+   * The other dates this same production plays, soonest first — including this
+   * item's own showing.
+   *
+   * A FeedItem is one *showing*, so a film playing four times is four items
+   * that only differ by date. The listings need to say "and also Saturday at
+   * 2" without the reader opening anything, and the drawer used to be the only
+   * place that knew the set. Attached once by `attachUpcomingShowings` in
+   * `useFeed.ts`, which both feed builders call.
+   *
+   * Optional because a FeedItem constructed anywhere else is still a valid
+   * FeedItem; callers treat absent as empty.
+   */
+  upcomingShowings?: UpcomingShowing[];
 }
 
 const TYPE_ICON = {

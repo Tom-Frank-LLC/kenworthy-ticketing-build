@@ -166,11 +166,13 @@ export function UpcomingList({
           </ul>
 
           {/* Preview. The drawer replaces this pane below lg, where it was
-              stranded underneath the full list. */}
+              stranded underneath the full list — which is why `onSelect` is
+              still threaded through this component even though the preview no
+              longer takes it: the mobile row tap and the calendar pick are the
+              two remaining callers. */}
           {active && (
             <ShowingPreview
               item={active}
-              onViewDetails={onSelect}
               className="hidden min-w-0 lg:block lg:sticky lg:top-4 lg:self-start"
             />
           )}
