@@ -8,11 +8,10 @@ shipped_in: ["#185"]
 shipped_at: 2026-08-25
 verified: true
 evidence: >-
-  Deployed by hand to both workers and verified in the running admin UI, not
-  merely as strings in a bundle. Production fed026ea-3878-4a25-b6e7-a8b56210a53f,
-  staging d7397962-8563-4e13-a28a-88d3b37a45c5. NOT ON MAIN: PR #185 is still
-  open, and an earlier deploy of this work was already reverted once by another
-  session deploying main.
+  Merged to main as #185 (15dc251) and deployed from main to both workers,
+  verified in the running admin UI rather than as strings in a bundle.
+  Production cfee8ed6-6ac3-4919-aeca-15ad4567ba8d, staging
+  7df88d48-dc7c-46de-8fe5-00c5a632b2da.
 ---
 
 # Brief (for Claude Code): Restore the ability to link movies & events to Square from admin
@@ -265,3 +264,32 @@ Production, after redeploy — "Square catalog — live events":
 unlinked films rather than a bare Dismiss. No link was actually written: pointing
 a title at the wrong item would send every future showtime onto someone else's
 Square item, which is a decision for a person.
+
+
+---
+
+## Deploy note (2026-08-26): the origin lagged the deployment by ~10 minutes
+
+After merging and deploying from main, `wrangler deployments list` showed the new
+version at 100% and `wrangler deploy` reported "No updated asset files to upload"
+— Cloudflare already held all 179 files by content hash — while the origin went
+on serving the *previous* build's asset manifest. Roughly 12 of 25 sampled chunk
+paths from the new build returned the SPA fallback (`200` + `text/html`), and
+`cf-cache-status` was `HIT` on every response, including on those fallbacks.
+
+It resolved on its own after about ten minutes with no further action. Two things
+worth keeping:
+
+- **A cached negative is possible.** Probing an asset path *before* the
+  deployment that introduces it caches the SPA-fallback HTML at that path, so the
+  obvious "is my chunk there yet" check can be the thing that makes it look
+  missing afterwards. Poll `/` for the new entry hash instead.
+- **`Current Version ID` at 100% is not "serving".** It is the control plane
+  agreeing to the deployment. Confirm with a fetch of the entry hash, and expect
+  a lag; see [[spa-fallback-fakes-asset-200s]] in the session notes.
+
+The browser needed the one-time reset the runbook already describes — the
+service worker kept the old shell until its registration was dropped and the
+`workbox-precache-v2`, `kenworthy-shell`, `kenworthy-assets` and
+`kenworthy-images` caches were cleared. Anyone with the admin tab already open
+will need a hard reload before the panel changes for them.
