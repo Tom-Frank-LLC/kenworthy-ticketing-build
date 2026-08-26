@@ -1,12 +1,12 @@
 ---
 brief: listings-showtimes-trailer
 title: Listings show the other showtimes inline and play trailers in a lightbox
-status: built
+status: shipped
 track: ux
 date: 2026-08-18
-shipped_in: []
-shipped_at:
-verified: false
+shipped_in: ["#187"]
+shipped_at: 2026-08-26
+verified: true
 ---
 
 # Brief (for Claude Code): Inline showtimes + cinematic trailer on listings (retire the drawer path)
@@ -46,6 +46,15 @@ Consequence for the "lose nothing" check: on desktop the full synopsis is now
 reached through `/showing/:id` rather than the drawer (the preview shows the
 description clamped to ten lines). On mobile it is still in the drawer,
 unchanged.
+
+### Shipped once, reverted, shipped again
+
+Deployed to staging and production on 26 Aug from an unmerged branch, verified
+live on both — and then overwritten within hours by a parallel session's deploy
+from a tree without this commit. `wrangler deploy` uploads a local `dist/`
+straight to Cloudflare; git is not in that path, so an unmerged deploy survives
+only until the next one. It was merged as #187 *before* being redeployed, which
+is the only ordering that makes a frontend change stick.
 
 ### One real bug found while building
 
