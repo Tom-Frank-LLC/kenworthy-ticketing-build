@@ -143,9 +143,25 @@ export default function Concessions() {
             </p>
           ) : (
             <>
-              <div className="grid gap-x-12 gap-y-10 md:grid-cols-2">
+              {/* Columns, not a two-column grid. A grid couples the two cells
+                  of a row to the same height, so a short category sitting
+                  beside a tall one carried the taller one's trailing space —
+                  Beverages (2 items) opened a gap below itself because Beer &
+                  Wine (3) set the row height, while the left column's own
+                  categories sat tight. Columns let each side flow and the
+                  browser balance them, so both sides get the same rhythm.
+                  `break-inside-avoid` keeps a category from splitting across
+                  the fold.
+
+                  Two columns from `lg`, not `md`. Measured at 768: a column is
+                  241.5px and a row of "Popcorn (Medium)" + leader + price needs
+                  268.9px, so the name wrapped beside half a row of dots. The
+                  tablet band does not have the width for two menu columns —
+                  it never did, which is why names were wrapping there before
+                  this change too — so it gets one full-width column instead. */}
+              <div className="lg:columns-2 lg:gap-x-12">
                 {regularCategories.map((cat) => (
-                  <div key={cat}>
+                  <div key={cat} className="break-inside-avoid mb-10">
                     <h2 className="font-display text-xl tracking-wide text-primary border-b border-accent/30 pb-2 mb-4">
                       {cat}
                     </h2>
@@ -153,12 +169,20 @@ export default function Concessions() {
                       {grouped[cat].map((it) => (
                         <li
                           key={it.id}
-                          className="flex items-baseline gap-3 font-serif text-foreground"
+                          className="flex items-baseline gap-2 md:gap-3 font-serif text-foreground"
                         >
-                          <span className="flex-1">{it.name}</span>
+                          {/* The name takes the width it needs and the leader
+                              absorbs what is left. Both were `flex-1`, which
+                              split every row 50/50 and wrapped names that had
+                              room to spare — "Popcorn (Medium)" broke onto a
+                              second line beside half a row of empty dots. The
+                              name can still shrink and wrap when a row genuinely
+                              is too narrow; the leader keeps a floor so the dots
+                              never disappear entirely. */}
+                          <span className="min-w-0">{it.name}</span>
                           <span
                             aria-hidden
-                            className="flex-1 border-b border-dotted border-muted-foreground/40 translate-y-[-4px]"
+                            className="flex-1 min-w-4 md:min-w-6 border-b border-dotted border-muted-foreground/40 translate-y-[-4px]"
                           />
                           <span className="tabular-nums text-accent font-medium">
                             ${Number(it.price).toFixed(2)}

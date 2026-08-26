@@ -355,7 +355,7 @@
     --mq-gap: calc(var(--mq-band) * 0.7833);
     /* How far the content clears the ring, on top of the band the bulbs
        occupy. The bulbs are the frame, not a border on the text. */
-    --mq-inset: 2.5rem;
+    --mq-inset: 3.25rem;
 
     /* A lit filament reads brighter than the gold it is made of, so the bulb
        is the accent mixed toward white rather than the flat token. The plain
@@ -423,7 +423,12 @@
   @media (max-width: 767px) {
     .marquee-frame {
       --mq-band: 1.15rem;
-      --mq-inset: 1.35rem;
+      /* Deliberately far below the desktop inset. Measured at 375px: every
+         0.15rem added here wraps another menu row, because the padding comes
+         straight out of the line length — 1rem holds the wrap count at its
+         floor of 2 of 12 rows, 1.15rem takes it to 4, and 1.25rem to 6. The
+         ring can afford the room on a wide screen; a phone cannot. */
+      --mq-inset: 1rem;
     }
   }
 }
