@@ -2724,6 +2724,16 @@ export type Database = {
           signed_pdf_sha256: string
         }[]
       }
+      get_public_availability: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          day: string
+          end_time: string
+          is_public: boolean
+          start_time: string
+          title: string
+        }[]
+      }
       get_rental_request_by_token: {
         Args: { p_token: string }
         Returns: {

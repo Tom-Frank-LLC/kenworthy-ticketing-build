@@ -2,22 +2,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Calendar } from '@/components/ui/calendar';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { SEO } from '@/components/SEO';
-import { toVenueWallClock } from '@/lib/datetime';
+import { venueDayKey, formatShowtime } from '@/lib/datetime';
 import { Building2, Mail, Sparkles, Tag, CalendarDays } from 'lucide-react';
-
-type BookedDay = { date: Date; label: string; kind: 'showing' | 'rental' };
-
-const RATES = [
-  { title: 'Main Auditorium — Half Day (up to 4 hrs)', price: '$400' },
-  { title: 'Main Auditorium — Full Day (up to 8 hrs)', price: '$700' },
-  { title: 'Main Stage Only', price: '$250 / 4 hrs' },
-  { title: 'Backstage Speakeasy', price: '$300 / evening' },
-  { title: 'Historic Marquee (one side, one day)', price: '$150' },
-];
+import { RentalsHero } from '@/components/rentals/RentalsHero';
+import { MarqueeBookingForm } from '@/components/rentals/MarqueeBookingForm';
+import { RateGrid } from '@/components/rentals/RateGrid';
+import { DayView } from '@/components/rentals/DayView';
+import { MARQUEE_RATE } from '@/lib/rentalRates';
+import {
+  buildDayView,
+  dayStatus,
+  parseClockMinutes,
+  DAY_STATUS_LABEL,
+  type OccupiedBlock,
+} from '@/lib/rentalAvailability';
 
 const FEES = [
   { title: 'Additional staff', detail: '$30 / hour, per person. All rentals include 1 staff member; extra support is determined by Kenworthy management.' },
@@ -33,9 +33,12 @@ const DISCOUNTS = [
   { title: 'Consecutive days', detail: '10% off the base rental for three or more consecutive days. Some limitations apply.' },
 ];
 
-// Annual black-out dates (holidays / staff dark days). If a date has already
-// passed this year, roll it forward to next year so the "next on the
-// calendar" list never surfaces holidays from the past.
+/** A showing with no recorded duration still occupies the room for an evening. */
+const DEFAULT_SHOWING_MINUTES = 120;
+
+// Annual black-out dates (holidays / staff dark days). A date that has already
+// passed this year rolls forward to next year, so the calendar never paints a
+// holiday from the past.
 function makeBlackouts(): { date: string; label: string }[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -60,13 +63,27 @@ function isoToLocalDate(iso: string) {
   return new Date(y, m - 1, d);
 }
 
-function sameDay(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+/** `yyyy-MM-dd` for a Date's *local* calendar fields. */
+function localDayKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+type AvailabilityRow = {
+  day: string;
+  start_time: string | null;
+  end_time: string | null;
+  is_public: boolean;
+  title: string | null;
+};
+
 export default function Rentals() {
-  const [booked, setBooked] = useState<BookedDay[]>([]);
+  const [blocks, setBlocks] = useState<OccupiedBlock[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Date | undefined>(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -76,34 +93,69 @@ export default function Rentals() {
       const horizon = new Date(today);
       horizon.setMonth(horizon.getMonth() + 12);
 
-      const [{ data: showings }, { data: rentals }] = await Promise.all([
+      const [showingsResult, rentalsResult] = await Promise.all([
         supabase
           .from('showings')
-          .select('id, start_time, movie:movies(title), event:events(title), live_performance:live_performances(title)')
+          .select('id, start_time, duration_minutes, movie:movies(title), event:events(title), live_performance:live_performances(title)')
           .gte('start_time', today.toISOString())
           .lt('start_time', horizon.toISOString())
           .eq('is_active', true),
-        supabase
-          .from('rental_requests')
-          .select('id, proposed_date, event_title, status')
-          .gte('proposed_date', today.toISOString().slice(0, 10))
-          .lt('proposed_date', horizon.toISOString().slice(0, 10))
-          .in('status', ['approved']),
+        // Rentals cannot be read from the table: `anon` holds no SELECT on
+        // rental_requests and must not be given one. This function returns the
+        // occupied hours with everything identifying already stripped — the
+        // redaction lives in the database, not here. See
+        // supabase/migrations/20260826151843_public_rental_availability.sql.
+        supabase.rpc('get_public_availability', {
+          p_from: localDayKey(today),
+          p_to: localDayKey(horizon),
+        }),
       ]);
 
       if (cancelled) return;
-      const days: BookedDay[] = [];
-      (showings ?? []).forEach((s: any) => {
-        const title = s.movie?.title || s.event?.title || s.live_performance?.title || 'Programmed event';
-        // A booked day is a venue calendar day, and everything downstream
-        // (sameDay, toLocaleDateString) reads local date fields off this Date.
-        days.push({ date: toVenueWallClock(s.start_time), label: title, kind: 'showing' });
-      });
-      (rentals ?? []).forEach((r: any) => {
-        if (!r.proposed_date) return;
-        days.push({ date: isoToLocalDate(r.proposed_date), label: r.event_title, kind: 'rental' });
-      });
-      setBooked(days);
+
+      const next: OccupiedBlock[] = [];
+
+      for (const showing of showingsResult.data ?? []) {
+        const s = showing as any;
+        const title =
+          s.movie?.title || s.event?.title || s.live_performance?.title || 'Programmed event';
+        // Showings carry a real instant, so their hours are known exactly —
+        // read in the venue's zone, never the viewer's.
+        const startMinutes = parseClockMinutes(formatShowtime(s.start_time, 'HH:mm'));
+        const runtime = s.duration_minutes ?? DEFAULT_SHOWING_MINUTES;
+        next.push({
+          dayKey: venueDayKey(s.start_time),
+          startMinutes,
+          endMinutes: startMinutes === null ? null : startMinutes + runtime,
+          isPublic: true,
+          title,
+          kind: 'showing',
+        });
+      }
+
+      if (rentalsResult.error) {
+        // A rentals read that fails must not blank the calendar: the showings
+        // half is still true, and a page that silently shows an empty calendar
+        // reads as "wide open" — the most expensive thing it could say wrongly.
+        console.error('[rentals] availability read failed', rentalsResult.error);
+      }
+
+      for (const row of (rentalsResult.data ?? []) as AvailabilityRow[]) {
+        const startMinutes = parseClockMinutes(row.start_time);
+        const endMinutes = parseClockMinutes(row.end_time);
+        next.push({
+          dayKey: row.day,
+          startMinutes,
+          // An end we cannot read leaves the block open-ended; buildDayView
+          // gives it a one-hour floor rather than painting the rest of the day.
+          endMinutes: startMinutes === null ? null : endMinutes,
+          isPublic: row.is_public,
+          title: row.is_public ? row.title : null,
+          kind: 'rental',
+        });
+      }
+
+      setBlocks(next);
       setLoading(false);
     })();
     return () => {
@@ -111,37 +163,56 @@ export default function Rentals() {
     };
   }, []);
 
-  const bookedDates = useMemo(() => booked.map(b => b.date), [booked]);
+  const blackoutByDay = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const b of BLACKOUTS) map.set(b.date, b.label);
+    return map;
+  }, []);
+
+  const limitedDates = useMemo(() => {
+    const keys = new Set(blocks.map(b => b.dayKey));
+    return [...keys].filter(k => !blackoutByDay.has(k)).map(isoToLocalDate);
+  }, [blocks, blackoutByDay]);
+
   const blackoutDates = useMemo(() => BLACKOUTS.map(b => isoToLocalDate(b.date)), []);
 
-  const upcoming = useMemo(() => {
-    const merged = [
-      ...booked,
-      ...BLACKOUTS.map(b => ({ date: isoToLocalDate(b.date), label: b.label, kind: 'blackout' as const })),
-    ].sort((a, b) => a.date.getTime() - b.date.getTime());
-    return merged.slice(0, 12);
-  }, [booked]);
+  const selectedKey = selected ? localDayKey(selected) : null;
+
+  const selectedDay = useMemo(() => {
+    if (!selectedKey) return null;
+    return buildDayView({
+      dayKey: selectedKey,
+      blocks,
+      blackoutLabel: blackoutByDay.get(selectedKey) ?? null,
+    });
+  }, [selectedKey, blocks, blackoutByDay]);
+
+  const selectedLabel = selected
+    ? selected.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+    : null;
 
   return (
     <div className="min-h-screen bg-background">
       <SEO
-        title="Rent Kenworthy — Historic Theatre & Marquee"
-        description="Rent the historic Kenworthy theatre, Main Stage, Backstage Speakeasy, or marquee for private events. Rates, fees, and live availability calendar."
+        title="Rent the Kenworthy — Historic Theatre & Marquee"
+        description="Rent the historic Kenworthy theatre, Main Stage, Backstage Speakeasy, or marquee for private events. Hourly rates, fees, and a live availability calendar."
       />
 
-      {/* Hero */}
-      <section className="relative border-b border-accent/20 bg-card/40">
-        <div className="container py-16 md:py-24 max-w-5xl">
-          <p className="font-display uppercase tracking-[0.3em] text-sm text-primary mb-4">Rent the Historic Theatre</p>
-          <h1 className="font-display uppercase text-4xl md:text-6xl leading-tight text-foreground">
-            Your event, on Main Street.
-          </h1>
-          <p className="font-serif italic text-lg md:text-xl text-muted-foreground mt-6 max-w-3xl">
-            Kenworthy is pleased to offer its historic theatre space and Backstage area for private rentals — family
-            movie nights, birthdays, recitals, private parties, and everything in between. Concessions, including beer
-            and wine, are available for purchase during your event.
+      <RentalsHero />
+
+      {/* The room, under the sign. The marquee leads because it is the easiest
+          thing to say yes to; this is what most of the page is actually about. */}
+      <section className="border-b border-accent/20 bg-card/40">
+        <div className="container py-12 md:py-16 max-w-4xl">
+          <h2 className="font-display uppercase text-2xl md:text-3xl leading-tight text-foreground">
+            Your event, on Main Street since 1926.
+          </h2>
+          <p className="font-serif italic text-lg text-muted-foreground mt-4 max-w-3xl">
+            The Kenworthy is pleased to offer the historic theatre and Backstage for private rentals — family movie
+            nights, birthday surprises, business retreats, recitals, weddings, and everything between. Concessions,
+            including beer and wine, are available for purchase during your event.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-6 flex flex-wrap gap-3">
             <Button asChild size="lg">
               <Link to="/rental-request">Request a date</Link>
             </Button>
@@ -155,59 +226,64 @@ export default function Rentals() {
       </section>
 
       {/* Availability */}
-      <section className="container py-16 max-w-6xl">
+      <section id="availability" className="container py-16 max-w-6xl scroll-mt-20">
+        <h2 className="font-display uppercase text-2xl md:text-3xl mb-2 flex items-center gap-2">
+          <CalendarDays className="h-6 w-6 text-primary" /> Availability
+        </h2>
+        <p className="font-serif text-muted-foreground mb-8 max-w-2xl">
+          Pick a day to see which hours are open. A day with something already on it usually still has
+          room around it — a 7 PM screening leaves the whole morning free. We confirm every request
+          within a few business days.
+        </p>
+
         <div className="grid lg:grid-cols-[auto_1fr] gap-10 items-start">
           <div>
-            <h2 className="font-display uppercase text-2xl md:text-3xl mb-2 flex items-center gap-2">
-              <CalendarDays className="h-6 w-6 text-primary" /> Availability
-            </h2>
-            <p className="font-serif text-muted-foreground mb-4 max-w-md">
-              Highlighted days are unavailable. Submit a request for any available day, and we’ll confirm within a few
-              business days.
-            </p>
             <div className="rounded-lg border border-accent/20 bg-card/40 p-2 inline-block">
               <Calendar
                 mode="single"
+                selected={selected}
+                onSelect={setSelected}
                 numberOfMonths={1}
-                modifiers={{ booked: bookedDates, blackout: blackoutDates }}
+                modifiers={{ limited: limitedDates, blackout: blackoutDates }}
                 modifiersClassNames={{
-                  booked: 'bg-primary/80 text-primary-foreground hover:bg-primary',
-                  blackout: 'bg-accent/70 text-accent-foreground hover:bg-accent line-through',
+                  limited: 'bg-primary/25 text-foreground font-semibold hover:bg-primary/40',
+                  blackout: 'bg-muted text-muted-foreground line-through',
                 }}
-                disabled={(date) =>
-                  date < new Date(new Date().setHours(0, 0, 0, 0)) ||
-                  blackoutDates.some(b => sameDay(b, date))
-                }
+                disabled={date => date < new Date(new Date().setHours(0, 0, 0, 0))}
               />
             </div>
-            <div className="flex gap-4 mt-3 text-xs font-display uppercase tracking-[0.2em] text-muted-foreground">
-              <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-primary/80" /> Booked</span>
-              <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-accent/70" /> Black-out</span>
-            </div>
+
+            <ul className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs font-display uppercase tracking-[0.2em] text-muted-foreground">
+              <li className="flex items-center gap-1.5">
+                <span aria-hidden className="inline-block w-3 h-3 rounded-sm border border-accent/40" />
+                {DAY_STATUS_LABEL.available}
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span aria-hidden className="inline-block w-3 h-3 rounded-sm bg-primary/25" />
+                {DAY_STATUS_LABEL.limited}
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span aria-hidden className="inline-block w-3 h-3 rounded-sm bg-muted" />
+                {DAY_STATUS_LABEL.unavailable}
+              </li>
+            </ul>
+
+            {/* The calendar cells are buttons showing a number; their colour is
+                the only thing carrying the status. This says the same thing in
+                words, for anyone who cannot use the colour. */}
+            {selectedKey && (
+              <p className="sr-only" aria-live="polite">
+                {selectedLabel}:{' '}
+                {DAY_STATUS_LABEL[dayStatus(selectedKey, blocks, blackoutByDay.get(selectedKey) ?? null)]}
+              </p>
+            )}
           </div>
 
           <div>
-            <h3 className="font-display uppercase text-lg mb-3">Next on the calendar</h3>
             {loading ? (
               <p className="text-muted-foreground font-serif">Loading availability…</p>
-            ) : upcoming.length === 0 ? (
-              <p className="text-muted-foreground font-serif">No upcoming holds — wide open.</p>
             ) : (
-              <ul className="divide-y divide-accent/15 border border-accent/20 rounded-lg bg-card/40">
-                {upcoming.map((d, i) => (
-                  <li key={i} className="flex items-center justify-between px-4 py-3">
-                    <div>
-                      <p className="font-serif text-foreground">{d.label}</p>
-                      <p className="text-xs text-muted-foreground font-display uppercase tracking-[0.2em]">
-                        {d.date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
-                    </div>
-                    <Badge variant={d.kind === 'blackout' ? 'outline' : 'default'} className="capitalize">
-                      {d.kind === 'showing' ? 'Programmed' : d.kind === 'rental' ? 'Private rental' : 'Black-out'}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
+              <DayView day={selectedDay} dateLabel={selectedLabel} />
             )}
           </div>
         </div>
@@ -220,18 +296,29 @@ export default function Rentals() {
             <Building2 className="h-6 w-6 text-primary" /> Rental Rates
           </h2>
           <p className="font-serif text-muted-foreground mb-8 max-w-2xl">
-            Base rates cover the space, one Kenworthy staff member, standard house lighting, and use of the marquee for
-            day-of signage. Final pricing will be confirmed on your contract.
+            Base rates are hourly and cover the room, one Kenworthy staff member, standard house lighting, and use of
+            the marquee for day-of signage. Final pricing is confirmed on your contract.
           </p>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {RATES.map((r) => (
-              <Card key={r.title} className="bg-background/60 border-accent/20">
-                <CardHeader className="flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base font-serif">{r.title}</CardTitle>
-                  <span className="font-display text-primary text-lg">{r.price}</span>
-                </CardHeader>
-              </Card>
-            ))}
+
+          <RateGrid />
+
+          <p className="font-serif text-sm text-muted-foreground mt-6 max-w-2xl">
+            Hours after 9 PM are billed at the late rate for those hours — an evening running 7 PM to 11 PM on a
+            Saturday is charged at the evening rate until 9 and the late rate after it, not one or the other for the
+            whole booking.
+          </p>
+
+          {/* The marquee is priced per day rather than per hour, so it sits
+              beside the grid rather than inside it. */}
+          <div className="mt-8 border border-accent/20 rounded-lg p-5 bg-background/60 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="font-display uppercase tracking-[0.15em] text-sm text-accent">{MARQUEE_RATE.label}</p>
+              <p className="font-serif text-muted-foreground mt-1 text-sm">{MARQUEE_RATE.note}</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="font-display text-primary text-2xl">${MARQUEE_RATE.price}</span>
+              <MarqueeBookingForm trigger={<Button variant="outline">Book the marquee</Button>} />
+            </div>
           </div>
         </div>
       </section>
@@ -242,7 +329,7 @@ export default function Rentals() {
           <Tag className="h-6 w-6 text-primary" /> Fee Menu
         </h2>
         <div className="grid md:grid-cols-2 gap-4">
-          {FEES.map((f) => (
+          {FEES.map(f => (
             <div key={f.title} className="border border-accent/20 rounded-lg p-5 bg-card/40">
               <p className="font-display uppercase tracking-[0.15em] text-sm text-accent">{f.title}</p>
               <p className="font-serif text-foreground mt-2">{f.detail}</p>
@@ -258,7 +345,7 @@ export default function Rentals() {
             <Sparkles className="h-6 w-6 text-primary" /> Discounts
           </h2>
           <div className="grid md:grid-cols-2 gap-4">
-            {DISCOUNTS.map((d) => (
+            {DISCOUNTS.map(d => (
               <div key={d.title} className="border border-accent/20 rounded-lg p-5 bg-background/60">
                 <p className="font-display uppercase tracking-[0.15em] text-sm text-primary">{d.title}</p>
                 <p className="font-serif text-foreground mt-2">{d.detail}</p>
@@ -268,26 +355,13 @@ export default function Rentals() {
         </div>
       </section>
 
-      {/* Marquee rental */}
-      <section className="container py-16 max-w-4xl text-center">
-        <h2 className="font-display uppercase text-2xl md:text-3xl mb-4">See your name in lights</h2>
-        <p className="font-serif text-lg text-muted-foreground">
-          For $150, share a special message on downtown Moscow’s historic sign — wish someone a happy birthday,
-          congratulate a new parent, or even propose. Rental includes one side for one day; market days and holidays
-          carry a small surcharge.
-        </p>
-        <Button asChild size="lg" className="mt-6">
-          <a href="mailto:events@kenworthy.org?subject=Marquee%20rental%20inquiry">Book the marquee</a>
-        </Button>
-      </section>
-
       {/* Closing CTA */}
       <section className="border-t border-accent/20 bg-card/60">
         <div className="container py-16 max-w-3xl text-center">
           <h2 className="font-display uppercase text-3xl md:text-4xl mb-4">Ready to book?</h2>
           <p className="font-serif text-lg text-muted-foreground mb-6">
-            Submit a rental request, and we’ll be in touch with available times, a drafted contract, and answers to any
-            questions you have.
+            Send a rental request and we’ll be in touch with available times, a draft contract, and answers to anything
+            you’re still wondering about.
           </p>
           <div className="flex flex-wrap gap-3 justify-center">
             <Button asChild size="lg">
