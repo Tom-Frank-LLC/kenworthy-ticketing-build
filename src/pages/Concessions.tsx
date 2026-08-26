@@ -18,6 +18,23 @@ interface ComboChildRow {
   child: { id: string; name: string; price: number } | null;
 }
 
+/**
+ * Binds a short trailing token to the word before it with a non-breaking
+ * space, so it can never wrap alone.
+ *
+ * Combo names end in a size code — "Classic Combo (Medium) — Candy, Soda M,
+ * Popcorn M" — and a lone "M" dropping to its own line reads as a typo rather
+ * than a wrap. Giving the row's leader less of the width fixes it wherever the
+ * name fits at all, but on a narrow screen the name genuinely has to break
+ * somewhere, and this decides where: never immediately before a one- or
+ * two-character last word.
+ *
+ * A no-op for names that do not end in a short token.
+ */
+function bindTrailingToken(text: string) {
+  return text.replace(/\s+(\S{1,2})$/u, '\u00A0$1');
+}
+
 const BLURB =
   'Popcorn popped fresh, candy by the handful, a cold drink to carry in.';
 
@@ -179,7 +196,7 @@ export default function Concessions() {
                               name can still shrink and wrap when a row genuinely
                               is too narrow; the leader keeps a floor so the dots
                               never disappear entirely. */}
-                          <span className="min-w-0">{it.name}</span>
+                          <span className="min-w-0">{bindTrailingToken(it.name)}</span>
                           <span
                             aria-hidden
                             className="flex-1 min-w-4 md:min-w-6 border-b border-dotted border-muted-foreground/40 translate-y-[-4px]"
@@ -205,10 +222,18 @@ export default function Concessions() {
                       return (
                         <li key={it.id} className="font-serif text-foreground">
                           <div className="flex items-baseline gap-3">
-                            <span className="flex-1 font-medium">{it.name}</span>
+                            {/* Same distribution as the item rows above, which
+                                this block had not been given: the name was
+                                `flex-1` against a `flex-[0.4]` leader, so on a
+                                718px row the leader took 180.5px and squeezed
+                                the name to 451.3px when it needed 462.6 —
+                                orphaning the final "M" by 11.3px. */}
+                            <span className="min-w-0 font-medium">
+                              {bindTrailingToken(it.name)}
+                            </span>
                             <span
                               aria-hidden
-                              className="flex-[0.4] border-b border-dotted border-muted-foreground/40 translate-y-[-4px]"
+                              className="flex-1 min-w-4 md:min-w-6 border-b border-dotted border-muted-foreground/40 translate-y-[-4px]"
                             />
                             <span className="tabular-nums text-accent font-medium">
                               ${Number(it.price).toFixed(2)}
