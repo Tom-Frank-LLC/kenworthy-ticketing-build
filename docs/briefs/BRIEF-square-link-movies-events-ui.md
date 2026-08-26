@@ -8,10 +8,11 @@ shipped_in: ["#185"]
 shipped_at: 2026-08-25
 verified: true
 evidence: >-
-  Deployed by hand to both workers on 2026-08-25 and verified against the live
-  origins, not the upload log. Production version 4185cf55-26d6-4c78-a10f-ed54681a0f91
-  (rollback: 9c9c4d68-31a5-4f66-a94e-aea5ef061fa8); staging version
-  bd81384e-1034-4deb-8466-5b27b7fe0789 (rollback: 593567fd-db40-41af-af8a-2ed1d43a56e2).
+  Deployed by hand to both workers and verified in the running admin UI, not
+  merely as strings in a bundle. Production fed026ea-3878-4a25-b6e7-a8b56210a53f,
+  staging d7397962-8563-4e13-a28a-88d3b37a45c5. NOT ON MAIN: PR #185 is still
+  open, and an earlier deploy of this work was already reverted once by another
+  session deploying main.
 ---
 
 # Brief (for Claude Code): Restore the ability to link movies & events to Square from admin
@@ -199,3 +200,68 @@ content-identical to `main` and nothing was reverted. The differing hashes alone
 would have been a false alarm, exactly as CLAUDE.md warns.
 
 No edge functions were changed, so none were deployed.
+
+
+---
+
+## Correction (2026-08-26): the first fix shipped and changed nothing
+
+Two things went wrong after the first deploy, and both are worth keeping.
+
+### 1. The fix was put where nobody looks
+
+`SquareCatalogTab` is not a peer of the flag box. It is mounted *inside a second
+collapsible section* titled **"Showtimes in Square"**, which is closed by default
+and — by `CollapsibleSection`'s design — does not even mount its contents until
+opened. The box an operator actually opens is the one named **"Square catalog —
+movies"**, which is `SquareLinkPanel`, and that one still offered nothing but
+Dismiss.
+
+So the reported symptom was unchanged by a fix that was, in code, correct. The
+verification that missed it checked for the new strings **in the bundle**; what
+it needed to check was the **rendered panel**. A string present in a chunk that
+is never mounted is not a shipped feature.
+
+Decision 1(a) — keep both surfaces — was therefore the wrong call, not because
+duplication is bad in principle but because the visible surface was the one
+without the affordances. The linking now lives in `SquareLinkPanel`:
+`possible_matches` and `status` were in the response all along and simply never
+declared on its `ProductionRow`. `SquareCatalogTab` goes back to deferring when
+scoped, and this time the comment saying so is true.
+
+`SquareLinkPanel` was the right home for another reason: it fetches lazily on
+first open, while `SquareCatalogTab` fetches on mount. Making the "Showtimes in
+Square" section `defaultOpen` instead would have put a multi-second catalog read
+on every visit to the Movies tab.
+
+### 2. The deploy was reverted nine minutes later
+
+| time (UTC) | version | what |
+|---|---|---|
+| 23:09:35 | `4185cf55` | this fix, deployed and verified |
+| 23:18:23 | `0d95e679` | **another session deployed `main`, reverting it** |
+
+Staging was reverted the same way. The cause is not carelessness: PR #185 could
+not be merged (the merge was refused by a permission classifier), so `main` did
+not contain the fix, and anyone deploying `main` — correctly following the
+runbook — necessarily undid it.
+
+This is the concrete case behind "a merged PR is not a shipped PR" pointing the
+other way: **an unmerged deploy is not a shipped deploy either.** Deploying from
+a branch buys minutes, not durability. Merge first, then deploy, or expect to be
+reverted by the next session that does it properly.
+
+### Verified in the running UI
+
+Production, after redeploy — "Square catalog — live events":
+
+- *Backstage Stories: Ode to Summer* → offers **Backstage Stories** with the
+  reason "catalog title appears inside ours" and a working **Use this** button.
+- *William Lee Martin: Seemed Smart at the Time Tour* → "Nothing in the catalog
+  matches this title. Create it in Square as an **Event** item under **6 Live
+  Event Tickets**…"
+
+"Square catalog — movies" shows the create-in-dashboard sentence for both
+unlinked films rather than a bare Dismiss. No link was actually written: pointing
+a title at the wrong item would send every future showtime onto someone else's
+Square item, which is a decision for a person.
