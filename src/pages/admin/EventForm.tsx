@@ -108,7 +108,7 @@ export default function EventForm() {
             </div>
             <PosterUpload currentUrl={posterUrl} onUrlChange={setPosterUrl} folder="events" />
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2 col-span-2">
+              <div className="space-y-2 col-span-full">
                 <Label htmlFor="event-genre">Genre</Label>
                 <GenreInput id="event-genre" kind="live" value={genres} onChange={setGenres} />
               </div>

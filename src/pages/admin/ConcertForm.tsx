@@ -123,7 +123,7 @@ export default function ConcertForm() {
             </div>
             <PosterUpload currentUrl={posterUrl} onUrlChange={setPosterUrl} folder="live_performances" />
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2 col-span-2">
+              <div className="space-y-2 col-span-full">
                 <Label htmlFor="performance-genre">Genre</Label>
                 <GenreInput id="performance-genre" kind="live" value={genres} onChange={setGenres} />
               </div>
