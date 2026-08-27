@@ -1,13 +1,13 @@
 ---
 brief: manual-sold-out
 title: An admin can mark a showing sold out by hand, which closes online sales without hiding the showing
-status: built
+status: shipped
 track: feature
 severity: P2
 date: 2026-08-25
-shipped_in: []
-shipped_at:
-verified: false
+shipped_in: ["#213"]
+shipped_at: 2026-08-27
+verified: true
 ---
 
 > **Decisions taken (2026-08-27).** All four went to the recommended option.
