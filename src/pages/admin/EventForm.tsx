@@ -11,6 +11,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { PosterUpload } from '@/components/admin/PosterUpload';
+import { GenreInput } from '@/components/admin/GenreInput';
+import { formatGenres, parseGenres } from '@/lib/genres';
 import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
 
 export default function EventForm() {
@@ -22,7 +24,7 @@ export default function EventForm() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [posterUrl, setPosterUrl] = useState('');
-  const [genre, setGenre] = useState('');
+  const [genres, setGenres] = useState<string[]>([]);
   const [rating, setRating] = useState('');
   const [ticketType, setTicketType] = useState<'ticketed' | 'rsvp' | 'info_only'>('ticketed');
   const [rsvpUrl, setRsvpUrl] = useState('');
@@ -40,7 +42,7 @@ export default function EventForm() {
           setTitle(data.title);
           setDescription(data.description || '');
           setPosterUrl(data.poster_url || '');
-          setGenre(data.genre || '');
+          setGenres(parseGenres(data.genre));
           setRating(data.rating || '');
           setTicketType(data.ticket_type);
           setRsvpUrl(data.rsvp_url || '');
@@ -59,7 +61,7 @@ export default function EventForm() {
       title,
       description: description || null,
       poster_url: posterUrl || null,
-      genre: genre || null,
+      genre: formatGenres(genres),
       rating: rating || null,
       ticket_type: ticketType,
       rsvp_url: rsvpUrl || null,
@@ -106,9 +108,9 @@ export default function EventForm() {
             </div>
             <PosterUpload currentUrl={posterUrl} onUrlChange={setPosterUrl} folder="events" />
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Genre</Label>
-                <Input value={genre} onChange={e => setGenre(e.target.value)} placeholder="Gala" />
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="event-genre">Genre</Label>
+                <GenreInput id="event-genre" kind="live" value={genres} onChange={setGenres} />
               </div>
               <div className="space-y-2">
                 <Label>Rating</Label>

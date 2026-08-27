@@ -25,6 +25,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
+import { tallyGenres } from '@/lib/genres';
 
 const COLORS = [
   'hsl(var(--primary))',
@@ -84,7 +85,7 @@ interface ShowingTicketRow {
     venue_id: string | null;
     movies: { genre: string | null } | null;
     events: { genre: string | null } | null;
-    concerts: { genre: string | null } | null;
+    live_performances: { genre: string | null } | null;
     venues: { name: string } | null;
   } | null;
 }
@@ -126,7 +127,7 @@ export default function AnalyticsTab() {
       const { data: rows } = await fetchAllRows<ShowingTicketRow>((from, to) =>
         supabase
           .from('tickets')
-          .select('showing_id, status, showings(total_seats, venue_id, movies(genre), events(genre), concerts(genre), venues(name))')
+          .select('showing_id, status, showings(total_seats, venue_id, movies(genre), events(genre), live_performances(genre), venues(name))')
           .eq('status', 'confirmed')
           .range(from, to) as unknown as PromiseLike<{ data: ShowingTicketRow[] | null; error: null }>);
       setTickets(rows);
@@ -154,17 +155,20 @@ export default function AnalyticsTab() {
   }));
 
   // --- Genre popularity (build-sourced) ---
-  const genreMap: Record<string, number> = {};
-  tickets.forEach(t => {
-    const s = t.showings;
-    if (!s) return;
-    const genre = s.movies?.genre || s.events?.genre || s.concerts?.genre || 'Other';
-    genreMap[genre] = (genreMap[genre] || 0) + 1;
-  });
-  const genreData = Object.entries(genreMap)
-    .sort(([, a], [, b]) => b - a)
+  // A production carries its genres as one comma-separated string, so a ticket
+  // to a Drama/Comedy double bill counts toward both slices. That makes the
+  // slices add up to more than the ticket count, which is correct for a
+  // "what do people come for" chart and wrong for a "how many tickets" one —
+  // this is the former.
+  const genreData = tallyGenres(
+    tickets.map(t => {
+      const s = t.showings;
+      if (!s) return null;
+      return s.movies?.genre || s.events?.genre || s.live_performances?.genre || 'Other';
+    }),
+  )
     .slice(0, 8)
-    .map(([name, value]) => ({ name, value }));
+    .map(({ genre, count }) => ({ name: genre, value: count }));
 
   // --- Venue utilization (build-sourced) ---
   const venueMap: Record<string, { name: string; ticketsSold: number; showingIds: Set<string>; totalCapacity: number }> = {};

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { collectGenres, hasGenre, parseGenres } from '@/lib/genres';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -303,10 +304,10 @@ export default function AdminDashboard() {
   };
 
   const uniqueRatings = Array.from(new Set(movies.map(m => m.rating).filter(Boolean))).sort();
-  const uniqueMovieGenres = Array.from(new Set(movies.map(m => m.genre).filter(Boolean))).sort();
+  const uniqueMovieGenres = collectGenres(movies.map(m => m.genre));
   const uniqueEventTypes = Array.from(new Set(events.map(e => e.ticket_type).filter(Boolean))).sort();
   const uniqueConcertSubcategories = Array.from(new Set(concerts.map(c => c.subcategory).filter(Boolean))).sort();
-  const uniqueConcertGenres = Array.from(new Set(concerts.map(c => c.genre).filter(Boolean))).sort();
+  const uniqueConcertGenres = collectGenres(concerts.map(c => c.genre));
 
   const resetScheduleFilters = () => {
     setScheduleQuery('');
@@ -392,7 +393,7 @@ export default function AdminDashboard() {
     matchesSearch(m.title) &&
     matchesStatus(!!m.is_active) &&
     (ratingFilter === 'all' || m.rating === ratingFilter) &&
-    (genreFilter === 'all' || m.genre === genreFilter)
+    (genreFilter === 'all' || hasGenre(m.genre, genreFilter))
   ));
 
   const liveEvents = useMemo(() => {
@@ -410,7 +411,7 @@ export default function AdminDashboard() {
       (liveEventKindFilter === 'all' || item.kind === liveEventKindFilter) &&
       (eventTypeFilter === 'all' || !isEvent || item.ticket_type === eventTypeFilter) &&
       (concertSubcategoryFilter === 'all' || !isConcert || item.subcategory === concertSubcategoryFilter) &&
-      (genreFilter === 'all' || !isConcert || item.genre === genreFilter)
+      (genreFilter === 'all' || !isConcert || hasGenre(item.genre, genreFilter))
     );
   }));
 
@@ -829,9 +830,9 @@ export default function AdminDashboard() {
                           <Film className="h-5 w-5 text-primary" />
                           <div>
                             <p className="font-medium">{movie.title}</p>
-                            <div className="flex gap-2 mt-1">
+                            <div className="flex flex-wrap gap-2 mt-1">
                               {movie.rating && <Badge variant="secondary" className="text-xs">{movie.rating}</Badge>}
-                              {movie.genre && <Badge variant="outline" className="text-xs">{movie.genre}</Badge>}
+                              {parseGenres(movie.genre).map(g => <Badge key={g} variant="outline" className="text-xs">{g}</Badge>)}
                               <Badge variant={movie.is_active ? 'default' : 'secondary'} className="text-xs">
                                 {movie.is_active ? 'Active' : 'Inactive'}
                               </Badge>
@@ -940,7 +941,7 @@ export default function AdminDashboard() {
                         {isEvent ? <PartyPopper className="h-5 w-5 text-primary" /> : <Music className="h-5 w-5 text-primary" />}
                         <div>
                           <p className="font-medium">{item.title}</p>
-                          <div className="flex gap-2 mt-1">
+                          <div className="flex flex-wrap gap-2 mt-1">
                             {isEvent && (
                               <Badge variant="outline" className="text-xs capitalize">{item.ticket_type.replace('_', ' ')}</Badge>
                             )}
@@ -949,7 +950,7 @@ export default function AdminDashboard() {
                                 {item.subcategory.replace(/_/g, ' ')}
                               </Badge>
                             )}
-                            {isConcert && item.genre && <Badge variant="outline" className="text-xs">{item.genre}</Badge>}
+                            {isConcert && parseGenres(item.genre).map(g => <Badge key={g} variant="outline" className="text-xs">{g}</Badge>)}
                             <Badge variant={item.is_active ? 'default' : 'secondary'} className="text-xs">
                               {item.is_active ? 'Active' : 'Inactive'}
                             </Badge>
