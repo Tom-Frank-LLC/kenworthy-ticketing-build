@@ -107,15 +107,27 @@ export function RentalsHero() {
             <span className="block text-primary">in lights.</span>
           </h1>
           <p className="mt-3 font-serif italic text-foreground/90 text-sm sm:text-base max-w-lg drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
-            For ${MARQUEE_RATE.price}, put a message on downtown Moscow's most-read sign — a
+            For ${MARQUEE_RATE.price}, put a message on downtown Moscow's historic sign — a
             birthday, a new arrival, a congratulations, or a question you only get to ask once.
             One side, one day.
           </p>
 
+          {/*
+            Two doors, both real. The marquee opens its own form; renting the
+            room goes to the full request form — the same destination as
+            "Request a date" further down the page.
+
+            This second button used to be `to="#availability"`, which did
+            nothing at all: React Router does not scroll to a hash fragment, so
+            it rewrote the URL and left the page where it was. A button that
+            looks clickable and moves nothing is worse than no button, and
+            pointing it at the form is the better answer anyway — someone who
+            has decided to rent wants the form, not a calendar to read.
+          */}
           <div className="mt-6 flex flex-wrap gap-3">
             <MarqueeBookingForm trigger={<Button size="lg">Book the marquee</Button>} />
             <Button asChild variant="outline" size="lg">
-              <Link to="#availability">Rent the theatre</Link>
+              <Link to="/rental-request">Rent the theatre</Link>
             </Button>
           </div>
         </div>
