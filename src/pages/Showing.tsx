@@ -319,8 +319,7 @@ function FreeAdmissionPanel({
                     something greyed out would read as a step the visitor has
                     failed to unlock rather than as the answer. */}
                 <div className="w-full rounded-md border border-success/40 bg-success/10 py-3 text-center">
-                  <p className="font-display text-lg text-success">Free</p>
-                  <p className="text-sm text-muted-foreground">Nothing to pay — just turn up.</p>
+                  <p className="font-display text-lg text-success">Free — just show up</p>
                 </div>
                 <p className="text-sm text-muted-foreground text-center">
                   Nights like this one are paid for by people who give. Add a gift above, or{' '}
