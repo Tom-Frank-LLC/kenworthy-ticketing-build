@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**72 briefs** — 65 shipped, 4 built, 3 open, 0 needs triage, 0 closed.
+**73 briefs** — 66 shipped, 4 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -13,7 +13,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
-- `P2` **An admin can mark a showing sold out by hand, which closes online sales without hiding the showing**<br>`feature` — [brief](briefs/BRIEF-manual-sold-out.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 - `P2` **A formatted description reads formatted in the listing previews, not just on the ticket page**<br>`bug` — [brief](briefs/BRIEF-richtext-preview-surfaces.md) · [notes](briefs/FINDINGS-richtext-description-surface.md)
 
@@ -27,6 +26,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - **An admin adds a whole run of showtimes in one pass, and is told exactly which ones landed**<br>`feature` — `#203`, `#208` — [brief](briefs/BRIEF-batch-showtimes.md)
 - **Give each film pass its own purchase page**<br>`ux` — `#207` — [brief](briefs/BRIEF-film-pass-detail-pages.md)
+- **An admin can mark a showing sold out by hand, which closes online sales without hiding the showing**<br>`feature` — `#213` — [brief](briefs/BRIEF-manual-sold-out.md)
 - **A production can carry more than one genre, stored the way the DVD library already stores them**<br>`feature` — `#199`, `#200`, `#204` — [brief](briefs/BRIEF-multiple-genres.md) · [notes](briefs/../FINDINGS-genre-backfill.md)
 - **A curator's pick can be a whole run or a single night, and says which**<br>`feature` — `#201` — [brief](briefs/BRIEF-showing-level-curator-pick.md)
 - **Concessions moves off the home page to /concessions, framed in the marquee bulbs**<br>`ux` — `#186`, `#188`, `#189`, `#190` — [brief](briefs/BRIEF-concessions-marquee-border.md) · [notes](briefs/FINDINGS-marquee-bulb-border.md)
