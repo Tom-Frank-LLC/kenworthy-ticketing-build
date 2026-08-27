@@ -208,6 +208,29 @@ as a fourth source — worth one more look before decommissioning the old site.
 At this point the site and email are exactly as they were. Only *who answers
 DNS* has changed. The old WordPress site is still serving kenworthy.org.
 
+### Phase 1 outcome — done 27 Aug 2026
+
+First Step Internet moved the delegation. The registry now answers
+`justin.ns.cloudflare.com` / `ursula.ns.cloudflare.com`, and Cloudflare marked
+the zone **active** at 21:26 UTC.
+
+Re-verified after the switch, against Cloudflare's nameservers rather than the
+API: **11 of 11** critical records identical to what `ns.fsr.com` still serves —
+apex MX/TXT/A, `www`, `send` TXT+MX, `_dmarc`, and all three DKIM selectors.
+The apex still resolves to `64.126.133.214` and `www.kenworthy.org` still
+returns 200 from the old WordPress site. The cutover remains a no-op, exactly
+as intended.
+
+Public resolvers (8.8.8.8, 1.1.1.1, 9.9.9.9) were still answering `ns.fsr.com`
+at the time of the check. That is expected cache, not a fault — and because
+both zones are byte-identical it makes no difference which one a resolver uses.
+Nothing breaks while the two coexist, which is the property that makes this
+step safe.
+
+**Gate on Phase 2: the mail check.** Send a message to a `@kenworthy.org`
+address from outside and one out, and confirm the received headers show
+`dkim=pass`. Do not touch Phase 2 until that passes.
+
 ## Phase 2 — the flip (minutes)
 
 The order here matters. Every step before the domain moves is additive and
