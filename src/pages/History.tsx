@@ -8,7 +8,6 @@ import img1908 from '@/assets/optimized/history/Crystal-Theatre-1908.webp';
 import img1926 from '@/assets/optimized/history/Kenworthy-1926.webp';
 import img1928 from '@/assets/optimized/history/kenworthy-1928-facade.webp';
 import imgAuditorium from '@/assets/optimized/history/kenworthy-1926-auditorium.webp';
-import img1935 from '@/assets/optimized/history/kenworthy-circa-1935.webp';
 import imgHistoricInterior from '@/assets/optimized/history/kenworthy-historic-interior.webp';
 import img1950s from '@/assets/optimized/history/moscow-main-street-1950s-night.webp';
 import img1952 from '@/assets/optimized/history/moscow-main-street-1952.webp';
@@ -50,7 +49,7 @@ const SEED: Milestone[] = [
     title: 'Milburn Kenworthy buys the theater',
     description:
       'Milburn Kenworthy purchases the theater and gives it the name it still carries a century later.',
-    image_url: img1926,
+    image_url: null,
     source_url: KENWORTHY_SOURCE,
   },
   {
@@ -70,7 +69,7 @@ const SEED: Milestone[] = [
     title: 'Vaudeville, silents, and a pipe organ',
     description:
       'A full but shallow stage with proscenium and fly space hosts vaudeville and dramatic productions; a screen rolls in front for silent films. Milburn Kenworthy buys a Robert Morton theater pipe organ to accompany them.',
-    image_url: null,
+    image_url: img1926,
     source_url: KENWORTHY_SOURCE,
   },
   {
@@ -90,7 +89,7 @@ const SEED: Milestone[] = [
     title: 'A decade in: the family movie house',
     description:
       'By the mid-1930s Kenworthy is woven into downtown — the vertical blade sign and chained marquee a fixture of Main Street.',
-    image_url: img1935,
+    image_url: null,
     source_url: KENWORTHY_SOURCE,
   },
   {
