@@ -2165,6 +2165,7 @@ export type Database = {
           event_id: string | null
           id: string
           is_active: boolean
+          is_featured: boolean
           live_performance_id: string | null
           movie_id: string | null
           requires_seat_selection: boolean
@@ -2180,6 +2181,7 @@ export type Database = {
           event_id?: string | null
           id?: string
           is_active?: boolean
+          is_featured?: boolean
           live_performance_id?: string | null
           movie_id?: string | null
           requires_seat_selection?: boolean
@@ -2195,6 +2197,7 @@ export type Database = {
           event_id?: string | null
           id?: string
           is_active?: boolean
+          is_featured?: boolean
           live_performance_id?: string | null
           movie_id?: string | null
           requires_seat_selection?: boolean

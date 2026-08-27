@@ -78,6 +78,7 @@ export default function ShowingForm() {
   // nothing wrote it, so it sat at its default and no showing was ever
   // reserved-seating. New showings default to GA.
   const [requiresSeatSelection, setRequiresSeatSelection] = useState(false);
+  const [isFeatured, setIsFeatured] = useState(false);
   const [saving, setSaving] = useState(false);
   const seatEditorRef = useRef<SeatTierEditorHandle>(null);
 
@@ -163,6 +164,7 @@ export default function ShowingForm() {
           setTicketPrice(String(data.ticket_price));
           setDurationMinutes(data.duration_minutes ? String(data.duration_minutes) : '');
           setRequiresSeatSelection(data.requires_seat_selection ?? false);
+          setIsFeatured(data.is_featured ?? false);
         }
 
         const tierData = tiersRes.data || [];
@@ -335,6 +337,7 @@ export default function ShowingForm() {
       // A showing flagged reserved with no seats behind it renders an empty
       // picker the buyer cannot get past.
       requires_seat_selection: venueHasSeatMap && requiresSeatSelection,
+      is_featured: isFeatured,
     };
 
     let showingId = id;
@@ -573,6 +576,30 @@ export default function ShowingForm() {
                 </p>
               </div>
             )}
+            {/* Curator's pick, for this date only. The same flag exists on the
+                film itself (Movie / Event / Concert form), and the two are
+                independent: flagging the film puts one entry on the home page
+                listing its whole run, flagging a night puts that night up on
+                its own. Both is a deliberate "see this film, and especially
+                this night", and shows both. */}
+            <div className="space-y-2 border-t border-border pt-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isFeatured}
+                  onChange={e => setIsFeatured(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="font-semibold">Curator's pick — this screening</span>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Highlights this one date on the homepage, for the night that is worth
+                singling out — a 35mm print, a Q&amp;A, the show with the live score.
+                To recommend the film across its whole run instead, use the Curator's
+                pick switch on the film itself. Doesn't change calendar order.
+              </p>
+            </div>
+
             <div className="space-y-2">
               <Label>Date & Time *</Label>
               <Input type="datetime-local" required value={startTime} onChange={e => setStartTime(e.target.value)} />

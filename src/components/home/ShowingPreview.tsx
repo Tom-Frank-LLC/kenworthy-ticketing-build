@@ -8,6 +8,7 @@ import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime, venueDayKey } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
 import { TrailerModal } from '@/components/TrailerModal';
+import { ShowtimeChips } from './ShowtimeChips';
 import type { FeedItem } from './TrailerFeed';
 import { htmlToPlainText } from '@/lib/richText';
 
@@ -50,16 +51,7 @@ export function ShowingPreview({
   item: FeedItem;
   className?: string;
 }) {
-  // Every *other* date this production plays. The previewed showing already
-  // has the green button below, so repeating it as a chip would offer the
-  // same link twice under two different labels.
-  //
-  // Filtered by `isPast` here rather than at feed-build time so that this
-  // agrees with the Get Tickets button it sits under — both ask the question
-  // at render, of the same clock. The rule is src/lib/purchasable.ts.
-  const alsoPlaying = (item.upcomingShowings ?? []).filter(
-    (s) => s.id !== item.showingId && !isPast({ start_time: s.start_time }),
-  );
+  // Scoped to this item so two previews on one page cannot share a heading id.
   const alsoPlayingHeadingId = `also-playing-${item.id}`;
 
   return (
@@ -166,40 +158,14 @@ export function ShowingPreview({
               </TrailerModal>
             </div>
 
-            {/* The rest of the run, inline. This is the whole of what the
-                "All showings" button used to travel to the drawer to fetch,
-                and a film that plays once — the common case — renders nothing
-                here at all rather than a heading over a single chip that
-                duplicates the button above it. */}
-            {alsoPlaying.length > 0 && (
-              <div className="mt-5">
-                <h4
-                  id={alsoPlayingHeadingId}
-                  className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2"
-                >
-                  Also playing
-                </h4>
-                {/* A list, so a screen reader announces how many dates there
-                    are before reading them. */}
-                <ul aria-labelledby={alsoPlayingHeadingId} className="flex flex-wrap gap-2">
-                  {alsoPlaying.map((s) => (
-                    <li key={s.id}>
-                      <Link
-                        to={`/showing/${s.id}`}
-                        // The visible text is a date and a time, which out of
-                        // context reads as a label rather than a destination.
-                        // The accessible name keeps the visible string intact
-                        // and says what the link does with it.
-                        aria-label={`Get tickets for ${formatShowtime(s.start_time, 'EEE, MMM d · h:mm a')}`}
-                        className="inline-flex items-center rounded-full border border-accent/40 bg-background px-3 py-1.5 font-serif text-sm text-foreground transition-colors hover:border-accent hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                      >
-                        {formatShowtime(s.start_time, 'EEE, MMM d · h:mm a')}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* The rest of the run, inline — now shared with the curator's
+                pick, which offers the same dates when the production is what
+                was picked. See ShowtimeChips. */}
+            <ShowtimeChips
+              showings={item.upcomingShowings}
+              excludeShowingId={item.showingId}
+              headingId={alsoPlayingHeadingId}
+            />
           </div>
         </div>
       </div>

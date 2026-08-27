@@ -14,6 +14,7 @@ import { formatShowtime } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
 import { htmlToPlainText } from '@/lib/richText';
 import { dayLabel } from './EditorialCalendar';
+import { ShowtimeChips } from './ShowtimeChips';
 import type { FeedItem } from './TrailerFeed';
 
 /**
@@ -37,11 +38,20 @@ import type { FeedItem } from './TrailerFeed';
  *  long note scrolls inside its slide instead of growing the band. */
 const BAND = 'lg:h-[440px]';
 
+/**
+ * `production` — the title was picked, so the slide speaks for the whole run
+ * and lists the other dates. `showing` — one night was picked, so it speaks
+ * for that night only and stays silent about the rest.
+ */
+type PickKind = 'production' | 'showing';
+
 function Pick({
   item,
+  kind,
   onSelect,
 }: {
   item: FeedItem;
+  kind: PickKind;
   onSelect?: (item: FeedItem) => void;
 }) {
   const note = item.curatorNote ? htmlToPlainText(item.curatorNote) : null;
@@ -63,7 +73,15 @@ function Pick({
   return (
     <>
       <p className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-5">
-        {item.isFeatured ? "Curator's pick" : 'Featured'} · {dayLabel(item.startTime)}
+        {item.isFeatured || item.isFeaturedShowing ? "Curator's pick" : 'Featured'} ·{' '}
+        {dayLabel(item.startTime)}
+        {/* Said out loud only when the pick is a single night out of several.
+            On a production pick the dates are listed in full below, so
+            labelling it would be noise; on a film that only plays once there
+            is no "this night rather than that one" to draw. */}
+        {kind === 'showing' && (item.upcomingShowings?.length ?? 0) > 1 && (
+          <span className="text-muted-foreground"> · this screening</span>
+        )}
       </p>
 
       {/* Poster beside the copy, not above it — the same split ShowingPreview
@@ -156,6 +174,19 @@ function Pick({
               </p>
             </div>
           )}
+          {/* The rest of the run — the same chips the listing preview offers,
+              and only on a production pick. A picked *showing* is a
+              recommendation of one night; listing the others underneath would
+              argue with it. */}
+          {kind === 'production' && (
+            <ShowtimeChips
+              showings={item.upcomingShowings}
+              excludeShowingId={item.showingId}
+              headingId={`pick-also-playing-${item.id}`}
+              className="mt-5 shrink-0"
+            />
+          )}
+
           {/* With no artwork there is no left column to sit under, so the
               button stays with the copy rather than claiming a cell of its
               own in a single-column grid. */}
@@ -188,21 +219,41 @@ export function BoothNote({
   items: FeedItem[];
   onSelect?: (item: FeedItem) => void;
 }) {
-  // Curator-controlled picks, in feed order (earliest first). Falls back to
-  // the first chronological item so the section never renders empty. Unlike
-  // the old placement, nothing is removed from the calendar to build this —
-  // the listing on /calendar shows every showing including these, so a
-  // featured film is no longer missing from the page that exists to list
-  // them all.
+  // Two independent flags feed this carousel, and a title may carry both.
   //
-  // One slide per *production*, not per showing. A FeedItem is a showing (see
-  // the type), so a featured film playing four times arrived here as four
-  // items differing only by date — and the carousel dutifully built four
-  // identical slides of the same poster and the same note. The feed is sorted
-  // ascending, so keeping the first sighting of each production keeps the
-  // soonest date, which is the one the Get Tickets button should point at.
-  const flagged = dedupeByProduction(items.filter((i) => i.isFeatured));
-  const picks = flagged.length > 0 ? flagged : items.slice(0, 1);
+  // A picked *production* is one slide for the whole run. A FeedItem is a
+  // showing (see the type), so a featured film playing four times arrives as
+  // four items differing only by date; deduping keeps the first, and because
+  // the feed is date-sorted that is the soonest — the one Get Tickets should
+  // point at. The other dates are listed on the slide rather than thrown away.
+  //
+  // A picked *showing* is one slide for that night, and is not deduped: two
+  // flagged nights of the same film are two deliberate picks, not a mistake.
+  //
+  // Both set on one title is not a conflict to resolve. It reads as "see this
+  // film, and especially this night", so it produces both slides.
+  const productionPicks = dedupeByProduction(items.filter((i) => i.isFeatured)).map(
+    (item) => ({ item, kind: 'production' as const }),
+  );
+  const showingPicks = items
+    .filter((i) => i.isFeaturedShowing)
+    .map((item) => ({ item, kind: 'showing' as const }));
+
+  // Chronological across both kinds, so the carousel reads as a running order
+  // rather than as two lists stapled together.
+  const flagged = [...productionPicks, ...showingPicks].sort(
+    (a, b) => new Date(a.item.startTime).getTime() - new Date(b.item.startTime).getTime(),
+  );
+
+  // Falls back to the first chronological item so the section never renders
+  // empty. Unlike the old placement, nothing is removed from the calendar to
+  // build this — the listing on /calendar shows every showing including these,
+  // so a featured film is no longer missing from the page that exists to list
+  // them all.
+  const picks =
+    flagged.length > 0
+      ? flagged
+      : items.slice(0, 1).map((item) => ({ item, kind: 'production' as const }));
 
   if (picks.length === 0) return null;
 
@@ -234,7 +285,7 @@ export function BoothNote({
 
       <div className="container relative py-10 md:py-14">
         {single ? (
-          <Pick item={picks[0]} onSelect={onSelect} />
+          <Pick item={picks[0].item} kind={picks[0].kind} onSelect={onSelect} />
         ) : (
           // No autoplay, so there is no motion the reader did not ask for and
           // nothing to gate on prefers-reduced-motion. The arrows clamp at the
@@ -251,9 +302,11 @@ export function BoothNote({
             className="relative lg:px-16"
           >
             <CarouselContent>
-              {picks.map((item) => (
-                <CarouselItem key={item.id}>
-                  <Pick item={item} onSelect={onSelect} />
+              {picks.map(({ item, kind }) => (
+                // A film can appear twice — once for its run, once for a
+                // singled-out night — so the key has to carry the kind.
+                <CarouselItem key={`${kind}-${item.id}`}>
+                  <Pick item={item} kind={kind} onSelect={onSelect} />
                 </CarouselItem>
               ))}
             </CarouselContent>
