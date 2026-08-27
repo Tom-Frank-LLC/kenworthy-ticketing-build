@@ -5,7 +5,7 @@ status: shipped
 track: feature
 severity: P2
 date: 2026-08-25
-shipped_in: ["#203"]
+shipped_in: ["#203", "#208"]
 shipped_at: 2026-08-27
 verified: true
 ---
@@ -52,6 +52,15 @@ verified: true
 > batch cannot drift from the single-showing path. The base-price `<Label>` was
 > also rendering unattached to its input; it now carries `htmlFor`/`id` like the
 > runtime field beside it.
+>
+> **Follow-up (#208).** Tom found the papercut in production: a finished batch
+> stayed on the form, and that read as failure. The summary renders above the
+> form while Create is the last control on the page, so the admin is at the
+> bottom when they press it — the panel appeared off-screen behind them and the
+> only visible change was every field they had filled in going blank, behind a
+> success toast. A batch where everything landed now leaves for the admin list,
+> as a single showtime always has. A batch that fell short still stays, because
+> it has something to act on, and now scrolls itself into view.
 >
 > **Shipped as.** `src/lib/showtimeBatch.ts` (pure: rows, wall-clock
 > arithmetic, duplicate/collision detection, batch and Square summaries) plus

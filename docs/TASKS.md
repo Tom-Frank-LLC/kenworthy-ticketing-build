@@ -23,7 +23,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
-- **An admin adds a whole run of showtimes in one pass, and is told exactly which ones landed**<br>`feature` — `#203` — [brief](briefs/BRIEF-batch-showtimes.md)
+- **An admin adds a whole run of showtimes in one pass, and is told exactly which ones landed**<br>`feature` — `#203`, `#208` — [brief](briefs/BRIEF-batch-showtimes.md)
 - **A production can carry more than one genre, stored the way the DVD library already stores them**<br>`feature` — `#199`, `#200`, `#204` — [brief](briefs/BRIEF-multiple-genres.md) · [notes](briefs/../FINDINGS-genre-backfill.md)
 - **A curator's pick can be a whole run or a single night, and says which**<br>`feature` — `#201` — [brief](briefs/BRIEF-showing-level-curator-pick.md)
 - **Concessions moves off the home page to /concessions, framed in the marquee bulbs**<br>`ux` — `#186`, `#188`, `#189`, `#190` — [brief](briefs/BRIEF-concessions-marquee-border.md) · [notes](briefs/FINDINGS-marquee-bulb-border.md)
