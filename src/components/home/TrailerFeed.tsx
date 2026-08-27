@@ -16,6 +16,13 @@ export interface UpcomingShowing {
   id: string;
   start_time: string;
   ticket_price: number;
+  /**
+   * `showings.no_ticket_required` — this date is free and open, with nothing
+   * issued or reserved. Carried per date rather than per production because a
+   * run can mix the two: a paid week with one free community screening in it
+   * is the ordinary case, not an exception.
+   */
+  no_ticket_required?: boolean;
 }
 
 export interface FeedItem {
@@ -44,6 +51,14 @@ export interface FeedItem {
    */
   isFeaturedShowing?: boolean;
   ticketPrice?: number;
+  /**
+   * `showings.no_ticket_required` — free, walk in, no ticket issued.
+   *
+   * Distinct from `ticketPrice === 0`, which is a free showing that still
+   * mints a ticket and holds a seat. The listings render "Get Tickets" for
+   * that one and "Free · Details" for this one, so they cannot be collapsed.
+   */
+  noTicketRequired?: boolean;
   /**
    * The other dates this same production plays, soonest first — including this
    * item's own showing.
@@ -260,9 +275,21 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                     // only bites in a tab left open across one — the case that
                     // would otherwise sell a finished screening. The rule is
                     // src/lib/purchasable.ts.
+                    //
+                    // Still a link on a walk-in night, and deliberately: the
+                    // showing page is where the time, the venue and the
+                    // trailer are, and those are exactly what somebody
+                    // deciding whether to turn up needs. What changes is that
+                    // it stops claiming to sell anything.
                     <Button asChild size="lg" className={cn('h-12', GREEN_CTA)}>
                       <Link to={`/showing/${item.showingId}`}>
-                        <Ticket className="h-4 w-4 mr-1" /> Get Tickets
+                        {item.noTicketRequired ? (
+                          'Free · Details'
+                        ) : (
+                          <>
+                            <Ticket className="h-4 w-4 mr-1" /> Get Tickets
+                          </>
+                        )}
                       </Link>
                     </Button>
                   ) : null}

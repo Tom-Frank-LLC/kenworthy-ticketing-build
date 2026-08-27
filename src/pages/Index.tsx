@@ -24,6 +24,9 @@ interface RawShowing {
   // Curator's pick for this one date. Distinct from the production-level flag
   // on movies/events/live_performances — see FeedItem.
   is_featured?: boolean;
+  // Free and open, with no ticket issued at all. Distinct from
+  // `ticket_price === 0`, which still mints a free ticket — see FeedItem.
+  no_ticket_required?: boolean;
 }
 
 interface RawProduction {
@@ -76,6 +79,7 @@ function buildFeed(
       isFeatured: prod.is_featured ?? false,
       isFeaturedShowing: s.is_featured ?? false,
       ticketPrice: s.ticket_price,
+      noTicketRequired: s.no_ticket_required ?? false,
     });
   }
 

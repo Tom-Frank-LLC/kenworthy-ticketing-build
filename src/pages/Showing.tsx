@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Film, Calendar, Clock, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard } from 'lucide-react';
@@ -21,7 +22,12 @@ import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
-import { SHOWING_PASSED_MESSAGE, isPast } from '@/lib/purchasable';
+import {
+  NO_TICKET_REQUIRED_MESSAGE,
+  SHOWING_PASSED_MESSAGE,
+  isPast,
+  needsNoTicket,
+} from '@/lib/purchasable';
 import { SITE_URL } from '@/lib/site';
 import { htmlToPlainText, toMetaDescription } from '@/lib/richText';
 import { RichText } from '@/components/RichText';
@@ -88,6 +94,248 @@ function PassedNotice({ startTime }: { startTime: string }) {
       <Button variant="outline" className="mt-4" asChild>
         <Link to="/">See what&rsquo;s playing now</Link>
       </Button>
+    </div>
+  );
+}
+
+/**
+ * A free showing that issues no ticket — doors open, walk in.
+ *
+ * Keeps the two-column shape of the buy flow rather than replacing it with a
+ * notice (Tom, 2026-08-27). The quantity stepper is gone because there is no
+ * number to pick, no seat to hold and no capacity to count down; the order
+ * summary is open from the start because there is nothing to add to it, so
+ * "add tickets to continue" would be an instruction with nothing to follow.
+ * It states the one fact it has, which is Free.
+ *
+ * The donation here is a real payment rather than a link away, and it cannot
+ * reuse the mechanism the paid page uses. There, DonationPrompt is a cart
+ * add-on: it sets an amount that rides on the ticket charge, and the server
+ * bundles it into the same Square payment. There is no charge on this page for
+ * it to ride on, so choosing an amount opens the standalone path /donate uses
+ * (`square-donation`) — which needs a name, an email for the receipt, and its
+ * own card. Those fields stay hidden until somebody actually chooses to give,
+ * so a visitor who only wants the showtime is never asked for anything.
+ */
+function FreeAdmissionPanel({
+  startTime,
+  venueName,
+  donationCents,
+  onDonationChange,
+  defaultEmail,
+}: {
+  startTime: string;
+  venueName?: string | null;
+  donationCents: number;
+  onDonationChange: (cents: number) => void;
+  defaultEmail?: string | null;
+}) {
+  const cardRef = useRef<SquareCardFormHandle>(null);
+  const [cardReady, setCardReady] = useState(false);
+  const [donorName, setDonorName] = useState('');
+  const [donorEmail, setDonorEmail] = useState(defaultEmail ?? '');
+  const [submitting, setSubmitting] = useState(false);
+  const [thankedCents, setThankedCents] = useState<number | null>(null);
+
+  const giving = donationCents > 0;
+  const amount = (donationCents / 100).toFixed(2);
+
+  const handleDonate = async () => {
+    if (!donorName.trim() || !donorEmail.trim()) {
+      toast.error('Your name and email are required for the receipt.');
+      return;
+    }
+    if (!cardRef.current) {
+      toast.error('Card form is not ready yet — give it a moment.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      let token: string;
+      try {
+        token = await cardRef.current.tokenize();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Please check your card details.');
+        return;
+      }
+
+      const data = await invokeFunction<{ success: boolean; receiptUrl: string | null }>(
+        'square-donation',
+        {
+          action: 'create_payment',
+          sourceId: token,
+          amountCents: donationCents,
+          donorName: donorName.trim(),
+          donorEmail: donorEmail.trim(),
+          donorPhone: null,
+          dedicationType: null,
+          dedicateTo: null,
+          notifyName: null,
+          notifyEmail: null,
+          message: null,
+        },
+      );
+
+      if (!data?.success) {
+        toast.error('Donation could not be processed.');
+        return;
+      }
+
+      setThankedCents(donationCents);
+      onDonationChange(0);
+      toast.success(`Thank you for your $${amount} gift!`);
+    } catch (err) {
+      console.error('Donation submit error:', err);
+      toast.error(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2 space-y-6 min-w-0">
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display text-lg">Admission</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="font-display text-2xl text-success">Free — no ticket needed</p>
+            <p className="text-sm text-muted-foreground">
+              Admission is free and open to everyone. There is nothing to buy or reserve —
+              just come to the theatre and find a seat. Seating is first-come,
+              first-served.
+            </p>
+            <div className="flex flex-col gap-1.5 text-sm border-t border-border pt-4">
+              <span className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-accent" />
+                {formatShowtime(startTime, "EEEE, MMMM d, yyyy 'at' h:mm a")}
+              </span>
+              <span className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-accent" />
+                {venueName || 'Kenworthy Performing Arts Centre'} · 508 S Main St, Moscow, ID
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div id="order-summary" className="scroll-mt-24">
+        <Card className="glass lg:sticky lg:top-20">
+          <CardHeader>
+            <CardTitle className="font-display text-lg">Order Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>Admission</span>
+                <span className="text-success font-medium">Free</span>
+              </div>
+              {giving && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Donation (not taxed)</span>
+                  <span>${amount}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <div className="flex justify-between font-bold text-base">
+                <span>Total</span>
+                <span className={giving ? 'text-primary' : 'text-success'}>
+                  {giving ? `$${amount}` : 'Free'}
+                </span>
+              </div>
+            </div>
+
+            {thankedCents !== null && !giving && (
+              <p className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm">
+                Thank you for your ${(thankedCents / 100).toFixed(2)} gift — a receipt is on
+                its way.
+              </p>
+            )}
+
+            <DonationPrompt
+              valueCents={donationCents}
+              onChange={onDonationChange}
+              disabled={submitting}
+            />
+
+            {giving ? (
+              <>
+                {/* Only once somebody has chosen to give. A walk-in visitor who
+                    just wants the showtime is never asked for a name, an email
+                    or a card. */}
+                <div className="border-t border-border pt-3 space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="free-donor-name">Your name</Label>
+                    <Input
+                      id="free-donor-name"
+                      value={donorName}
+                      onChange={(e) => setDonorName(e.target.value)}
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="free-donor-email">Email (for receipt)</Label>
+                    <Input
+                      id="free-donor-email"
+                      type="email"
+                      value={donorEmail}
+                      onChange={(e) => setDonorEmail(e.target.value)}
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium mb-3 flex items-center gap-1">
+                      <CreditCard className="h-4 w-4" /> Payment
+                    </p>
+                    <SquareCardForm
+                      ref={cardRef}
+                      source="square-donation"
+                      onReadyChange={setCardReady}
+                    />
+                  </div>
+                </div>
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={handleDonate}
+                  disabled={submitting || !cardReady}
+                >
+                  <Check className="h-4 w-4 mr-1" />
+                  {submitting ? 'Processing...' : `Donate $${amount}`}
+                </Button>
+                <p className="text-sm text-muted-foreground text-center">
+                  Payments are processed securely by Square. Your card details never reach
+                  our servers.
+                </p>
+              </>
+            ) : (
+              <>
+                {/* Where the Reserve button would be. Deliberately not a
+                    disabled button: there is no action being withheld, so
+                    something greyed out would read as a step the visitor has
+                    failed to unlock rather than as the answer. */}
+                <div className="w-full rounded-md border border-success/40 bg-success/10 py-3 text-center">
+                  <p className="font-display text-lg text-success">Free — just show up</p>
+                </div>
+                <p className="text-sm text-muted-foreground text-center">
+                  Nights like this one are paid for by people who give. Add a gift above, or{' '}
+                  <Link
+                    to="/donate"
+                    className="text-primary underline underline-offset-4 hover:no-underline"
+                  >
+                    give another way
+                  </Link>
+                  .
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -379,6 +627,16 @@ export default function Showing() {
       return;
     }
 
+    // The same stale-tab case for the walk-in state: an admin flips a free
+    // screening to "no ticket needed" while this page is open, and the
+    // rendered Reserve button outlives the change. The server refuses it
+    // anyway (_shared/pricing.ts) and so does the trigger; this is here so
+    // that case gets the page's own sentence rather than a checkout error.
+    if (needsNoTicket(showing)) {
+      toast.error(NO_TICKET_REQUIRED_MESSAGE);
+      return;
+    }
+
     setPurchasing(true);
     try {
       const data = await invokeFunction<{
@@ -554,15 +812,28 @@ export default function Showing() {
   // guard above so the film's runtime is in hand: the cutoff is the end of the
   // show, and for a film that end depends on production.duration_minutes.
   const hasPassed = isPast(showing, production);
+  // Free and open: no purchase panel at all. Read from the showing row rather
+  // than inferred from a $0 price — a $0 showing with this false is still
+  // ticketed, and the reserve flow it gets is the correct one. See
+  // src/lib/purchasable.ts.
+  const noTicket = needsNoTicket(showing);
   // Trailer/poster come from the production row we already fetched — no extra
   // query. When neither exists we keep the small type-icon tile instead of
   // reserving a media column for nothing.
   const hasMedia = !!(production?.trailer_url || production?.poster_url);
 
-  // Price display: show range if tiers, otherwise single price
-  const priceDisplay = hasTiers
-    ? `$${Math.min(...priceTiers.map(t => t.price)).toFixed(2)}–$${Math.max(...priceTiers.map(t => t.price)).toFixed(2)}`
-    : `$${Number(showing.ticket_price).toFixed(2)} per ticket`;
+  // What the meta line says this costs.
+  //
+  // "$0.00 per ticket" is a true sentence about a walk-in night and a useless
+  // one — it describes a ticket that does not exist. Tiers are unreachable
+  // here: the flag requires ticket_price = 0 and the tier trigger refuses a
+  // priced tier, so this branch is checked first rather than merged into the
+  // ternary below.
+  const priceDisplay = noTicket
+    ? 'Free — no ticket needed'
+    : hasTiers
+      ? `$${Math.min(...priceTiers.map(t => t.price)).toFixed(2)}–$${Math.max(...priceTiers.map(t => t.price)).toFixed(2)}`
+      : `$${Number(showing.ticket_price).toFixed(2)} per ticket`;
 
   return (
     // Extra bottom padding on mobile clears the sticky order bar below.
@@ -632,7 +903,11 @@ export default function Showing() {
               <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full font-medium">
                 {meta.label}
               </span>
-              {soldOut && (
+              {/* Not on a walk-in night. `soldOut` is a capacity answer and
+                  capacity is not what limits a showing that sells nothing —
+                  an old row still flagged for assigned seating would otherwise
+                  print "Sold Out" over a screening anyone can walk into. */}
+              {soldOut && !noTicket && (
                 <span className="text-xs bg-destructive/15 text-destructive px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
                   Sold Out
                 </span>
@@ -676,6 +951,14 @@ export default function Showing() {
           to keep this change legible as the one-line rule it is. */}
       {hasPassed ? (
         <PassedNotice startTime={showing.start_time} />
+      ) : noTicket ? (
+        <FreeAdmissionPanel
+          startTime={showing.start_time}
+          venueName={venue?.name}
+          donationCents={donationCents}
+          onDonationChange={setDonationCents}
+          defaultEmail={user?.email}
+        />
       ) : (
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Seating Map or GA Quantity */}
@@ -951,7 +1234,7 @@ export default function Showing() {
       {/* Mobile order bar. On phones the summary column stacks below the seat
           map, so the running total and the way to checkout would otherwise be
           a full screen of scrolling away from the seat the buyer just tapped. */}
-      {ticketCount > 0 && !soldOut && !hasPassed && (
+      {ticketCount > 0 && !soldOut && !hasPassed && !noTicket && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-accent/20 glass px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div className="min-w-0">

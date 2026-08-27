@@ -69,6 +69,7 @@ interface Screening {
   start_time: string;
   duration_minutes: number | null;
   is_active: boolean | null;
+  no_ticket_required: boolean | null;
   movies: Production | null;
   events: Production | null;
   live_performances: Production | null;
@@ -355,7 +356,7 @@ export default function SilentFilmFestival() {
         const { data: tagged } = await supabase
           .from('pass_type_showings')
           .select(
-            'showings(id, start_time, duration_minutes, is_active, ' +
+            'showings(id, start_time, duration_minutes, is_active, no_ticket_required, ' +
               'movies(title, description, poster_url, duration_minutes), ' +
               'events(title, description), ' +
               'live_performances(title, description))',
@@ -672,7 +673,13 @@ export default function SilentFilmFestival() {
                             ) : (
                               <Button asChild className={cn('h-11', GREEN_CTA)}>
                                 <Link to={`/showing/${screening.id}`}>
-                                  Get Tickets
+                                  {/* A festival can open with a free screening
+                                      the pass does not need to cover. The
+                                      programme still links to it — the details
+                                      are what the reader came for. */}
+                                  {screening.no_ticket_required
+                                    ? 'Free · Details'
+                                    : 'Get Tickets'}
                                 </Link>
                               </Button>
                             )}

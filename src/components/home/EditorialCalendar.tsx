@@ -113,6 +113,20 @@ export function EditorialCalendar({
                               {item.ticketType === 'rsvp' && (
                                 <Badge variant="outline" className="text-xs py-0">RSVP</Badge>
                               )}
+                              {/* This row opens a drawer rather than offering
+                                  a ticket, so there is no CTA here to reword —
+                                  the badge is the only place the calendar can
+                                  say that a night costs nothing and needs no
+                                  booking. Same slot as RSVP, which answers the
+                                  neighbouring question. */}
+                              {item.noTicketRequired && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs py-0 border-success/60 text-success"
+                                >
+                                  Free · no ticket
+                                </Badge>
+                              )}
                             </div>
                             <div className="font-display text-lg tracking-wide leading-snug group-hover:text-primary transition-colors">
                               {item.title}

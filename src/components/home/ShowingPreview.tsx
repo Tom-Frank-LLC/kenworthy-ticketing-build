@@ -137,9 +137,23 @@ export function ShowingPreview({
               {item.showingId && !isPast({ start_time: item.startTime }) && (
                 <Button asChild className={cn('gap-2', GREEN_CTA)}>
                   <Link to={`/showing/${item.showingId}`}>
-                    <Ticket className="h-4 w-4" />
-                    Get Tickets
-                    <ArrowRight className="h-4 w-4" />
+                    {/* A walk-in night has nothing to sell, so the ticket
+                        glyph and the word go — but the link stays. The
+                        showing page still holds the time, the venue and the
+                        trailer, which is the whole of what somebody deciding
+                        whether to come needs. */}
+                    {item.noTicketRequired ? (
+                      <>
+                        Free · Details
+                        <ArrowRight className="h-4 w-4" />
+                      </>
+                    ) : (
+                      <>
+                        <Ticket className="h-4 w-4" />
+                        Get Tickets
+                        <ArrowRight className="h-4 w-4" />
+                      </>
+                    )}
                   </Link>
                 </Button>
               )}

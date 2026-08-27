@@ -20,7 +20,12 @@
 // Nothing here prices a redemption — ticket-checkout refuses film passes
 // outright — but the two must not drift.
 
-import { SHOWING_PASSED_MESSAGE, isPast } from './purchasable.ts';
+import {
+  NO_TICKET_REQUIRED_MESSAGE,
+  SHOWING_PASSED_MESSAGE,
+  isPast,
+  needsNoTicket,
+} from './purchasable.ts';
 
 export const TAX_RATE = 0.06;
 
@@ -148,7 +153,7 @@ export async function priceTicketOrder(
   const { data: showing, error: showingErr } = await admin
     .from('showings')
     .select(
-      'id, ticket_price, is_active, requires_seat_selection, total_seats, start_time, duration_minutes, movie_id, event_id, live_performance_id',
+      'id, ticket_price, is_active, requires_seat_selection, total_seats, start_time, duration_minutes, movie_id, event_id, live_performance_id, no_ticket_required',
     )
     .eq('id', showingId)
     .maybeSingle();
@@ -156,6 +161,18 @@ export async function priceTicketOrder(
   if (showingErr) throw new PricingError('Could not load the showing');
   if (!showing) throw new PricingError('Showing not found');
   if (showing.is_active === false) throw new PricingError('This showing is no longer on sale');
+
+  // A showing that issues no ticket cannot be sold one, whatever the buyer
+  // sends. This is the stale-tab case for the walk-in state: an admin flips a
+  // free screening to "no ticket needed" while somebody has its old purchase
+  // panel open, and that tab still holds a rendered Reserve button.
+  //
+  // Asked before the production load below, unlike the past-showing rule: this
+  // one needs no runtime and no clock, so there is nothing to fetch first. It
+  // is asked before that rule for the same reason the trigger asks it first —
+  // a walk-in night that has also finished should be described as the former,
+  // not sent somebody looking for a date problem.
+  if (needsNoTicket(showing)) throw new PricingError(NO_TICKET_REQUIRED_MESSAGE);
 
   // Production row carries the title, the buyer-paid-fee opt-in, and — for a
   // film — the runtime that decides when this showing is over.
