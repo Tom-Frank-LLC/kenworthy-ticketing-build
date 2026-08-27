@@ -1,11 +1,12 @@
 ---
 brief: showing-level-curator-pick
 title: A curator's pick can be a whole run or a single night, and says which
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-08-27
-verified: false
+shipped_in: ["#201"]
+shipped_at: 2026-08-27
+verified: true
 ---
 
 # Brief: curator's pick, at the production level *or* the showing level
