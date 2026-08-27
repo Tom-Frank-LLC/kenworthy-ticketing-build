@@ -18,12 +18,15 @@ verified: false
 > a link, so the reader can still reach the time and venue. **4 — all three
 > production types**, since they share one `showings` table and one code path.
 
-> **Built, not shipped.** The code is on `main` but the migration has not been
-> applied to either database and nothing has been deployed. Applying
-> `20260827113402_showings_no_ticket_required.sql` to staging and then
-> production, followed by `npx wrangler deploy`, is what makes this real — see
-> `docs/RUNBOOK-deploy-staging-prod.md`. Until then every showing behaves
-> exactly as it did before, because the flag defaults to false.
+> **On staging, not in production (2026-08-27).** The migration is applied to
+> `rpqzrpboyhshdrfdwayk` and the staging worker plus `ticket-checkout` are
+> deployed from this branch; three test showings of *Warfare* (paid / free-
+> ticketed / walk-in) sit on Aug 30, Aug 31 and Sep 1 for comparison.
+> **Production has neither the migration nor the deploy.** Applying
+> `20260827113402_showings_no_ticket_required.sql` to `vlmslygnimfbamrtwvyo` and
+> running `npx wrangler deploy` is what makes it real there — see
+> `docs/RUNBOOK-deploy-staging-prod.md`. Until then every production showing
+> behaves exactly as before, because the flag defaults to false.
 
 **Requested by:** Tom — for free movies, let the admin decide whether it
 **requires (free) tickets** or **needs no ticket at all**, in which case the
@@ -134,16 +137,42 @@ dead weight in a catalog that is already the theatre's entire sales history.
 
 ## Ticketing page (`Showing.tsx`)
 
-`FreeAdmissionNotice` replaces the entire buy column, the way `PassedNotice`
-does. Leaving disabled steppers on screen would pose a question the night does
-not have.
+**Revised 2026-08-27, after Tom saw the first version on staging.** The first
+build replaced the whole buy column with a single centred notice. Tom asked for
+the buy flow's own shape to be kept instead, and that is what ships:
 
-**The donation ask is a link to `/donate`, not the `DonationPrompt` component.**
-Tom asked to keep the ask, and this is that ask — but `DonationPrompt` is a cart
-add-on: it sets an amount that rides on the ticket charge and is bundled into the
-same Square payment by the server. There is no charge on this page for it to ride
-on, so rendering it would collect a number and silently drop it. Same ask, the
-only mechanism that can actually take the money.
+- the −/+ quantity stepper is **gone** — there is no number to pick, no seat to
+  hold, no capacity to count down;
+- the **Order Summary is open from the start**, rather than saying "add tickets
+  to continue" — an instruction with nothing to follow. It states the one fact
+  it has: `Admission — Free`, `Total — Free`;
+- where the "Reserve N Ticket(s)" button was, the panel **says Free**. Not a
+  disabled button: nothing is being withheld, and something greyed out reads as
+  a step the visitor failed to unlock rather than as the answer;
+- the **normal donation prompt** is offered underneath.
+
+### The donation had to change mechanism
+
+`DonationPrompt` on a paid page is a **cart add-on**: it sets an amount that
+rides on the ticket charge, and `ticket-checkout` bundles it into the same
+Square payment. There is no charge on this page for it to ride on, so wiring
+the component up as-is would have collected an amount and silently dropped it.
+
+Choosing an amount therefore opens the **standalone donation path `/donate`
+already uses** — `square-donation`'s `create_payment` — which needs a name, an
+email for the receipt, and its own card. Those three fields stay hidden until
+somebody actually chooses to give, so a visitor who only wants the showtime is
+never asked for anything.
+
+### Testing the donation on staging has production side effects
+
+`square-donation` calls `settleDonation`, which files the gift in **Little
+Green Light**, and it fires Mailchimp subscribe + e-commerce sync. Square is
+sandboxed on staging; **LGL and Mailchimp are not** — they share production's
+key and audience (see the environments table in `CLAUDE.md`). Completing the
+Donate button on staging writes a real donor record and a real contact, with no
+reversal path. The prompt, the fields and the card form can all be exercised
+safely; only the final submit crosses over.
 
 The price line reads "Free — no ticket needed" instead of "$0.00 per ticket",
 and the Sold Out badge is suppressed — capacity is not what limits a showing
