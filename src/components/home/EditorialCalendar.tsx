@@ -4,7 +4,8 @@ import { addDays, isThisWeek } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
 import type { FeedItem } from './TrailerFeed';
-import { htmlToPlainText } from '@/lib/richText';
+import { isRichTextEmpty } from '@/lib/richText';
+import { RichText } from '@/components/RichText';
 
 const TYPE_ICON = {
   movie: Film,
@@ -84,12 +85,25 @@ export function EditorialCalendar({
                     const Icon = TYPE_ICON[item.type];
                     return (
                       <li key={`${item.id}-${item.showingId ?? 'no-show'}`}>
-                        <button
-                          type="button"
-                          onClick={() => onSelect?.(item)}
-                          aria-current={selectedId === item.id ? 'true' : undefined}
+                        {/* The row is a container with the control laid over
+                            it, not a `<button>` wrapping its own contents.
+
+                            The note below is a description written in the
+                            admin editor, so it can carry `<a>` and block
+                            elements, and an `<a>` inside a `<button>` is
+                            invalid HTML that browsers recover from
+                            unpredictably. Lifting the button out to an overlay
+                            keeps the whole row clickable and keyboard
+                            reachable while leaving the copy as ordinary
+                            markup — which is what lets it render formatted
+                            here rather than flattened.
+
+                            `relative` anchors the overlay; `group` still lives
+                            on this element, so the title's hover colour works
+                            off a pointer anywhere in the row. */}
+                        <div
                           className={cn(
-                            'w-full text-left py-4 flex items-start gap-4 group -mx-2 px-2 rounded-sm transition-colors min-h-[64px]',
+                            'relative text-left py-4 flex items-start gap-4 group -mx-2 px-2 rounded-sm transition-colors min-h-[64px]',
                             // Hover stays styling only — picking a showing is a
                             // click, so a moused-over row must not read the
                             // same as the one actually chosen.
@@ -131,13 +145,34 @@ export function EditorialCalendar({
                             <div className="font-display text-lg tracking-wide leading-snug group-hover:text-primary transition-colors">
                               {item.title}
                             </div>
-                            {item.curatorNote && (
-                              <p className="font-serif text-sm italic text-muted-foreground line-clamp-2 mt-1">
-                                {htmlToPlainText(item.curatorNote)}
-                              </p>
+                            {/* Two lines of the real thing. `rich-text-teaser`
+                                strips the block margins so `line-clamp` can
+                                still count line boxes — see the note on the
+                                variant in index.css — which is what keeps the
+                                row at the height it has always had while bold,
+                                emphasis and bullets survive. */}
+                            {!isRichTextEmpty(item.curatorNote) && (
+                              <RichText
+                                html={item.curatorNote}
+                                className="rich-text-teaser font-serif text-sm italic text-muted-foreground line-clamp-2 mt-1"
+                              />
                             )}
                           </div>
-                        </button>
+
+                          {/* Last in the row so it stacks above the copy, and
+                              so the reading order is still time, title, note.
+                              `inset-0` makes the whole row the hit area the
+                              wrapping button used to be. Its label is the
+                              title alone: as a wrapper its accessible name was
+                              the entire row read out as one run-on string. */}
+                          <button
+                            type="button"
+                            onClick={() => onSelect?.(item)}
+                            aria-current={selectedId === item.id ? 'true' : undefined}
+                            aria-label={`Details for ${item.title}`}
+                            className="absolute inset-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                          />
+                        </div>
                       </li>
                     );
                   })}

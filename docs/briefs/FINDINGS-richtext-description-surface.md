@@ -79,6 +79,47 @@ the existing teaser slots:
   `<a>` inside a `<button>` is invalid HTML; browsers recover unpredictably and
   the link is not reliably clickable.
 
+### Correction, 27 Aug 2026 — the first of those two is wrong
+
+Recorded above as fact and never measured. It sent the next session (and this
+document's own reader) to design around a constraint that does not exist, and
+it is the reason Tom reported formatted descriptions rendering flat on the home
+and calendar pages: *every* teaser had been flattened, including the two panes
+that do not clamp at all.
+
+Measured in Chrome 141 against the real markup — a `-webkit-box` with
+`-webkit-line-clamp: 2`, 16px/1.5 type, 300px wide, containing two `<p>` and a
+two-item `<ul>`:
+
+| box | height |
+|---|---|
+| plain string, clamped to 2 | 48px |
+| the same markup, unclamped | 144px |
+| **rich markup, clamped to 2, no child margins** | **48px** |
+| rich markup, clamped to 2, `margin-block: 12px` on each `<p>` | 84px |
+
+`line-clamp` clamps nested block children exactly as it clamps a string. What
+defeats it is the **margins** — the box counts each child's margin box rather
+than its line boxes, and `.rich-text` sets `margin-block: 0.75em`. So the fix
+was to drop the vertical rhythm, not the formatting: `.rich-text-teaser` in
+`src/index.css` zeroes the child margins, and the clamp holds.
+
+**The second bullet is correct and stands.** `<a>` inside `<button>` is still
+invalid, so `EditorialCalendar`'s row was restructured — the control lifted out
+to a button overlaying the row (`absolute inset-0`) with the copy as ordinary
+sibling markup — rather than the note being flattened to get around it.
+
+Two slots still flatten, on purpose:
+
+- **`TrailerFeed.tsx`** wraps the value in literal quotation marks, so a block
+  element would strand the opening quote on its own line. A quoted excerpt is a
+  genuine plain-text slot.
+- **The machine consumers below**, which were never a rendering question.
+
+The lesson is the one in the root `CLAUDE.md`: a written "this cannot be done"
+is a claim, not a fact, and this one cost a visible bug on two public pages. The
+test that overturned it was one `getBoundingClientRect()` in a console.
+
 So the split is by *role*, not by field:
 
 | role | treatment |

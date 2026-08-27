@@ -10,7 +10,8 @@ import { isPast } from '@/lib/purchasable';
 import { TrailerModal } from '@/components/TrailerModal';
 import { ShowtimeChips } from './ShowtimeChips';
 import type { FeedItem } from './TrailerFeed';
-import { htmlToPlainText } from '@/lib/richText';
+import { isRichTextEmpty } from '@/lib/richText';
+import { RichText } from '@/components/RichText';
 
 /**
  * The inline preview panel that sits beside a list of showings.
@@ -112,16 +113,25 @@ export function ShowingPreview({
                 tabIndex makes the region reachable by keyboard — Chrome does
                 not focus a scroll container on its own, so without it the
                 hidden text is mouse-only. */}
-            {item.curatorNote && (
+            {!isRichTextEmpty(item.curatorNote) && (
               <div
                 tabIndex={0}
                 role="region"
                 aria-label={`About ${item.title}`}
                 className="themed-scroll max-h-[15rem] overflow-y-auto pr-3 mb-5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
-                <p className="font-serif text-sm md:text-base text-muted-foreground">
-                  {htmlToPlainText(item.curatorNote)}
-                </p>
+                {/* The same renderer the ticket page uses, so a note reads the
+                    same in both places. It renders here rather than flattening
+                    because this pane already scrolls: the reason the teaser
+                    slots flatten is `line-clamp`, and there is no clamp left in
+                    this one. The emptiness guard is on the text rather than the
+                    string — an editor the author cleared out stores `<p></p>`,
+                    which is truthy and would otherwise draw an empty scroll
+                    region above the buttons. */}
+                <RichText
+                  html={item.curatorNote}
+                  className="font-serif text-sm md:text-base text-muted-foreground"
+                />
               </div>
             )}
             <div className="flex flex-wrap gap-2">

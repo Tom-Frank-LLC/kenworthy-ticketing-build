@@ -21,10 +21,24 @@ interface RichTextProps {
  * organiser write to the same column the public showing page reads. Render is
  * the only choke point every value goes through.
  *
- * **Use this for body copy only.** For a clamped teaser, a quoted excerpt, or
- * anything inside a `<button>`, call `htmlToPlainText()` and render a string —
- * block elements defeat `line-clamp`, and an `<a>` inside a `<button>` is
- * invalid. See `docs/briefs/FINDINGS-richtext-description-surface.md`.
+ * **A clamped teaser can use this too** — pass `rich-text-teaser` alongside
+ * the clamp. This comment used to say the opposite, on the belief that block
+ * elements defeat `line-clamp`. Measured, they do not: `-webkit-line-clamp: 2`
+ * over nested `<p>` and `<ul>` clamps to the same two lines a plain string
+ * gets. It is the children's *block margins* that break it, because the box
+ * counts margin boxes, and the teaser variant zeroes them.
+ *
+ * Two limits are real and remain:
+ *
+ * - **Not inside a `<button>`.** An `<a>` inside a `<button>` is invalid HTML
+ *   and browsers recover from it unpredictably. A clickable row wanting
+ *   formatted copy needs the control lifted out to an overlay, as
+ *   `EditorialCalendar` does.
+ * - **Not for a quoted excerpt.** Where the markup supplies its own quotation
+ *   marks around the value (`TrailerFeed`), a block element puts the opening
+ *   quote on a line of its own. Flatten with `htmlToPlainText()` there.
+ *
+ * See `docs/briefs/FINDINGS-richtext-description-surface.md`.
  */
 export function RichText({ html, className }: RichTextProps) {
   const clean = useMemo(() => (isRichTextEmpty(html) ? '' : toRichHtml(html)), [html]);
