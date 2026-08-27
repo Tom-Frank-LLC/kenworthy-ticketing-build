@@ -5,13 +5,14 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**68 briefs** — 63 shipped, 2 built, 3 open, 0 needs triage, 0 closed.
+**69 briefs** — 63 shipped, 3 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
+- `P2` **An admin adds a whole run of showtimes in one pass, and is told exactly which ones landed**<br>`feature` — [brief](briefs/BRIEF-batch-showtimes.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open
