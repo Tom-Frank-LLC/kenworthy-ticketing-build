@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,10 +11,28 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
 import { SeatTierEditor, type SeatTierEditorHandle } from '@/components/admin/SeatTierEditor';
-import { formatRuntime, instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
+import {
+  formatRuntime,
+  formatShowtime,
+  instantToVenueLocalInput,
+  venueLocalToInstant,
+} from '@/lib/datetime';
 import { DEFAULT_SHOWING_MINUTES } from '@/lib/purchasable';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { squareSaveOutcome } from '@/lib/squareLink';
+import {
+  findCollidingRowIndexes,
+  findDuplicateRowIndexes,
+  initialShowtimeRows,
+  makeShowtimeRow,
+  nextShowtimeValue,
+  plannedShowtimes,
+  summarizeBatch,
+  summarizeSquareOutcomes,
+  type BatchSummary,
+  type ShowtimeOutcome,
+  type SquareBatchEntry,
+} from '@/lib/showtimeBatch';
 import {
   STANDARD_MOVIE_TICKET_PRICE,
   fetchPassTypes,
@@ -52,7 +70,17 @@ export default function ShowingForm() {
 
   const [itemId, setItemId] = useState('');
   const [venueId, setVenueId] = useState('');
+  // Edit mode edits the one showing it opened, so it keeps the single field.
+  // Create mode builds a list instead: every other field on this form is shared
+  // config, so scheduling a four-night run meant filling all of it four times
+  // and getting it identical four times.
   const [startTime, setStartTime] = useState('');
+  const [showtimeRows, setShowtimeRows] = useState(initialShowtimeRows);
+  const [batchSummary, setBatchSummary] = useState<BatchSummary | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  // Venue-local wall clocks the chosen venue already has a showing at, for the
+  // collision hint. A warning and never a block — see findCollidingRowIndexes.
+  const [existingShowtimes, setExistingShowtimes] = useState<ReadonlySet<string>>(new Set());
   const [ticketPrice, setTicketPrice] = useState('8.00');
   // How long this showing runs. Blank means "ask the production", which is the
   // right answer for almost every film and no answer at all for an event — see
@@ -290,6 +318,75 @@ export default function ShowingForm() {
     );
   };
 
+  const updateShowtime = (index: number, value: string) => {
+    setShowtimeRows(prev => prev.map((r, i) => (i === index ? { ...r, value } : r)));
+  };
+
+  /** Append a row — blank, or offset from the last dated one to build a run. */
+  const addShowtime = (offsetDays?: number) => {
+    setShowtimeRows(prev => [
+      ...prev,
+      makeShowtimeRow(offsetDays ? nextShowtimeValue(prev, offsetDays) : ''),
+    ]);
+  };
+
+  const removeShowtime = (index: number) => {
+    // Never leave the list empty: an admin who removed the last row would be
+    // looking at a form with nowhere to type a date and a button that refuses.
+    setShowtimeRows(prev => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const plannedRows = useMemo(() => plannedShowtimes(showtimeRows), [showtimeRows]);
+  const duplicateRows = useMemo(() => findDuplicateRowIndexes(showtimeRows), [showtimeRows]);
+  const collidingRows = useMemo(
+    () => findCollidingRowIndexes(showtimeRows, existingShowtimes),
+    [showtimeRows, existingShowtimes],
+  );
+  const plannedKey = useMemo(() => plannedRows.join('|'), [plannedRows]);
+
+  /**
+   * What the venue already has at exactly these instants.
+   *
+   * An `in` filter on the exact timestamps rather than a range scan across the
+   * days involved: the result is at most one row per showtime asked about, so
+   * there is nothing for PostgREST's silent 1,000-row cap to truncate and no
+   * window to get wrong. The cost is that it only notices an exact match — a
+   * 7:35 showing is not reported as clashing with a 7:30 one — which is the
+   * right granularity for a hint about double-booking a room.
+   *
+   * Admins and staff see every showing through the SELECT policy on `showings`,
+   * so unlike an anon read this one is not quietly looking at a fraction of the
+   * table and calling the rest free.
+   */
+  useEffect(() => {
+    if (isEdit || !venueId || !plannedKey) { setExistingShowtimes(new Set()); return; }
+    let cancelled = false;
+    // Debounced: <input type="datetime-local"> fires onChange for every
+    // component as it is typed, so an undebounced query would run several times
+    // per showtime for a hint nobody reads until they have stopped typing.
+    const timer = setTimeout(() => {
+      const instants = plannedKey.split('|').map(v => venueLocalToInstant(v).toISOString());
+      supabase
+        .from('showings')
+        .select('start_time, is_active')
+        .eq('venue_id', venueId)
+        .in('start_time', instants)
+        .then(({ data, error }) => {
+          if (cancelled || error) return;
+          setExistingShowtimes(
+            new Set(
+              (data || [])
+                // A cancelled showing is not something to warn about clashing
+                // with — the slot it used to hold is free again.
+                .filter((row: any) => row.is_active !== false)
+                .map((row: any) => instantToVenueLocalInput(row.start_time)),
+            ),
+          );
+        });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [isEdit, venueId, plannedKey]);
+
   const addTier = () => {
     setTiers(prev => [...prev, { tier_name: '', price: '8.00', display_order: prev.length }]);
   };
@@ -302,99 +399,97 @@ export default function ShowingForm() {
     setTiers(prev => prev.map((t, i) => i === index ? { ...t, [field]: value } : t));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!itemId) { toast.error('Please select an item'); return; }
-    setSaving(true);
+  /**
+   * The shared config one showing is written from, plus the date it is for.
+   *
+   * Built per showtime rather than held as one object, but from the same state
+   * every time, so a batch cannot end up with four showings that disagree about
+   * the price. Everything here except `start_time` is what the UI calls "these
+   * settings apply to every showtime".
+   */
+  const buildShowingData = (naiveStartTime: string): any => ({
+    movie_id: category === 'movie' ? itemId : null,
+    event_id: category === 'event' ? itemId : null,
+    concert_id: undefined,
+    live_performance_id: category === 'concert' ? itemId : null,
+    venue_id: venueId || null,
+    // A naive wall clock from <input type="datetime-local">. `new Date(naive)`
+    // would interpret it in the browser's zone; it has to be interpreted in the
+    // venue's, or the stored instant depends on which machine the admin used.
+    start_time: venueLocalToInstant(naiveStartTime).toISOString(),
+    ticket_price: parseFloat(ticketPrice),
+    // Blank clears the override rather than storing 0 — NULL is what makes
+    // showing_ends_at() fall through to the film's own runtime, and the
+    // column's CHECK constraint refuses a zero or negative anyway.
+    duration_minutes: durationMinutes.trim() === '' ? null : parseInt(durationMinutes, 10),
+    // Only claim reserved seating when there is a seat map to reserve from.
+    // A showing flagged reserved with no seats behind it renders an empty
+    // picker the buyer cannot get past.
+    requires_seat_selection: venueHasSeatMap && requiresSeatSelection,
+    is_featured: isFeatured,
+  });
 
-    const assignedSeating = venueHasSeatMap && requiresSeatSelection;
-
-    // Checked before the insert below. Failing afterwards would leave a created
-    // showing behind with the form still on screen, and a second press of the
-    // button would create a second one.
-    if (assignedSeating && seatEditorRef.current?.validate() === false) {
-      setSaving(false);
-      return;
-    }
-
-    const showingData: any = {
-      movie_id: category === 'movie' ? itemId : null,
-      event_id: category === 'event' ? itemId : null,
-      concert_id: undefined,
-      live_performance_id: category === 'concert' ? itemId : null,
-      venue_id: venueId || null,
-      // `startTime` is a naive wall clock from <input type="datetime-local">.
-      // `new Date(naive)` would interpret it in the browser's zone; it has to
-      // be interpreted in the venue's, or the stored instant depends on which
-      // machine the admin happened to use.
-      start_time: venueLocalToInstant(startTime).toISOString(),
-      ticket_price: parseFloat(ticketPrice),
-      // Blank clears the override rather than storing 0 — NULL is what makes
-      // showing_ends_at() fall through to the film's own runtime, and the
-      // column's CHECK constraint refuses a zero or negative anyway.
-      duration_minutes: durationMinutes.trim() === '' ? null : parseInt(durationMinutes, 10),
-      // Only claim reserved seating when there is a seat map to reserve from.
-      // A showing flagged reserved with no seats behind it renders an empty
-      // picker the buyer cannot get past.
-      requires_seat_selection: venueHasSeatMap && requiresSeatSelection,
-      is_featured: isFeatured,
-    };
-
-    let showingId = id;
-
-    if (isEdit) {
-      const { error } = await supabase.from('showings').update(showingData).eq('id', id);
-      if (error) { toast.error(error.message); setSaving(false); return; }
-    } else {
-      // Capacity comes from the room. showings.total_seats defaults to 200 and
-      // has never been editable here, so every showing ever created has claimed
-      // a 200-seat house — 65 short of the real one, which for a GA showing is
-      // the sold-out ceiling the capacity trigger enforces. Set on create only:
-      // on edit it is left alone, so a capacity somebody deliberately reduced
-      // for a limited-seating night is not silently restored to the full house.
-      if (selectedVenue?.total_seats) showingData.total_seats = selectedVenue.total_seats;
-      const { data, error } = await supabase.from('showings').insert(showingData).select('id').single();
-      if (error) { toast.error(error.message); setSaving(false); return; }
-      showingId = data.id;
-      // Seed seat-tier template from the production, if any
-      try {
-        await supabase.rpc('apply_production_template_to_showing', { p_showing_id: showingId });
-      } catch (_) { /* no template — fine */ }
-    }
-
+  /**
+   * Seat pricing, price tiers and pass eligibility for one showing that exists.
+   *
+   * Extracted rather than duplicated: edit mode and every row of a create batch
+   * run exactly this, so the two cannot drift into disagreeing about what a
+   * saved showing is owed.
+   *
+   * Returns null when everything landed, and otherwise both wordings for the
+   * same fact — the sentence the single-showing form has always shown, and the
+   * phrase the batch summary prints beside the datetime it belongs to. A
+   * nullable failure rather than an `ok` union because this project compiles
+   * with `strict: false`, where a boolean discriminant does not narrow.
+   */
+  const applySideEffects = async (
+    showingId: string,
+    assignedSeating: boolean,
+  ): Promise<{ message: string; detail: string } | null> => {
     // Seat pricing for an assigned-seating showing is written by the seat editor
     // and by nothing else. showing_seat_tiers.tier_id cascades from
     // showing_price_tiers, so the tier list below deleting and reinserting its
     // rows would take every painted seat assignment with it — which is what used
     // to happen on every press of Update Showing.
-    if (assignedSeating && showingId) {
+    //
+    // The editor writes from its own painted state to whichever showing id it
+    // is handed and never reads the showing back, so one painted map applies to
+    // every showing in a batch. That is what "these settings apply to every
+    // showtime" has to mean for a room with assigned seats, and it is why a
+    // reserved run does not have to be created a night at a time.
+    if (assignedSeating) {
       const ok = await seatEditorRef.current?.persist(showingId);
       // `!== true` rather than `=== false`: an absent ref returns undefined, and
       // reading that as success is exactly how the seat map got silently dropped.
-      // The showing itself is already saved by this point, so a failure here is
-      // reported rather than pretending nothing landed.
       if (ok !== true) {
-        toast.error('Showing saved, but its seat pricing could not be stored.');
-        setSaving(false);
-        return;
+        return {
+          message: 'Showing saved, but its seat pricing could not be stored.',
+          detail: 'seat pricing was not stored',
+        };
       }
-    } else if (useTiers && showingId) {
-      // Delete existing tiers for this showing
+    } else if (useTiers) {
+      // Not redundant on a brand-new showing: the production template RPC may
+      // have just seeded tiers, and these replace them.
       await supabase.from('showing_price_tiers').delete().eq('showing_id', showingId);
 
       const validTiers = tiers.filter(t => t.tier_name.trim());
       if (validTiers.length > 0) {
         const { error: tierError } = await supabase.from('showing_price_tiers').insert(
           validTiers.map((t, i) => ({
-            showing_id: showingId!,
+            showing_id: showingId,
             tier_name: t.tier_name.trim(),
             price: parseFloat(t.price),
             display_order: i,
           }))
         );
-        if (tierError) { toast.error('Showing saved but tiers failed: ' + tierError.message); setSaving(false); return; }
+        if (tierError) {
+          return {
+            message: 'Showing saved but tiers failed: ' + tierError.message,
+            detail: `price tiers failed — ${tierError.message}`,
+          };
+        }
       }
-    } else if (isEdit && showingId) {
+    } else if (isEdit) {
       // Remove tiers if user unchecked
       await supabase.from('showing_price_tiers').delete().eq('showing_id', showingId);
     }
@@ -403,59 +498,199 @@ export default function ShowingForm() {
     // hang rows off. Reported rather than swallowed on failure: the showing is
     // already saved by this point, and a screening silently accepting no
     // passes is invisible until somebody is turned away at the door.
-    if (showingId) {
-      try {
-        await setShowingEligibility(showingId, passEligible ? eligiblePassTypeIds : []);
-      } catch (err) {
-        toast.error(
-          `Showing saved, but its pass eligibility was not stored — ${
-            err instanceof Error ? err.message : 'unknown error'
-          }`,
-        );
-        setSaving(false);
-        return;
-      }
+    try {
+      await setShowingEligibility(showingId, passEligible ? eligiblePassTypeIds : []);
+    } catch (err) {
+      const why = err instanceof Error ? err.message : 'unknown error';
+      return {
+        message: `Showing saved, but its pass eligibility was not stored — ${why}`,
+        detail: `pass eligibility was not stored — ${why}`,
+      };
     }
 
-    // Give the showing its Square variations, so a sale can carry a
-    // catalog_object_id and land in item-sales under the right category.
-    //
-    // After the save and deliberately non-blocking. The catalog write is
-    // append-only and read back before it counts, but Square locks the catalog
-    // during an upsert and answers 429 while it is held — that is a reason to
-    // tell somebody, never a reason to lose a showing they just filled in. A
-    // failure leaves the showing sellable as an ad-hoc line and the batch job
-    // picks it up later.
+    return null;
+  };
+
+  /**
+   * Give one showing its Square variations, so a sale can carry a
+   * catalog_object_id and land in item-sales under the right category.
+   *
+   * After the save and deliberately non-blocking. The catalog write is
+   * append-only and read back before it counts, but Square locks the catalog
+   * during an upsert and answers 429 while it is held — that is a reason to
+   * tell somebody, never a reason to lose a showing they just filled in. A
+   * failure leaves the showing sellable as an ad-hoc line and the batch job
+   * picks it up later.
+   */
+  const runSquareEnsure = async (showingId: string): Promise<SquareBatchEntry | null> => {
     try {
       const { data: sq, error: sqErr } = await supabase.functions.invoke('square-showing-variations', {
         body: { action: 'ensure_showing', showing_id: showingId },
       });
       if (sqErr || (sq as any)?.error) {
         console.error('[ShowingForm] Square variations not created', sqErr || sq);
-        toast.warning('Saved, but Square did not get its ticket items. It will sell without item reporting.');
-      } else {
-        // Every way this can fall short, not just the one. `needs_item` used to
-        // be the only status checked, which left three other kinds of "this
-        // showing has no usable catalog item" — and a 200 carrying no work at
-        // all — reading exactly like a clean save. See src/lib/squareLink.ts.
-        const outcome = squareSaveOutcome(sq);
-        if (outcome) {
-          console.warn(`[ShowingForm] Square: ${outcome.code}`, sq);
-          toast.warning(outcome.message);
-        }
+        return {
+          code: 'invoke_failed',
+          message: 'Saved, but Square did not get its ticket items. It will sell without item reporting.',
+        };
       }
+      // Every way this can fall short, not just the one. `needs_item` used to
+      // be the only status checked, which left three other kinds of "this
+      // showing has no usable catalog item" — and a 200 carrying no work at
+      // all — reading exactly like a clean save. See src/lib/squareLink.ts.
+      const outcome = squareSaveOutcome(sq);
+      if (outcome) {
+        console.warn(`[ShowingForm] Square: ${outcome.code}`, sq);
+        return { code: outcome.code, message: outcome.message };
+      }
+      return null;
     } catch (sqErr) {
       console.error('[ShowingForm] Square variations threw', sqErr);
-      toast.warning('Saved, but Square did not get its ticket items.');
+      return {
+        code: 'invoke_threw',
+        message: 'Saved, but Square did not get its ticket items. It will sell without item reporting.',
+      };
+    }
+  };
+
+  /**
+   * One showtime, start to finish: insert, seed the template, price it, tag its
+   * passes, tell Square.
+   *
+   * The whole sequence, so a batch repeats it rather than reimplementing it.
+   * Nothing here throws — every way it can stop comes back as an outcome the
+   * caller reports, because a client-side loop over five network round trips is
+   * not a transaction and pretending otherwise is how a partial batch gets
+   * announced as a whole one.
+   */
+  const createOneShowing = async (
+    naiveStartTime: string,
+    assignedSeating: boolean,
+  ): Promise<{ outcome: ShowtimeOutcome; square: SquareBatchEntry | null }> => {
+    const showingData = buildShowingData(naiveStartTime);
+    // Capacity comes from the room. showings.total_seats defaults to 200 and
+    // has never been editable here, so every showing ever created has claimed
+    // a 200-seat house — 65 short of the real one, which for a GA showing is
+    // the sold-out ceiling the capacity trigger enforces. Set on create only:
+    // on edit it is left alone, so a capacity somebody deliberately reduced
+    // for a limited-seating night is not silently restored to the full house.
+    if (selectedVenue?.total_seats) showingData.total_seats = selectedVenue.total_seats;
+
+    const { data, error } = await supabase.from('showings').insert(showingData).select('id').single();
+    if (error) {
+      return {
+        outcome: { value: naiveStartTime, status: 'failed', detail: error.message, message: error.message },
+        square: null,
+      };
+    }
+    const showingId = data.id as string;
+
+    // Seed seat-tier template from the production, if any
+    try {
+      await supabase.rpc('apply_production_template_to_showing', { p_showing_id: showingId });
+    } catch (_) { /* no template — fine */ }
+
+    const shortfall = await applySideEffects(showingId, assignedSeating);
+    if (shortfall) {
+      // The showing exists and will sell; only what came after it is missing.
+      // Not a failure — retrying this row would create a second showing at the
+      // same time in the same room — and not a success either.
+      return {
+        outcome: {
+          value: naiveStartTime,
+          status: 'incomplete',
+          showingId,
+          detail: shortfall.detail,
+          message: shortfall.message,
+        },
+        square: null,
+      };
     }
 
-    toast.success(isEdit ? 'Showing updated!' : 'Showing created!');
-    if (!isEdit && showingId) {
-      setSavedShowingId(showingId);
-      navigate(`/admin/showings/${showingId}`, { replace: true });
-    } else {
+    const square = await runSquareEnsure(showingId);
+    return { outcome: { value: naiveStartTime, status: 'created', showingId }, square };
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!itemId) { toast.error('Please select an item'); return; }
+
+    const assignedSeating = venueHasSeatMap && requiresSeatSelection;
+
+    // Checked before any insert below. Failing afterwards would leave created
+    // showings behind with the form still on screen, and a second press of the
+    // button would create every one of them again.
+    if (assignedSeating && seatEditorRef.current?.validate() === false) return;
+
+    if (isEdit) {
+      setSaving(true);
+      const { error } = await supabase.from('showings').update(buildShowingData(startTime)).eq('id', id);
+      if (error) { toast.error(error.message); setSaving(false); return; }
+
+      const shortfall = await applySideEffects(id!, assignedSeating);
+      if (shortfall) { toast.error(shortfall.message); setSaving(false); return; }
+
+      const square = await runSquareEnsure(id!);
+      if (square) toast.warning(square.message);
+      toast.success('Showing updated!');
       navigate('/admin');
+      setSaving(false);
+      return;
     }
+
+    const planned = plannedShowtimes(showtimeRows);
+    if (planned.length === 0) { toast.error('Add at least one showtime.'); return; }
+
+    setSaving(true);
+    setBatchSummary(null);
+    setBatchProgress({ done: 0, total: planned.length });
+
+    const outcomes: ShowtimeOutcome[] = [];
+    const squares: Array<SquareBatchEntry | null> = [];
+    // Sequential rather than concurrent. Each row runs five writes, one of them
+    // a Square catalog upsert that answers 429 while the catalog lock is held —
+    // firing a whole run of those at once is how a batch turns into a partial
+    // one for a reason that has nothing to do with the showings.
+    for (const value of planned) {
+      const { outcome, square } = await createOneShowing(value, assignedSeating);
+      outcomes.push(outcome);
+      squares.push(square);
+      setBatchProgress({ done: outcomes.length, total: planned.length });
+    }
+
+    const summary = summarizeBatch(outcomes);
+    const squareMessage = summarizeSquareOutcomes(squares);
+    setBatchProgress(null);
+
+    // Rows that failed stay in the form to try again; anything that produced a
+    // showing leaves the list, so a second press cannot double-create it.
+    setShowtimeRows(
+      summary.retryValues.length > 0
+        ? summary.retryValues.map(v => makeShowtimeRow(v))
+        : initialShowtimeRows(),
+    );
+
+    if (planned.length === 1) {
+      // One showtime is the form it has always been: the same three messages,
+      // and the same landing on the showing that was just created.
+      const only = outcomes[0];
+      if (only.status === 'created') {
+        if (squareMessage) toast.warning(squareMessage);
+        toast.success('Showing created!');
+        setSavedShowingId(only.showingId!);
+        navigate(`/admin/showings/${only.showingId}`, { replace: true });
+      } else {
+        toast.error(only.message ?? 'Showing could not be created.');
+      }
+      setSaving(false);
+      return;
+    }
+
+    setBatchSummary(summary);
+    if (squareMessage) toast.warning(squareMessage);
+    if (summary.tone === 'error') toast.error(summary.headline);
+    else if (summary.tone === 'warning') toast.warning(summary.headline);
+    else toast.success(summary.headline);
     setSaving(false);
   };
 
@@ -475,6 +710,84 @@ export default function ShowingForm() {
   return (
     <div className={`container py-8 px-4 ${showSeatOverride ? 'max-w-4xl' : 'max-w-lg'}`}>
       <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="mb-4">← Back</Button>
+
+      {/* What the batch actually did, per showtime.
+          There is no transaction behind a batch — it is a client-side loop over
+          five network round trips per row, and it can stop anywhere. A blanket
+          "Created!" over a run where the third night failed is the failure this
+          panel exists to prevent, so it names every night and what became of
+          it. Only for a real batch: one showtime still navigates straight to
+          the showing it made, exactly as it always did. */}
+      {batchSummary && (
+        <Card className="glass mb-4">
+          <CardHeader>
+            <CardTitle className="font-display">{batchSummary.headline}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            {batchSummary.created.length > 0 && (
+              <div className="space-y-1">
+                <p className="font-semibold">Created</p>
+                <ul className="space-y-1">
+                  {batchSummary.created.map(o => (
+                    <li key={o.value}>
+                      <Link
+                        to={`/admin/showings/${o.showingId}`}
+                        className="underline underline-offset-2 hover:text-accent"
+                      >
+                        {formatShowtime(venueLocalToInstant(o.value), 'EEE, MMM d yyyy · h:mm a')}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {batchSummary.incomplete.length > 0 && (
+              <div className="space-y-1">
+                <p className="font-semibold text-amber-500">Created, but not finished</p>
+                <ul className="space-y-1">
+                  {batchSummary.incomplete.map(o => (
+                    <li key={o.value}>
+                      <Link
+                        to={`/admin/showings/${o.showingId}`}
+                        className="underline underline-offset-2 hover:text-accent"
+                      >
+                        {formatShowtime(venueLocalToInstant(o.value), 'EEE, MMM d yyyy · h:mm a')}
+                      </Link>
+                      <span className="text-muted-foreground"> — {o.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  These showings exist and will sell. Open each one to finish it — creating
+                  them again would put two showings on the same night.
+                </p>
+              </div>
+            )}
+
+            {batchSummary.failed.length > 0 && (
+              <div className="space-y-1">
+                <p className="font-semibold text-destructive">Not created</p>
+                <ul className="space-y-1">
+                  {batchSummary.failed.map(o => (
+                    <li key={o.value}>
+                      {formatShowtime(venueLocalToInstant(o.value), 'EEE, MMM d yyyy · h:mm a')}
+                      <span className="text-muted-foreground"> — {o.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  Left in the form below with the same settings, ready to try again.
+                </p>
+              </div>
+            )}
+
+            <Button type="button" variant="outline" size="sm" onClick={() => navigate('/admin')}>
+              Done — back to admin
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       <div className={showSeatOverride ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}>
       <Card className="glass">
         <CardHeader>
@@ -600,13 +913,90 @@ export default function ShowingForm() {
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label>Date & Time *</Label>
-              <Input type="datetime-local" required value={startTime} onChange={e => setStartTime(e.target.value)} />
-              <p className="text-xs text-muted-foreground">
-                Theatre local time (Pacific), whatever your computer is set to
-              </p>
-            </div>
+            {/* Edit mode edits one existing showing, so it asks for one date.
+                Create mode asks for the list: everything above and below is the
+                same for every night of a run, and the date is the only thing
+                that is not. */}
+            {isEdit ? (
+              <div className="space-y-2">
+                <Label>Date & Time *</Label>
+                <Input type="datetime-local" required value={startTime} onChange={e => setStartTime(e.target.value)} />
+                <p className="text-xs text-muted-foreground">
+                  Theatre local time (Pacific), whatever your computer is set to
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Showtimes *</Label>
+                <p className="text-xs text-muted-foreground">
+                  Every other setting on this form — the title, venue, price, runtime,
+                  passes{venueHasSeatMap ? ' and seating' : ''} — applies to every showtime
+                  listed here.
+                </p>
+                <div className="space-y-2">
+                  {showtimeRows.map((row, i) => (
+                    <div key={row.key} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="datetime-local"
+                          value={row.value}
+                          onChange={e => updateShowtime(i, e.target.value)}
+                          className="flex-1"
+                          aria-label={`Showtime ${i + 1}`}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeShowtime(i)}
+                          disabled={showtimeRows.length === 1}
+                          aria-label={`Remove showtime ${i + 1}`}
+                          className="shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                      {/* Said before the save rather than discovered after it.
+                          A duplicate is dropped rather than refused — the
+                          admin asked for that night once, and once is what
+                          they get — but silently dropping it would leave them
+                          counting three showings where they typed four. */}
+                      {duplicateRows.has(i) && (
+                        <p className="text-xs text-amber-500">
+                          Already listed above — this row will be skipped.
+                        </p>
+                      )}
+                      {collidingRows.has(i) && !duplicateRows.has(i) && (
+                        <p className="text-xs text-amber-500">
+                          {selectedVenue?.name ?? 'This venue'} already has a showing at this time.
+                          Fine if that is deliberate — this is only a heads-up.
+                        </p>
+                      )}
+                      {showtimeRows.length > 1 && !row.value.trim() && (
+                        <p className="text-xs text-muted-foreground">Blank — this row will be skipped.</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => addShowtime()}>
+                    <Plus className="h-4 w-4 mr-1" /> Add another showtime
+                  </Button>
+                  {/* Calendar arithmetic on the wall clock, so "same time next
+                      week" stays the same time across a DST change. */}
+                  <Button type="button" variant="ghost" size="sm" onClick={() => addShowtime(1)}>
+                    +1 day
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => addShowtime(7)}>
+                    +1 week
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Theatre local time (Pacific), whatever your computer is set to.
+                  {plannedRows.length > 1 && ` ${plannedRows.length} showings will be created, oldest first.`}
+                </p>
+              </div>
+            )}
             {/* Duration decides when this showing stops being sellable: the
                 rule is that sales close when the show ends, so something has
                 to say when that is. A film answers for itself. An event or a
@@ -634,9 +1024,21 @@ export default function ShowingForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>Base Ticket Price ($)</Label>
-              <Input type="number" step="0.01" value={ticketPrice} onChange={e => handleTicketPriceChange(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Fallback price when no tiers are used</p>
+              {/* Labelled the way the runtime field beside it is: the <Label>
+                  was rendering unattached, so a screen reader announced the
+                  price box as an unnamed number field. */}
+              <Label htmlFor="showing-price">Base Ticket Price ($)</Label>
+              <Input
+                id="showing-price"
+                type="number"
+                step="0.01"
+                value={ticketPrice}
+                aria-describedby="showing-price-help"
+                onChange={e => handleTicketPriceChange(e.target.value)}
+              />
+              <p id="showing-price-help" className="text-xs text-muted-foreground">
+                Fallback price when no tiers are used
+              </p>
             </div>
 
             {/* Pass eligibility. Shown for every category now: the trigger that
@@ -777,7 +1179,18 @@ export default function ShowingForm() {
             )}
 
             <Button type="submit" className="w-full" disabled={saving}>
-              {saving ? 'Saving...' : isEdit ? 'Update Showing' : 'Create Showing'}
+              {saving
+                ? batchProgress && batchProgress.total > 1
+                  // Named rather than a spinner: a batch is several seconds of
+                  // network per showing, and "which one is it on" is the thing
+                  // somebody watching actually wants to know.
+                  ? `Saving ${batchProgress.done + 1} of ${batchProgress.total}...`
+                  : 'Saving...'
+                : isEdit
+                  ? 'Update Showing'
+                  : plannedRows.length > 1
+                    ? `Create ${plannedRows.length} Showtimes`
+                    : 'Create Showing'}
             </Button>
           </form>
         </CardContent>
