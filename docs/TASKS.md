@@ -5,14 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**68 briefs** — 62 shipped, 3 built, 3 open, 0 needs triage, 0 closed.
+**68 briefs** — 63 shipped, 2 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
-- `P2` **A production can carry more than one genre, stored the way the DVD library already stores them**<br>`feature` — [brief](briefs/BRIEF-multiple-genres.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open
@@ -23,6 +22,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A production can carry more than one genre, stored the way the DVD library already stores them**<br>`feature` — `#199`, `#200`, `#204` — [brief](briefs/BRIEF-multiple-genres.md) · [notes](briefs/../FINDINGS-genre-backfill.md)
 - **A curator's pick can be a whole run or a single night, and says which**<br>`feature` — `#201` — [brief](briefs/BRIEF-showing-level-curator-pick.md)
 - **Concessions moves off the home page to /concessions, framed in the marquee bulbs**<br>`ux` — `#186`, `#188`, `#189`, `#190` — [brief](briefs/BRIEF-concessions-marquee-border.md) · [notes](briefs/FINDINGS-marquee-bulb-border.md)
 - **Tighten the hero, put search on the Upcoming row, and give the curator's pick a carousel**<br>`ux` — `#195` — [brief](briefs/BRIEF-home-layout-search-carousel-preview.md)

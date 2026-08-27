@@ -1,11 +1,14 @@
 ---
 brief: multiple-genres
 title: A production can carry more than one genre, stored the way the DVD library already stores them
-status: built
+status: shipped
 track: feature
 severity: P2
 date: 2026-08-25
-verified: false
+shipped_in: ["#199", "#200", "#204"]
+shipped_at: 2026-08-27
+verified: true
+findings: ../FINDINGS-genre-backfill.md
 ---
 
 > **Decisions taken (2026-08-26).** The four open decisions were settled as
@@ -129,3 +132,28 @@ Tom said "movies." Events and live performances have the same single-genre colum
 - Option B (a join table or `text[]`) remains the upgrade path if a canonical,
   deduplicated taxonomy is ever wanted.
 - The `ConcessionPOS.tsx` embed bug described above.
+
+## Backfill (27 August 2026)
+
+Genre was populated on **3 of 1,089** movies when this shipped, so the field
+would have launched empty. `scripts/backfill-genres.mjs` filled what could be
+filled honestly from Wikidata — see `docs/FINDINGS-genre-backfill.md` for the
+sources measured and the two faults found while measuring.
+
+| | staging | production |
+|---|---|---|
+| written | 400 | 400 |
+| failed | 0 | 0 |
+| movies with a genre, after | 402 / 1,088 | **403 / 1,089** |
+| carrying more than one | 338 | 336 |
+| distinct genre values | 20 | 20 |
+| outside the app's vocabulary | none | none |
+
+The 686 left blank are deliberate: 369 matched no film, **192 were ambiguous**
+across several films sharing a title, and 9 matched but carried no mappable
+genre. Staff fill those in through the chip field as titles are programmed.
+
+Raising that ceiling needs a release year to disambiguate on, which is what a
+TMDB key would provide — already proposed independently in `docs/TASKS.md` for
+the admin add-a-movie flow. The script only ever fills blanks, so a later pass
+would top up without disturbing anything set by hand.
