@@ -1,11 +1,13 @@
 ---
 brief: batch-showtimes
 title: An admin adds a whole run of showtimes in one pass, and is told exactly which ones landed
-status: built
+status: shipped
 track: feature
 severity: P2
 date: 2026-08-25
-verified: false
+shipped_in: ["#203"]
+shipped_at: 2026-08-27
+verified: true
 ---
 
 > **Decisions taken (2026-08-26).** The six open decisions were settled as
