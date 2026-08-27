@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { venueLocalToInstant } from '@/lib/datetime';
+
+/** The instant the form will actually send for a wall clock, as it computes it. */
+const instant = (naive: string) => venueLocalToInstant(naive).toISOString();
 
 /**
  * The batch create loop.
@@ -246,6 +250,22 @@ describe('ShowingForm — creating several showtimes at once', () => {
     await waitFor(() => expect(state.showingInserts).toHaveLength(1));
   });
 
+  it('leaves the form for the admin list when every showtime landed', async () => {
+    // Staying put read as failure: the summary renders above a form the admin
+    // is scrolled to the bottom of, so the only visible change was their
+    // filled-in fields going blank behind a success toast.
+    renderForm();
+    await chooseMovie();
+    fillShowtimes(['2029-11-06T19:30', '2029-11-07T19:30', '2029-11-08T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(3));
+    await waitFor(() => expect(screen.getByText('admin dashboard')).toBeInTheDocument());
+    expect(state.toasts.success).toContain('Created 3 showtimes.');
+    // No summary to leave behind when there is nothing on it to act on.
+    expect(screen.queryByText(/Created 3 of 3/)).not.toBeInTheDocument();
+  });
+
   it('reports Square once for the batch rather than once per showing', async () => {
     // Every showing shares one title, so the planner says the same thing about
     // all three. Three identical toasts say nothing the first one did not.
@@ -258,6 +278,9 @@ describe('ShowingForm — creating several showtimes at once', () => {
     await waitFor(() => expect(state.showingInserts).toHaveLength(3));
     await waitFor(() => expect(state.toasts.warning.length).toBeGreaterThan(0));
 
+    // Square falling short does not hold the admin on the form — the showings
+    // were all created, and the one warning says what is owed.
+    await waitFor(() => expect(screen.getByText('admin dashboard')).toBeInTheDocument());
     const squareWarnings = state.toasts.warning.filter(m => m.includes('Square'));
     expect(squareWarnings).toHaveLength(1);
     expect(squareWarnings[0]).toContain('3 showtimes');
@@ -266,21 +289,11 @@ describe('ShowingForm — creating several showtimes at once', () => {
 
 describe('ShowingForm — a batch that partly fails', () => {
   it('keeps the showings either side of a failed insert and counts them honestly', async () => {
-    state.insertFailures['2026-08-15T19:30'] = '';
+    // Keyed by the instant the form actually sends — the wall clock read in the
+    // venue's zone, via the same helper the form uses.
+    state.insertFailures = { [instant('2026-08-15T19:30')]: 'venue is already booked' };
     renderForm();
     await chooseMovie();
-    fillShowtimes(['2026-08-14T19:30', '2026-08-15T19:30', '2026-08-16T19:30']);
-
-    // The failure is keyed by the instant the form will actually send, which is
-    // the wall clock read in the venue's zone — resolve it from the first pass.
-    submit();
-    await waitFor(() => expect(state.showingInserts).toHaveLength(3));
-    const middle = startTimes()[1];
-
-    // Now do it again for real, with that instant set to fail.
-    state.showingInserts = [];
-    state.toasts = { error: [], success: [], warning: [] };
-    state.insertFailures = { [middle]: 'venue is already booked' };
     fillShowtimes(['2026-08-14T19:30', '2026-08-15T19:30', '2026-08-16T19:30']);
     submit();
 
@@ -291,18 +304,14 @@ describe('ShowingForm — a batch that partly fails', () => {
     expect(state.toasts.success).toHaveLength(0);
     expect(await screen.findByText(/venue is already booked/)).toBeInTheDocument();
     expect(screen.getByText('Not created')).toBeInTheDocument();
+    // Stays on the form: there is a failed row here to retry.
+    expect(screen.queryByText('admin dashboard')).not.toBeInTheDocument();
   });
 
   it('leaves only the failed row in the form, ready to try again', async () => {
+    state.insertFailures = { [instant('2026-08-15T19:30')]: 'nope' };
     renderForm();
     await chooseMovie();
-    fillShowtimes(['2026-08-14T19:30', '2026-08-15T19:30']);
-    submit();
-    await waitFor(() => expect(state.showingInserts).toHaveLength(2));
-    const second = startTimes()[1];
-
-    state.showingInserts = [];
-    state.insertFailures = { [second]: 'nope' };
     fillShowtimes(['2026-08-14T19:30', '2026-08-15T19:30']);
     submit();
 
@@ -330,6 +339,8 @@ describe('ShowingForm — a batch that partly fails', () => {
     expect(screen.queryByText('Not created')).not.toBeInTheDocument();
     // Nothing is left in the form to retry — retrying is the wrong move here.
     expect(screen.getByLabelText('Showtime 1')).toHaveValue('');
+    // But it still stays, because an unfinished showing needs opening.
+    expect(screen.queryByText('admin dashboard')).not.toBeInTheDocument();
   });
 });
 

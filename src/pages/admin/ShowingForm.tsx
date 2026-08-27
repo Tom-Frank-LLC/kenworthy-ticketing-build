@@ -81,6 +81,7 @@ export default function ShowingForm() {
   // Venue-local wall clocks the chosen venue already has a showing at, for the
   // collision hint. A warning and never a block — see findCollidingRowIndexes.
   const [existingShowtimes, setExistingShowtimes] = useState<ReadonlySet<string>>(new Set());
+  const batchSummaryRef = useRef<HTMLDivElement>(null);
   const [ticketPrice, setTicketPrice] = useState('8.00');
   // How long this showing runs. Blank means "ask the production", which is the
   // right answer for almost every film and no answer at all for an event — see
@@ -387,6 +388,18 @@ export default function ShowingForm() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [isEdit, venueId, plannedKey]);
 
+  /**
+   * Bring the batch summary into view when there is one.
+   *
+   * It renders above a form the admin is scrolled to the *bottom* of — they
+   * have just pressed Create, which is the last control on the page. Without
+   * this the panel appears off-screen behind them and the only thing they can
+   * actually see is their filled-in fields going blank.
+   */
+  useEffect(() => {
+    if (batchSummary) batchSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [batchSummary]);
+
   const addTier = () => {
     setTiers(prev => [...prev, { tier_name: '', price: '8.00', display_order: prev.length }]);
   };
@@ -686,11 +699,34 @@ export default function ShowingForm() {
       return;
     }
 
+    // A batch where everything landed leaves the form, exactly as creating a
+    // single showtime always has.
+    //
+    // It used to stay and show the summary. That read as a failure: the panel
+    // renders above the form, the admin is at the bottom of the page because
+    // Create is the last control on it, and so the only visible change was
+    // every field they had filled in going blank. The toast said "Created 3
+    // showtimes" to somebody already convinced they had lost their work.
+    //
+    // Nothing is lost by leaving — the showings are on the admin list, which is
+    // where this lands, and there is nothing on the summary to act on when
+    // every row succeeded.
+    if (summary.tone === 'success') {
+      if (squareMessage) toast.warning(squareMessage);
+      toast.success(summary.headline);
+      navigate('/admin');
+      setSaving(false);
+      return;
+    }
+
+    // Anything short of that stays put, because there *is* something to act on:
+    // which nights failed, which need finishing, and the failed rows waiting in
+    // the form to retry. The effect above scrolls it into view for the same
+    // reason the success case now leaves.
     setBatchSummary(summary);
     if (squareMessage) toast.warning(squareMessage);
     if (summary.tone === 'error') toast.error(summary.headline);
-    else if (summary.tone === 'warning') toast.warning(summary.headline);
-    else toast.success(summary.headline);
+    else toast.warning(summary.headline);
     setSaving(false);
   };
 
@@ -719,6 +755,7 @@ export default function ShowingForm() {
           it. Only for a real batch: one showtime still navigates straight to
           the showing it made, exactly as it always did. */}
       {batchSummary && (
+        <div ref={batchSummaryRef}>
         <Card className="glass mb-4">
           <CardHeader>
             <CardTitle className="font-display">{batchSummary.headline}</CardTitle>
@@ -787,6 +824,7 @@ export default function ShowingForm() {
             </Button>
           </CardContent>
         </Card>
+        </div>
       )}
       <div className={showSeatOverride ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}>
       <Card className="glass">
