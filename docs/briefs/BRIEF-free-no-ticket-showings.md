@@ -1,13 +1,13 @@
 ---
 brief: free-no-ticket-showings
 title: A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase
-status: built
+status: shipped
 track: feature
 severity: P2
 date: 2026-08-25
-shipped_in: []
-shipped_at:
-verified: false
+shipped_in: ["#206"]
+shipped_at: 2026-08-27
+verified: true
 ---
 
 > **Decisions taken (2026-08-26).** All four went to the recommended option.
@@ -18,15 +18,22 @@ verified: false
 > a link, so the reader can still reach the time and venue. **4 — all three
 > production types**, since they share one `showings` table and one code path.
 
-> **On staging, not in production (2026-08-27).** The migration is applied to
-> `rpqzrpboyhshdrfdwayk` and the staging worker plus `ticket-checkout` are
-> deployed from this branch; three test showings of *Warfare* (paid / free-
-> ticketed / walk-in) sit on Aug 30, Aug 31 and Sep 1 for comparison.
-> **Production has neither the migration nor the deploy.** Applying
-> `20260827113402_showings_no_ticket_required.sql` to `vlmslygnimfbamrtwvyo` and
-> running `npx wrangler deploy` is what makes it real there — see
-> `docs/RUNBOOK-deploy-staging-prod.md`. Until then every production showing
-> behaves exactly as before, because the flag defaults to false.
+> **Shipped 2026-08-27 (#206).** The migration is applied to both
+> `rpqzrpboyhshdrfdwayk` and `vlmslygnimfbamrtwvyo`; `ticket-checkout` and both
+> Workers are deployed from `7d4a8d2`. Verified against the live URLs, not the
+> upload logs: the production bundle carries the feature, the column reads back
+> through PostgREST on both projects, and a bogus-tier probe proved the pricing
+> path still loads a showing row with the new column selected — the one way
+> this change could have broken every online sale.
+>
+> Before the production deploy, prod's live bundle was diffed against a build
+> of `c4f1a80` to check it was not *ahead* of main. The chunk hashes differed
+> and the content did too, but only in `__vite__mapDeps` index ordering —
+> identical code. That is the false alarm `CLAUDE.md` warns about, and it is
+> worth knowing the check resolves that way rather than trusting the hash.
+>
+> No showing carries the flag in production yet. Until an admin sets one, every
+> production showing behaves exactly as before.
 
 **Requested by:** Tom — for free movies, let the admin decide whether it
 **requires (free) tickets** or **needs no ticket at all**, in which case the
