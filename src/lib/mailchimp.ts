@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { topGenre } from '@/lib/genres';
 
 export type MailchimpTag =
   | 'newsletter'
@@ -137,12 +138,10 @@ export async function syncMailchimpProfile(opts: {
     ].filter(Boolean).sort();
     const lastPurch = lastPurchDates.length ? lastPurchDates[lastPurchDates.length - 1] : null;
 
-    const genreCounts: Record<string, number> = {};
-    for (const t of tickets) {
-      const g = t?.showings?.movies?.genre;
-      if (g) genreCounts[g] = (genreCounts[g] || 0) + 1;
-    }
-    const favGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+    // A film stored as "Drama, Comedy" credits both genres. Counting the
+    // raw string would invent a "Drama, Comedy" bucket that is neither, and
+    // it could win the field outright while Drama and Comedy each looked rare.
+    const favGenre = topGenre(tickets.map((t: any) => t?.showings?.movies?.genre));
 
     // Interests: only pass if we know the IDs
     const groupIds: Record<string, string> = ((cfgRes.data as any)?.value?.group_ids) || {};

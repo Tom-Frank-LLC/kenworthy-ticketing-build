@@ -42,4 +42,25 @@ describe('ProductionMetaBadges', () => {
     const { container } = render(<ProductionMetaBadges durationMinutes={-30} />);
     expect(container.firstChild).toBeNull();
   });
+
+  it('gives each genre its own badge', () => {
+    // One badge for the whole string reads as a genre called "Drama, Comedy".
+    render(<ProductionMetaBadges genre="Drama, Comedy" durationMinutes={108} />);
+
+    expect(screen.getByText('Drama')).toBeTruthy();
+    expect(screen.getByText('Comedy')).toBeTruthy();
+    expect(screen.queryByText('Drama, Comedy')).toBeNull();
+  });
+
+  it('renders a single-genre row exactly as it did before', () => {
+    render(<ProductionMetaBadges rating="PG" genre="Drama" durationMinutes={108} />);
+    expect(screen.getByText('Drama')).toBeTruthy();
+  });
+
+  it('does not render a badge for a genre string that is only punctuation', () => {
+    // `genre &&` was the old guard, and ', ,' is truthy — it would have drawn
+    // an empty badge, or a whole row for a production with no real meta.
+    const { container } = render(<ProductionMetaBadges genre=", ," durationMinutes={0} />);
+    expect(container.firstChild).toBeNull();
+  });
 });

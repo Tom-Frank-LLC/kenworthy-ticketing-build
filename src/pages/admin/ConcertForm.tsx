@@ -11,6 +11,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { PosterUpload } from '@/components/admin/PosterUpload';
+import { GenreInput } from '@/components/admin/GenreInput';
+import { formatGenres, parseGenres } from '@/lib/genres';
 import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
 
 const SUBCATEGORIES = [
@@ -29,7 +31,7 @@ export default function ConcertForm() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [posterUrl, setPosterUrl] = useState('');
-  const [genre, setGenre] = useState('');
+  const [genres, setGenres] = useState<string[]>([]);
   const [rating, setRating] = useState('');
   const [subcategory, setSubcategory] = useState<string>('concert');
   const [isActive, setIsActive] = useState(false);
@@ -46,7 +48,7 @@ export default function ConcertForm() {
           setTitle(data.title);
           setDescription(data.description || '');
           setPosterUrl(data.poster_url || '');
-          setGenre(data.genre || '');
+          setGenres(parseGenres(data.genre));
           setRating(data.rating || '');
           setSubcategory(data.subcategory || 'concert');
           setIsActive(data.is_active);
@@ -64,7 +66,7 @@ export default function ConcertForm() {
       title,
       description: description || null,
       poster_url: posterUrl || null,
-      genre: genre || null,
+      genre: formatGenres(genres),
       rating: rating || null,
       subcategory: subcategory as any,
       is_active: isActive,
@@ -121,9 +123,9 @@ export default function ConcertForm() {
             </div>
             <PosterUpload currentUrl={posterUrl} onUrlChange={setPosterUrl} folder="live_performances" />
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Genre</Label>
-                <Input value={genre} onChange={e => setGenre(e.target.value)} placeholder="Classical" />
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="performance-genre">Genre</Label>
+                <GenreInput id="performance-genre" kind="live" value={genres} onChange={setGenres} />
               </div>
               <div className="space-y-2">
                 <Label>Rating</Label>

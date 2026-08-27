@@ -5,13 +5,14 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**66 briefs** — 61 shipped, 2 built, 3 open, 0 needs triage, 0 closed.
+**67 briefs** — 61 shipped, 3 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
+- `P2` **A production can carry more than one genre, stored the way the DVD library already stores them**<br>`feature` — [brief](briefs/BRIEF-multiple-genres.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open

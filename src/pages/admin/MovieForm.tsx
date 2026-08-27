@@ -11,6 +11,8 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { PosterUpload } from '@/components/admin/PosterUpload';
+import { GenreInput } from '@/components/admin/GenreInput';
+import { formatGenres, parseGenres } from '@/lib/genres';
 import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
 
 export default function MovieForm() {
@@ -24,7 +26,7 @@ export default function MovieForm() {
   const [posterUrl, setPosterUrl] = useState('');
   const [duration, setDuration] = useState(90);
   const [rating, setRating] = useState('');
-  const [genre, setGenre] = useState('');
+  const [genres, setGenres] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
   const [trailerUrl, setTrailerUrl] = useState('');
   const [isFeatured, setIsFeatured] = useState(false);
@@ -46,7 +48,7 @@ export default function MovieForm() {
           setPosterUrl(data.poster_url || '');
           setDuration(data.duration_minutes);
           setRating(data.rating || '');
-          setGenre(data.genre || '');
+          setGenres(parseGenres(data.genre));
           setIsActive(data.is_active);
           setTrailerUrl(data.trailer_url || '');
           setIsFeatured(!!data.is_featured);
@@ -70,7 +72,7 @@ export default function MovieForm() {
         poster_url: posterUrl || null,
         duration_minutes: duration,
         rating: rating || null,
-        genre: genre || null,
+        genre: formatGenres(genres),
         is_active: isActive,
         trailer_url: trailerUrl || null,
         is_featured: isFeatured,
@@ -154,9 +156,9 @@ export default function MovieForm() {
                 <Label>Rating</Label>
                 <Input value={rating} onChange={e => setRating(e.target.value)} placeholder="PG-13" />
               </div>
-              <div className="space-y-2">
-                <Label>Genre</Label>
-                <Input value={genre} onChange={e => setGenre(e.target.value)} placeholder="Drama" />
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="movie-genre">Genre</Label>
+                <GenreInput id="movie-genre" kind="film" value={genres} onChange={setGenres} />
               </div>
             </div>
             <div className="space-y-2">

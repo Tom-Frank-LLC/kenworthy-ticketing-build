@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Mail, Loader2, Copy, ExternalLink, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { syncMailchimpProfile } from '@/lib/mailchimp';
+import { topGenre } from '@/lib/genres';
 
 /**
  * Admin control panel for the Mailchimp integration.
@@ -90,12 +91,8 @@ export default function MailchimpTab() {
           const ltvD = donations.reduce((s, d: any) => s + Number(d.amount_cents || 0) / 100, 0);
           const dates = [...tickets.map((t: any) => t.created_at), ...donations.map((d: any) => d.created_at)].filter(Boolean).sort();
           const last = dates.length ? dates[dates.length - 1] : null;
-          const gc: Record<string, number> = {};
-          for (const t of tickets as any[]) {
-            const g = t?.showings?.movies?.genre;
-            if (g) gc[g] = (gc[g] || 0) + 1;
-          }
-          const favGenre = Object.entries(gc).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+          // Same rule as syncMailchimpProfile: split first, credit each genre.
+          const favGenre = topGenre((tickets as any[]).map(t => t?.showings?.movies?.genre));
           const tags: string[] = [];
           if (tickets.length) tags.push('ticket-buyer');
           if (donations.length) tags.push('donor');

@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Clock, Film, Music, Sparkles } from 'lucide-react';
 import { formatRuntime, runtimeLabel } from '@/lib/datetime';
+import { parseGenres } from '@/lib/genres';
 import { resolveTrailer } from '@/lib/trailer';
 
 export type ProductionMediaType = 'movie' | 'event' | 'concert';
@@ -94,15 +95,23 @@ interface ProductionMetaBadgesProps {
   className?: string;
 }
 
-/** Rating / genre / runtime row. Renders nothing when all three are missing. */
+/**
+ * Rating / genre / runtime row. Renders nothing when all three are missing.
+ *
+ * A production can carry several genres in that one string, and each gets its
+ * own badge — "Drama, Comedy" as a single badge reads as a genre called
+ * "Drama, Comedy". The row already wraps, so a film with four of them pushes
+ * the badges onto a second line instead of overflowing the card it sits in.
+ */
 export function ProductionMetaBadges({ rating, genre, durationMinutes, className }: ProductionMetaBadgesProps) {
   const runtime = formatRuntime(durationMinutes);
-  if (!rating && !genre && !runtime) return null;
+  const genres = parseGenres(genre);
+  if (!rating && !genres.length && !runtime) return null;
 
   return (
     <div className={`flex items-center gap-2 flex-wrap ${className ?? ''}`}>
       {rating && <Badge>{rating}</Badge>}
-      {genre && <Badge variant="secondary">{genre}</Badge>}
+      {genres.map(g => <Badge key={g} variant="secondary">{g}</Badge>)}
       {runtime ? (
         <span className="text-sm text-muted-foreground flex items-center gap-1">
           <Clock className="h-3.5 w-3.5" aria-hidden="true" />
