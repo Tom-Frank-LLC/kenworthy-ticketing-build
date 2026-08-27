@@ -23,8 +23,10 @@
 import {
   NO_TICKET_REQUIRED_MESSAGE,
   SHOWING_PASSED_MESSAGE,
+  isManuallySoldOut,
   isPast,
   needsNoTicket,
+  soldOutMessage,
 } from './purchasable.ts';
 
 export const TAX_RATE = 0.06;
@@ -153,7 +155,7 @@ export async function priceTicketOrder(
   const { data: showing, error: showingErr } = await admin
     .from('showings')
     .select(
-      'id, ticket_price, is_active, requires_seat_selection, total_seats, start_time, duration_minutes, movie_id, event_id, live_performance_id, no_ticket_required',
+      'id, ticket_price, is_active, requires_seat_selection, total_seats, start_time, duration_minutes, movie_id, event_id, live_performance_id, no_ticket_required, manually_sold_out, sold_out_message',
     )
     .eq('id', showingId)
     .maybeSingle();
@@ -191,6 +193,25 @@ export async function priceTicketOrder(
   // migrations/20260819143722_showing_end_and_past_sales_rules.sql). This is
   // the layer that turns a stale tab into a sentence a customer can read.
   if (isPast(showing, production)) throw new PricingError(SHOWING_PASSED_MESSAGE);
+
+  // An admin has closed this showing to online sales by hand — the house
+  // filled through a channel this system cannot count, so the seats the
+  // arithmetic below would happily sell do not exist.
+  //
+  // This is the whole enforcement of that flag. There is no trigger on
+  // `tickets` behind it, deliberately: StaffPOS and the comp issuer insert
+  // straight through PostgREST, and the point of a manual sold-out is to close
+  // the website while the counter stays open. So unlike the two rules above,
+  // if this line is removed nothing else refuses the sale.
+  //
+  // Asked *after* the past-showing rule, and unlike the walk-in rule which is
+  // asked before it. A showing that is both finished and flagged should say it
+  // has passed: that is the older, plainer fact, and "sold out" would invite a
+  // patron to ring the box office about a screening that ended last week.
+  //
+  // The buyer gets the admin's own sentence when there is one, so the refusal
+  // and the page they were just looking at say the same thing.
+  if (isManuallySoldOut(showing)) throw new PricingError(soldOutMessage(showing));
 
   // Active tiers for this showing, and the per-seat tier mapping. Both are
   // read once and matched in memory — the trigger does the same join per row.

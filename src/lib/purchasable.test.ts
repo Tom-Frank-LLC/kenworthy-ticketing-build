@@ -11,12 +11,15 @@ import {
   DEFAULT_SHOWING_MINUTES,
   DOOR_GRACE_MINUTES,
   NO_TICKET_REQUIRED_MESSAGE,
+  SOLD_OUT_MESSAGE,
   doorClosesAt,
+  isManuallySoldOut,
   isPast,
   isPurchasable,
   needsNoTicket,
   resolveDurationMinutes,
   showingEndsAt,
+  soldOutMessage,
 } from './purchasable';
 
 const START = '2026-08-19T02:00:00Z'; // 7:00 PM Pacific
@@ -187,5 +190,116 @@ describe('isPurchasable and the no-ticket flag', () => {
         startMs + min(600),
       ),
     ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The manual sold-out flag.
+//
+// What makes this one worth pinning separately from capacity: it has to be
+// able to close a showing with every seat still unsold, and it must not leak
+// into `isPurchasable`, because the page tells the two states in two different
+// sentences and a merged answer would collapse them into one hidden button.
+// ---------------------------------------------------------------------------
+
+describe('isManuallySoldOut', () => {
+  it('is true only when an admin actually set the flag', () => {
+    expect(isManuallySoldOut({ start_time: START, manually_sold_out: true })).toBe(true);
+    expect(isManuallySoldOut({ start_time: START, manually_sold_out: false })).toBe(false);
+  });
+
+  it('reads an absent or null flag as open', () => {
+    // Every showing that existed before the column, and every row PostgREST
+    // returns before it reloads its schema cache. Closing the whole site is
+    // the worse failure of the two, and unlike the walk-in flag there is no
+    // trigger underneath to catch what this lets through.
+    expect(isManuallySoldOut({ start_time: START })).toBe(false);
+    expect(isManuallySoldOut({ start_time: START, manually_sold_out: null })).toBe(false);
+    expect(isManuallySoldOut(null)).toBe(false);
+    expect(isManuallySoldOut(undefined)).toBe(false);
+  });
+
+  it('is false on a walk-in showing, even with the flag set', () => {
+    // A contradictory row. Nothing is issued, so nothing can run out — and
+    // "Sold Out" printed over a screening anyone can walk into is the specific
+    // wrong outcome this guard exists to prevent.
+    expect(
+      isManuallySoldOut({
+        start_time: START,
+        no_ticket_required: true,
+        manually_sold_out: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not care about the clock', () => {
+    // Unlike isPast, this asks a question with no time in it. A showing closed
+    // by hand is closed a week before and a week after.
+    expect(
+      isManuallySoldOut({ start_time: '1999-01-01T00:00:00Z', manually_sold_out: true }),
+    ).toBe(true);
+  });
+});
+
+describe('soldOutMessage', () => {
+  it("uses the admin's sentence when there is one, trimmed", () => {
+    expect(
+      soldOutMessage({ start_time: START, sold_out_message: '  Booked privately.  ' }),
+    ).toBe('Booked privately.');
+  });
+
+  it('falls back to the standard notice for blank, whitespace, null and absent', () => {
+    // A field opened and cleared leaves '' or ' ' behind. Neither should blank
+    // the notice on the page or produce an empty refusal from the server.
+    expect(soldOutMessage({ start_time: START, sold_out_message: '' })).toBe(SOLD_OUT_MESSAGE);
+    expect(soldOutMessage({ start_time: START, sold_out_message: '   ' })).toBe(SOLD_OUT_MESSAGE);
+    expect(soldOutMessage({ start_time: START, sold_out_message: null })).toBe(SOLD_OUT_MESSAGE);
+    expect(soldOutMessage({ start_time: START })).toBe(SOLD_OUT_MESSAGE);
+  });
+});
+
+describe('isPurchasable and the sold-out flag', () => {
+  it('does not answer the sold-out question', () => {
+    // Deliberate. Sold-out is a state with its own notice, and Showing.tsx
+    // asks the two separately so that a full house and a finished show do not
+    // end up telling the customer the same thing. The sale is protected by
+    // _shared/pricing.ts, which asks both.
+    expect(
+      isPurchasable(
+        { start_time: START, is_active: true, manually_sold_out: true },
+        null,
+        startMs - min(60),
+      ),
+    ).toBe(true);
+  });
+
+  it('still refuses a sold-out showing that has also passed', () => {
+    // The timing rule is untouched by any of this.
+    expect(
+      isPurchasable(
+        { start_time: START, is_active: true, manually_sold_out: true },
+        null,
+        startMs + min(600),
+      ),
+    ).toBe(false);
+  });
+});
+
+// The page's own arithmetic: `soldOut = manual || capacity`. Pinned here
+// because it is the line that decides whether the buy controls render at all,
+// and either input alone has to be enough.
+describe('the showing page combines the two sold-out states with OR', () => {
+  const soldOut = (manual: boolean, capacity: boolean) => manual || capacity;
+
+  it('closes on the manual flag with seats to spare', () => {
+    expect(soldOut(true, false)).toBe(true);
+  });
+
+  it('closes on capacity with no manual flag — the behaviour that already existed', () => {
+    expect(soldOut(false, true)).toBe(true);
+  });
+
+  it('stays open only when neither says otherwise', () => {
+    expect(soldOut(false, false)).toBe(false);
   });
 });

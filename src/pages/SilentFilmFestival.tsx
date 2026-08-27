@@ -70,6 +70,7 @@ interface Screening {
   duration_minutes: number | null;
   is_active: boolean | null;
   no_ticket_required: boolean | null;
+  manually_sold_out: boolean | null;
   movies: Production | null;
   events: Production | null;
   live_performances: Production | null;
@@ -356,7 +357,7 @@ export default function SilentFilmFestival() {
         const { data: tagged } = await supabase
           .from('pass_type_showings')
           .select(
-            'showings(id, start_time, duration_minutes, is_active, no_ticket_required, ' +
+            'showings(id, start_time, duration_minutes, is_active, no_ticket_required, manually_sold_out, ' +
               'movies(title, description, poster_url, duration_minutes), ' +
               'events(title, description), ' +
               'live_performances(title, description))',
@@ -671,15 +672,23 @@ export default function SilentFilmFestival() {
                                 This screening has passed
                               </p>
                             ) : (
-                              <Button asChild className={cn('h-11', GREEN_CTA)}>
+                              <Button
+                                asChild
+                                variant={screening.manually_sold_out ? 'secondary' : 'default'}
+                                className={cn('h-11', !screening.manually_sold_out && GREEN_CTA)}
+                              >
                                 <Link to={`/showing/${screening.id}`}>
                                   {/* A festival can open with a free screening
-                                      the pass does not need to cover. The
-                                      programme still links to it — the details
-                                      are what the reader came for. */}
-                                  {screening.no_ticket_required
-                                    ? 'Free · Details'
-                                    : 'Get Tickets'}
+                                      the pass does not need to cover, and a
+                                      popular night can fill before the
+                                      programme is even printed. The programme
+                                      still links to both — the details are what
+                                      the reader came for. */}
+                                  {screening.manually_sold_out
+                                    ? 'Sold Out'
+                                    : screening.no_ticket_required
+                                      ? 'Free · Details'
+                                      : 'Get Tickets'}
                                 </Link>
                               </Button>
                             )}

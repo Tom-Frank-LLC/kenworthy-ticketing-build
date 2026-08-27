@@ -13,6 +13,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
+- `P2` **An admin can mark a showing sold out by hand, which closes online sales without hiding the showing**<br>`feature` — [brief](briefs/BRIEF-manual-sold-out.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 - `P2` **A formatted description reads formatted in the listing previews, not just on the ticket page**<br>`bug` — [brief](briefs/BRIEF-richtext-preview-surfaces.md) · [notes](briefs/FINDINGS-richtext-description-surface.md)
 

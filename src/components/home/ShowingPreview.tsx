@@ -145,14 +145,27 @@ export function ShowingPreview({
                   preview is a readable panel rather than a dead button. The
                   rule is src/lib/purchasable.ts. */}
               {item.showingId && !isPast({ start_time: item.startTime }) && (
-                <Button asChild className={cn('gap-2', GREEN_CTA)}>
+                <Button
+                  asChild
+                  variant={item.manuallySoldOut ? 'secondary' : 'default'}
+                  className={cn('gap-2', !item.manuallySoldOut && GREEN_CTA)}
+                >
                   <Link to={`/showing/${item.showingId}`}>
                     {/* A walk-in night has nothing to sell, so the ticket
                         glyph and the word go — but the link stays. The
                         showing page still holds the time, the venue and the
                         trailer, which is the whole of what somebody deciding
                         whether to come needs. */}
-                    {item.noTicketRequired ? (
+                    {/* The house is full, so the ticket glyph and the word
+                        go the same way they do on a walk-in night. The link
+                        stays: the chips below may offer a date that is still
+                        open, and this panel is how the reader gets to them. */}
+                    {item.manuallySoldOut ? (
+                      <>
+                        Sold Out
+                        <ArrowRight className="h-4 w-4" />
+                      </>
+                    ) : item.noTicketRequired ? (
                       <>
                         Free · Details
                         <ArrowRight className="h-4 w-4" />

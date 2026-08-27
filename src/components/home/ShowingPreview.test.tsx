@@ -248,3 +248,65 @@ describe('ShowingPreview and the no-ticket flag', () => {
     expect(chips.getAllByRole('link', { name: /^Get tickets for/i })).toHaveLength(1);
   });
 });
+
+/**
+ * A showing an admin closed by hand, as the listings render it.
+ *
+ * The point of carrying the flag this far is that a reader should be able to
+ * tell before clicking. Only the *manual* flag reaches here — capacity
+ * sold-out would cost a ticket count per card — so a card without it is not a
+ * promise that seats remain.
+ */
+describe('ShowingPreview and a manually sold-out showing', () => {
+  it('says "Sold Out" instead of offering tickets', () => {
+    renderPreview(item({ manuallySoldOut: true, ticketPrice: 9 }));
+
+    expect(screen.getByRole('link', { name: /^Sold Out$/i })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /^Get Tickets$/i })).toBeNull();
+  });
+
+  it('still links through to the showing page', () => {
+    // The date, the venue and the trailer are still what somebody deciding
+    // whether to ring the box office needs, and the chip row below may offer a
+    // night that is still open.
+    renderPreview(item({ manuallySoldOut: true, ticketPrice: 9 }));
+
+    expect(screen.getByRole('link', { name: /^Sold Out$/i }).getAttribute('href')).toBe(
+      '/showing/showing-a',
+    );
+  });
+
+  it('keeps "Get Tickets" when the flag is absent or false', () => {
+    renderPreview(item({ ticketPrice: 9, manuallySoldOut: false }));
+    expect(screen.getByRole('link', { name: /^Get Tickets$/i })).toBeTruthy();
+  });
+
+  it('marks only the sold-out dates in the chip row', () => {
+    // Same per-date discipline as the free flag: a run sells out one night at
+    // a time, and "Get tickets for Friday" is the wrong promise on the Friday
+    // that has none.
+    renderPreview(
+      item({
+        upcomingShowings: [
+          { id: 'showing-a', start_time: iso(24 * HOUR), ticket_price: 9 },
+          { id: 'showing-b', start_time: iso(48 * HOUR), ticket_price: 9, manually_sold_out: true },
+          { id: 'showing-c', start_time: iso(72 * HOUR), ticket_price: 9 },
+        ],
+      }),
+    );
+
+    const chips = within(screen.getByRole('list', { name: /Also playing/i }));
+    expect(chips.getByRole('link', { name: /sold out/i })).toBeTruthy();
+    expect(chips.getAllByRole('link', { name: /^Get tickets for/i })).toHaveLength(1);
+  });
+
+  it('carries the flag per date through attachUpcomingShowings', () => {
+    // The mapping the chips depend on. It is one line in lib/feed.ts and
+    // dropping it would silently take the marking off every chip.
+    const [first] = attachUpcomingShowings([
+      item({ showingId: 'showing-a', manuallySoldOut: true, ticketPrice: 9 }),
+    ]);
+
+    expect(first.upcomingShowings?.[0].manually_sold_out).toBe(true);
+  });
+});

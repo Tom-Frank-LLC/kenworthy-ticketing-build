@@ -69,6 +69,21 @@ export const SHOWING_PASSED_MESSAGE = 'This showing has passed.';
  */
 export const NO_TICKET_REQUIRED_MESSAGE = 'This showing does not require a ticket.';
 
+/**
+ * What a manually sold-out showing says when nobody has written its own line.
+ *
+ * The page and the server's refusal read identically, as they do for the past
+ * rule: a buyer who presses a button on a stale tab should be told the same
+ * thing the page would have told them, not a second fact to reconcile.
+ *
+ * Deliberately says nothing about seats reopening. The capacity notice does
+ * say that, and truthfully — an abandoned pending checkout stops holding its
+ * seat after ticket_hold_window(), so a full house genuinely can loosen. A
+ * manual close is a person's decision about a room, and no expiring hold will
+ * reverse it.
+ */
+export const SOLD_OUT_MESSAGE = 'This showing is sold out.';
+
 const MINUTE_MS = 60 * 1000;
 
 export interface ShowingTiming {
@@ -83,6 +98,16 @@ export interface ShowingTiming {
    * did, and the column's own default.
    */
   no_ticket_required?: boolean | null;
+  /**
+   * `showings.manually_sold_out` — an admin closed this showing to online
+   * sales by hand. Optional, and absent reads as open, for the same reason
+   * `no_ticket_required` does: it is the answer for every showing that existed
+   * before the column, and the safe direction for a PostgREST schema cache
+   * that has not reloaded yet.
+   */
+  manually_sold_out?: boolean | null;
+  /** `showings.sold_out_message` — replaces the standard notice when set. */
+  sold_out_message?: string | null;
 }
 
 export interface ProductionRuntime {
@@ -170,11 +195,54 @@ export function needsNoTicket(showing: ShowingTiming | null | undefined): boolea
 }
 
 /**
+ * Has an admin closed this showing to online sales by hand?
+ *
+ * Not a capacity question and not a clock question — it takes no `now` and
+ * reads no seat count. The house filled somewhere this system cannot see, and
+ * a person said so. Capacity is asked separately and the two are OR-ed by the
+ * caller (`Showing.tsx`), because either alone is enough to stop a sale.
+ *
+ * A walk-in showing is never sold out. It issues no tickets, so there is
+ * nothing to run out of, and a row somehow holding both flags would otherwise
+ * print "Sold Out" over a screening anyone can attend. The guard lives here
+ * rather than at each call site so every surface inherits it — the same
+ * contradiction the admin form prevents from being written in the first place.
+ *
+ * Absent reads as open. See the note on the field.
+ */
+export function isManuallySoldOut(showing: ShowingTiming | null | undefined): boolean {
+  if (!showing) return false;
+  if (needsNoTicket(showing)) return false;
+  return showing.manually_sold_out === true;
+}
+
+/**
+ * The sentence this showing's sold-out state should be told in.
+ *
+ * Falls back to SOLD_OUT_MESSAGE when the admin wrote nothing, and treats a
+ * whitespace-only message as nothing — a text input that has been opened and
+ * cleared leaves `''` or `' '` behind, and neither should blank the notice.
+ */
+export function soldOutMessage(showing: ShowingTiming | null | undefined): string {
+  const custom = showing?.sold_out_message;
+  if (typeof custom === 'string' && custom.trim().length > 0) return custom.trim();
+  return SOLD_OUT_MESSAGE;
+}
+
+/**
  * The one question every purchase surface should ask.
  *
- * Deliberately *not* a capacity check: sold-out is a different state with its
- * own notice, and a showing can be both. Callers that care about capacity
- * check it alongside this, as Showing.tsx does.
+ * Deliberately *not* a sold-out check, of either kind. Sold-out is a different
+ * state with its own notice, and a showing can be both; callers that care ask
+ * `isManuallySoldOut` and the capacity arithmetic alongside this, as
+ * Showing.tsx does. This stays the timing-and-kind question so that the two
+ * states keep their two sentences instead of collapsing into one hidden
+ * button.
+ *
+ * Which means this is not the layer that protects the sale. That is
+ * supabase/functions/_shared/pricing.ts, which asks all of these questions in
+ * one place, and which a surface written next year inherits whether or not it
+ * remembers this note.
  *
  * A walk-in showing is not purchasable, but it is also not *closed* — the page
  * still has a date, a venue and a trailer to show, and the listings still want

@@ -25,8 +25,10 @@ import { formatShowtime } from '@/lib/datetime';
 import {
   NO_TICKET_REQUIRED_MESSAGE,
   SHOWING_PASSED_MESSAGE,
+  isManuallySoldOut,
   isPast,
   needsNoTicket,
+  soldOutMessage,
 } from '@/lib/purchasable';
 import { SITE_URL } from '@/lib/site';
 import { htmlToPlainText, toMetaDescription } from '@/lib/richText';
@@ -45,11 +47,30 @@ function getProductionMeta(type: ProductionType) {
 /**
  * Shown in place of the ticket picker once there is nothing left to pick.
  *
- * The reopening note is not a hedge: checkout writes rows as pending before
- * charging, and an abandoned pending row stops holding its seat after
- * ticket_hold_window(), so capacity genuinely can come back.
+ * Two states share this notice, and they are not the same fact:
+ *
+ *   * Capacity. The seats really are gone, counted by this system. The
+ *     reopening note is not a hedge — checkout writes rows as pending before
+ *     charging, and an abandoned pending row stops holding its seat after
+ *     ticket_hold_window(), so capacity genuinely can come back.
+ *   * `manual`. An admin closed the showing by hand because the room filled
+ *     somewhere we cannot see. No expiring hold will reverse that, so the
+ *     reopening sentence would be a false promise and is dropped; the box
+ *     office, which knows what actually happened, is the only useful next
+ *     step. A custom `message` replaces the standard line entirely.
+ *
+ * They share the heading because they are the same fact to a patron: there is
+ * no ticket for them here.
  */
-function SoldOutNotice({ assigned }: { assigned: boolean }) {
+function SoldOutNotice({
+  assigned,
+  manual = false,
+  message,
+}: {
+  assigned: boolean;
+  manual?: boolean;
+  message?: string;
+}) {
   return (
     <div
       role="status"
@@ -57,11 +78,20 @@ function SoldOutNotice({ assigned }: { assigned: boolean }) {
     >
       <p className="font-display text-base font-semibold text-destructive">Sold Out</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        {assigned
-          ? 'Every seat for this showing has been taken.'
-          : 'All tickets for this showing have been sold.'}{' '}
-        Seats occasionally reopen when an unfinished checkout expires, so it is worth checking back —
-        or ask the box office about availability.
+        {manual ? (
+          <>
+            {message}{' '}
+            Please ask the box office about availability.
+          </>
+        ) : (
+          <>
+            {assigned
+              ? 'Every seat for this showing has been taken.'
+              : 'All tickets for this showing have been sold.'}{' '}
+            Seats occasionally reopen when an unfinished checkout expires, so it is worth checking
+            back — or ask the box office about availability.
+          </>
+        )}
       </p>
     </div>
   );
@@ -381,9 +411,18 @@ export default function Showing() {
   // runs out of capacity, assigned seating runs out of unclaimed seats. Guard on
   // seats.length so an assigned showing whose seat map has not loaded yet does
   // not read as sold out for a moment.
-  const soldOut = isAssignedSeating
+  const capacitySoldOut = isAssignedSeating
     ? seats.length > 0 && seats.every(s => takenSeatIds.has(s.id))
     : gaAvailable <= 0;
+
+  // An admin said the house is full, whatever the seat count says. Kept as its
+  // own const rather than folded into the line below because the two states
+  // are told differently: this one has no reopening promise to make, and may
+  // carry the admin's own sentence.
+  const manuallySoldOut = isManuallySoldOut(showing);
+
+  // Either is enough to stop a sale, so every branch below asks this one.
+  const soldOut = manuallySoldOut || capacitySoldOut;
 
   useEffect(() => {
     async function load() {
@@ -1000,9 +1039,24 @@ export default function Showing() {
                   <CardTitle className="font-display text-lg">Select Your Seats</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* The map stays visible when full: seeing every seat greyed
-                      out explains the state better than hiding it does. */}
-                  {soldOut && <SoldOutNotice assigned />}
+                  {soldOut && (
+                    <SoldOutNotice
+                      assigned
+                      manual={manuallySoldOut}
+                      message={soldOutMessage(showing)}
+                    />
+                  )}
+                  {/* The map stays visible when the house filled through this
+                      system: seeing every seat greyed out explains the state
+                      better than hiding it does.
+
+                      It goes when an admin closed the showing by hand, because
+                      then the seats are NOT taken — every one of them would
+                      render selectable, and a patron could pick four, watch the
+                      total add up, and only meet the refusal at the summary.
+                      There is nothing truthful for the map to show about a room
+                      that filled somewhere else. */}
+                  {!manuallySoldOut && (
                   <SeatMap
                     seats={seats}
                     takenSeatIds={takenSeatIds}
@@ -1015,6 +1069,7 @@ export default function Showing() {
                       ]),
                     ) : undefined}
                   />
+                  )}
                 </CardContent>
               </Card>
             </>
@@ -1028,7 +1083,11 @@ export default function Showing() {
                   This is a general admission event — seating is first-come, first-served.
                 </p>
                 {soldOut ? (
-                  <SoldOutNotice assigned={false} />
+                  <SoldOutNotice
+                    assigned={false}
+                    manual={manuallySoldOut}
+                    message={soldOutMessage(showing)}
+                  />
                 ) : hasTiers ? (
                   <div className="space-y-3">
                     {priceTiers.map(tier => (
@@ -1084,7 +1143,11 @@ export default function Showing() {
             </CardHeader>
             <CardContent className="space-y-4">
               {soldOut ? (
-                <SoldOutNotice assigned={!!isAssignedSeating} />
+                <SoldOutNotice
+                  assigned={!!isAssignedSeating}
+                  manual={manuallySoldOut}
+                  message={soldOutMessage(showing)}
+                />
               ) : ticketCount === 0 ? (
                 <p className="text-muted-foreground text-sm">
                   {isAssignedSeating ? 'Select seats to continue' : 'Add tickets to continue'}

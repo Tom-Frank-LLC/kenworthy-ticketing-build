@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
@@ -441,6 +441,46 @@ export default function AdminDashboard() {
     else { toast.success(`${label} deleted`); loadData(); }
   };
 
+  /**
+   * Close a showing to online sales by hand, or reopen it.
+   *
+   * Operational, not editorial — the house fills through a phone call or a
+   * block booking and somebody needs the website to stop selling within the
+   * minute, so it lives on the row rather than three clicks into the edit
+   * form. The form carries the same flag for whoever is already in there.
+   *
+   * This is NOT Deactivate. Deactivating hides the showing from the site
+   * entirely; this leaves it listed, dated and readable, and only stops it
+   * selling. Conflating the two is how a sold-out night disappears from the
+   * calendar and the box office starts fielding "is it cancelled?" calls.
+   *
+   * The staff counter is deliberately unaffected: StaffPOS and comps insert
+   * tickets straight through PostgREST and never pass the gate this sets. See
+   * the migration for why that asymmetry is the point.
+   *
+   * `.select()` and a row-count assertion because an RLS denial comes back as
+   * a 204 with no error — without this the button would report success while
+   * changing nothing, which on this particular control means staff believing
+   * the website is closed while it quietly keeps selling.
+   */
+  const toggleSoldOut = async (showing: any) => {
+    const next = !showing.manually_sold_out;
+    const { data, error } = await supabase
+      .from('showings')
+      .update({ manually_sold_out: next })
+      .eq('id', showing.id)
+      .select('id');
+
+    if (error) { toast.error(error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error('That did not save — you may not have permission to change this showing.');
+      return;
+    }
+
+    toast.success(next ? 'Marked sold out — online sales are closed' : 'Reopened — online sales have resumed');
+    loadData();
+  };
+
 
   /*
    * The search and filter controls, rendered at the top of whichever listing
@@ -865,6 +905,13 @@ export default function AdminDashboard() {
                                 {showing.venues?.name && (
                                   <Badge variant="secondary" className="text-xs">{showing.venues.name}</Badge>
                                 )}
+                                {/* Said on the row as well as in the toggle's
+                                    tooltip. A closed showing looks identical to
+                                    an open one otherwise, and the difference
+                                    matters most when scanning the list. */}
+                                {showing.manually_sold_out && (
+                                  <Badge variant="destructive" className="text-xs">Sold Out</Badge>
+                                )}
                               </div>
                               <div className="flex items-center gap-1">
                                 <TicketCountBadge
@@ -879,6 +926,29 @@ export default function AdminDashboard() {
                                     )
                                   }
                                 />
+                                {/* Not offered on a walk-in night: nothing is
+                                    issued, so there is nothing to sell out. */}
+                                {!showing.no_ticket_required && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        aria-label={showing.manually_sold_out ? 'Reopen online sales' : 'Mark sold out'}
+                                        onClick={() => toggleSoldOut(showing)}
+                                      >
+                                        {showing.manually_sold_out
+                                          ? <LockOpen className="h-3.5 w-3.5 text-success" />
+                                          : <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {showing.manually_sold_out
+                                        ? 'Reopen online sales. The showing starts selling again if seats and timing allow.'
+                                        : 'Mark sold out. Closes online sales only — the box office can still sell and comp.'}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
                                 <Button variant="ghost" size="sm" asChild>
                                   <Link to={`/admin/showings/${showing.id}`}><Edit className="h-3.5 w-3.5" /></Link>
                                 </Button>
