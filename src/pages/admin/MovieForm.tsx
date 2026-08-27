@@ -156,7 +156,7 @@ export default function MovieForm() {
                 <Label>Rating</Label>
                 <Input value={rating} onChange={e => setRating(e.target.value)} placeholder="PG-13" />
               </div>
-              <div className="space-y-2 col-span-2">
+              <div className="space-y-2 col-span-full">
                 <Label htmlFor="movie-genre">Genre</Label>
                 <GenreInput id="movie-genre" kind="film" value={genres} onChange={setGenres} />
               </div>
