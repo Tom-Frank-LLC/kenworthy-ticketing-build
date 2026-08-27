@@ -1,17 +1,18 @@
 ---
 brief: richtext-preview-surfaces
 title: A formatted description reads formatted in the listing previews, not just on the ticket page
-status: built
+status: shipped
 track: bug
-severity: P2
 date: 2026-08-25
+shipped_in: ["#212"]
+shipped_at: 2026-08-27
 findings: FINDINGS-richtext-description-surface.md
-verified: false
+verified: true
 ---
 
 # Brief (for Claude Code): Rich-text descriptions don't format in the home/calendar previews
 
-**Status:** 🟢 Built. Awaiting a production deploy — `status: built` until then.
+**Status:** 🟢 Shipped to staging and production, 27 Aug 2026.
 **Date:** August 25, 2026
 **Requested by:** Tom — descriptions show correct formatting on the ticket page, but the
 List view / preview windows on the home page and calendar page show the text unformatted.
@@ -106,3 +107,24 @@ receive plain text. No schema or data change — the column already held HTML.
 Both preview slots set `italic` on the container, so an `<em>` inside them has nothing
 left to say visually. Pre-existing typography in those slots, and strictly better than
 before — emphasis used to be deleted outright. Worth a look if Tom wants it.
+
+## Deploy
+
+Staging deployed from `origin/main` at `7d48808`, version
+`9fa19681-4a4c-41ab-9562-523114bba748`.
+
+Production needed no deploy of its own: a parallel session shipped #213 from
+current `main` minutes earlier, and #212 rode along in that build. Confirmed
+rather than assumed — a clean production build of `7d48808` reproduced the live
+bundle exactly (`index-C5FPKtu1.js`, `index-Dx06Mmo-.css`), and the running
+`/calendar` shows 23 clamped teasers at 45px of 180px with `<strong>`
+rendering, child margins at 0, and no anchor inside a button.
+
+**A note for whoever deploys next.** Staging and production drifted apart in
+opposite directions for about twenty minutes: production was deployed from
+`main` (so it had #212) while staging had been deployed from a tree predating
+it (so it did not). Neither a version ID nor "it was deployed after my merge"
+would have told you which. What did was building a candidate tree and comparing
+the content hashes: `main` with #212 reverted reproduced staging exactly, and
+clean `main` reproduced production exactly. That test takes one build and
+answers the question outright.
