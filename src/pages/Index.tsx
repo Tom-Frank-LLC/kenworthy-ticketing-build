@@ -21,6 +21,9 @@ interface RawShowing {
   movie_id: string | null;
   event_id: string | null;
   live_performance_id: string | null;
+  // Curator's pick for this one date. Distinct from the production-level flag
+  // on movies/events/live_performances — see FeedItem.
+  is_featured?: boolean;
 }
 
 interface RawProduction {
@@ -71,6 +74,7 @@ function buildFeed(
       rsvpUrl: prod.rsvp_url,
       curatorNote: prod.description,
       isFeatured: prod.is_featured ?? false,
+      isFeaturedShowing: s.is_featured ?? false,
       ticketPrice: s.ticket_price,
     });
   }

@@ -2,18 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { BoothNote } from './BoothNote';
+import { attachUpcomingShowings } from '@/lib/feed';
 import type { FeedItem } from './TrailerFeed';
 
 /**
- * The curator's pick is one slide per *production*, and that is the whole of
- * what these tests protect.
+ * What a curator's pick is a pick *of* — a title, or one night of it.
  *
- * A FeedItem is a showing, not a title — the type says so. So a featured film
- * that plays four times arrives here as four items differing only by date, and
- * the first version of the carousel built four identical slides of the same
- * poster and the same note. It read as four separate recommendations for one
- * film. The failure is invisible in staging, where only one title is ever
- * flagged, and it only appears once someone schedules a run.
+ * A FeedItem is a showing, not a title, so a film flagged at the production
+ * level arrives here as one item per date. The first carousel built a slide
+ * from each and showed the same poster and note four times over. That failure
+ * is invisible in staging, where only one title is ever flagged, and appears
+ * the moment someone schedules a run — which is why it is pinned here rather
+ * than left to the next person to notice.
+ *
+ * Two flags now feed this: `isFeatured` on the production and
+ * `isFeaturedShowing` on the date. They are independent, and a title carrying
+ * both produces two slides rather than one silently winning.
  */
 
 const base: Omit<FeedItem, 'id' | 'showingId' | 'startTime'> = {
@@ -91,5 +95,61 @@ describe('BoothNote', () => {
     // One pick means no carousel at all, so there are no arrows to leave dead.
     expect(container.querySelector('[aria-roledescription="carousel"]')).toBeNull();
     expect(screen.queryByText(/Previous slide/)).toBeNull();
+  });
+
+  /**
+   * Two independent flags: `isFeatured` is the production (the film is the
+   * pick), `isFeaturedShowing` is one date (this night is the pick). A picked
+   * production speaks for its whole run and lists the other dates; a picked
+   * showing speaks for one night and stays quiet about the rest.
+   */
+  describe('production picks versus showing picks', () => {
+    it('lists the rest of the run when the film is the pick', () => {
+      renderBooth(attachUpcomingShowings(threeShowingsOfOneFilm));
+
+      // The soonest is named above; the other two are offered as chips.
+      expect(screen.getByText('Also playing')).toBeTruthy();
+      expect(screen.getAllByRole('link', { name: /get tickets for/i })).toHaveLength(2);
+    });
+
+    it('names no other dates when a single showing is the pick', () => {
+      const picked = attachUpcomingShowings(
+        threeShowingsOfOneFilm.map((i, n) =>
+          n === 1 ? { ...i, isFeatured: false, isFeaturedShowing: true } : { ...i, isFeatured: false },
+        ),
+      );
+      renderBooth(picked);
+
+      expect(screen.getByRole('heading', { name: 'Page to Screen: Divergent' })).toBeTruthy();
+      expect(screen.queryByText('Also playing')).toBeNull();
+      expect(screen.queryAllByRole('link', { name: /get tickets for/i })).toHaveLength(0);
+    });
+
+    it('shows both when a film and one of its nights are each flagged', () => {
+      // The decision here is deliberate: the narrower flag does not override
+      // the broader one. It reads as "see this film, and especially this
+      // night", so both earn a slide.
+      const items = attachUpcomingShowings(
+        threeShowingsOfOneFilm.map((i, n) => (n === 1 ? { ...i, isFeaturedShowing: true } : i)),
+      );
+      const { container } = renderBooth(items);
+
+      expect(container.querySelectorAll('[aria-roledescription="slide"]')).toHaveLength(2);
+      expect(screen.getByText(/2 picks/)).toBeTruthy();
+    });
+
+    it('does not collapse two flagged nights of the same film', () => {
+      // Showing picks are not deduped — two singled-out nights are two
+      // deliberate choices, unlike the production case where the duplicates
+      // are an artefact of the feed being per-showing.
+      const items = attachUpcomingShowings(
+        threeShowingsOfOneFilm.map((i, n) =>
+          n === 2 ? { ...i, isFeatured: false } : { ...i, isFeatured: false, isFeaturedShowing: true },
+        ),
+      );
+      const { container } = renderBooth(items);
+
+      expect(container.querySelectorAll('[aria-roledescription="slide"]')).toHaveLength(2);
+    });
   });
 });

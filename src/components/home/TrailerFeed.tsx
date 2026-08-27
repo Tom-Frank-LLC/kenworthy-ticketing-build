@@ -30,7 +30,19 @@ export interface FeedItem {
   ticketType?: string;        // for events
   rsvpUrl?: string | null;
   curatorNote?: string | null;
+  /**
+   * The *production* is the curator's pick — the flag on movies / events /
+   * live_performances. True on every showing of that production, because it is
+   * a property of the title rather than of any one night.
+   */
   isFeatured?: boolean;
+  /**
+   * This *showing* is the curator's pick — `showings.is_featured`, true for one
+   * date only. Independent of `isFeatured`: a 35mm print or a night with a live
+   * score is worth singling out whether or not the film itself is flagged, and
+   * setting both is a deliberate "see this film, and especially this night".
+   */
+  isFeaturedShowing?: boolean;
   ticketPrice?: number;
   /**
    * The other dates this same production plays, soonest first — including this
