@@ -1,11 +1,12 @@
 ---
 brief: film-pass-detail-pages
 title: Give each film pass its own purchase page
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-25
-verified: false
+shipped_in: ["#207"]
+shipped_at: 2026-08-27
+verified: true
 ---
 
 # Brief (for Claude Code): Give each film pass its own purchase page
@@ -67,7 +68,7 @@ verified: false
 
 ---
 
-## Outcome (built 2026-08-27, not yet deployed)
+## Outcome (shipped 2026-08-27, staging + production)
 
 All five decisions were taken as recommended, except #5 which was not needed.
 
@@ -127,3 +128,31 @@ no console errors.
 Not verified: the mobile breakpoints. The driven Chrome tab's viewport is
 pinned at 1280 and cannot be resized, so the 375/768 layouts rest on the same
 responsive classes the previous page already used.
+
+### Deployed
+
+Merged as `d9e2566` (#207), then deployed with `wrangler deploy` — merging does
+not ship.
+
+| | Worker version | Verified |
+|---|---|---|
+| staging | `3f4545c5-ecb6-4230-a8ff-0784aa78d56e` | pass page, totals, festival link |
+| production | `89165828-18ee-4e25-afac-942e84c70a79` | as above, plus the redirect and the "and more" cap |
+| prod rollback | `50d60563-d28f-4e94-b793-84982c9fa039` | the version this replaced |
+
+Before the production deploy, `origin/main` was built and every asset content
+hash compared against the live origin: all 29 matched, proving production was
+not ahead of main and that the deploy reverted nobody's unmerged work.
+
+**Staging was clobbered once in between.** A parallel session deployed staging
+from its own uncommitted tree at 18:38, dropping this work; a later deploy from
+merged main at 19:36 restored it. Nothing needed doing, but it is the second
+time this has happened — on this repo a deploy is only true of the moment it was
+checked.
+
+One detection note for whoever checks next: grepping the live bundle for a
+string is only sound if the string is in the **entry** chunk. `Get Festival
+Pass` lives in the lazy-loaded `SilentFilmFestival` route chunk, whose filename
+never appears in `index.html`, so searching for it reports a false absence. The
+`/film-pass/` route literal in `App.tsx` is in the entry chunk and is the
+reliable marker.
