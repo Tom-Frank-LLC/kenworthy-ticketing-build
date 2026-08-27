@@ -107,6 +107,10 @@ export default function ShowingForm() {
   // nothing wrote it, so it sat at its default and no showing was ever
   // reserved-seating. New showings default to GA.
   const [requiresSeatSelection, setRequiresSeatSelection] = useState(false);
+  // "Free" comes in two kinds and this is the switch between them. Off, a $0
+  // showing still issues a free ticket and holds a seat (an RSVP). On, it
+  // issues nothing at all — doors open, walk in. See src/lib/purchasable.ts.
+  const [noTicketRequired, setNoTicketRequired] = useState(false);
   const [isFeatured, setIsFeatured] = useState(false);
   const [saving, setSaving] = useState(false);
   const seatEditorRef = useRef<SeatTierEditorHandle>(null);
@@ -193,6 +197,7 @@ export default function ShowingForm() {
           setTicketPrice(String(data.ticket_price));
           setDurationMinutes(data.duration_minutes ? String(data.duration_minutes) : '');
           setRequiresSeatSelection(data.requires_seat_selection ?? false);
+          setNoTicketRequired(data.no_ticket_required ?? false);
           setIsFeatured(data.is_featured ?? false);
         }
 
@@ -413,6 +418,35 @@ export default function ShowingForm() {
   };
 
   /**
+   * Is this showing free, in the sense the no-ticket flag requires?
+   *
+   * Not just `ticketPrice === 0`. A base price of 0 with a $8 Adult tier is a
+   * priced showing — the tier is what buyers actually pay, and the base is the
+   * fallback nobody reaches. The database says the same thing in two halves:
+   * a CHECK on ticket_price, and a trigger on showing_price_tiers.
+   *
+   * NaN from a half-typed price reads as not-free, which errs towards hiding
+   * the option rather than towards offering a state the save would refuse.
+   */
+  const priceIsZero = (parseFloat(ticketPrice) || 0) === 0;
+  const hasPricedTier = useTiers && tiers.some(t => (parseFloat(t.price) || 0) > 0);
+  const isFreeShowing = priceIsZero && !hasPricedTier;
+
+  /**
+   * The flag as it will actually be saved.
+   *
+   * Derived rather than read straight from the radio, so that a price typed in
+   * after the box was ticked silently wins. The alternative — an effect that
+   * unticks the box on every keystroke — fights the admin mid-edit, and the box
+   * is not on screen in that state anyway.
+   *
+   * One value for the whole submit, batch included: "these settings apply to
+   * every showtime" has to cover this one too, or a run of free nights would
+   * come out half ticketed.
+   */
+  const noTicket = noTicketRequired && isFreeShowing;
+
+  /**
    * The shared config one showing is written from, plus the date it is for.
    *
    * Built per showtime rather than held as one object, but from the same state
@@ -430,7 +464,11 @@ export default function ShowingForm() {
     // would interpret it in the browser's zone; it has to be interpreted in the
     // venue's, or the stored instant depends on which machine the admin used.
     start_time: venueLocalToInstant(naiveStartTime).toISOString(),
-    ticket_price: parseFloat(ticketPrice),
+    // The CHECK on showings refuses the flag alongside a price, and it is right
+    // to. Sent as an explicit zero rather than trusting the admin to have
+    // cleared the box: the two fields state one decision, and letting them
+    // disagree turns a deliberate choice into a save that fails.
+    ticket_price: noTicket ? 0 : parseFloat(ticketPrice),
     // Blank clears the override rather than storing 0 — NULL is what makes
     // showing_ends_at() fall through to the film's own runtime, and the
     // column's CHECK constraint refuses a zero or negative anyway.
@@ -438,8 +476,13 @@ export default function ShowingForm() {
     // Only claim reserved seating when there is a seat map to reserve from.
     // A showing flagged reserved with no seats behind it renders an empty
     // picker the buyer cannot get past.
-    requires_seat_selection: venueHasSeatMap && requiresSeatSelection,
+    // A walk-in showing has no seats to reserve — there is no ticket to attach
+    // one to. Forced rather than merely hidden, so that flipping an
+    // assigned-seating showing to no-ticket does not leave a seat map behind
+    // that the page would try to render with nothing to sell from it.
+    requires_seat_selection: !noTicket && venueHasSeatMap && requiresSeatSelection,
     is_featured: isFeatured,
+    no_ticket_required: noTicket,
   });
 
   /**
@@ -470,7 +513,17 @@ export default function ShowingForm() {
     // every showing in a batch. That is what "these settings apply to every
     // showtime" has to mean for a room with assigned seats, and it is why a
     // reserved run does not have to be created a night at a time.
-    if (assignedSeating) {
+    if (noTicket) {
+      // Cleared, not merely skipped. A showing flipped from tiered-and-priced
+      // to walk-in would otherwise keep its old tiers: dead rows that sell
+      // nothing (the checkout refuses the showing outright) but that make the
+      // showing read as priced the next time this form loads it.
+      //
+      // This runs *after* the showings write above, which is why the database
+      // guards only the tier side of the rule — a trigger on `showings` would
+      // refuse the flag for tiers that this very next statement deletes.
+      await supabase.from('showing_price_tiers').delete().eq('showing_id', showingId);
+    } else if (assignedSeating) {
       const ok = await seatEditorRef.current?.persist(showingId);
       // `!== true` rather than `=== false`: an absent ref returns undefined, and
       // reading that as success is exactly how the seat map got silently dropped.
@@ -512,7 +565,16 @@ export default function ShowingForm() {
     // already saved by this point, and a screening silently accepting no
     // passes is invisible until somebody is turned away at the door.
     try {
-      await setShowingEligibility(showingId, passEligible ? eligiblePassTypeIds : []);
+      // Never on a walk-in showing. A pass admission is a ticket row with a
+      // deduction against it, and the trigger refuses that row — so a pass
+      // scanned at a screening tagged this way would fail at the door with a
+      // raw database error instead of a verdict the scanner can render.
+      // Cleared here, at the only place that tags a screening, rather than
+      // special-cased inside admit_with_film_pass().
+      await setShowingEligibility(
+        showingId,
+        !noTicket && passEligible ? eligiblePassTypeIds : [],
+      );
     } catch (err) {
       const why = err instanceof Error ? err.message : 'unknown error';
       return {
@@ -536,6 +598,14 @@ export default function ShowingForm() {
    * picks it up later.
    */
   const runSquareEnsure = async (showingId: string): Promise<SquareBatchEntry | null> => {
+    // Nothing will ever sell against a walk-in showing, so it gets no catalog
+    // item. A $0 variation no order can reference is dead weight in a catalog
+    // that is already the theatre's entire sales history, and the item-sales
+    // reporting this exists to feed has nothing to report for a night that
+    // takes no money. Returning null is "no shortfall to report", which is
+    // exactly right — not deploying an item here is the intended outcome.
+    if (noTicket) return null;
+
     try {
       const { data: sq, error: sqErr } = await supabase.functions.invoke('square-showing-variations', {
         body: { action: 'ensure_showing', showing_id: showingId },
@@ -628,7 +698,11 @@ export default function ShowingForm() {
     e.preventDefault();
     if (!itemId) { toast.error('Please select an item'); return; }
 
-    const assignedSeating = venueHasSeatMap && requiresSeatSelection;
+    // `!noTicket` for the same reason the column is forced false: a walk-in
+    // showing has no seats to price, and letting the seat editor validate and
+    // persist against one would write per-seat tiers for tickets that can never
+    // exist.
+    const assignedSeating = !noTicket && venueHasSeatMap && requiresSeatSelection;
 
     // Checked before any insert below. Failing afterwards would leave created
     // showings behind with the form still on screen, and a second press of the
@@ -740,7 +814,10 @@ export default function ShowingForm() {
   // Deliberately not gated on the showing existing yet. The seat map comes from
   // the venue, not the showing, so there is nothing to wait for — only the write
   // needs an id, and that happens on submit via seatEditorRef.
-  const showSeatOverride = venueHasSeatMap && requiresSeatSelection;
+  // `!noTicket` for the same reason the switch is hidden below: a walk-in
+  // showing sells no seats, so the per-seat pricing column has nothing to
+  // price.
+  const showSeatOverride = !noTicket && venueHasSeatMap && requiresSeatSelection;
 
 
   return (
@@ -910,7 +987,7 @@ export default function ShowingForm() {
                 screening one night and a reserved-seat performance the next.
                 Only offered when the chosen venue has a seat map to reserve
                 from — without one there is nothing to pick. */}
-            {venueHasSeatMap && (
+            {venueHasSeatMap && !noTicket && (
               <div className="space-y-2 border-t border-border pt-4">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input
@@ -1079,11 +1156,71 @@ export default function ShowingForm() {
               </p>
             </div>
 
+            {/* The two kinds of free.
+
+                Only asked when the showing is actually free — a priced showing
+                has no such choice to make, and the database refuses the
+                combination outright (the CHECK on showings, and the trigger on
+                showing_price_tiers). Hiding it rather than disabling it keeps
+                the form from offering a state the save would reject.
+
+                Set the price to 0 and this appears; type a price back in and it
+                goes, taking the flag with it — `noTicket` is derived, so the
+                price always wins over a box ticked earlier. Applies to every
+                showtime in a batch, like the rest of these settings. */}
+            {isFreeShowing && (
+              <div className="space-y-3 border-t border-border pt-4">
+                <Label className="text-base font-semibold">This showing is free</Label>
+                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="free-ticketing-mode"
+                    checked={!noTicketRequired}
+                    onChange={() => setNoTicketRequired(false)}
+                    className="mt-1"
+                  />
+                  <span className="min-w-0">
+                    <span className="font-semibold">Require a free ticket</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Patrons reserve a $0 ticket. Seats are held, capacity counts down, and
+                      the tickets scan at the door — an RSVP. Use this when you need to know
+                      how many are coming.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="free-ticketing-mode"
+                    checked={noTicketRequired}
+                    onChange={() => setNoTicketRequired(true)}
+                    className="mt-1"
+                  />
+                  <span className="min-w-0">
+                    <span className="font-semibold">No ticket needed — show "Free"</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Doors open, walk in. The showing page says "Free — no ticket needed"
+                      with no purchase panel, and the listings say "Free" instead of "Get
+                      Tickets".
+                    </span>
+                  </span>
+                </label>
+                {noTicketRequired && (
+                  <p className="text-xs text-amber-500">
+                    Nothing is issued, reserved or scanned for this showing: no seats are held,
+                    no passes are accepted, and no attendance is recorded online. Saving will
+                    clear any price tiers, assigned seating and pass eligibility it has.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Pass eligibility. Shown for every category now: the trigger that
                 forced events and live performances ineligible is gone, because
                 a festival pass covering a performance inside its run is the
                 point rather than drift. Which passes work here is the only
                 question left, and it is asked in one place for all three. */}
+            {!noTicket && (
             <div className="space-y-3 border-t border-border pt-4">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
@@ -1164,12 +1301,13 @@ export default function ShowingForm() {
                   </p>
                 )}
             </div>
+            )}
 
             {/* Price Tiers. Hidden for assigned seating: there the tiers live in the
                 seat editor, which owns both the prices and which seats carry them.
                 Two writers for showing_price_tiers is what let one of them delete
                 the other's work. */}
-            {!(venueHasSeatMap && requiresSeatSelection) && (
+            {!noTicket && !(venueHasSeatMap && requiresSeatSelection) && (
             <div className="space-y-3 border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-semibold">Price Tiers</Label>

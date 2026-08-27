@@ -186,3 +186,65 @@ describe('attachUpcomingShowings', () => {
     expect(only.upcomingShowings).toEqual([]);
   });
 });
+
+/**
+ * "Free · Details" instead of "Get Tickets".
+ *
+ * The regression this guards is the quiet one: a walk-in night that still
+ * offers to sell a ticket. The button would work — it links to the showing
+ * page either way — so nothing errors and nothing looks broken. A patron just
+ * arrives expecting to have bought something.
+ *
+ * The free-*ticketed* case is pinned alongside it deliberately. Both are $0,
+ * and the whole feature is the claim that price alone cannot tell them apart.
+ */
+describe('ShowingPreview and the no-ticket flag', () => {
+  it('offers "Free · Details" instead of "Get Tickets" for a walk-in showing', () => {
+    renderPreview(item({ noTicketRequired: true, ticketPrice: 0 }));
+
+    expect(screen.getByRole('link', { name: /Free · Details/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Get Tickets/i })).toBeNull();
+  });
+
+  it('still links through to the showing page — the details are the point', () => {
+    renderPreview(item({ noTicketRequired: true, ticketPrice: 0 }));
+
+    expect(
+      screen.getByRole('link', { name: /Free · Details/ }).getAttribute('href'),
+    ).toBe('/showing/showing-a');
+  });
+
+  it('keeps "Get Tickets" for a free showing that still issues a ticket', () => {
+    // $0 and ticketed: the RSVP case. It really does issue a ticket, so the
+    // purchase framing is the honest one.
+    renderPreview(item({ noTicketRequired: false, ticketPrice: 0 }));
+
+    expect(screen.getByRole('link', { name: /^Get Tickets$/i })).toBeTruthy();
+    expect(screen.queryByText(/Free · Details/)).toBeNull();
+  });
+
+  it('keeps "Get Tickets" for an ordinary paid showing', () => {
+    renderPreview(item({ ticketPrice: 9 }));
+
+    expect(screen.getByRole('link', { name: /^Get Tickets$/i })).toBeTruthy();
+  });
+
+  it('marks only the free dates in the chip row, not the whole run', () => {
+    // A run can mix the two — a paid week with one free community screening in
+    // it. The flag rides per date through attachUpcomingShowings, so the chips
+    // have to disagree with each other.
+    renderPreview(
+      item({
+        upcomingShowings: [
+          { id: 'showing-a', start_time: iso(24 * HOUR), ticket_price: 9 },
+          { id: 'showing-b', start_time: iso(48 * HOUR), ticket_price: 0, no_ticket_required: true },
+          { id: 'showing-c', start_time: iso(72 * HOUR), ticket_price: 9 },
+        ],
+      }),
+    );
+
+    const chips = within(screen.getByRole('list', { name: /Also playing/i }));
+    expect(chips.getByRole('link', { name: /free, no ticket needed/i })).toBeTruthy();
+    expect(chips.getAllByRole('link', { name: /^Get tickets for/i })).toHaveLength(1);
+  });
+});

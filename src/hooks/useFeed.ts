@@ -74,6 +74,7 @@ export function useFeed() {
           isFeatured: prod.is_featured ?? false,
           isFeaturedShowing: s.is_featured ?? false,
           ticketPrice: s.ticket_price,
+          noTicketRequired: s.no_ticket_required ?? false,
         });
       }
 

@@ -303,3 +303,83 @@ Deno.test('readDonationCents refuses what the donations table would refuse', () 
   assertEquals(readDonationCents(MAX_BUNDLED_DONATION_CENTS).ok, true);
   assertEquals(readDonationCents(MAX_BUNDLED_DONATION_CENTS + 1).ok, false);
 });
+
+// ---------------------------------------------------------------------------
+// A showing that issues no ticket cannot be sold one.
+//
+// The server side of the walk-in rule. The case it exists for is an admin
+// flipping a free screening to "no ticket needed" while somebody has its old
+// purchase panel open — that tab still holds a rendered Reserve button, and
+// pressing it lands here.
+//
+// The fixture is priced at $10 on purpose in the first test: the database's
+// CHECK would refuse that combination, so it can only arrive from a caller
+// that is already lying. Refusing it on the flag rather than on the price is
+// what makes the flag, not the arithmetic, the thing being enforced.
+// ---------------------------------------------------------------------------
+
+/** The fixture's showing, free and issuing no ticket. */
+function walkInFixture(overrides: Record<string, unknown> = {}): Rows {
+  const rows = fixture();
+  rows.showings[0].ticket_price = 0;
+  rows.showings[0].no_ticket_required = true;
+  rows.showing_price_tiers = [];
+  Object.assign(rows.showings[0], overrides);
+  return rows;
+}
+
+Deno.test('refuses to price a showing that requires no ticket', async () => {
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(walkInFixture()), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing does not require a ticket.',
+  );
+});
+
+Deno.test('refuses a walk-in showing on the flag alone, whatever the price says', async () => {
+  // A row the CHECK constraint would not allow, arriving anyway. The refusal
+  // must not depend on the price agreeing with the flag.
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(walkInFixture({ ticket_price: 10 })), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing does not require a ticket.',
+  );
+});
+
+Deno.test('reports a walk-in showing as such even when it is also past', async () => {
+  // Both rules apply. The reason given has to be the real one: "This showing
+  // has passed" would send staff looking for a date problem on a screening
+  // whose actual answer is that it never had tickets. The trigger orders its
+  // two checks the same way.
+  const rows = walkInFixture();
+  rows.showings[0].start_time = new Date(Date.now() - 180 * 60_000).toISOString();
+
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing does not require a ticket.',
+  );
+});
+
+Deno.test('still prices a free showing that DOES issue a ticket — the RSVP case', async () => {
+  // The distinction the feature rests on. Both are $0; only one is refused.
+  const rows = fixture();
+  rows.showings[0].ticket_price = 0;
+  rows.showings[0].no_ticket_required = false;
+  rows.showing_price_tiers = [];
+
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
+  assertEquals(order.subtotal, 0);
+});
+
+Deno.test('treats a showing row with no such column as ticketed', async () => {
+  // A select that lost the column, or a PostgREST schema cache that has not
+  // reloaded after the migration. Absent must read as "ordinary ticketed
+  // showing": the opposite default would refuse every sale on the site, and
+  // the trigger still backstops the sale this lets through.
+  const rows = fixture();
+  delete rows.showings[0].no_ticket_required;
+
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
+  assertEquals(order.subtotal, 10);
+});

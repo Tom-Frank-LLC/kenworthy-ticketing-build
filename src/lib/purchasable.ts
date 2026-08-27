@@ -1,26 +1,33 @@
 // Whether a showing can still be bought.
 //
-// The rule this file states is one rule of the system, not a piece of page
-// logic: you cannot buy a ticket to something that has already happened. It is
-// written down once here so that every purchase surface asks the same question
-// instead of scattering `new Date(...) < new Date()` comparisons that drift
-// apart, and so that adding a new surface means calling `isPurchasable` rather
-// than remembering a convention.
+// Two rules of the system, not pieces of page logic:
+//
+//   * You cannot buy a ticket to something that has already happened.
+//   * You cannot buy a ticket to something that issues no tickets.
+//
+// They are written down once here so that every purchase surface asks the same
+// question instead of scattering `new Date(...) < new Date()` comparisons that
+// drift apart, and so that adding a new surface means calling `isPurchasable`
+// rather than remembering a convention.
 //
 // This copy is advisory. It decides what the browser *renders* — a hidden
 // button, a "passed" notice — and nothing more. The authority is the server:
 //
 //   * supabase/functions/_shared/purchasable.ts  — the same rule, in Deno,
 //     which is what `ticket-checkout` refuses a stale tab with.
-//   * public.showing_ends_at(showings) in
-//     supabase/migrations/20260819143722_showing_end_and_past_sales_rules.sql
-//     — the same rule again, in SQL, enforced by a BEFORE INSERT trigger on
-//     `tickets` that no client can route around.
+//   * public.showing_ends_at(showings) and public.enforce_showing_not_past()
+//     in supabase/migrations/20260819143722_showing_end_and_past_sales_rules.sql,
+//     extended by 20260827113402_showings_no_ticket_required.sql — the same
+//     rules again, in SQL, enforced by a BEFORE INSERT trigger on `tickets`
+//     that no client can route around.
 //
-// All three must agree. If you change the cutoff, change all three.
+// All three must agree. If you change either rule, change all three.
 //
 // Cutoff (Tom, 2026-08-19): sales stop when the *show ends*, not when it
 // starts. A patron arriving at 7:20 for a 7:00 film is still a patron.
+//
+// No-ticket (Tom, 2026-08-26): a free showing may be marked as issuing no
+// ticket at all. See NO_TICKET_REQUIRED_MESSAGE and needsNoTicket() below.
 
 /**
  * How long a showing runs when nothing says otherwise.
@@ -49,6 +56,19 @@ export const DOOR_GRACE_MINUTES = 240;
 /** What a past showing says, everywhere — page, drawer, and server error. */
 export const SHOWING_PASSED_MESSAGE = 'This showing has passed.';
 
+/**
+ * What a walk-in showing says, everywhere — page, server error, and trigger.
+ *
+ * A free showing comes in two kinds and only one of them is this. `ticket_price
+ * = 0` with the flag clear is still a ticket: the buyer reserves, a row is
+ * written, a seat is held and capacity counts down. This is the other kind —
+ * doors open, walk in, nothing is issued, reserved or scanned.
+ *
+ * The two are indistinguishable from the price alone, which is why the flag
+ * exists rather than being inferred.
+ */
+export const NO_TICKET_REQUIRED_MESSAGE = 'This showing does not require a ticket.';
+
 const MINUTE_MS = 60 * 1000;
 
 export interface ShowingTiming {
@@ -56,6 +76,13 @@ export interface ShowingTiming {
   /** Per-showing override, in minutes. Null on every showing created before this rule existed. */
   duration_minutes?: number | null;
   is_active?: boolean | null;
+  /**
+   * `showings.no_ticket_required`. Optional because most callers pass a bare
+   * `{ start_time }` to ask the timing question alone, and absent has to mean
+   * "ticketed" — the answer for every showing that existed before the column
+   * did, and the column's own default.
+   */
+  no_ticket_required?: boolean | null;
 }
 
 export interface ProductionRuntime {
@@ -126,11 +153,35 @@ export function isPast(
 }
 
 /**
+ * Does this showing issue no ticket at all?
+ *
+ * The question is about the showing's *kind*, not its price and not the clock,
+ * so unlike `isPast` it takes no `now` and unlike a free-price check it cannot
+ * be answered by arithmetic. A $0 showing with this false is still ticketed —
+ * see NO_TICKET_REQUIRED_MESSAGE.
+ *
+ * Absent reads as false. Every showing created before the column existed is
+ * ticketed, and so is every row PostgREST returns before it reloads its schema
+ * cache — a state that would otherwise turn every showing on the site into a
+ * walk-in for as long as it lasted.
+ */
+export function needsNoTicket(showing: ShowingTiming | null | undefined): boolean {
+  return showing?.no_ticket_required === true;
+}
+
+/**
  * The one question every purchase surface should ask.
  *
  * Deliberately *not* a capacity check: sold-out is a different state with its
  * own notice, and a showing can be both. Callers that care about capacity
  * check it alongside this, as Showing.tsx does.
+ *
+ * A walk-in showing is not purchasable, but it is also not *closed* — the page
+ * still has a date, a venue and a trailer to show, and the listings still want
+ * to link to it. So surfaces that render something different for a walk-in ask
+ * `needsNoTicket` directly rather than reading `false` from here and hiding
+ * everything; this answers only "can money change hands", which is what the
+ * buy button and the server both need.
  */
 export function isPurchasable(
   showing: ShowingTiming | null | undefined,
@@ -139,5 +190,6 @@ export function isPurchasable(
 ): boolean {
   if (!showing) return false;
   if (showing.is_active === false) return false;
+  if (needsNoTicket(showing)) return false;
   return !isPast(showing, production, now);
 }

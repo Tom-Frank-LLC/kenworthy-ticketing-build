@@ -21,7 +21,12 @@ import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
-import { SHOWING_PASSED_MESSAGE, isPast } from '@/lib/purchasable';
+import {
+  NO_TICKET_REQUIRED_MESSAGE,
+  SHOWING_PASSED_MESSAGE,
+  isPast,
+  needsNoTicket,
+} from '@/lib/purchasable';
 import { SITE_URL } from '@/lib/site';
 import { htmlToPlainText, toMetaDescription } from '@/lib/richText';
 import { RichText } from '@/components/RichText';
@@ -88,6 +93,67 @@ function PassedNotice({ startTime }: { startTime: string }) {
       <Button variant="outline" className="mt-4" asChild>
         <Link to="/">See what&rsquo;s playing now</Link>
       </Button>
+    </div>
+  );
+}
+
+/**
+ * A free showing that issues no ticket — doors open, walk in.
+ *
+ * Replaces the entire buy column rather than sitting above it, the same way
+ * PassedNotice does. Leaving the quantity steppers on screen "but disabled"
+ * would pose a question the night does not have: there is no number to pick,
+ * no seat to hold and no capacity to count down, and an inert stepper reads as
+ * a form that is broken rather than as an admission that is free.
+ *
+ * The date and venue are repeated here even though the header above already
+ * carries them. This block is the whole of what the page asks the reader to
+ * act on, and "turn up at this time, at this address" is that act — a reader
+ * who has scrolled past the synopsis should not have to scroll back for it.
+ *
+ * The donation ask is a link to /donate, deliberately not the DonationPrompt
+ * the checkout uses. That component is a cart add-on: it sets an amount that
+ * rides on the ticket charge, and the server bundles it into the same Square
+ * payment. There is no charge on this page for it to ride on, so rendering it
+ * would collect a number and silently drop it. Same ask, the only mechanism
+ * that can actually take the money.
+ */
+function FreeAdmissionNotice({
+  startTime,
+  venueName,
+}: {
+  startTime: string;
+  venueName?: string | null;
+}) {
+  return (
+    <div
+      role="status"
+      className="rounded-lg border border-success/40 bg-success/10 p-6 text-center"
+    >
+      <p className="font-display text-2xl font-semibold">Free — no ticket needed</p>
+      <p className="mt-2 font-serif text-muted-foreground">
+        Admission is free and open to everyone. There is nothing to buy or reserve — just
+        come to the theatre and find a seat.
+      </p>
+
+      <div className="mt-5 flex flex-col items-center gap-1.5 text-sm">
+        <span className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-accent" />
+          {formatShowtime(startTime, "EEEE, MMMM d, yyyy 'at' h:mm a")}
+        </span>
+        <span className="flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-accent" />
+          {venueName || 'Kenworthy Performing Arts Centre'} · 508 S Main St, Moscow, ID
+        </span>
+      </div>
+
+      <p className="mt-6 font-serif text-sm text-muted-foreground">
+        Nights like this one are paid for by people who give. If you can,{' '}
+        <Link to="/donate" className="text-primary underline underline-offset-4 hover:no-underline">
+          support the Kenworthy
+        </Link>
+        .
+      </p>
     </div>
   );
 }
@@ -379,6 +445,16 @@ export default function Showing() {
       return;
     }
 
+    // The same stale-tab case for the walk-in state: an admin flips a free
+    // screening to "no ticket needed" while this page is open, and the
+    // rendered Reserve button outlives the change. The server refuses it
+    // anyway (_shared/pricing.ts) and so does the trigger; this is here so
+    // that case gets the page's own sentence rather than a checkout error.
+    if (needsNoTicket(showing)) {
+      toast.error(NO_TICKET_REQUIRED_MESSAGE);
+      return;
+    }
+
     setPurchasing(true);
     try {
       const data = await invokeFunction<{
@@ -554,15 +630,28 @@ export default function Showing() {
   // guard above so the film's runtime is in hand: the cutoff is the end of the
   // show, and for a film that end depends on production.duration_minutes.
   const hasPassed = isPast(showing, production);
+  // Free and open: no purchase panel at all. Read from the showing row rather
+  // than inferred from a $0 price — a $0 showing with this false is still
+  // ticketed, and the reserve flow it gets is the correct one. See
+  // src/lib/purchasable.ts.
+  const noTicket = needsNoTicket(showing);
   // Trailer/poster come from the production row we already fetched — no extra
   // query. When neither exists we keep the small type-icon tile instead of
   // reserving a media column for nothing.
   const hasMedia = !!(production?.trailer_url || production?.poster_url);
 
-  // Price display: show range if tiers, otherwise single price
-  const priceDisplay = hasTiers
-    ? `$${Math.min(...priceTiers.map(t => t.price)).toFixed(2)}–$${Math.max(...priceTiers.map(t => t.price)).toFixed(2)}`
-    : `$${Number(showing.ticket_price).toFixed(2)} per ticket`;
+  // What the meta line says this costs.
+  //
+  // "$0.00 per ticket" is a true sentence about a walk-in night and a useless
+  // one — it describes a ticket that does not exist. Tiers are unreachable
+  // here: the flag requires ticket_price = 0 and the tier trigger refuses a
+  // priced tier, so this branch is checked first rather than merged into the
+  // ternary below.
+  const priceDisplay = noTicket
+    ? 'Free — no ticket needed'
+    : hasTiers
+      ? `$${Math.min(...priceTiers.map(t => t.price)).toFixed(2)}–$${Math.max(...priceTiers.map(t => t.price)).toFixed(2)}`
+      : `$${Number(showing.ticket_price).toFixed(2)} per ticket`;
 
   return (
     // Extra bottom padding on mobile clears the sticky order bar below.
@@ -632,7 +721,11 @@ export default function Showing() {
               <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full font-medium">
                 {meta.label}
               </span>
-              {soldOut && (
+              {/* Not on a walk-in night. `soldOut` is a capacity answer and
+                  capacity is not what limits a showing that sells nothing —
+                  an old row still flagged for assigned seating would otherwise
+                  print "Sold Out" over a screening anyone can walk into. */}
+              {soldOut && !noTicket && (
                 <span className="text-xs bg-destructive/15 text-destructive px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
                   Sold Out
                 </span>
@@ -676,6 +769,8 @@ export default function Showing() {
           to keep this change legible as the one-line rule it is. */}
       {hasPassed ? (
         <PassedNotice startTime={showing.start_time} />
+      ) : noTicket ? (
+        <FreeAdmissionNotice startTime={showing.start_time} venueName={venue?.name} />
       ) : (
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Seating Map or GA Quantity */}
@@ -951,7 +1046,7 @@ export default function Showing() {
       {/* Mobile order bar. On phones the summary column stacks below the seat
           map, so the running total and the way to checkout would otherwise be
           a full screen of scrolling away from the seat the buyer just tapped. */}
-      {ticketCount > 0 && !soldOut && !hasPassed && (
+      {ticketCount > 0 && !soldOut && !hasPassed && !noTicket && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-accent/20 glass px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div className="min-w-0">

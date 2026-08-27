@@ -10,9 +10,11 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SHOWING_MINUTES,
   DOOR_GRACE_MINUTES,
+  NO_TICKET_REQUIRED_MESSAGE,
   doorClosesAt,
   isPast,
   isPurchasable,
+  needsNoTicket,
   resolveDurationMinutes,
   showingEndsAt,
 } from './purchasable';
@@ -103,5 +105,87 @@ describe('doorClosesAt', () => {
   it('outlasts the online cutoff for an ordinary film, which is why they are two rules', () => {
     const ends = showingEndsAt({ start_time: START }, { duration_minutes: 118 }).getTime();
     expect(doorClosesAt({ start_time: START }).getTime()).toBeGreaterThan(ends);
+  });
+});
+
+/**
+ * The other rule this file states: a showing that issues no ticket cannot sell
+ * one. Worth pinning for the same reason as the first — the flag has three
+ * copies (here, the Deno twin, and the trigger in
+ * 20260827113402_showings_no_ticket_required.sql), and the failure mode when
+ * they drift is silent. A walk-in night that still takes money looks exactly
+ * like a paid one in every log we keep.
+ */
+describe('needsNoTicket', () => {
+  it('is true only when the flag is actually set', () => {
+    expect(needsNoTicket({ start_time: START, no_ticket_required: true })).toBe(true);
+  });
+
+  it('reads an absent flag as ticketed', () => {
+    // Every showing created before the column existed, and every row PostgREST
+    // returns from a select that does not name it. Defaulting the other way
+    // would turn the whole site into walk-in showings for as long as a stale
+    // schema cache lasted.
+    expect(needsNoTicket({ start_time: START })).toBe(false);
+    expect(needsNoTicket({ start_time: START, no_ticket_required: null })).toBe(false);
+    expect(needsNoTicket({ start_time: START, no_ticket_required: false })).toBe(false);
+  });
+
+  it('is not inferred from a free price', () => {
+    // The distinction the whole feature rests on: a $0 showing is free *and*
+    // ticketed unless somebody says otherwise. There is no price on
+    // ShowingTiming at all, which is the point — this cannot be answered by
+    // arithmetic.
+    expect(needsNoTicket({ start_time: START, is_active: true })).toBe(false);
+  });
+
+  it('is unaffected by the clock', () => {
+    // Unlike isPast, this takes no `now`. A showing that issues no tickets
+    // issues none before it starts and none a year after.
+    expect(needsNoTicket({ start_time: '1999-01-01T00:00:00Z', no_ticket_required: true })).toBe(true);
+  });
+
+  it('says the same sentence the server and the trigger say', () => {
+    // Mirrored by NO_TICKET_REQUIRED_MESSAGE in
+    // supabase/functions/_shared/purchasable.ts and by the PT409 RAISE in
+    // 20260827113402_showings_no_ticket_required.sql. A buyer who submits a
+    // stale tab must not get a second, differently worded version of the fact
+    // the page already showed them.
+    expect(NO_TICKET_REQUIRED_MESSAGE).toBe('This showing does not require a ticket.');
+  });
+});
+
+describe('isPurchasable and the no-ticket flag', () => {
+  it('refuses a walk-in showing that has not started yet', () => {
+    expect(
+      isPurchasable(
+        { start_time: START, is_active: true, no_ticket_required: true },
+        null,
+        startMs - min(60),
+      ),
+    ).toBe(false);
+  });
+
+  it('still allows a free *ticketed* showing — the RSVP case is unchanged', () => {
+    expect(
+      isPurchasable(
+        { start_time: START, is_active: true, no_ticket_required: false },
+        null,
+        startMs - min(60),
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses a walk-in showing that is also past, without disagreeing about why', () => {
+    // Both rules apply; isPurchasable only answers "can money change hands".
+    // Which *reason* to give is the caller's decision, and the trigger and the
+    // server both report the no-ticket one first.
+    expect(
+      isPurchasable(
+        { start_time: START, is_active: true, no_ticket_required: true },
+        null,
+        startMs + min(600),
+      ),
+    ).toBe(false);
   });
 });

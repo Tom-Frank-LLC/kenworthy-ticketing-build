@@ -32,6 +32,7 @@ export function attachUpcomingShowings(items: FeedItem[]): FeedItem[] {
       id: item.showingId,
       start_time: item.startTime,
       ticket_price: item.ticketPrice ?? 0,
+      no_ticket_required: item.noTicketRequired ?? false,
     });
     byProduction.set(key, list);
   }
