@@ -28,6 +28,7 @@ const MyTickets = lazyWithRecovery(() => import("./pages/MyTickets"));
 const PublicTicket = lazyWithRecovery(() => import("./pages/PublicTicket"));
 const MyPasses = lazyWithRecovery(() => import("./pages/MyPasses"));
 const FilmPassesPage = lazyWithRecovery(() => import("./pages/FilmPasses"));
+const FilmPassDetail = lazyWithRecovery(() => import("./pages/FilmPassDetail"));
 const Profile = lazyWithRecovery(() => import("./pages/Profile"));
 const ResetPassword = lazyWithRecovery(() => import("./pages/ResetPassword"));
 const Sponsors = lazyWithRecovery(() => import("./pages/Sponsors"));
@@ -106,8 +107,12 @@ const App = () => (
                   <Route path="/t/:token" element={<PublicTicket />} />
                   {/* Buying a film pass — public, no sign-in. Distinct from
                       /my-passes, which only shows a signed-in patron what they
-                      already hold. */}
+                      already hold. /film-passes browses; /film-pass/:id is the
+                      one place a pass is actually bought, and is where an old
+                      /film-passes?pass=<id> link redirects to. Singular and
+                      :id-keyed to match /showing/:id. */}
                   <Route path="/film-passes" element={<FilmPassesPage />} />
+                  <Route path="/film-pass/:id" element={<FilmPassDetail />} />
                   <Route path="/my-passes" element={<MyPasses />} />
                   <Route path="/profile" element={<Profile />} />
                   {/* Management, and only management. Every form here already
