@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { formatShowtime } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
-import { htmlToPlainText } from '@/lib/richText';
+import { isRichTextEmpty } from '@/lib/richText';
+import { RichText } from '@/components/RichText';
 import { dayLabel } from './EditorialCalendar';
 import { ShowtimeChips } from './ShowtimeChips';
 import type { FeedItem } from './TrailerFeed';
@@ -54,7 +55,10 @@ function Pick({
   kind: PickKind;
   onSelect?: (item: FeedItem) => void;
 }) {
-  const note = item.curatorNote ? htmlToPlainText(item.curatorNote) : null;
+  // On the text, not the string: an editor the author cleared out stores
+  // `<p></p>`, which is truthy and would otherwise reserve the note's row in
+  // the band for nothing.
+  const hasNote = !isRichTextEmpty(item.curatorNote);
   const hasPoster = Boolean(item.posterUrl);
 
   // useFeed filters past showings out at query time, so this only bites in a
@@ -163,19 +167,27 @@ function Pick({
           <p className="font-serif text-sm text-muted-foreground mb-3">
             {formatShowtime(item.startTime, "EEEE, MMMM d 'at' h:mm a")}
           </p>
-          {note && (
+          {hasNote && (
             // Scrolls rather than clamps, so a long note grows a scrollbar
             // instead of the band. tabIndex makes the region reachable by
             // keyboard — Chrome does not focus a scroll container on its own.
+            //
+            // Because it scrolls rather than clamps, the note renders as
+            // formatted copy through the ticket page's own renderer: the
+            // clamp is what forces a teaser to flatten, and there is none
+            // here. The pick sits after the title's `</button>` above, so
+            // this is body copy in the copy column, not markup nested in a
+            // control.
             <div
               tabIndex={0}
               role="region"
               aria-label={`About ${item.title}`}
               className="themed-scroll min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
-              <p className="font-serif italic text-foreground/80 leading-relaxed">
-                {note}
-              </p>
+              <RichText
+                html={item.curatorNote}
+                className="font-serif italic text-foreground/80 leading-relaxed"
+              />
             </div>
           )}
           {/* The rest of the run — the same chips the listing preview offers,

@@ -344,6 +344,47 @@
     outline-offset: 2px;
     border-radius: 2px;
   }
+
+  /* ------------------------------------------------------------------
+     Teaser variant: rich text inside a `line-clamp`.
+
+     The received wisdom (and this component's own doc comment, until now)
+     was that `line-clamp` cannot clamp rich text at all, so every teaser
+     slot flattened to plain text and lost its formatting. That is half
+     right. Measured in Chrome against the real markup: a `-webkit-box`
+     with `-webkit-line-clamp: 2` clamps nested `<p>` and `<ul>` children
+     to exactly two lines, the same 48px a plain string gets, against 144px
+     unclamped. What actually defeats it is the *margins* — the same markup
+     with the 0.75em block margins above measures 84px, because the box
+     counts each child's margin box, not its line boxes.
+
+     So the fix is to remove the vertical rhythm, not the formatting. A
+     teaser is two lines of running copy; there is no room in it for the
+     paragraph spacing that earns its keep in body copy, and the bold,
+     italics and bullets that carry the meaning survive.
+
+     `overflow-wrap` is here because a clamped box will not scroll: a long
+     unbroken URL in a note would otherwise push the row wider rather than
+     being cut off with the rest. */
+  .rich-text-teaser > *,
+  .rich-text-teaser p,
+  .rich-text-teaser ul,
+  .rich-text-teaser ol,
+  .rich-text-teaser li,
+  .rich-text-teaser blockquote,
+  .rich-text-teaser h3 {
+    margin-block: 0;
+  }
+
+  .rich-text-teaser {
+    overflow-wrap: anywhere;
+  }
+
+  /* A rule across two lines of teaser is a line of the clamp spent on
+     nothing. The copy either side of it still shows. */
+  .rich-text-teaser hr {
+    display: none;
+  }
 }
 
 @layer components {
