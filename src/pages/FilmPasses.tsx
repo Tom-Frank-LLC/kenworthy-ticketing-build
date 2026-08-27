@@ -1,246 +1,70 @@
-import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
-import {
-  Check, CreditCard, Loader2, Mail, Minus, Plus, Store, Ticket,
-} from 'lucide-react';
-import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
+import { Ticket } from 'lucide-react';
 import { SEO } from '@/components/SEO';
-import { invokeFunction } from '@/lib/functions';
-import { COLLECT_PHONE } from '@/lib/flags';
 import { passImageUrl } from '@/lib/passImage';
-import { RichText } from '@/components/RichText';
+import {
+  PASS_TYPE_COLUMNS,
+  money,
+  passWorthLine,
+  type PassType,
+} from '@/lib/filmPass';
 
 /**
- * Buying a film pass online.
+ * The film passes we sell, as a gallery.
  *
- * The thing this page must not do is give anyone the impression they now hold
- * something. A film pass is a physical card, and paying for one here buys a
- * *promise* of one — collected at the box office or posted out. So there is no
- * QR anywhere on this page or in the email that follows it, and the wording
- * after payment says where the pass will be rather than "here is your pass".
+ * This page used to be the whole shop: a chooser, a quantity, an address, a
+ * card form. Every "buy this pass" link in the site pointed at it with `?pass=`
+ * merely preselecting a card, so a buyer who had already picked a pass arrived
+ * at a page asking them to pick one. The purchase moved to /film-pass/:id and
+ * what is left here is the browse surface — for people who arrive without a
+ * pass in mind, which is the only question this page was ever answering.
  *
- * No sign-in. Patrons do not log in, so this follows the guest-ticket pattern:
- * name and email, an account created silently behind the scenes so the order
- * has an owner, and nothing the buyer has to remember.
+ * There is deliberately no payment form on this route now. One place takes
+ * money for a pass, and it is the page that names the pass.
  */
-
-interface PassType {
-  id: string;
-  name: string;
-  price: number;
-  initial_balance: number;
-  redemption_price: number;
-  ticket_face_value: number | null;
-  expiration_days: number | null;
-  /** Artwork in the pass-images bucket. Null on a pass nobody has given one. */
-  image_path: string | null;
-  /** Where this pass is and is not valid. Staff-edited; null prints nothing. */
-  fine_print: string | null;
-}
-
-type Fulfillment = 'pickup' | 'mail';
-
-interface Placed {
-  passName: string;
-  quantity: number;
-  fulfillment: Fulfillment;
-  total: number;
-}
-
-const MAX_QUANTITY = 10;
-
-
 export default function FilmPasses() {
   const [passTypes, setPassTypes] = useState<PassType[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [selectedId, setSelectedId] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [fulfillment, setFulfillment] = useState<Fulfillment>('pickup');
-
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState({
-    line1: '', line2: '', city: '', state: 'ID', postal_code: '',
-  });
-
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [cardReady, setCardReady] = useState(false);
-  const [purchasing, setPurchasing] = useState(false);
-  const [placed, setPlaced] = useState<Placed | null>(null);
-
-  const cardRef = useRef<SquareCardFormHandle>(null);
-  // One key per attempt, kept across a repeated submit so the server returns
-  // the order it already made rather than charging twice; replaced after a
-  // failure, or Square replays the old decline at a corrected card.
-  const idempotencyKeyRef = useRef(crypto.randomUUID());
-
-  // Which pass a link asked for. The festival page sends people here with its
-  // own pass named, so they land on the pass they clicked rather than on the
-  // cheapest one and have to find it again. Ignored if it names a pass that is
-  // not on sale, which is what an old link does after a pass is retired.
+  // Old links keep working. Printed flyers, past emails and the festival page
+  // before it was updated all say /film-passes?pass=<id>; that is now simply
+  // the pass's own page, and the redirect happens before any fetch so it does
+  // not flash a gallery on the way. An id that names a retired pass lands on
+  // the not-on-sale state over there, which is the same answer this page would
+  // have given and a clearer one.
   const [searchParams] = useSearchParams();
   const requestedPassId = searchParams.get('pass');
 
   useEffect(() => {
+    if (requestedPassId) return;
+    let cancelled = false;
+
     supabase
       .from('film_pass_types')
-      .select('id, name, price, initial_balance, redemption_price, ticket_face_value, expiration_days, image_path, fine_print')
+      .select(PASS_TYPE_COLUMNS)
       .eq('is_active', true)
       .order('price')
       .then(({ data }) => {
-        const types = (data || []) as PassType[];
-        setPassTypes(types);
-        const requested = types.find(t => t.id === requestedPassId);
-        if (requested) setSelectedId(requested.id);
-        else if (types.length > 0) setSelectedId(types[0].id);
+        if (cancelled) return;
+        setPassTypes((data || []) as unknown as PassType[]);
         setLoading(false);
       });
+
+    return () => { cancelled = true; };
   }, [requestedPassId]);
 
-  const selected = passTypes.find(p => p.id === selectedId) ?? null;
-  // Sales tax is added on top of the listed price, and film-pass-checkout
-  // computes exactly this on the server — rounded PER PASS, so two passes cost
-  // twice one pass. The server's number is what Square charges; this display
-  // has to agree with it or the buyer sees one figure and their card takes
-  // another.
-  const PASS_TAX_RATE = 0.06;
-  const unitCents = selected ? Math.round(Number(selected.price) * 100) : 0;
-  const unitTaxCents = Math.round(unitCents * PASS_TAX_RATE);
-  const subtotal = (unitCents * quantity) / 100;
-  const taxDue = (unitTaxCents * quantity) / 100;
-  const total = selected ? ((unitCents + unitTaxCents) * quantity) / 100 : 0;
-  const admissions = selected
-    ? Math.floor(Number(selected.initial_balance) / Number(selected.redemption_price || 1))
-    : 0;
-
-  function validate(): boolean {
-    const next: Record<string, string> = {};
-    if (!selected) next.pass = 'Choose a pass';
-    if (!name.trim()) next.name = 'Name is required';
-    if (!email.trim()) next.email = 'Email is required so we can confirm your order';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) next.email = 'Invalid email format';
-
-    if (fulfillment === 'mail') {
-      if (!address.line1.trim()) next.line1 = 'Street address is required';
-      if (!address.city.trim()) next.city = 'City is required';
-      if (!address.state.trim()) next.state = 'State is required';
-      if (!/^\d{5}(-\d{4})?$/.test(address.postal_code.trim())) next.postal_code = 'Enter a 5-digit ZIP';
-    }
-
-    setErrors(next);
-    return Object.keys(next).length === 0;
+  if (requestedPassId) {
+    return <Navigate to={`/film-pass/${requestedPassId}`} replace />;
   }
-
-  async function handleBuy() {
-    if (!validate() || !selected) return;
-    if (!cardRef.current) {
-      setErrors({ card: 'The card form is not ready yet. Give it a moment, or reload the page.' });
-      return;
-    }
-
-    setPurchasing(true);
-    try {
-      const sourceId = await cardRef.current.tokenize();
-
-      // The server prices this from film_pass_types and records the order only
-      // once Square has taken the money. Nothing here is trusted.
-      await invokeFunction('film-pass-checkout', {
-        action: 'order',
-        pass_type_id: selected.id,
-        quantity,
-        fulfillment,
-        mailing_address: fulfillment === 'mail'
-          ? {
-              line1: address.line1.trim(),
-              line2: address.line2.trim() || null,
-              city: address.city.trim(),
-              state: address.state.trim(),
-              postal_code: address.postal_code.trim(),
-            }
-          : undefined,
-        source_id: sourceId,
-        name: name.trim(),
-        email: email.trim(),
-        phone: COLLECT_PHONE ? (phone.trim() || undefined) : undefined,
-        idempotency_key: idempotencyKeyRef.current,
-      });
-
-      setPlaced({
-        passName: selected.name,
-        quantity,
-        fulfillment,
-        total,
-      });
-      idempotencyKeyRef.current = crypto.randomUUID();
-    } catch (err: any) {
-      idempotencyKeyRef.current = crypto.randomUUID();
-      toast.error(err.message || 'Could not complete your purchase');
-    } finally {
-      setPurchasing(false);
-    }
-  }
-
-  const money = (n: number) => `$${n.toFixed(2)}`;
 
   if (loading) {
     return <div className="container py-16 text-center text-muted-foreground">Loading...</div>;
   }
 
-  // ---- After payment ------------------------------------------------------
-  // Says where the pass will be, not "here is your pass". There is deliberately
-  // nothing to screenshot: a buyer who thinks this screen is the pass turns up
-  // at the door with a phone and no card.
-  if (placed) {
-    return (
-      <div className="container py-12 px-4 max-w-xl">
-        <SEO
-          title="Film pass ordered — Kenworthy"
-          description="Your Kenworthy film pass order is confirmed."
-        />
-        <Card className="glass">
-          <CardContent className="p-8 text-center space-y-4">
-            <Check className="h-14 w-14 mx-auto text-[hsl(var(--success))]" />
-            <h1 className="font-display text-2xl font-bold">Thank you — your order is in</h1>
-            <p className="text-muted-foreground">
-              {placed.quantity} × {placed.passName} · {money(placed.total)}
-            </p>
-            <div className="p-4 rounded-lg bg-secondary/50 text-left space-y-2">
-              <p className="font-medium flex items-center gap-2">
-                {placed.fulfillment === 'pickup' ? (
-                  <><Store className="h-4 w-4" /> Collect it at the box office</>
-                ) : (
-                  <><Mail className="h-4 w-4" /> On its way to you</>
-                )}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {placed.fulfillment === 'pickup'
-                  ? 'Ask for it by name when you next visit. We activate it and hand it over then.'
-                  : 'We activate it before it goes in the envelope, so it is ready to use the moment it arrives.'}
-              </p>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              A film pass is a physical card — there is no QR code to print and nothing on this
-              screen you need to keep. A confirmation is on its way to {email.trim()}.
-            </p>
-            <Button variant="outline" onClick={() => { setPlaced(null); setQuantity(1); }}>
-              Buy another
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // ---- Nothing for sale ---------------------------------------------------
   if (passTypes.length === 0) {
     return (
       <div className="container py-16 px-4 max-w-xl text-center">
@@ -261,7 +85,7 @@ export default function FilmPasses() {
     <div className="container py-8 px-4 max-w-3xl">
       <SEO
         title="Film Passes — Kenworthy"
-        description="Buy a prepaid film pass for KPAC in Moscow, Idaho. Collect it at the box office or have it posted, then hand it over at the door."
+        description="Prepaid film passes for KPAC in Moscow, Idaho. Collect one at the box office or have it posted, then hand it over at the door."
       />
 
       <h1 className="font-display text-3xl font-bold mb-2">Film Passes</h1>
@@ -270,325 +94,59 @@ export default function FilmPasses() {
         or mailed to you, depending on your preference.
       </p>
 
-      <div className="grid lg:grid-cols-[1fr_20rem] gap-6 items-start">
-        <div className="space-y-6">
-          {/* Which pass */}
-          <div className="space-y-3">
-            <h2 className="font-display text-lg font-bold">Choose a pass</h2>
-            {/* One per row rather than two. The artwork needs about 64px, and at two
-                columns inside this layout each card was ~190px wide — the name wrapped
-                mid-word and the price clipped off the edge, on the page where the price
-                matters most. There are only ever a handful of passes. */}
-            <div className="grid gap-3">
-              {passTypes.map(pt => {
-                const films = Math.floor(
-                  Number(pt.initial_balance) / Number(pt.redemption_price || 1),
-                );
-                return (
-                  <Card
-                    key={pt.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedId(pt.id)}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedId(pt.id); }}
-                    className={`glass cursor-pointer transition-shadow ${
-                      selectedId === pt.id ? 'ring-2 ring-primary' : 'hover:glow-primary'
-                    }`}
-                  >
-                    <CardContent className="p-5 flex gap-4">
-                      {/* Artwork where there is any. A pass without it keeps the
-                          layout it has always had rather than reserving a gap
-                          for a picture that is not coming. */}
-                      {pt.image_path ? (
-                        <img
-                          src={passImageUrl(pt.image_path)}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className="w-16 h-20 shrink-0 rounded object-cover border border-border bg-background"
-                        />
-                      ) : (
-                        <span className="w-16 h-20 shrink-0 rounded border border-border flex items-center justify-center text-muted-foreground bg-background">
-                          <Ticket className="h-6 w-6" aria-hidden="true" />
-                        </span>
-                      )}
-                      <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <h3 className="font-display text-lg font-bold">{pt.name}</h3>
-                        <span className="text-xl font-bold text-primary shrink-0">
-                          {money(Number(pt.price))}
-                        </span>
-                      </div>
-                      {/* What the pass is worth, not what it deducts. The old line
-                          read "about 10 films at $6 each", which quoted
-                          redemption_price — the balance spent per admission. That
-                          is the pass's internal accounting, and as a sales line it
-                          states the offer inside out: the reason to buy is the $8
-                          seat you get for that $6, not the $6 itself. Falls back to
-                          the bare count when a pass has no face value set. */}
-                      <p className="text-sm text-muted-foreground">
-                        {pt.ticket_face_value
-                          ? <>Good for {films} films — tickets that cost {money(Number(pt.ticket_face_value))} each at the door.</>
-                          : <>Good for {films} films.</>}
-                      </p>
-                      {pt.expiration_days && (
-                        <Badge variant="secondary" className="mt-2 text-xs">
-                          Valid {pt.expiration_days} days from activation
-                        </Badge>
-                      )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-            {errors.pass && <p className="text-sm text-destructive">{errors.pass}</p>}
-          </div>
-
-          {/* How many */}
-          <div className="space-y-2">
-            <h2 className="font-display text-lg font-bold">How many</h2>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="One less"
-                onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                disabled={quantity <= 1}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <span className="text-xl font-bold w-8 text-center">{quantity}</span>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="One more"
-                onClick={() => setQuantity(q => Math.min(MAX_QUANTITY, q + 1))}
-                disabled={quantity >= MAX_QUANTITY}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Up to {MAX_QUANTITY} — call the box office for more.
-              </span>
-            </div>
-          </div>
-
-          {/* How it reaches them */}
-          <div className="space-y-3">
-            <h2 className="font-display text-lg font-bold">How would you like it?</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {([
-                { key: 'pickup', icon: Store, title: 'Collect at the box office',
-                  blurb: 'Ready when you next visit. We activate it as we hand it over.' },
-                { key: 'mail', icon: Mail, title: 'Ship it to me',
-                  blurb: 'Activated before it goes in the envelope, so it works on arrival.' },
-              ] as const).map(opt => {
-                const Icon = opt.icon;
-                return (
-                  <Card
-                    key={opt.key}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setFulfillment(opt.key)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') setFulfillment(opt.key);
-                    }}
-                    className={`glass cursor-pointer transition-shadow ${
-                      fulfillment === opt.key ? 'ring-2 ring-primary' : 'hover:glow-primary'
-                    }`}
-                  >
-                    <CardContent className="p-4">
-                      <p className="font-medium flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-primary" /> {opt.title}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">{opt.blurb}</p>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-
-            {fulfillment === 'mail' && (
-              <div className="grid gap-3 sm:grid-cols-2 pt-1">
-                <div className="sm:col-span-2">
-                  <Label htmlFor="addr1" className="text-sm">Street address *</Label>
-                  <Input
-                    id="addr1"
-                    value={address.line1}
-                    onChange={e => setAddress(a => ({ ...a, line1: e.target.value }))}
-                    maxLength={120}
-                  />
-                  {errors.line1 && <p className="text-sm text-destructive mt-1">{errors.line1}</p>}
-                </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="addr2" className="text-sm">Apartment, suite (optional)</Label>
-                  <Input
-                    id="addr2"
-                    value={address.line2}
-                    onChange={e => setAddress(a => ({ ...a, line2: e.target.value }))}
-                    maxLength={120}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="addr-city" className="text-sm">City *</Label>
-                  <Input
-                    id="addr-city"
-                    value={address.city}
-                    onChange={e => setAddress(a => ({ ...a, city: e.target.value }))}
-                  />
-                  {errors.city && <p className="text-sm text-destructive mt-1">{errors.city}</p>}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="addr-state" className="text-sm">State *</Label>
-                    <Input
-                      id="addr-state"
-                      value={address.state}
-                      onChange={e => setAddress(a => ({ ...a, state: e.target.value }))}
-                      maxLength={2}
+      {/* One per row rather than two. The artwork needs about 64px, and at two
+          columns each card was ~190px wide — the name wrapped mid-word and the
+          price clipped off the edge, on the page where the price matters most.
+          There are only ever a handful of passes. */}
+      <ul className="grid gap-3">
+        {passTypes.map(pt => (
+          <li key={pt.id}>
+            {/* A link, not a click handler on a card. This row navigates, so it
+                should open in a new tab, show its target in the status bar and
+                reach the keyboard on its own — all of which a div with an
+                onClick has to reimplement and usually only half does. */}
+            <Link
+              to={`/film-pass/${pt.id}`}
+              className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <Card className="glass h-full transition-shadow hover:glow-primary">
+                <CardContent className="p-5 flex gap-4">
+                  {/* Artwork where there is any. A pass without it keeps the
+                      layout rather than reserving a gap for a picture that is
+                      not coming. */}
+                  {pt.image_path ? (
+                    <img
+                      src={passImageUrl(pt.image_path)}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="w-16 h-20 shrink-0 rounded object-cover border border-border bg-background"
                     />
-                    {errors.state && <p className="text-sm text-destructive mt-1">{errors.state}</p>}
-                  </div>
-                  <div>
-                    <Label htmlFor="addr-zip" className="text-sm">ZIP *</Label>
-                    <Input
-                      id="addr-zip"
-                      value={address.postal_code}
-                      onChange={e => setAddress(a => ({ ...a, postal_code: e.target.value }))}
-                      maxLength={10}
-                    />
-                    {errors.postal_code && (
-                      <p className="text-sm text-destructive mt-1">{errors.postal_code}</p>
+                  ) : (
+                    <span className="w-16 h-20 shrink-0 rounded border border-border flex items-center justify-center text-muted-foreground bg-background">
+                      <Ticket className="h-6 w-6" aria-hidden="true" />
+                    </span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h2 className="font-display text-lg font-bold">{pt.name}</h2>
+                      <span className="text-xl font-bold text-primary shrink-0">
+                        {money(Number(pt.price))}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{passWorthLine(pt)}</p>
+                    {pt.expiration_days && (
+                      <Badge variant="secondary" className="mt-2 text-xs">
+                        Valid {pt.expiration_days} days from activation
+                      </Badge>
                     )}
                   </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Who they are */}
-          <div className="space-y-3">
-            <h2 className="font-display text-lg font-bold">Your details</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="pass-name" className="text-sm">Name *</Label>
-                <Input
-                  id="pass-name"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  maxLength={100}
-                />
-                {errors.name && <p className="text-sm text-destructive mt-1">{errors.name}</p>}
-              </div>
-              <div>
-                <Label htmlFor="pass-email" className="text-sm">Email *</Label>
-                <Input
-                  id="pass-email"
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  maxLength={255}
-                />
-                {errors.email && <p className="text-sm text-destructive mt-1">{errors.email}</p>}
-              </div>
-              {/* Shown with COLLECT_PHONE (see @/lib/flags), but deliberately
-                  without the SMS consent line ticket checkout carries. Pass
-                  orders confirm by email only — film-pass-checkout calls
-                  sendTransactionalEmail and never deliverConfirmation — so
-                  promising a text here would be a promise nothing keeps. */}
-              {COLLECT_PHONE && (
-                <div className="sm:col-span-2">
-                  <Label htmlFor="pass-phone" className="text-sm">Phone (optional)</Label>
-                  <Input
-                    id="pass-phone"
-                    type="tel"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                    maxLength={20}
-                  />
-                </div>
-              )}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              We use your name to find your pass at the counter, and your email to confirm the
-              order.{COLLECT_PHONE ? ' A phone number is optional, and only so we can reach you about this order.' : ''}
-            </p>
-          </div>
-        </div>
-
-        {/* Summary + payment */}
-        <Card className="glass lg:sticky lg:top-20">
-          <CardContent className="p-5 space-y-4">
-            <h2 className="font-display text-lg font-bold">Order Summary</h2>
-
-            {selected && (
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span>{selected.name} × {quantity}</span>
-                  <span>{money(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Idaho sales tax (6%)</span>
-                  <span>{money(taxDue)}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {selected.ticket_face_value
-                    ? <>Each is good for {admissions} films — tickets that cost{' '}
-                        {money(Number(selected.ticket_face_value))} each at the door.</>
-                    : <>Each is good for {admissions} films.</>}
-                </p>
-                <div className="flex justify-between font-bold text-base pt-2 border-t border-border mt-2">
-                  <span>Total</span>
-                  <span className="text-primary">{money(total)}</span>
-                </div>
-              </div>
-            )}
-
-            <div className="border-t border-border pt-3">
-              <p className="text-sm font-medium mb-3 flex items-center gap-1">
-                <CreditCard className="h-4 w-4" /> Payment
-              </p>
-              <SquareCardForm
-                ref={cardRef}
-                source="film-pass-checkout"
-                onReadyChange={setCardReady}
-              />
-              {errors.card && <p className="text-sm text-destructive mt-1">{errors.card}</p>}
-            </div>
-
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handleBuy}
-              disabled={purchasing || !cardReady || !selected}
-            >
-              {purchasing ? (
-                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Processing…</>
-              ) : (
-                <><Check className="h-4 w-4 mr-1" /> Pay {money(total)}</>
-              )}
-            </Button>
-
-            <p className="text-sm text-muted-foreground text-center">
-              Payments are processed securely by Square. Your card details never reach our
-              servers.
-            </p>
-
-            {/* The rules people otherwise discover at the door.
-                The first is true of every pass here, so it stays in the page.
-                The second is a claim about one product — the standard pass is
-                not valid at special events, the festival pass is valid at
-                nothing else — so it comes from the pass being bought. A pass
-                with nothing to say prints nothing rather than inheriting
-                another pass's wording. */}
-            <div className="text-sm text-muted-foreground border-t border-border pt-3 space-y-1">
-              <p>Passes are redeemed in person — they cannot book tickets online.</p>
-              <RichText html={selected?.fine_print} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                </CardContent>
+              </Card>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

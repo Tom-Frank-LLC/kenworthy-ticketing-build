@@ -38,10 +38,10 @@ import { RichText } from '@/components/RichText';
  * derived from pass_type_showings, so what the page advertises and what the
  * pass actually admits to are the same rows by construction.
  *
- * The pass is sold on /film-passes, not here. It is an ordinary row in
- * film_pass_types, so that page already lists it with no code that knows about
- * festivals; this page links across with the pass preselected. Rebuilding the
- * Square card form here would fork a working checkout to save one click.
+ * The pass is sold on /film-pass/:id, not here. It is an ordinary row in
+ * film_pass_types, so that page renders it with no code that knows about
+ * festivals; this page just links across to it. Rebuilding the Square card
+ * form here would fork a working checkout to save one click.
  */
 
 // ---------------------------------------------------------------------------
@@ -484,7 +484,7 @@ export default function SilentFilmFestival() {
                 </p>
               </div>
               <Button asChild className={cn('h-11 shrink-0', GREEN_CTA)}>
-                <Link to={`/film-passes?pass=${pass.id}`}>Buy the festival pass</Link>
+                <Link to={`/film-pass/${pass.id}`}>Get Festival Pass</Link>
               </Button>
             </CardContent>
           </Card>
