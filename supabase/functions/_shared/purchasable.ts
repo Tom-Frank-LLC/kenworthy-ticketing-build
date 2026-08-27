@@ -47,12 +47,25 @@ export const SHOWING_PASSED_MESSAGE = 'This showing has passed.';
  */
 export const NO_TICKET_REQUIRED_MESSAGE = 'This showing does not require a ticket.';
 
+/**
+ * What a manually sold-out showing says when it carries no line of its own.
+ *
+ * Twin of the same constant in src/lib/purchasable.ts, and the sentence the
+ * page shows — see the note there on why it promises nothing about seats
+ * reopening.
+ */
+export const SOLD_OUT_MESSAGE = 'This showing is sold out.';
+
 const MINUTE_MS = 60 * 1000;
 
 export interface ShowingTiming {
   start_time: string | null | undefined;
   duration_minutes?: number | null;
   is_active?: boolean | null;
+  /** See the note on the same field in src/lib/purchasable.ts. */
+  manually_sold_out?: boolean | null;
+  /** `showings.sold_out_message` — replaces the standard notice when set. */
+  sold_out_message?: string | null;
   /** `showings.no_ticket_required`. Absent reads as false — see needsNoTicket. */
   no_ticket_required?: boolean | null;
 }
@@ -120,4 +133,37 @@ export function isPast(
  */
 export function needsNoTicket(showing: ShowingTiming | null | undefined): boolean {
   return showing?.no_ticket_required === true;
+}
+
+/**
+ * Has an admin closed this showing to online sales by hand?
+ *
+ * The boundary's half of the rule an admin sets with one toggle. Unlike the
+ * past-showing and walk-in rules beside it, this one is enforced *here and in
+ * the browser only* — there is no trigger on `tickets` behind it, because the
+ * box office must still be able to comp and sell in person on a night the
+ * website correctly refuses. See the migration
+ * 20260827154812_showings_manually_sold_out.sql for why that asymmetry is
+ * deliberate rather than an omission.
+ *
+ * A walk-in showing is never sold out — nothing is issued, so nothing runs
+ * out. Absent reads as open, which keeps a stale PostgREST schema cache from
+ * being the thing that decides whether the theatre can sell tickets.
+ */
+export function isManuallySoldOut(showing: ShowingTiming | null | undefined): boolean {
+  if (!showing) return false;
+  if (needsNoTicket(showing)) return false;
+  return showing.manually_sold_out === true;
+}
+
+/**
+ * The sentence to refuse a sold-out showing with.
+ *
+ * Whitespace counts as unwritten, so an admin who opened the field and cleared
+ * it gets the standard notice rather than an empty refusal.
+ */
+export function soldOutMessage(showing: ShowingTiming | null | undefined): string {
+  const custom = showing?.sold_out_message;
+  if (typeof custom === 'string' && custom.trim().length > 0) return custom.trim();
+  return SOLD_OUT_MESSAGE;
 }

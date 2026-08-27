@@ -64,9 +64,11 @@ export function ShowtimeChips({
               // visible chip is a bare date either way, so this is the only
               // place the difference can be said at all.
               aria-label={
-                s.no_ticket_required
-                  ? `Details for ${formatShowtime(s.start_time, 'EEE, MMM d · h:mm a')} — free, no ticket needed`
-                  : `Get tickets for ${formatShowtime(s.start_time, 'EEE, MMM d · h:mm a')}`
+                s.manually_sold_out
+                  ? `Details for ${formatShowtime(s.start_time, 'EEE, MMM d · h:mm a')} — sold out`
+                  : s.no_ticket_required
+                    ? `Details for ${formatShowtime(s.start_time, 'EEE, MMM d · h:mm a')} — free, no ticket needed`
+                    : `Get tickets for ${formatShowtime(s.start_time, 'EEE, MMM d · h:mm a')}`
               }
               className="inline-flex items-center rounded-full border border-accent/40 bg-background px-3 py-1.5 font-serif text-sm text-foreground transition-colors hover:border-accent hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
@@ -76,6 +78,12 @@ export function ShowtimeChips({
                   audiences reading different lists. */}
               {s.no_ticket_required && (
                 <span className="ml-1.5 text-success font-medium">· Free</span>
+              )}
+              {/* Marked for the same reason a free date is: this list is where
+                  a reader picks which night to come to, and "Get tickets for
+                  Friday" is the wrong promise on a Friday that has none. */}
+              {s.manually_sold_out && (
+                <span className="ml-1.5 text-destructive font-medium">· Sold Out</span>
               )}
             </Link>
           </li>

@@ -23,6 +23,12 @@ export interface UpcomingShowing {
    * is the ordinary case, not an exception.
    */
   no_ticket_required?: boolean;
+  /**
+   * `showings.manually_sold_out` — an admin closed this date to online sales.
+   * Per date for the same reason as the flag above: a run sells out one night
+   * at a time, and the chip list is exactly where that difference shows.
+   */
+  manually_sold_out?: boolean;
 }
 
 export interface FeedItem {
@@ -59,6 +65,16 @@ export interface FeedItem {
    * that one and "Free · Details" for this one, so they cannot be collapsed.
    */
   noTicketRequired?: boolean;
+  /**
+   * `showings.manually_sold_out` — this date is closed to online sales.
+   *
+   * Only the *manual* flag reaches the listings. Capacity sold-out is not
+   * here, and deliberately: answering it would mean counting held tickets for
+   * every showing on the page, which is a query per card the home page does
+   * not make. So a card without this flag is not a promise that seats remain
+   * — the showing page and the server still have the final word.
+   */
+  manuallySoldOut?: boolean;
   /**
    * The other dates this same production plays, soonest first — including this
    * item's own showing.
@@ -281,6 +297,21 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                     // trailer are, and those are exactly what somebody
                     // deciding whether to turn up needs. What changes is that
                     // it stops claiming to sell anything.
+                    // Still a link when the house is full, for the same reason
+                    // it is on a walk-in night — but not a green call to
+                    // action, because there is no action. The muted treatment
+                    // is the point: the reader should be able to tell before
+                    // clicking.
+                    item.manuallySoldOut ? (
+                      <Button
+                        asChild
+                        size="lg"
+                        variant="outline"
+                        className="h-12 bg-black/40 border-white/40 text-white hover:bg-white hover:text-black"
+                      >
+                        <Link to={`/showing/${item.showingId}`}>Sold Out</Link>
+                      </Button>
+                    ) : (
                     <Button asChild size="lg" className={cn('h-12', GREEN_CTA)}>
                       <Link to={`/showing/${item.showingId}`}>
                         {item.noTicketRequired ? (
@@ -292,6 +323,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                         )}
                       </Link>
                     </Button>
+                    )
                   ) : null}
                   <Button
                     size="lg"

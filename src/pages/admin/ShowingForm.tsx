@@ -111,6 +111,14 @@ export default function ShowingForm() {
   // showing still issues a free ticket and holds a seat (an RSVP). On, it
   // issues nothing at all — doors open, walk in. See src/lib/purchasable.ts.
   const [noTicketRequired, setNoTicketRequired] = useState(false);
+  // Closed to online sales by hand, whatever the seat count says — the house
+  // filled through a channel this system cannot count. Not capacity: the
+  // arithmetic that hides the buy button when the seats really do run out is
+  // unrelated and still runs. See src/lib/purchasable.ts.
+  const [manuallySoldOut, setManuallySoldOut] = useState(false);
+  // Optional replacement for the standard notice. Kept when the showing is
+  // reopened, so a run that sells out every Saturday keeps its sentence.
+  const [soldOutMessageText, setSoldOutMessageText] = useState('');
   const [isFeatured, setIsFeatured] = useState(false);
   const [saving, setSaving] = useState(false);
   const seatEditorRef = useRef<SeatTierEditorHandle>(null);
@@ -198,6 +206,8 @@ export default function ShowingForm() {
           setDurationMinutes(data.duration_minutes ? String(data.duration_minutes) : '');
           setRequiresSeatSelection(data.requires_seat_selection ?? false);
           setNoTicketRequired(data.no_ticket_required ?? false);
+          setManuallySoldOut(data.manually_sold_out ?? false);
+          setSoldOutMessageText(data.sold_out_message ?? '');
           setIsFeatured(data.is_featured ?? false);
         }
 
@@ -483,6 +493,16 @@ export default function ShowingForm() {
     requires_seat_selection: !noTicket && venueHasSeatMap && requiresSeatSelection,
     is_featured: isFeatured,
     no_ticket_required: noTicket,
+    // Forced false on a walk-in night, for the same reason the price and the
+    // seat flag are: a showing that issues no tickets cannot sell out of them,
+    // and leaving a stale true behind would print "Sold Out" over a screening
+    // anyone can attend. The readers guard against it too — this is the half
+    // that stops the contradiction being written down.
+    manually_sold_out: !noTicket && manuallySoldOut,
+    // Blank clears it rather than storing an empty string, so the page falls
+    // back to the standard notice instead of rendering a sentence with nothing
+    // in it. Written whatever the flag says: the text outlives a reopening.
+    sold_out_message: soldOutMessageText.trim() === '' ? null : soldOutMessageText.trim(),
   });
 
   /**
@@ -1211,6 +1231,60 @@ export default function ShowingForm() {
                     no passes are accepted, and no attendance is recorded online. Saving will
                     clear any price tiers, assigned seating and pass eligibility it has.
                   </p>
+                )}
+              </div>
+            )}
+
+            {/* Closed by hand.
+
+                The same flag the quick toggle on the admin listing sets — this
+                is here for whoever is already inside the form, and because it
+                is the only place the custom notice can be written.
+
+                Not offered on a walk-in night: nothing is issued, so there is
+                nothing to sell out, and `buildShowingData` forces the column
+                false in that state anyway.
+
+                Deliberately not the same control as Active. Deactivating hides
+                the showing from the site; this leaves it listed and readable
+                and only stops it selling. */}
+            {!noTicket && (
+              <div className="space-y-3 border-t border-border pt-4">
+                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={manuallySoldOut}
+                    onChange={e => setManuallySoldOut(e.target.checked)}
+                    className="rounded mt-1"
+                  />
+                  <span className="min-w-0">
+                    <span className="font-semibold">Sold out — close online sales</span>
+                    <span className="block text-xs text-muted-foreground">
+                      The showing stays on the site with its date and details, and shows a
+                      "Sold Out" notice instead of a purchase panel. Use this when the house
+                      filled somewhere else — a block booking, a buyout, a phone sale.
+                      The box office can still sell and comp in person.
+                    </span>
+                  </span>
+                </label>
+                {manuallySoldOut && (
+                  <div className="space-y-1">
+                    <Label htmlFor="sold-out-message" className="text-sm">
+                      Notice (optional)
+                    </Label>
+                    <Input
+                      id="sold-out-message"
+                      value={soldOutMessageText}
+                      aria-describedby="sold-out-message-help"
+                      placeholder="Sold out — this screening was booked privately."
+                      onChange={e => setSoldOutMessageText(e.target.value)}
+                    />
+                    <p id="sold-out-message-help" className="text-xs text-muted-foreground">
+                      Replaces the standard notice on the showing page, and is what a stale
+                      tab is told if it tries to buy. Leave blank for "This showing is sold
+                      out." Kept if you reopen the showing later.
+                    </p>
+                  </div>
                 )}
               </div>
             )}

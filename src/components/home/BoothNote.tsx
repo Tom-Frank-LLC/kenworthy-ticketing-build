@@ -67,12 +67,23 @@ function Pick({
   // src/lib/purchasable.ts.
   const cta =
     item.showingId && !isPast({ start_time: item.startTime }) ? (
-      <Button asChild className={cn('h-11', GREEN_CTA)}>
+      // A pick that has since sold out is still worth showing — it is the
+      // curator's note that earned the slot, and the date and venue are still
+      // worth reading. What goes is the green button and the promise in it.
+      <Button
+        asChild
+        variant={item.manuallySoldOut ? 'secondary' : 'default'}
+        className={cn('h-11', !item.manuallySoldOut && GREEN_CTA)}
+      >
         <Link to={`/showing/${item.showingId}`}>
           {/* A pick can be a free community night as easily as a paid one, and
               on those there is nothing to get. The slide still links through —
               the showing page is where the time and the venue are. */}
-          {item.noTicketRequired ? 'Free · Details' : 'Get Tickets'}{' '}
+          {item.manuallySoldOut
+            ? 'Sold Out'
+            : item.noTicketRequired
+              ? 'Free · Details'
+              : 'Get Tickets'}{' '}
           <ArrowRight className="h-4 w-4 ml-1" />
         </Link>
       </Button>

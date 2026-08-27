@@ -2167,9 +2167,11 @@ export type Database = {
           is_active: boolean
           is_featured: boolean
           live_performance_id: string | null
+          manually_sold_out: boolean
           movie_id: string | null
           no_ticket_required: boolean
           requires_seat_selection: boolean
+          sold_out_message: string | null
           start_time: string
           ticket_price: number
           total_seats: number
@@ -2184,9 +2186,11 @@ export type Database = {
           is_active?: boolean
           is_featured?: boolean
           live_performance_id?: string | null
+          manually_sold_out?: boolean
           movie_id?: string | null
           no_ticket_required?: boolean
           requires_seat_selection?: boolean
+          sold_out_message?: string | null
           start_time: string
           ticket_price?: number
           total_seats?: number
@@ -2201,9 +2205,11 @@ export type Database = {
           is_active?: boolean
           is_featured?: boolean
           live_performance_id?: string | null
+          manually_sold_out?: boolean
           movie_id?: string | null
           no_ticket_required?: boolean
           requires_seat_selection?: boolean
+          sold_out_message?: string | null
           start_time?: string
           ticket_price?: number
           total_seats?: number

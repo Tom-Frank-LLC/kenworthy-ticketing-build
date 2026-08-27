@@ -27,6 +27,9 @@ interface RawShowing {
   // Free and open, with no ticket issued at all. Distinct from
   // `ticket_price === 0`, which still mints a free ticket — see FeedItem.
   no_ticket_required?: boolean;
+  // Closed to online sales by hand, whatever the seat count says. Distinct
+  // from capacity, which the listings do not compute — see FeedItem.
+  manually_sold_out?: boolean;
 }
 
 interface RawProduction {
@@ -80,6 +83,7 @@ function buildFeed(
       isFeaturedShowing: s.is_featured ?? false,
       ticketPrice: s.ticket_price,
       noTicketRequired: s.no_ticket_required ?? false,
+      manuallySoldOut: s.manually_sold_out ?? false,
     });
   }
 

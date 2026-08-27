@@ -383,3 +383,119 @@ Deno.test('treats a showing row with no such column as ticketed', async () => {
   const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
   assertEquals(order.subtotal, 10);
 });
+
+// ---------------------------------------------------------------------------
+// A showing an admin closed to online sales by hand.
+//
+// This is the whole enforcement of that flag, which makes these tests load
+// bearing in a way the two rules above are not: there is no trigger on
+// `tickets` behind this one, deliberately, so the box office can keep selling
+// on a night the website is closed. If this gate goes, nothing refuses.
+//
+// The case it exists for: the house filled through a block booking taken over
+// the phone, an admin flips the toggle, and a tab opened before that still
+// holds a rendered buy button with seats showing available.
+// ---------------------------------------------------------------------------
+
+/** The fixture's showing, closed by hand. Seats are deliberately left plentiful. */
+function soldOutFixture(overrides: Record<string, unknown> = {}): Rows {
+  const rows = fixture();
+  rows.showings[0].manually_sold_out = true;
+  Object.assign(rows.showings[0], overrides);
+  return rows;
+}
+
+Deno.test('refuses to price a showing an admin marked sold out', async () => {
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(soldOutFixture()), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing is sold out.',
+  );
+});
+
+Deno.test('refuses on the flag alone, with the whole house still unsold', async () => {
+  // The point of the feature. total_seats is 200 and the fixture sells none of
+  // them, so every capacity check in the system says this showing is wide
+  // open. The flag has to be able to overrule that on its own, or it only
+  // works on showings that were nearly full anyway.
+  const rows = soldOutFixture({ total_seats: 500 });
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing is sold out.',
+  );
+});
+
+Deno.test("refuses with the admin's own sentence when one is set", async () => {
+  // The refusal and the notice on the page have to be the same words. A buyer
+  // told "sold out" by a page that said "booked privately by the Historical
+  // Society" has two facts to reconcile and one of them is vaguer.
+  const rows = soldOutFixture({
+    sold_out_message: 'Sold out — this screening was booked privately.',
+  });
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]),
+    PricingError,
+    'Sold out — this screening was booked privately.',
+  );
+});
+
+Deno.test('falls back to the standard sentence when the message is only whitespace', async () => {
+  // A field that was opened and cleared. Refusing with an empty string would
+  // surface a blank error toast.
+  const rows = soldOutFixture({ sold_out_message: '   ' });
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing is sold out.',
+  );
+});
+
+Deno.test('reports a past showing as past even when it is also sold out', async () => {
+  // The reverse of the walk-in ordering, and deliberately so. "Sold out" on a
+  // screening that ended last week invites a patron to ring the box office
+  // about a seat; "has passed" is the older and plainer fact.
+  const rows = soldOutFixture();
+  rows.showings[0].start_time = new Date(Date.now() - 180 * 60_000).toISOString();
+
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing has passed.',
+  );
+});
+
+Deno.test('a walk-in showing is refused as such, not as sold out', async () => {
+  // A contradictory row — nothing is issued, yet something is flagged sold
+  // out. isManuallySoldOut answers false for a walk-in, so the reason given is
+  // the real one rather than an inherited flag nobody meant to set.
+  const rows = walkInFixture({ manually_sold_out: true });
+  await assertRejects(
+    () => priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]),
+    PricingError,
+    'This showing does not require a ticket.',
+  );
+});
+
+Deno.test('still prices a showing that has been reopened', async () => {
+  // Reopening clears the flag and nothing else. A leftover sold_out_message
+  // must not keep refusing the sale — the text outlives the closure by design.
+  const rows = fixture();
+  rows.showings[0].manually_sold_out = false;
+  rows.showings[0].sold_out_message = 'Sold out — booked privately.';
+
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
+  assertEquals(order.subtotal, 10);
+});
+
+Deno.test('treats a showing row with no sold-out column as open', async () => {
+  // A PostgREST schema cache that has not reloaded after the migration.
+  // Absent must read as open: the opposite default would close every showing
+  // on the site, and unlike the walk-in flag there is no trigger underneath to
+  // catch what this lets through — so the failure has to be the visible one.
+  const rows = fixture();
+  delete rows.showings[0].manually_sold_out;
+
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
+  assertEquals(order.subtotal, 10);
+});
