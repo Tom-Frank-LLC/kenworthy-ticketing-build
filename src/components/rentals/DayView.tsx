@@ -63,10 +63,22 @@ export function DayView({ day, dateLabel }: { day: DayViewModel | null; dateLabe
 
       {/* A real table: each row is an hour and a status, which is exactly what
           a row/column reader expects here. */}
-      <table className="w-full text-sm">
+      {/* table-fixed, not just w-full: under the default `auto` layout the
+          column widths come from max-content, so w-full is a floor and the
+          table grows past the viewport on a phone however the cells are
+          styled. Fixed makes the w-28 hour column and the 100% real. */}
+      <table className="w-full table-fixed text-sm">
         <caption className="sr-only">
           Hour-by-hour availability for {dateLabel}
         </caption>
+        {/* Fixed layout takes its column widths from the first row, and that
+            row is the sr-only <thead> below — so a width on the body cells is
+            ignored and the columns split 50/50. A colgroup sets them
+            independently of which row happens to come first. */}
+        <colgroup>
+          <col className="w-28" />
+          <col />
+        </colgroup>
         <thead className="sr-only">
           <tr>
             <th scope="col">Hour</th>
@@ -80,12 +92,15 @@ export function DayView({ day, dateLabel }: { day: DayViewModel | null; dateLabe
               <tr key={row.hour}>
                 <th
                   scope="row"
-                  className="text-left px-4 py-2 font-display uppercase tracking-[0.15em] text-xs text-muted-foreground whitespace-nowrap w-28 font-normal"
+                  className="text-left px-4 py-2 font-display uppercase tracking-[0.15em] text-xs text-muted-foreground whitespace-nowrap font-normal"
                 >
                   {row.label}
                 </th>
                 <td className={`px-4 py-2 font-serif ${style.text}`}>
-                  <span className="flex items-center gap-2">
+                  {/* min-w-0: a flex item defaults to min-width:auto and will
+                      not shrink under its content, which leaves the `truncate`
+                      on the detail below inert. */}
+                  <span className="flex items-center gap-2 min-w-0">
                     <span aria-hidden className={`inline-block w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
                     <span>{HOUR_STATUS_LABEL[row.status]}</span>
                     {row.detail && (

@@ -102,7 +102,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             isCentenary() ? 'h-[84px]' : 'h-[68px]',
           )}
         >
-          <div className="flex items-center gap-3 sm:gap-6 md:gap-8 min-w-0">
+          {/* The gap steps with the viewport like the container padding does.
+              A flat md:gap-8 spent ~180px of the 768px row on whitespace and
+              pushed the Support menu 51px on top of the Tickets button — the
+              links are inline, so they overflow this box rather than
+              compressing it. Full gap-8 returns at lg, where there is room. */}
+          <div className="flex items-center gap-3 sm:gap-6 md:gap-5 lg:gap-8 min-w-0">
             {/* Full menu below `lg`, where the desktop links below are still hidden. */}
             <MobileNav />
             <Link to="/" className="flex items-center group" aria-label="Kenworthy — home">
