@@ -23,10 +23,11 @@ rollback is a one-record edit that propagates in five minutes.
 |---|---|---|
 | **Square line items** (the launch blocker) | ✅ **Live in production** | `BRIEF-square-line-items.md` shipped as `9d5876a` / PR #103 on 19 Aug. Prod `ticket-checkout` is version 43, deployed 25 Aug 16:19 UTC; the deployed bundle was downloaded and contains `orderRequestBody` and `POST /orders`. Online sales register catalogued line items, **not** the blank items that forced the portal down on 14 Aug. |
 | Frontend one-line change | ✅ Prepared | `VITE_SITE_URL` is the single source of truth (`vite.config.ts` → `%SITE_URL%` → `index.html`, `sitemap.xml`, `robots.txt`, `src/lib/site.ts`). Changed on branch `feat/golive-kenworthy-org`; `build:production` verified to bake `https://kenworthy.org` into all four, with the prod Supabase ref present. |
-| Resend can send as `@kenworthy.org` | ✅ DNS supports it | Root SPF includes `amazonses.com`; `resend._domainkey` DKIM present; `send.kenworthy.org` carries Resend's return-path TXT + MX. Mail is sent from `tickets@kenworthy.org` (`_shared/deliver.ts:56`). **Confirm the domain still reads "verified" in the Resend dashboard** — DNS presence is strong evidence, not proof. |
+| Resend can send as `@kenworthy.org` | ✅ **Confirmed by Tom, 28 Aug** | Root SPF includes `amazonses.com`; `resend._domainkey` DKIM present; `send.kenworthy.org` carries Resend's return-path TXT + MX. Mail is sent from `tickets@kenworthy.org` (`_shared/deliver.ts:56`). **Confirm the domain still reads "verified" in the Resend dashboard** — DNS presence is strong evidence, not proof. |
 | QBO / Square / Mailchimp webhooks | ✅ Unaffected | All are `*.supabase.co/functions/v1/…` URLs. `qbo-sync` builds its OAuth callback from the Supabase functions host, not the site domain. The domain move cannot touch them. |
+| Mail survives the DNS move | ✅ **Confirmed by Tom, 28 Aug** | Sent and received in both directions after the delegation moved. DKIM header check outstanding but non-blocking — delivery in both directions already proves MX and the SPF/DKIM records resolve. |
 | Supabase Auth Site URL + redirect allowlist | ⚠️ **Not read** | The Management API call was blocked by the local command classifier. Must be set by hand in the dashboard at Phase 2 step 1 (below). |
-| Money paths end-to-end on prod | ⚠️ **Not run** | Needs a real card. Tom's step — see Phase 3. |
+| Money paths end-to-end on prod | ✅ **Confirmed by Tom, 28 Aug** | Real-card ticket, film-pass and donation purchases tested repeatedly on prod. |
 
 ### What is *not* ready
 
@@ -351,8 +352,16 @@ Before Phase 1, rollback is simply "don't change the nameservers".
 
 ## Open items
 
-- Take the pre-cutover backups the brief calls for: a fresh Square catalog
-  export and a prod DB snapshot, immediately before Phase 2.
+- **The brief's pre-cutover backups are the wrong protection for this change.**
+  Nothing in Phase 2 writes to the Square catalog or the database — it changes
+  DNS, one Auth setting, the `SITE_URL` secret, seven function deployments and
+  the frontend bundle. A catalog export defends against catalog damage, and
+  there is no catalog write in that list; Square's version history covers it
+  regardless. What actually carries risk is step 12, the seven redeploys into
+  the checkout path. The protection there is diffing each function against what
+  is deployed before shipping it, plus recording the Worker version ID for the
+  frontend rollback. A `square-catalog-guard` `snapshot` is still worth taking
+  as a baseline, because it is free and writes nothing.
 - `public/sms.html` still shows `workers.dev` sample links. That is
   deliberate — the page is A2P campaign registration evidence — but it is worth
   revisiting once kenworthy.org is stable.
