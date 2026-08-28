@@ -312,6 +312,70 @@ Between steps 10 and 12 there is a short window where kenworthy.org serves the
 new build while outgoing emails still say `workers.dev`. That is harmless —
 the workers.dev domain stays live permanently.
 
+### Phase 2 outcome — cut over 28 Aug 2026
+
+**kenworthy.org now serves the new build.** Live and verified.
+
+Order actually used, which corrects this runbook's own step order: the custom
+domain went on *before* the Auth Site URL. Setting Site URL first, as originally
+written, would have pointed password-reset links at a domain still serving
+WordPress.
+
+What happened, in order:
+
+1. **Rollback point recorded:** Worker version `396ef3ba-4476-49fc-87a7-6cbf23f94855`
+   (deployed 28 Aug 07:33 UTC). New version after cutover:
+   `e6954c1a-8e24-4de3-85eb-cbab697d5ba2`.
+2. **Rebased first.** The branch was cut from `origin/main` at #184; main had
+   moved **44 commits** to #228, and production had been redeployed twice that
+   morning by other sessions. Deploying the branch as-built would have reverted
+   all of it. Full pre-flip zone saved to `dns-before-flip.json`.
+3. **Custom domains.** The mirrored `A @` and `CNAME www` had to be deleted
+   first — Cloudflare refuses a Worker custom domain on a hostname with
+   externally managed DNS (`100117`). Deleting them *is* the flip. Both records'
+   ids and values were captured beforehand.
+4. **Auth Site URL** → `https://kenworthy.org`, allowlist already carried both
+   new hosts and still keeps `…workers.dev/**`.
+5. **`SITE_URL` secret** set, then the seven link-building functions handled —
+   see the finding below.
+6. **Frontend deployed** from the rebased branch.
+
+**Prod was proven identical to the build before deploying.** Chunk hashes
+differed, which this project's deploy runbook warns is usually a false alarm.
+Normalising the intended `SITE_URL` change and the Vite chunk-hash references
+made the entry bundle **byte-identical** — 272,885 bytes either way. The deploy
+was therefore a pure domain change.
+
+**The seven redeploys were nearly all no-ops, and that was verified rather than
+assumed.** Comparing each function's deploy time against the last commit
+touching its source (and its `_shared` dependencies) predicted six were already
+current; `supabase functions deploy` then independently reported *"No change
+found"* for five of them, with only `invite-staff` shipping a real delta. The
+feared hazard — redeploying stale checkout code into the money path — did not
+exist.
+
+> **`sign-contract` is stale and was deliberately NOT redeployed.** Its
+> deployed version is from **12 Aug 05:57 UTC**, which predates both its own
+> last source commit (12 Aug 18:56, `8af7453` — itself the SITE_URL work) and
+> the `_shared/brand.ts` change of 14 Aug. Redeploying it would ship ~2 weeks
+> of unrelated undeployed change under cover of a domain cutover, so it was
+> left alone. It reads `SITE_URL` at module scope and will pick the new value
+> up on its next isolate boot regardless. **It still needs deploying on its own
+> merits — that is a separate decision, not part of this cutover.**
+
+Verified live: `og:url`, `sitemap.xml` and `robots.txt` all carry
+`https://kenworthy.org`; a JS asset returns `content-type: text/javascript`
+rather than the SPA shell that fakes a 200; `…workers.dev` still returns 200,
+so existing emailed ticket links keep working; apex and `www` both resolve to
+Cloudflare and serve; MX records unchanged.
+
+**Outstanding: the `www` → apex 301.** Both hosts currently serve the app
+directly. The scoped API token holds `DNS:Edit` + `Zone:Read` only, and
+Cloudflare Redirect Rules need ruleset permissions it does not have, so this
+needs the dashboard (Rules → Redirect Rules) or a broader token. Canonical tags
+already point every page at the apex, so this is a tidiness and SEO-duplication
+issue rather than a breakage.
+
 ## Phase 3 — verify (within minutes of the flip)
 
 - `https://kenworthy.org` serves the new build over valid HTTPS.
