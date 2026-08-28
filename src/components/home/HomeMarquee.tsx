@@ -111,22 +111,22 @@ export function HomeMarquee() {
             is restored — one copy of each line, not a hidden duplicate. */}
         <div className="contents md:mt-auto md:flex md:pt-44 lg:pt-52 md:flex-row md:gap-5 md:items-end md:justify-between">
           <div className="contents md:block md:max-w-xl lg:max-w-2xl md:min-w-0">
-            {/* 1.5rem on a phone, not 1.75rem. After the site-wide type bump
-                the old size ran "Shared One Showing at a Time." to two lines at
-                360px, so the headline took three and pushed the tagline further
-                down into the sign. A step down puts it back to two lines with
-                room to breathe; `sm` up is untouched. */}
+            {/* 1.5rem on a phone, not 1.75rem — kept from when the site-wide
+                type bump ran the second line to two lines at 360px. The line is
+                shorter now, but the smaller step still reads better against the
+                sign than the old size did. */}
             <h1 className="font-display uppercase text-2xl sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground break-words hyphens-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
-              A Century of Stories,
-              <span className="block text-primary">Shared One Showing at a Time.</span>
+              A Century of Stories
+              <span className="block text-primary">Shared on a Single Screen</span>
             </h1>
-            <p className="mt-auto pt-8 md:mt-3 md:pt-0 font-serif italic text-foreground/90 text-sm sm:text-base max-w-lg drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
-              Art-house classics to studio blockbusters, live performances and
-              community gatherings all inside Moscow's historic 1926 theatre.
-            </p>
           </div>
 
-          <p className="mt-4 md:mt-0 font-serif text-sm text-foreground/90 flex items-center gap-2 min-w-0 md:justify-end drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+          {/* `mt-auto` moved here from the tagline that used to sit above it.
+              On a phone both wrappers are `contents`, so this is a direct child
+              of the column and `mt-auto` is what holds it at the foot, over the
+              crowd silhouettes. Without it the address rode up under the
+              headline and sat across the lit marquee. */}
+          <p className="mt-auto pt-8 md:mt-0 md:pt-0 font-serif text-sm text-foreground/90 flex items-center gap-2 min-w-0 md:justify-end drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
             <MapPin className="h-4 w-4 text-accent shrink-0" />
             <span className="break-words">508 S Main St · Moscow, ID</span>
           </p>
