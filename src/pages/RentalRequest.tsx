@@ -390,7 +390,18 @@ export default function RentalRequest({ mode = 'theatre' }: { mode?: RentalReque
 
         <div className="pt-4 border-t border-border/40 space-y-3">
           <Turnstile onToken={setTurnstileToken} />
-          <div className="flex items-center justify-between gap-4">
+          {/* Stacked on a phone, a row from `sm`.
+
+              It was a bare `justify-between` row at every width. The submit
+              button inherits `whitespace-nowrap` from the button base, so its
+              min-content width is the whole label — and "Checking your
+              browser…", the widest of the four states, does not fit beside the
+              note at 360px. Neither item could shrink, so the row pushed the
+              page 16px wider than the viewport and the whole document scrolled
+              sideways. Stacking removes the competition for the width, and
+              `w-full` below `sm` makes the submit a full-width tap target
+              rather than a content-width one. */}
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <p className="text-sm font-serif text-muted-foreground italic">
               {backstage ? 'This is an enquiry, not a booking.' : 'This form is not your contract.'}
             </p>
@@ -411,6 +422,7 @@ export default function RentalRequest({ mode = 'theatre' }: { mode?: RentalReque
             <Button
               type="submit"
               size="lg"
+              className="w-full sm:w-auto sm:shrink-0"
               disabled={submitting || (turnstileConfigured && !turnstileToken)}
             >
               {submitting

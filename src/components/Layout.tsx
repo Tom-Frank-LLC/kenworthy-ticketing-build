@@ -118,12 +118,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         >
           {/* The gap steps with the viewport like the container padding does.
-              A flat md:gap-8 spent ~180px of the 768px row on whitespace and
-              pushed the Support menu 51px on top of the Tickets button — the
-              links are inline, so they overflow this box rather than
-              compressing it. Full gap-8 returns at lg, where there is room. */}
+              A flat gap-8 spent ~180px of a 768px row on whitespace and pushed
+              the Support menu 51px on top of the Tickets button — the links are
+              inline, so they overflow this box rather than compressing it. Full
+              gap-8 returns at lg, which is now also where the links do. */}
           <div className="flex items-center gap-3 sm:gap-6 md:gap-5 lg:gap-8 min-w-0">
-            {/* Full menu below `lg`, where the desktop links below are still hidden. */}
+            {/* Full menu below `lg`, where the desktop links below are still
+                hidden — and they really are hidden until `lg` now.
+
+                They used to appear at `md`, which put the hamburger and the
+                whole link set in the bar at the same time between `md` and
+                `lg`. That row wanted about 190px more than it had, and the
+                logo is the flex item that yields: it collapsed to 0px at 768
+                and rendered 59x15 at 844, which is a phone in landscape. The
+                drawer already covers these destinations, so below `lg` it is
+                the only navigation and the bar carries the brand and the two
+                CTAs. */}
             <MobileNav />
             <Link to="/" className="flex items-center group" aria-label="Kenworthy — home">
               <KenworthyLogo
@@ -132,14 +142,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 loading="eager"
               />
             </Link>
-            <Link to="/calendar" className={`hidden sm:inline ${navLinkClass}`}>
+            <Link to="/calendar" className={`hidden lg:inline ${navLinkClass}`}>
               Calendar
             </Link>
-            <Link to="/rentals" className={`hidden md:inline ${navLinkClass}`}>
+            <Link to="/rentals" className={`hidden lg:inline ${navLinkClass}`}>
               Theatre Rentals
             </Link>
             <DropdownMenu>
-              <DropdownMenuTrigger className={`hidden md:inline-flex items-center gap-1 ${navLinkClass}`}>
+              <DropdownMenuTrigger className={`hidden lg:inline-flex items-center gap-1 ${navLinkClass}`}>
                 Info <ChevronDown className="h-3.5 w-3.5 opacity-70" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56 bg-background">
@@ -151,7 +161,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
-              <DropdownMenuTrigger className={`hidden md:inline-flex items-center gap-1 ${navLinkClass}`}>
+              <DropdownMenuTrigger className={`hidden lg:inline-flex items-center gap-1 ${navLinkClass}`}>
                 Support <ChevronDown className="h-3.5 w-3.5 opacity-70" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48 bg-background">
@@ -261,10 +271,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 {/* The one green thing in the header. Donate sits beside it as
                     a purple outline; green is what separates "buy a ticket"
                     from every other call on the page. See lib/greenCta.ts. */}
-                <Button size="sm" asChild className={cn('h-10 px-4 sm:px-5', GREEN_CTA)}>
+                {/* One CTA on a phone, two from `sm`.
+
+                    Both buttons at full padding cost ~207px of a 360px screen's
+                    324px of container, and the logo is the flex item that
+                    yields: it was rendering 28px wide by 7px tall — a smudge,
+                    not a wordmark, and not a tappable link home either. Film
+                    Pass is the one that goes, because Tickets is the primary
+                    ask and the drawer already carries Film Pass as a full-width
+                    button of its own (see MobileNav's footer), so nothing is
+                    lost below `sm` — it moves rather than disappears.
+
+                    Tickets keeps a tighter `px-3` on a phone for the same
+                    reason; `sm:px-5` restores it once there is room. */}
+                <Button size="sm" asChild className={cn('h-10 px-3 sm:px-5', GREEN_CTA)}>
                   <Link to="/calendar">Tickets</Link>
                 </Button>
-                <Button size="sm" variant="outline" asChild className="h-10 px-4 sm:px-5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                  className="hidden sm:inline-flex h-10 px-4 sm:px-5"
+                >
                   <Link to="/film-passes">Film Pass</Link>
                 </Button>
               </>

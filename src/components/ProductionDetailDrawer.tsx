@@ -105,19 +105,36 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
             <div className="space-y-3">
               <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Upcoming Showings</h3>
               <div className="space-y-2">
+                  {/*
+                    `whitespace-normal` and `min-w-0` are what keep the price on
+                    screen on a phone.
+
+                    The button inherits `whitespace-nowrap` from the button
+                    base, and a full date — "Friday, August 28, 2026" — plus a
+                    time plus a price badge is wider than the drawer at 360px.
+                    Nothing here could wrap and nothing could shrink, so
+                    `justify-between` pushed the right-hand group straight past
+                    the drawer's edge: the date was readable and the price, the
+                    thing a reader opened this to find, was cut off.
+
+                    So the date wraps (`whitespace-normal` + `min-w-0` on its
+                    own group) and the time and price hold their width
+                    (`shrink-0`). The row keeps its shape on a wide screen,
+                    where the date fits on one line and nothing wraps at all.
+                  */}
                 {upcoming.map(showing => (
                   <Button
                     key={showing.id}
                     variant="outline"
-                    className="w-full justify-between h-auto py-3"
+                    className="w-full justify-between gap-3 h-auto py-3 whitespace-normal text-left"
                     asChild
                   >
                     <Link to={`/showing/${showing.id}`} onClick={() => onOpenChange(false)}>
-                      <span className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-primary" />
+                      <span className="flex items-center gap-2 min-w-0">
+                        <Calendar className="h-4 w-4 text-primary shrink-0" />
                         {formatShowtime(showing.start_time, 'EEEE, MMMM d, yyyy')}
                       </span>
-                      <span className="flex items-center gap-2">
+                      <span className="flex items-center gap-2 shrink-0">
                         <span className="text-muted-foreground">{formatShowtime(showing.start_time, 'h:mm a')}</span>
                         <Badge variant="secondary">${showing.ticket_price.toFixed(2)}</Badge>
                       </span>

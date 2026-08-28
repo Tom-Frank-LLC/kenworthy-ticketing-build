@@ -40,7 +40,11 @@ type NavItem = {
 };
 
 const primaryLinks: NavItem[] = [
-  { label: "What's On", to: '/calendar', icon: CalendarDays },
+  // "Calendar", matching the header link to the same page. Below `lg` this
+  // drawer is the only navigation there is, so a destination that is called
+  // one thing here and another in the bar is a destination a reader has to
+  // work out twice.
+  { label: 'Calendar', to: '/calendar', icon: CalendarDays },
   { label: 'Theatre Rentals', to: '/rentals', icon: Building2 },
   { label: 'DVD Rentals', to: '/dvds', icon: Disc3, staffOnly: true },
   { label: 'Donate', to: '/donate', icon: Heart },

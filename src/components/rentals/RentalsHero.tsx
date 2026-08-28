@@ -157,9 +157,25 @@ export function RentalsHero() {
             pointing it at the form is the better answer anyway — someone who
             has decided to rent wants the form, not a calendar to read.
           */}
-          <div className="flex flex-wrap gap-3 md:mt-0 md:flex-col md:flex-nowrap md:shrink-0">
-            <MarqueeBookingForm trigger={<Button size="lg">Book the marquee</Button>} />
-            <Button asChild variant="outline" size="lg">
+          {/*
+            A column at every width, not just from `md`.
+
+            It was `flex-wrap` below `md`, which made a row of two buttons
+            sized to their own labels — "Book the marquee" and "Rent the
+            theatre" are different lengths, so on a phone they wrapped into a
+            ragged left-aligned stagger that read as two unrelated controls.
+            Stacked and full-width they read as the pair they are, and each one
+            is a full-width tap target.
+
+            `md:w-auto` hands the sizing back at `md`, where the column is
+            `shrink-0` beside the text and takes its width from the wider
+            label — the two still match each other, as they did before.
+          */}
+          <div className="flex flex-col gap-3 md:mt-0 md:shrink-0">
+            <MarqueeBookingForm
+              trigger={<Button size="lg" className="w-full md:w-auto">Book the marquee</Button>}
+            />
+            <Button asChild variant="outline" size="lg" className="w-full md:w-auto">
               <Link to="/rental-request">Rent the theatre</Link>
             </Button>
           </div>
