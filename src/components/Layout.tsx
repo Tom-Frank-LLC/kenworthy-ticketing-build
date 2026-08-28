@@ -118,12 +118,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         >
           {/* The gap steps with the viewport like the container padding does.
-              A flat md:gap-8 spent ~180px of the 768px row on whitespace and
-              pushed the Support menu 51px on top of the Tickets button — the
-              links are inline, so they overflow this box rather than
-              compressing it. Full gap-8 returns at lg, where there is room. */}
+              A flat gap-8 spent ~180px of a 768px row on whitespace and pushed
+              the Support menu 51px on top of the Tickets button — the links are
+              inline, so they overflow this box rather than compressing it. Full
+              gap-8 returns at lg, which is now also where the links do. */}
           <div className="flex items-center gap-3 sm:gap-6 md:gap-5 lg:gap-8 min-w-0">
-            {/* Full menu below `lg`, where the desktop links below are still hidden. */}
+            {/* Full menu below `lg`, where the desktop links below are still
+                hidden — and they really are hidden until `lg` now.
+
+                They used to appear at `md`, which put the hamburger and the
+                whole link set in the bar at the same time between `md` and
+                `lg`. That row wanted about 190px more than it had, and the
+                logo is the flex item that yields: it collapsed to 0px at 768
+                and rendered 59x15 at 844, which is a phone in landscape. The
+                drawer already covers these destinations, so below `lg` it is
+                the only navigation and the bar carries the brand and the two
+                CTAs. */}
             <MobileNav />
             <Link to="/" className="flex items-center group" aria-label="Kenworthy — home">
               <KenworthyLogo
@@ -132,14 +142,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 loading="eager"
               />
             </Link>
-            <Link to="/calendar" className={`hidden sm:inline ${navLinkClass}`}>
+            <Link to="/calendar" className={`hidden lg:inline ${navLinkClass}`}>
               Calendar
             </Link>
-            <Link to="/rentals" className={`hidden md:inline ${navLinkClass}`}>
+            <Link to="/rentals" className={`hidden lg:inline ${navLinkClass}`}>
               Theatre Rentals
             </Link>
             <DropdownMenu>
-              <DropdownMenuTrigger className={`hidden md:inline-flex items-center gap-1 ${navLinkClass}`}>
+              <DropdownMenuTrigger className={`hidden lg:inline-flex items-center gap-1 ${navLinkClass}`}>
                 Info <ChevronDown className="h-3.5 w-3.5 opacity-70" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56 bg-background">
@@ -151,7 +161,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
-              <DropdownMenuTrigger className={`hidden md:inline-flex items-center gap-1 ${navLinkClass}`}>
+              <DropdownMenuTrigger className={`hidden lg:inline-flex items-center gap-1 ${navLinkClass}`}>
                 Support <ChevronDown className="h-3.5 w-3.5 opacity-70" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48 bg-background">

@@ -103,6 +103,31 @@ root to 18px.
   opens the drawer to find — was pushed past the drawer edge (dialog
   `scrollWidth` 393 vs `clientWidth` 344). Now 344 = 344.
 
+### The `md` band, fixed on Tom's call (was pre-existing)
+
+Found by the audit and confirmed against the *unmodified* baseline, so it
+predates this work. `MobileNav` is `lg:hidden` while the desktop links appeared
+at `md:`, so between those breakpoints the bar carried the hamburger *and*
+Calendar/Theatre Rentals/Info/Support *and* both CTAs — over-subscribed by
+~190px. The logo collapsed to **0px** at 768 and rendered 59×15 at 844, which
+is 390 landscape and inside this brief's own test matrix. No sizing tweak
+reaches it; something had to leave the bar, which is a navigation decision
+rather than a responsive one, so it went to Tom.
+
+His call: move the four links from `md:` to `lg:`. That is also what
+`MobileNav`'s docstring already assumed — "hides itself once the desktop bar is
+complete (`lg`)" — and the bar was not in fact complete until `lg`, since DVDs
+was already `lg:` only. Below `lg` the drawer is now the only navigation, and
+it carries every destination that left the bar (verified by opening it at 768).
+The logo is full size from 640 up: box 187px at 640 and 204px at 768, zero
+shortfall, no horizontal scroll.
+
+While there, the drawer's "What's On" became **Calendar**, matching the header
+link to the same page — it matters more now that the drawer is the only
+navigation below `lg`. (`MyTickets.tsx` still reads "Browse What's On"; it is
+prose rather than a nav label and the page sits behind the disabled
+`MEMBER_ACCOUNTS_ENABLED` flag, so it was left alone.)
+
 ### Checked and already correct
 
 - `RateGrid` already renders per-band cards below `md`; the 7-column table is
@@ -119,17 +144,6 @@ root to 18px.
 
 ### Known, not fixed
 
-- **The `md` band (768–1023px) crushes the header, and this predates this
-  work** — confirmed by measuring the unmodified baseline. `MobileNav` is
-  `lg:hidden` while the desktop links appear at `md:`, so between those two
-  breakpoints the bar carries the hamburger *and* Calendar/Theatre
-  Rentals/Info/Support *and* both CTAs. It is over-subscribed by ~190px: the
-  logo collapses to **0px** at 768 and renders 59×15 at 844 — which is 390
-  landscape, inside this brief's own test matrix. No sizing tweak fixes it;
-  something has to leave the bar, which is a navigation decision rather than a
-  responsive fix. Recommended: move the four links from `md:` to `lg:`, which
-  matches `MobileNav`'s own docstring ("hides itself once the desktop bar is
-  complete (`lg`)") — the desktop bar is not in fact complete until `lg`.
 - **Large text still crowds the phone header.** The logo's height is rem-based
   but the width available to it is capped by a fixed viewport, so raising the
   browser's default font makes the logo *smaller*: at a 20px default the art is
