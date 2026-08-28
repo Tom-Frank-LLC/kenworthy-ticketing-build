@@ -139,6 +139,12 @@ export function MonthCalendar({
                 const hasItems = dayItems.length > 0;
 
                 // Fixed, uniform cells: empty or full, every day is the same box.
+                // The height is rem, not px, so the box tracks the type inside it.
+                // As px it did not: raising the root font size grew the event
+                // chips and left the cell the same size, which cut the last one
+                // off mid-line. 6.25/9.375rem are the old 112/168px at the root
+                // this was drawn against, so the grid looks unchanged and now
+                // scales with browser zoom and OS large-text too.
                 const sorted = dayItems
                   .slice()
                   .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
@@ -156,7 +162,7 @@ export function MonthCalendar({
                       }
                     }}
                     className={cn(
-                      'relative h-[112px] md:h-[168px] rounded-md border text-left p-1 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
+                      'relative h-[6.25rem] md:h-[9.375rem] rounded-md border text-left p-1 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
                       'hover:border-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                       inMonth ? 'border-accent/20 bg-card' : 'border-transparent bg-muted/20 text-muted-foreground/75',
                       selected && 'border-primary bg-primary/10 ring-1 ring-primary',
@@ -222,7 +228,13 @@ export function MonthCalendar({
                               it.type === 'concert' && 'border-foreground',
                             )}
                           >
-                            <div className="font-serif text-sm leading-tight line-clamp-3 group-hover/ev:text-primary transition-colors">
+                            {/* Two lines at `md`, three from `lg`. The clamp has to
+                                follow the column width: at 768 these cells are only
+                                ~66px wide, so a title runs to three lines and two of
+                                them plus the "+N more" line overflow the cell and get
+                                cut mid-word. From `lg` the column is wide enough that
+                                three lines still fit. */}
+                            <div className="font-serif text-sm leading-tight line-clamp-2 lg:line-clamp-3 group-hover/ev:text-primary transition-colors">
                               {it.title}
                             </div>
                           </button>

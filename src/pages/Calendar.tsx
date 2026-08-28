@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { SEO } from '@/components/SEO';
 import { SearchBar } from '@/components/SearchBar';
+import { CalendarHero } from '@/components/calendar/CalendarHero';
 import { EditorialCalendar } from '@/components/home/EditorialCalendar';
 import { MonthCalendar } from '@/components/home/MonthCalendar';
 import { ShowingPreview } from '@/components/home/ShowingPreview';
@@ -63,19 +64,14 @@ export default function CalendarPage() {
         description="Browse every upcoming film, live performance, and event at Kenworthy Performing Arts Centre on Main Street in Moscow, Idaho."
         path="/calendar"
       />
-      <div className="container py-10 md:py-14">
-        <div className="mb-6">
-          <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
-            What's on the
-          </p>
-          <h1 className="font-display text-4xl md:text-5xl uppercase tracking-wide">
-            Calendar
-          </h1>
-          <p className="font-serif text-muted-foreground mt-2 max-w-2xl">
-            Search for a title, or use the calendar view to see what's playing.
-          </p>
-        </div>
+      {/* The eyebrow, the H1 and the intro line used to sit here as plain text.
+          They moved into the hero rather than being duplicated under it —
+          two stacked headers say the same thing twice and push the listing
+          further down the page, which is the opposite of what the image is
+          for. */}
+      <CalendarHero />
 
+      <div className="container py-10 md:py-14">
         <div className="flex flex-wrap items-center gap-3 mb-8">
           <SearchBar value={query} onChange={setQuery} />
           <div
@@ -133,7 +129,7 @@ export default function CalendarPage() {
               // for the month grid and for anything narrower than `lg`.
               <ShowingPreview
                 item={previewItem}
-                className="min-w-0 sticky top-4 self-start"
+                className="min-w-0 sticky sticky-below-header self-start"
               />
             )}
           </div>

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -91,7 +92,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div
+      className="min-h-screen bg-background flex flex-col"
+      /* The header is `sticky top-0`, so anything else that pins near the top
+         of the viewport has to know how tall it is or it scrolls underneath.
+         Published here rather than on the <header> itself because custom
+         properties inherit down, and the panes that need it live in <main>,
+         which is the header's sibling — not its child. Consumed by
+         `.sticky-below-header` in index.css.
+
+         Both terms matter: the bar is the inner row's fixed height (taller for
+         the centenary lockup) plus the notch padding the header carries. */
+      style={{
+        '--header-height': `calc(env(safe-area-inset-top, 0px) + ${isCentenary() ? '84px' : '68px'})`,
+      } as CSSProperties}
+    >
       <header className="sticky top-0 z-50 glass border-b border-accent/20 pt-[env(safe-area-inset-top)]">
         {/* The bar grows for the centenary lockup, which is a taller piece of
             artwork — see KenworthyLogo. Written as two whole class strings

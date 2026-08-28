@@ -87,7 +87,7 @@
      intact. Because it is a percentage, browser zoom and OS "large text"
      still scale on top of it — so do not reintroduce fixed px font sizes. */
   html {
-    font-size: 112.5%; /* 18px at a 16px browser default */
+    font-size: 123.75%; /* ~19.8px at a 16px browser default */
     @apply bg-background;
   }
 
@@ -120,6 +120,22 @@
   .px-safe {
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* Sticky offset for a pane that must pin *below* the site header instead of
+     scrolling under it. `top-4` looked right and was not: the header is
+     `sticky top-0` and taller than 16px, so a pane offset by 16px scrolled up
+     under the bar, disappeared behind it, and only then pinned.
+
+     --header-height is set by Layout, which is the only place that knows the
+     bar's height — it is 68px normally and 84px for the taller centenary
+     lockup. Reading it here rather than hard-coding a number keeps the two
+     from drifting the next time the header changes. The 68px fallback covers
+     a pane rendered outside Layout: without it an undefined variable makes the
+     whole declaration invalid and `top` falls back to `auto`, which silently
+     switches sticky off. */
+  .sticky-below-header {
+    top: calc(var(--header-height, 68px) + 1rem);
   }
 
   .text-gradient {
@@ -246,7 +262,7 @@
    adds structure only.
 
    All sizes are in `em` for the same reason nothing in this app is in `px`:
-   they scale with the inherited size and with the 112.5% root, so browser
+   they scale with the inherited size and with the 123.75% root, so browser
    zoom and OS large-text keep working. */
 @layer components {
   .rich-text > :first-child {
@@ -413,7 +429,7 @@
   .marquee-frame {
     /* One knob. The bulb radius and spacing are the proportions measured off
        marquee.ai — band 60, bulb r17, pitch 47 — so re-scaling the band keeps
-       the original's rhythm. rem, so it tracks the 112.5% root and OS zoom. */
+       the original's rhythm. rem, so it tracks the 123.75% root and OS zoom. */
     --mq-band: 1.75rem;
     --mq-r: calc(var(--mq-band) * 0.2833);
     --mq-gap: calc(var(--mq-band) * 0.7833);
