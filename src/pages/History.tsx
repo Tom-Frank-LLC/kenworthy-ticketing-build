@@ -503,10 +503,6 @@ export default function HistoryPage() {
           <h1 className="font-display text-5xl md:text-7xl mt-4 animate-fade-in">
             A Century on Main Street
           </h1>
-          <p className="font-serif text-lg md:text-xl text-muted-foreground mt-6 max-w-2xl mx-auto animate-fade-in">
-            One hundred years of opening nights, dark intermissions, scaffolding,
-            and standing ovations — scroll the marquee.
-          </p>
           <HistorySearch milestones={milestones} onSelect={handleSearch} />
         </div>
       </header>
