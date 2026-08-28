@@ -53,8 +53,6 @@ const FESTIVAL_BLURB =
   'Silent cinema as it was meant to be seen — on a big screen, in a full room, ' +
   'with live music. Each night pairs a restored classic with an original score ' +
   'performed in the auditorium.';
-const ARCHIVE_BLURB =
-  'Programs from previous festivals, scanned from the printed originals.';
 // ---------------------------------------------------------------------------
 
 interface Production {
@@ -723,13 +721,15 @@ export default function SilentFilmFestival() {
 
         {/* --------------------------------------------------- Archive */}
         <section aria-labelledby="archive">
+          {/* mb-6 was on the blurb that used to sit under this heading. With
+              the blurb gone the heading carries the gap, or "Past Programs"
+              butts straight up against the year cards. */}
           <h2
             id="archive"
-            className="font-display uppercase text-2xl md:text-3xl tracking-[0.15em] text-foreground"
+            className="font-display uppercase text-2xl md:text-3xl tracking-[0.15em] text-foreground mb-6"
           >
             Past Programs
           </h2>
-          <p className="font-serif text-muted-foreground mt-2 mb-6">{ARCHIVE_BLURB}</p>
 
           {loading ? (
             <p className="font-serif text-muted-foreground py-8">Loading…</p>
