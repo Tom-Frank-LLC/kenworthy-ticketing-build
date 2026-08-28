@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,11 +12,21 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
 import {
-  ArrowDown, ArrowUp, ExternalLink, Image as ImageIcon, Pencil, Plus, Trash2,
+  ArrowDown, ArrowUp, ExternalLink, Image as ImageIcon, Pencil, Plus, Star, Trash2, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { instantToVenueLocalInput, venueLocalToInstant } from '@/lib/datetime';
 import { slideImageUrl } from '@/hooks/useFeaturedSlides';
+import {
+  orderDerivedPicks,
+  pickEditPath,
+  pickKindLabel,
+  pickStatus,
+  PRODUCTION_TABLE,
+  type DerivedPick,
+  type ProductionKind,
+} from '@/lib/curatorPicks';
+import { formatShowtime } from '@/lib/datetime';
 import {
   SLIDE_ACCEPTED_TYPES,
   SLIDE_BUCKET,
@@ -27,14 +38,23 @@ import {
 } from '@/lib/featuredSlides';
 
 /**
- * The hand-written half of the home page's curator carousel.
+ * The home page's curator carousel, from the admin side — both halves of it.
  *
- * The other half is derived: flag a movie, an event or one showing
- * `is_featured` and it becomes a slide. That works for everything that sells a
- * ticket and for nothing that does not, which is why the Silent Film Festival
- * — a real page with a real audience and no showing behind it — could not be
- * promoted at all without inventing a fake showing to hang the flag off. A row
- * here is that promotion, with nothing pretending to be for sale.
+ * The hand-written half is `featured_slides`: a picture, a headline, a
+ * sentence and a link, written here. It exists because the derived half only
+ * works for things that sell a ticket, which is why the Silent Film Festival —
+ * a real page with a real audience and no showing behind it — could not be
+ * promoted at all without inventing a fake showing to hang a flag off.
+ *
+ * The derived half is the three `is_featured` flags: on a film, on an event or
+ * live performance, and on one showing. Those are set on each title's own
+ * form, three tabs away, and nothing ever listed them together — so "what is on
+ * the front page" was a question you could only answer by opening the front
+ * page, and a flag left on a film whose last date has passed was invisible.
+ * They are listed below the slides, in the order the band runs them, and can be
+ * cleared from here. They cannot be *set* from here: featuring a title is a
+ * decision about that title, and it belongs on its form beside everything else
+ * about it.
  *
  * Two things about the editing model are worth knowing before changing it:
  *
@@ -80,6 +100,13 @@ export default function FeaturedSlidesTab() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
+  // The picks the carousel derives from the listings. Loaded separately from
+  // the slides because they are four more queries against four other tables,
+  // and a slow or failed read of one half should not blank the other.
+  const [picks, setPicks] = useState<DerivedPick[]>([]);
+  const [picksLoading, setPicksLoading] = useState(true);
+  const [clearing, setClearing] = useState<string | null>(null);
+
   // The slide being written, and the row it belongs to when this is an edit.
   // Held apart from `slides` so an abandoned edit leaves no trace: closing the
   // dialog is a cancel, and the row is untouched until a save comes back with
@@ -106,9 +133,189 @@ export default function FeaturedSlidesTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  /**
+   * Every `is_featured` flag in the listings, and enough context to say whether
+   * each one is actually on the page.
+   *
+   * The dates are a second round of queries rather than an embed, because what
+   * is needed is not "this film's showings" but "this film's *upcoming, active*
+   * showings" — the set the home feed is built from. An embed would return the
+   * whole run including last month's, and the count would then say a title is
+   * on the page when it has not been for weeks.
+   *
+   * Those date queries are scoped by `in (flagged ids)`, so they are bounded by
+   * the number of flagged titles rather than by the ~1,800-row showings table,
+   * and stay well clear of PostgREST's silent 1,000-row cap.
+   */
+  const loadPicks = useCallback(async () => {
+    setPicksLoading(true);
+    const nowIso = new Date().toISOString();
+
+    const [movieRes, eventRes, liveRes, showingRes] = await Promise.all([
+      supabase.from('movies').select('id, title, poster_url, is_active').eq('is_featured', true),
+      supabase
+        .from('events')
+        .select('id, title, poster_url, is_active, ticket_type')
+        .eq('is_featured', true),
+      supabase
+        .from('live_performances')
+        .select('id, title, poster_url, is_active')
+        .eq('is_featured', true),
+      supabase
+        .from('showings')
+        .select(
+          'id, start_time, is_active, movie_id, event_id, live_performance_id, ' +
+            'movies(id, title, poster_url, is_active), ' +
+            'events(id, title, poster_url, is_active), ' +
+            'live_performances(id, title, poster_url, is_active)',
+        )
+        .eq('is_featured', true)
+        .order('start_time'),
+    ]);
+
+    const firstError =
+      movieRes.error || eventRes.error || liveRes.error || showingRes.error;
+    if (firstError) toast.error(firstError.message);
+
+    const movieRows = movieRes.data ?? [];
+    const eventRows = eventRes.data ?? [];
+    const liveRows = liveRes.data ?? [];
+
+    // Upcoming dates for the flagged titles only.
+    const upcomingFor = async (column: 'movie_id' | 'event_id' | 'live_performance_id', ids: string[]) => {
+      if (ids.length === 0) return [] as Array<{ id: string; start_time: string }>;
+      const { data, error } = await supabase
+        .from('showings')
+        .select(`${column}, start_time`)
+        .eq('is_active', true)
+        .gte('start_time', nowIso)
+        .in(column, ids)
+        .order('start_time');
+      if (error) {
+        toast.error(error.message);
+        return [];
+      }
+      return (data ?? []).map((row: any) => ({ id: row[column] as string, start_time: row.start_time }));
+    };
+
+    const [movieDates, eventDates, liveDates] = await Promise.all([
+      upcomingFor('movie_id', movieRows.map(r => r.id)),
+      upcomingFor('event_id', eventRows.map(r => r.id)),
+      upcomingFor('live_performance_id', liveRows.map(r => r.id)),
+    ]);
+
+    // Rows arrive ordered by start_time, so the first sighting of an id is its
+    // soonest date — the one the band's Get Tickets would point at.
+    const summarise = (rows: Array<{ id: string; start_time: string }>) => {
+      const summary = new Map<string, { next: string; count: number }>();
+      for (const row of rows) {
+        const seen = summary.get(row.id);
+        if (seen) seen.count += 1;
+        else summary.set(row.id, { next: row.start_time, count: 1 });
+      }
+      return summary;
+    };
+
+    const production = (
+      row: { id: string; title: string; poster_url: string | null; is_active: boolean },
+      type: ProductionKind,
+      dates: Map<string, { next: string; count: number }>,
+      standalone = false,
+    ): DerivedPick => ({
+      kind: 'production',
+      type,
+      id: row.id,
+      title: row.title,
+      posterUrl: row.poster_url,
+      isActive: row.is_active,
+      standalone,
+      nextStart: dates.get(row.id)?.next ?? null,
+      upcomingCount: dates.get(row.id)?.count ?? 0,
+    });
+
+    const movieDateMap = summarise(movieDates);
+    const eventDateMap = summarise(eventDates);
+    const liveDateMap = summarise(liveDates);
+
+    const derived: DerivedPick[] = [
+      ...movieRows.map(row => production(row, 'movie', movieDateMap)),
+      ...eventRows.map(row =>
+        production(
+          row,
+          'event',
+          eventDateMap,
+          // An RSVP or info-only event with no dates is in the feed anyway —
+          // buildFeed's standalone branch. Not a fault to report.
+          (row.ticket_type === 'rsvp' || row.ticket_type === 'info_only') &&
+            (eventDateMap.get(row.id)?.count ?? 0) === 0,
+        ),
+      ),
+      ...liveRows.map(row => production(row, 'concert', liveDateMap)),
+      ...(showingRes.data ?? []).flatMap((row: any): DerivedPick[] => {
+        const prod = row.movies ?? row.events ?? row.live_performances;
+        // A showing always belongs to exactly one of the three. If it belongs
+        // to none the row is broken, and listing it with no title would be
+        // worse than leaving it out of a screen about the home page.
+        if (!prod) return [];
+        const type: ProductionKind = row.movies ? 'movie' : row.events ? 'event' : 'concert';
+        return [{
+          kind: 'showing',
+          type,
+          id: row.id,
+          title: prod.title,
+          posterUrl: prod.poster_url,
+          productionId: prod.id,
+          startTime: row.start_time,
+          isActive: row.is_active,
+          productionActive: prod.is_active,
+        }];
+      }),
+    ];
+
+    setPicks(orderDerivedPicks(derived));
+    setPicksLoading(false);
+  }, []);
+
+  useEffect(() => { loadPicks(); }, [loadPicks]);
+
+  /**
+   * Take the flag off — the only write this screen makes to the listings.
+   *
+   * No confirmation. Unlike deleting a slide, which destroys copy and an image
+   * nobody has a second copy of, this changes one boolean that is put back with
+   * one click on the title's own form. A dialog in front of a reversible action
+   * teaches people to dismiss dialogs.
+   *
+   * `.select()` and the row count, because an RLS denial is a 204 with no error
+   * and would otherwise read as success while the pick stayed on the page.
+   */
+  const clearPick = async (pick: DerivedPick) => {
+    const table = pick.kind === 'showing' ? 'showings' : PRODUCTION_TABLE[pick.type];
+    setClearing(pick.id);
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .update({ is_featured: false })
+        .eq('id', pick.id)
+        .select('id');
+      if (error) throw error;
+      if (!data?.length) throw new Error('Nothing changed — you may not have admin rights.');
+      setPicks(prev => prev.filter(p => !(p.kind === pick.kind && p.id === pick.id)));
+      toast.success(
+        pick.kind === 'showing'
+          ? 'That night is no longer a pick'
+          : `${pick.title} is no longer a pick`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not clear that pick');
+    } finally {
+      setClearing(null);
+    }
+  };
+
   // One instant for the whole render, so two rows cannot disagree about
   // whether "now" is before or after the same timestamp.
-  const now = useMemo(() => new Date(), [slides]);
+  const now = useMemo(() => new Date(), [slides, picks]);
 
   const openAdd = () => {
     setEditing(null);
@@ -322,10 +529,11 @@ export default function FeaturedSlidesTab() {
         <div className="max-w-2xl">
           <h3 className="font-display text-2xl">Curator&rsquo;s picks</h3>
           <p className="text-sm text-muted-foreground font-serif">
-            Slides you write by hand, at the front of the carousel on the home page.
-            Use one to point at a page that has no showing behind it — the Silent
-            Film Festival, Backstage, rentals. Films and events flagged
-            &ldquo;featured&rdquo; on their own forms follow after these, soonest first.
+            Everything in the carousel on the home page, in the order it runs.
+            Slides you write by hand come first — use one to point at a page that
+            has no showing behind it, like the Silent Film Festival. Then the films,
+            events and single nights flagged &ldquo;featured&rdquo; on their own
+            forms, soonest first.
           </p>
         </div>
         <div className="flex gap-2">
@@ -339,6 +547,11 @@ export default function FeaturedSlidesTab() {
           </Button>
         </div>
       </div>
+
+      <div className="space-y-3">
+      <h4 className="font-display text-lg uppercase tracking-wide">
+        Slides you write <span className="text-muted-foreground normal-case tracking-normal font-serif text-sm">— first in the carousel</span>
+      </h4>
 
       {loading ? (
         <p className="text-muted-foreground text-center py-8">Loading…</p>
@@ -425,6 +638,100 @@ export default function FeaturedSlidesTab() {
           })}
         </div>
       )}
+
+      </div>
+
+      {/* ------------------------------------ The other half: the three flags */}
+      <div className="space-y-3">
+        <h4 className="font-display text-lg uppercase tracking-wide">
+          Flagged in the listings{' '}
+          <span className="text-muted-foreground normal-case tracking-normal font-serif text-sm">
+            — after the slides, soonest first
+          </span>
+        </h4>
+        <p className="text-xs text-muted-foreground">
+          Set on each title&rsquo;s own form, and shown here so the whole band can be
+          read in one place. <strong className="text-foreground">Remove</strong> only
+          clears the featured flag — the film, event or showing itself is untouched
+          and stays in the listings. To feature something, open it in Listings and
+          tick it there.
+        </p>
+
+        {picksLoading ? (
+          <p className="text-muted-foreground text-center py-8">Loading…</p>
+        ) : picks.length === 0 ? (
+          <Card>
+            <CardContent className="py-10 text-center text-muted-foreground">
+              <Star className="h-8 w-8 mx-auto mb-3 opacity-50" />
+              <p>
+                Nothing in the listings is flagged as a pick. With no slides either,
+                the carousel falls back to the next showing on the calendar.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-3">
+            {picks.map(pick => {
+              const held = pickStatus(pick, now);
+              return (
+                <Card key={`${pick.kind}-${pick.id}`}>
+                  <CardContent className="p-4 flex items-center gap-4 flex-wrap">
+                    {pick.posterUrl ? (
+                      <img
+                        src={pick.posterUrl}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="h-16 w-24 shrink-0 rounded object-contain bg-muted border border-border"
+                      />
+                    ) : (
+                      <div className="h-16 w-24 shrink-0 rounded border border-dashed border-border flex items-center justify-center text-muted-foreground">
+                        <ImageIcon className="h-5 w-5" />
+                      </div>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-display text-lg truncate">{pick.title}</span>
+                        <Badge variant="outline">{pickKindLabel(pick)}</Badge>
+                        <Badge variant={held ? 'secondary' : 'default'}>{held ?? 'Live'}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {pick.kind === 'showing'
+                          ? formatShowtime(pick.startTime, "EEEE, MMMM d 'at' h:mm a")
+                          : pick.standalone
+                            ? 'No dates — an RSVP or info-only event, which the home page lists anyway'
+                            : pick.nextStart
+                              ? `${formatShowtime(pick.nextStart, "EEE, MMM d 'at' h:mm a")}${
+                                  pick.upcomingCount > 1 ? ` · ${pick.upcomingCount} dates upcoming` : ''
+                                }`
+                              : 'No upcoming dates — flagged, but nothing for the home page to show'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link to={pickEditPath(pick)}>
+                          <Pencil className="h-4 w-4 mr-1" /> Edit
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={clearing === pick.id}
+                        onClick={() => clearPick(pick)}
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        {clearing === pick.id ? 'Removing…' : 'Remove'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <Dialog open={open} onOpenChange={o => { if (!busy) setOpen(o); }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
