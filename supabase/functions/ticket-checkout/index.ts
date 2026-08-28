@@ -397,7 +397,11 @@ Deno.serve(async (req: Request) => {
             referenceId: orderToken,
             built,
             idempotencyKey: `order-${idempotencyKey}`,
-            fulfillment: 'DIGITAL',
+            // The patron collects at the door, so the showtime is the pickup
+            // time. This also puts the showtime on the order as structured
+            // data, not only inside a variation name.
+            fulfillment: 'PICKUP',
+            pickupAt: order.showing.start_time,
             buyerEmail: contact.email,
             buyerName: contact.name,
           }),

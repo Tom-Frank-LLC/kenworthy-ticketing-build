@@ -157,8 +157,11 @@ Deno.serve(async (req: Request) => {
       referenceId: orderToken,
       built,
       idempotencyKey: `cash-order-${orderToken}`,
-      // A ticket bought at the counter is handed over at the counter.
-      fulfillment: 'IN_STORE',
+      // A ticket bought at the counter is still collected at the door.
+      // 'IN_STORE' was not a Square fulfillment type and, like every other
+      // caller, this sent state COMPLETED — so these orders were rejected too.
+      fulfillment: 'PICKUP',
+      pickupAt: showing?.start_time ?? null,
     }),
   });
   const squareTotal = created.data?.order?.total_money?.amount;

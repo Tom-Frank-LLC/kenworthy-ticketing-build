@@ -116,12 +116,12 @@ Deno.test('the order body carries the reconciliation key and the web source', ()
   assertEquals(body.order.location_id, 'LOC1');
   assertEquals(body.order.reference_id, 'order-abc');
   assertEquals(body.order.source.name, 'Kenworthy Website');
-  assertEquals(body.order.fulfillments[0].type, 'DIGITAL');
-  assertEquals(body.order.fulfillments[0].state, 'COMPLETED');
-  assertEquals(
-    body.order.fulfillments[0].delivery_details.recipient.email_address,
-    'patron@example.com',
-  );
+  // This test used to assert type DIGITAL, state COMPLETED and
+  // delivery_details — and passed, for the nine days Square was rejecting
+  // every one of those orders. A unit test can only confirm we sent what we
+  // meant to; it cannot tell us the vendor accepts it. The fulfillment shape
+  // is asserted below against what was actually measured.
+  assertEquals(body.order.fulfillments, undefined);
 });
 
 Deno.test('reference_id is truncated to what Square accepts', () => {
@@ -134,13 +134,63 @@ Deno.test('reference_id is truncated to what Square accepts', () => {
   assertEquals((body.order.reference_id as string).length, 40);
 });
 
-Deno.test('an in-person sale is not marked DIGITAL', () => {
+/**
+ * These four assert the exact shape measured as accepted by the Square sandbox
+ * on 28 Aug 2026. DIGITAL was rejected under every variation tried, including
+ * with digital_details supplied and under a 2025 Square-Version, so the shape
+ * is not a preference — it is the only one that works. Changing it means
+ * re-measuring, not re-reasoning.
+ */
+
+Deno.test('a ticket sale is a PICKUP, PROPOSED, carrying the showtime and the buyer', () => {
   const body: any = orderRequestBody({
     locationId: 'LOC1', referenceId: 'r', idempotencyKey: 'i',
-    built: buildTicketOrder([g()]), fulfillment: 'IN_STORE',
+    built: buildTicketOrder([g()]),
+    fulfillment: 'PICKUP',
+    pickupAt: '2026-09-16T02:00:00.000Z',
+    buyerEmail: 'patron@example.com',
+    buyerName: 'A Patron',
   });
-  assertEquals(body.order.fulfillments[0].type, 'IN_STORE');
-  assertEquals(body.order.fulfillments[0].delivery_details, undefined);
+  const f = body.order.fulfillments[0];
+  assertEquals(f.type, 'PICKUP');
+  // Square rejects an order whose fulfillment is created COMPLETED.
+  assertEquals(f.state, 'PROPOSED');
+  assertEquals(f.pickup_details.pickup_at, '2026-09-16T02:00:00.000Z');
+  assertEquals(f.pickup_details.recipient.display_name, 'A Patron');
+  assertEquals(f.pickup_details.recipient.email_address, 'patron@example.com');
+  // The field that caused the outage. It belongs to type DELIVERY.
+  assertEquals(f.delivery_details, undefined);
+});
+
+Deno.test('a donation carries no fulfillment at all', () => {
+  const body: any = orderRequestBody({
+    locationId: 'LOC1', referenceId: 'r', idempotencyKey: 'i',
+    built: buildTicketOrder([g()]), fulfillment: 'NONE',
+    buyerEmail: 'donor@example.com',
+  });
+  assertEquals(body.order.fulfillments, undefined);
+});
+
+Deno.test('a PICKUP with no pickup time degrades rather than failing the order', () => {
+  // Square rejects PICKUP without pickup_at, and a rejected order costs the
+  // whole sale's attribution. Dropping the fulfillment keeps the line items.
+  const body: any = orderRequestBody({
+    locationId: 'LOC1', referenceId: 'r', idempotencyKey: 'i',
+    built: buildTicketOrder([g()]), fulfillment: 'PICKUP', pickupAt: null,
+  });
+  assertEquals(body.order.fulfillments, undefined);
+  assertEquals(body.order.line_items.length, 1);
+});
+
+Deno.test('a patron who gave no name still gets a recipient', () => {
+  const body: any = orderRequestBody({
+    locationId: 'LOC1', referenceId: 'r', idempotencyKey: 'i',
+    built: buildTicketOrder([g()]), fulfillment: 'PICKUP',
+    pickupAt: '2026-09-16T02:00:00.000Z',
+  });
+  const r = body.order.fulfillments[0].pickup_details.recipient;
+  assertEquals(r.display_name, 'Kenworthy patron');
+  assertEquals(r.email_address, undefined);
 });
 
 import { donationGroup, processingFeeGroup } from './square-order.ts';

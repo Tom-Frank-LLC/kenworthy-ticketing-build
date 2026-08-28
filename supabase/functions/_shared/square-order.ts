@@ -152,19 +152,54 @@ export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
  *
  * `reference_id` is our own order id and is the reconciliation key — Square's
  * ledger and ours agree on nothing else. `source.name` is the established name
- * for this build's sales, and DIGITAL fulfillment is what Square Online's 891
- * web orders use.
+ * for this build's sales.
+ *
+ * ## Why PICKUP and not DIGITAL
+ *
+ * This used to send `type: 'DIGITAL'` with `delivery_details`, and Square
+ * rejected **every** order with `MISSING_REQUIRED_PARAMETER — Fulfillments of
+ * type DIGITAL must have digital_details supplied`. Checkout then fell back to
+ * a bare payment, so from 19 Aug to 28 Aug 2026 every online sale registered as
+ * an unnamed "Custom Amount" — the exact failure #103 existed to end.
+ *
+ * The obvious fix is not the fix. Measured against the Square sandbox
+ * (`BRIEF-square-order-falls-back-to-bare-payment.md`), supplying
+ * `digital_details` fails identically — empty, with a recipient, with
+ * `state: PROPOSED`, and under `Square-Version: 2025-01-23`. DIGITAL simply
+ * does not work for this account, whatever the error text invites you to try.
+ *
+ * Two shapes were measured working: no `fulfillments` at all, and PICKUP with
+ * `pickup_details` and `state: PROPOSED`. PICKUP is chosen because Square
+ * **stores the recipient**, which is how the buyer's name and email reach
+ * Square at all — and because a ticket presented at the door is a pickup more
+ * honestly than it is a digital delivery.
+ *
+ * `state` must be `PROPOSED` or `HELD` at creation. `COMPLETED` — which this
+ * sent for every type, including `IN_STORE` — is rejected outright, so that was
+ * a second, independent reason these orders could never have been created.
  */
 export function orderRequestBody(params: {
   locationId: string;
   referenceId: string;
   built: BuiltOrder;
   idempotencyKey: string;
-  fulfillment?: 'DIGITAL' | 'PICKUP' | 'IN_STORE';
+  /**
+   * `'PICKUP'` needs `pickupAt`. `'NONE'` omits the fulfillment entirely, which
+   * is right for a donation — nothing is collected — and is the shape
+   * `square-invoice` has always used.
+   */
+  fulfillment?: 'PICKUP' | 'NONE';
+  /** When the patron collects: the showtime for a ticket. ISO 8601. */
+  pickupAt?: string | null;
   buyerEmail?: string | null;
   buyerName?: string | null;
 }) {
-  const fulfillmentType = params.fulfillment ?? 'DIGITAL';
+  // Square rejects PICKUP without a pickup_at, and an order that is rejected
+  // costs us the whole sale's attribution. A caller that cannot supply one
+  // degrades to the no-fulfillment shape, which is proven to work, rather than
+  // taking the order down with it.
+  const wantsPickup = (params.fulfillment ?? 'PICKUP') === 'PICKUP' && !!params.pickupAt;
+
   return {
     idempotency_key: params.idempotencyKey,
     order: {
@@ -173,20 +208,21 @@ export function orderRequestBody(params: {
       source: { name: 'Kenworthy Website' },
       line_items: params.built.lineItems,
       ...(params.built.taxes.length ? { taxes: params.built.taxes } : {}),
-      fulfillments: [{
-        type: fulfillmentType,
-        state: 'COMPLETED',
-        ...(fulfillmentType === 'DIGITAL'
-          ? {
-            delivery_details: {
+      ...(wantsPickup
+        ? {
+          fulfillments: [{
+            type: 'PICKUP',
+            state: 'PROPOSED',
+            pickup_details: {
+              pickup_at: params.pickupAt,
               recipient: {
                 display_name: (params.buyerName || 'Kenworthy patron').slice(0, 255),
                 ...(params.buyerEmail ? { email_address: params.buyerEmail } : {}),
               },
             },
-          }
-          : {}),
-      }],
+          }],
+        }
+        : {}),
     },
   };
 }

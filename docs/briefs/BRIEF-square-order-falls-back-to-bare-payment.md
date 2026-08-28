@@ -1,7 +1,7 @@
 ---
 brief: square-order-falls-back-to-bare-payment
 title: Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed
-status: queued
+status: built
 findings: confirmed from production logs 28 Aug 2026
 track: bug
 severity: P0
@@ -9,7 +9,13 @@ date: 2026-08-28
 verified: true
 ---
 
-# Brief: some online sales still register as "Custom Amount"
+# Brief: every online sale registers as "Custom Amount"
+
+> **Fixed and verified on staging, 28 Aug 2026 — not yet deployed to
+> production.** `orderRequestBody` now builds `PICKUP` / `PROPOSED` /
+> `pickup_details`. The real builder's output was posted to the Square sandbox
+> once per calling shape and **all six were accepted**, with the recipient
+> stored where expected. See *Verification* at the end.
 
 **Status:** 🔴 Open. Found 28 Aug 2026 by the first real-card purchase on the
 newly live kenworthy.org.
@@ -264,3 +270,46 @@ purchase and worth its own brief:
 
 A bare-payment sale has no fulfillment at all, so fixing this brief is a
 prerequisite for the contact data appearing on those orders anyway.
+
+## Verification — staging sandbox, 28 Aug 2026
+
+A probe posted the output of the **real `orderRequestBody`** — not a
+hand-written body — once per calling shape. All six accepted:
+
+| Caller | Result | Square stored |
+|---|---|---|
+| `ticket-checkout` | ✅ 200, total 848 | `PICKUP` / `PROPOSED`, showtime, `A Patron / patron@example.com` |
+| `square-cash-sale` | ✅ 200, total 848 | `PICKUP` / `PROPOSED`, showtime, `Kenworthy patron` |
+| `film-pass-checkout` (pickup) | ✅ 200, total 848 | `PICKUP` / `PROPOSED`, purchase time, passholder |
+| `film-pass-checkout` (mail) | ✅ 200, total 848 | no fulfillment |
+| `square-donation` | ✅ 200, total 2500 | no fulfillment |
+| `ticket-checkout`, no showtime | ✅ 200, total 848 | no fulfillment — degraded, order still created |
+
+Totals are right in every case: 848 = 800 + 48 tax, and the 2500 donation
+carries none.
+
+**Why a probe and not just unit tests.** The old unit test asserted `DIGITAL`,
+`COMPLETED` and `delivery_details` — and passed, every day Square was rejecting
+every one of those orders. A unit test proves we built what we meant to build;
+only the vendor can say whether it is acceptable. The tests now assert the
+measured-good shape and say so in a comment, but the probe is what actually
+established it.
+
+`square-cash-sale` was also broken, and nobody knew. It sent
+`type: 'IN_STORE'` — not a Square fulfillment type — with the same invalid
+`state: 'COMPLETED'`. Unlike the online paths it does not fall back; it returns
+502. Worth asking the box office whether they have been seeing "Could not record
+the sale in Square", because that is what this would have produced.
+
+## Still open after this fix
+
+- **Deploy to production.** Staging only so far.
+- **The unmapped showing** from the same log —
+  `369a2c42-55a2-432d-9229-f4ac8ecc21da` has no
+  `showing_square_variations` row, so it will now sell as a *named ad-hoc line*
+  with no item-sales or category rollup. Fixing the fulfillment exposes this
+  rather than solving it.
+- **A fallback should be visible.** Every failure here was a `console.error`
+  nobody read, for nine days, across every online sale. Whatever surfaces it —
+  a counter on the admin transactions screen, or extending
+  `square-catalog-guard` — matters more than this particular bug.
