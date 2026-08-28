@@ -84,40 +84,91 @@ badly but does not produce "Custom Amount"):
 <n> tier(s) had no Square variation for showing <id>; billed as ad-hoc lines
 ```
 
-## Leading hypothesis — untiered showings
+## Leading hypothesis — dangling `catalog_object_id` from the Aug 14 restore
 
-Both failures show **no tier**; both successes show **`Adult`**. That points at
-the single-price path, where `canonicalTier()` returns `''` and
-`variationName()` returns the bare showtime.
+Revised 28 Aug after reading the arithmetic. **Branch 1 can be close to ruled
+out on inspection**: `expectedTotalCents` and `chargeCents` are equal by
+construction. Every ticket's `tax_amount` is `taxCents / 100` where
+`taxCents = Math.round(priceCents * TAX_RATE)`, so `Math.round(tax_amount * 100)`
+returns exactly `taxCents` again; groups key on `tier|priceCents` so every
+member shares one price and one tax; and the processing-fee and donation groups
+are added to both sides. The sums cannot drift. `pricing.ts` works in integer
+cents precisely to avoid this, and the comment there says so.
 
-Treat this as a hypothesis, not a finding. It is drawn from four data points and
-the two failing sales differ in another way too — one carried a donation and one
-did not, which at least rules the donation out as the sole cause. `The Odyssey`
-having no donation is the useful control here.
+That points at **branch 2 — Square rejected the order** — and there is a known
+mechanism.
 
-Worth testing directly: a `showing_square_variations` row for an untiered
-showing has to store *something* in `tier_name`. If it stores `NULL` while
-`loadTicketGroups` looks up `''`, every untiered showing misses its variation.
-That alone would produce ad-hoc lines rather than a bare payment — so if the log
-says branch 1 or 3, look at the **tax** arithmetic instead, since the donation
-group is `taxable: false` and the processing-fee group is its own line.
+1. The 14 Aug incident deleted catalog variations.
+2. `square-variation-restore` put them back, and
+   `RUNBOOK-square-catalog-integrity.md:108` records that **restored variations
+   come back with new ids** — Square will not reissue a deleted one.
+3. **Nothing re-points `showing_square_variations` after a restore.** Searching
+   the functions, that table is written only by `square-showing-variations` (the
+   mapping front door) and read by `_shared/square-order.ts` and
+   `square-cash-sale`. No restore path updates it.
+
+So any showing mapped **before** the damage still stores the **pre-restore id**.
+Checkout sends that dead id as `catalog_object_id`, Square rejects the order,
+and the code does exactly what it was told to do: log it and charge bare rather
+than risk the money. Sales for showings mapped *after* the restore — or never
+damaged — go through catalogued, which is why *Silent Film Festival* and
+*HADESTOWN* look right on the same day.
+
+This also predicts the failure is **per showing and permanent**, not
+intermittent: the same showing will fail every time until its mapping is
+repaired. That is a sharper and more falsifiable claim than the tier hypothesis
+below, and it should be tested first.
+
+### Demoted: the untiered hypothesis
+
+Both failures showed no tier and both successes showed `Adult`, which first
+suggested the single-price path. Keep it as a fallback explanation, but note it
+predicts an **ad-hoc named line** (`variationName()` always returns at least the
+showtime), *not* the `Custom Amount` that was actually seen. It cannot on its
+own produce this symptom.
 
 ## Steps
 
-1. **Read the log** for the 11:41 am order (`order 2qYZ2GcXbz2ucDMjC8VitrSSU9SZY`,
-   payment `7BOwpk5h3ekl5kXbY8mEtyVx0ORZY`) and identify which of the four
-   branches fired. Everything below depends on the answer.
-2. Reproduce on **staging**, which has a real Square sandbox and can be hit
-   destructively for free (`square-staging-has-a-real-sandbox`). Buy an untiered
-   showing and a tiered one and diff the two order payloads.
-3. Fix the cause. Do **not** relax the total-equality guards to make the order
-   go through — those guards are the reason no patron has been overcharged.
-4. Re-verify by purchase, and confirm in Square's **Item Sales** report, not
-   just the transaction list.
-5. Consider whether a fallback should be **visible**: today it is a
-   `console.error` nobody reads. A counter on the admin transactions screen, or
-   the existing `square-catalog-guard` check, would make the next occurrence
-   noticeable within a day rather than at the next spot-check.
+1. **Read the log** for the 11:41 am order (`2qYZ2GcXbz2ucDMjC8VitrSSU9SZY`,
+   payment `7BOwpk5h3ekl5kXbY8mEtyVx0ORZY`) — Supabase dashboard → Edge
+   Functions → `ticket-checkout` → Logs. If the hypothesis holds it reads
+   `order create failed 400 {...}` naming an invalid `catalog_object_id`.
+   Everything below assumes that; a different branch means re-plan.
+2. **Confirm the id is dead.** Take that showing's `square_variation_id` from
+   `showing_square_variations` and retrieve it from Square. A 404 proves it.
+   `square-catalog-guard` with `{"action":"check"}` also reports `vanished` and
+   writes nothing to Square.
+3. **Size it.** Count how many `showing_square_variations` rows point at ids
+   Square no longer serves. This decides whether it is a handful of showings or
+   most of the catalogue mapping, and therefore whether step 4 is a script or a
+   migration.
+4. **Re-point the mappings.** Match each stale row to its restored variation —
+   `sameVariation()` in `_shared/square-catalog.ts` already compares tier and
+   showtime while tolerating both separators, which is exactly the matching
+   needed. Prefer re-running the existing `square-showing-variations` front door
+   over hand-written SQL.
+5. **Close the hole that created it.** A restore mints new ids and leaves our
+   mapping pointing at the old ones. Either the restore path should re-point
+   `showing_square_variations`, or the guard's `check` should report mappings
+   that no longer resolve. Without this, the next restore silently recreates the
+   whole problem.
+
+## Degrade per line, not per order
+
+Independent of the cause, one design change is worth making: today a **single**
+bad `catalog_object_id` fails the whole `POST /orders`, and the sale loses *all*
+attribution — every line, including the ones that were fine.
+
+Falling back per line would be strictly better. A line whose catalog id Square
+rejects becomes a **named ad-hoc line** (`variationName()` already produces
+`Friday, August 28 at 7 PM`), while its siblings keep their catalog link. The
+sale would then read `1776 ~ Roots of a Nation… (Friday, August 28 at 7 PM)` in
+Square instead of `Custom Amount` — degraded reporting rather than none.
+
+This does not weaken the money guard, which is the part worth protecting: the
+totals are still compared, and a genuine mismatch still falls back to a bare
+payment. It only stops one dead id from discarding the attribution of an entire
+order.
 
 ## Acceptance
 
