@@ -201,7 +201,9 @@ Deno.serve(async (req) => {
             referenceId: pending.id,
             built,
             idempotencyKey: `order-${idempotencyKey}`,
-            fulfillment: "DIGITAL",
+            // A gift is not collected, so it carries no fulfillment. Same
+            // shape square-invoice has always used.
+            fulfillment: "NONE",
             buyerEmail: donorEmail,
             buyerName: donorName,
           }),

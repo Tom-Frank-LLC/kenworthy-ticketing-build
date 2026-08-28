@@ -897,7 +897,10 @@ Deno.serve(async (req: Request) => {
           referenceId: pending.id,
           built,
           idempotencyKey: `order-${idempotencyKey}`,
-          fulfillment: 'DIGITAL',
+          // No fulfillment, for the same reason as ticket-checkout: a paid
+          // PICKUP order stays OPEN in Square. How the pass reaches the buyer
+          // is tracked in our own tables, not Square's.
+          fulfillment: 'NONE',
           buyerEmail: contact.email,
           buyerName: contact.name,
         }),

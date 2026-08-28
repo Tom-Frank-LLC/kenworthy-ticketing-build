@@ -1,14 +1,21 @@
 ---
 brief: square-order-falls-back-to-bare-payment
-title: Some online sales still register in Square as "Custom Amount", not catalogued line items
-status: queued
+title: Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed
+status: built
+findings: confirmed from production logs 28 Aug 2026
 track: bug
-severity: P1
+severity: P0
 date: 2026-08-28
 verified: true
 ---
 
-# Brief: some online sales still register as "Custom Amount"
+# Brief: every online sale registers as "Custom Amount"
+
+> **Fixed and verified on staging, 28 Aug 2026 — not yet deployed to
+> production.** Every caller now sends **no fulfillment**, the shape
+> `square-invoice` has always used. Verified end to end against the Square
+> sandbox — order created, payment attached, order `COMPLETED`. See
+> *Verification* at the end, including why PICKUP was tried and rejected.
 
 **Status:** 🔴 Open. Found 28 Aug 2026 by the first real-card purchase on the
 newly live kenworthy.org.
@@ -84,40 +91,161 @@ badly but does not produce "Custom Amount"):
 <n> tier(s) had no Square variation for showing <id>; billed as ad-hoc lines
 ```
 
-## Leading hypothesis — untiered showings
+## CAUSE CONFIRMED — 28 Aug 2026, from the production log
 
-Both failures show **no tier**; both successes show **`Adult`**. That points at
-the single-price path, where `canonicalTier()` returns `''` and
-`variationName()` returns the bare showtime.
+Not a hypothesis any more. `ticket-checkout` logged:
 
-Treat this as a hypothesis, not a finding. It is drawn from four data points and
-the two failing sales differ in another way too — one carried a donation and one
-did not, which at least rules the donation out as the sole cause. `The Odyssey`
-having no donation is the useful control here.
+```
+order create failed 400 {"errors":[{"code":"MISSING_REQUIRED_PARAMETER",
+"detail":"Fulfillments of type DIGITAL must have digital_details supplied.",
+"field":"order.fulfillments[0].digital_details",
+"category":"INVALID_REQUEST_ERROR"}]}
+```
 
-Worth testing directly: a `showing_square_variations` row for an untiered
-showing has to store *something* in `tier_name`. If it stores `NULL` while
-`loadTicketGroups` looks up `''`, every untiered showing misses its variation.
-That alone would produce ad-hoc lines rather than a bare payment — so if the log
-says branch 1 or 3, look at the **tax** arithmetic instead, since the donation
-group is `taxable: false` and the processing-fee group is its own line.
+`orderRequestBody` (`_shared/square-order.ts:176`) attaches
+**`delivery_details`** to a fulfillment of **`type: 'DIGITAL'`**.
+`delivery_details` belongs to type `DELIVERY`. Square requires
+`digital_details` on a DIGITAL fulfillment and rejects the order without it.
+
+So **branch 2 fires on every attempt**. The order is never created, and the
+payment goes through bare — which is exactly the behaviour #103 was written to
+eliminate.
+
+### Scope: all three online money paths, not "some sales"
+
+Three callers pass `fulfillment: 'DIGITAL'`, and the parameter defaults to
+`'DIGITAL'` when omitted:
+
+| Caller | Covers |
+|---|---|
+| `ticket-checkout:400` | every online ticket sale |
+| `film-pass-checkout:900` | every online film-pass sale |
+| `square-donation:204` | every online donation |
+
+All three build the same malformed body, so **every online sale has registered
+as a bare `Custom Amount` since #103 shipped on 19 Aug** — the whole point of
+that work, defeated by one wrong field name.
+
+The two sales that looked correct the same day (*Silent Film Festival*,
+*HADESTOWN*) carry a tier and a variation name, so they came through a
+different path — POS, Terminal, or Square Online — not `ticket-checkout`.
+
+`square-cash-sale` passes `IN_STORE` and takes no details block; it also returns
+502 rather than falling back, so if it were broken it would be loud. Confirm it
+separately rather than assuming.
+
+### Both earlier hypotheses were wrong, and one was wrong usefully
+
+- **Dangling catalog id from the Aug 14 restore**: wrong. The reasoning that
+  `showing_square_variations` is never re-pointed after a restore still holds and
+  is worth its own brief, but it is not what is happening here.
+- **Untiered showings**: wrong as a cause, but it correctly predicted a *named
+  ad-hoc line* rather than `Custom Amount` — and the same log confirms that
+  problem is real and separate:
+  ```
+  1 tier(s) had no Square variation for showing 369a2c42-55a2-432d-9229-f4ac8ecc21da;
+  billed as ad-hoc lines
+  ```
+  That showing has no mapping. Once the order actually succeeds, it will sell as
+  a named ad-hoc line with no item-sales or category rollup. **Fixing the
+  fulfillment exposes this rather than solving it.**
+
+### The fix — measured on the staging sandbox, 28 Aug 2026
+
+A throwaway probe posted seven order shapes to the staging Square sandbox
+(`SQUARE_SANDBOX_*`, cannot touch the live catalog). Ad-hoc lines only, so no
+catalogue was referenced.
+
+| # | Shape | Result |
+|---|---|---|
+| A | no `fulfillments` at all | ✅ **200** |
+| B | `DIGITAL` + `delivery_details`, `state: COMPLETED` — what ships today | ❌ 400 |
+| C | `DIGITAL` + `digital_details: {}` | ❌ 400, same error |
+| D | `DIGITAL` + `digital_details.recipient` | ❌ 400, same error |
+| E | `PICKUP` + `pickup_details.recipient`, `state: PROPOSED` | ✅ **200, recipient stored** |
+| F | `DIGITAL` + `digital_details.recipient`, `state: PROPOSED` | ❌ 400, same error |
+| G | as F, but `Square-Version: 2025-01-23` | ❌ 400, same error |
+
+**`DIGITAL` cannot be made to work.** C, D, F and G all supply
+`digital_details` and Square still answers *"must have `digital_details`
+supplied"* — including under a 2025 API version. Whatever the message says, this
+account/API will not accept a DIGITAL fulfillment, so renaming the field would
+not have fixed it. Guessing the shape from the error text would have burned a
+deploy and produced the same failure.
+
+**A second, independent bug in the same block.** Shape E first failed with
+*"Fulfillments must be created with `state` of PROPOSED or HELD"*. Our code
+sends `state: 'COMPLETED'`, which is invalid at creation for **every**
+fulfillment type. Fixing only the type would have hit this next.
+
+### Recommendation: PICKUP, not "drop the fulfillment"
+
+Both A and E work. **E is better**, and it resolves a second complaint at the
+same time:
+
+- Square **stored the recipient** — `display_name` and `email_address` came back
+  on the order. That is the buyer contact data that "never reaches Square"
+  today, and it lands without any extra call.
+- `PICKUP` is arguably more truthful than `DIGITAL` for this theatre anyway:
+  the ticket is presented at the door.
+- `pickup_details.pickup_at` is required, and there is an obviously correct
+  value for it — **the showing's start time** — which makes the order carry the
+  showtime as structured data rather than only inside a variation name.
+
+So the change to `orderRequestBody` is:
+
+```
+type:  'DIGITAL'          ->  'PICKUP'
+state: 'COMPLETED'        ->  'PROPOSED'
+delivery_details: {...}   ->  pickup_details: { pickup_at: <showtime ISO>, recipient: {...} }
+```
+
+Fall back to shape A (no fulfillments, the `square-invoice` pattern) only if
+`pickup_at` turns out to be awkward to thread through every caller —
+`square-donation` has no showtime, so it likely wants A regardless.
 
 ## Steps
 
-1. **Read the log** for the 11:41 am order (`order 2qYZ2GcXbz2ucDMjC8VitrSSU9SZY`,
-   payment `7BOwpk5h3ekl5kXbY8mEtyVx0ORZY`) and identify which of the four
-   branches fired. Everything below depends on the answer.
-2. Reproduce on **staging**, which has a real Square sandbox and can be hit
-   destructively for free (`square-staging-has-a-real-sandbox`). Buy an untiered
-   showing and a tiered one and diff the two order payloads.
-3. Fix the cause. Do **not** relax the total-equality guards to make the order
-   go through — those guards are the reason no patron has been overcharged.
-4. Re-verify by purchase, and confirm in Square's **Item Sales** report, not
-   just the transaction list.
-5. Consider whether a fallback should be **visible**: today it is a
-   `console.error` nobody reads. A counter on the admin transactions screen, or
-   the existing `square-catalog-guard` check, would make the next occurrence
-   noticeable within a day rather than at the next spot-check.
+1. **Read the log** for the 11:41 am order (`2qYZ2GcXbz2ucDMjC8VitrSSU9SZY`,
+   payment `7BOwpk5h3ekl5kXbY8mEtyVx0ORZY`) — Supabase dashboard → Edge
+   Functions → `ticket-checkout` → Logs. If the hypothesis holds it reads
+   `order create failed 400 {...}` naming an invalid `catalog_object_id`.
+   Everything below assumes that; a different branch means re-plan.
+2. **Confirm the id is dead.** Take that showing's `square_variation_id` from
+   `showing_square_variations` and retrieve it from Square. A 404 proves it.
+   `square-catalog-guard` with `{"action":"check"}` also reports `vanished` and
+   writes nothing to Square.
+3. **Size it.** Count how many `showing_square_variations` rows point at ids
+   Square no longer serves. This decides whether it is a handful of showings or
+   most of the catalogue mapping, and therefore whether step 4 is a script or a
+   migration.
+4. **Re-point the mappings.** Match each stale row to its restored variation —
+   `sameVariation()` in `_shared/square-catalog.ts` already compares tier and
+   showtime while tolerating both separators, which is exactly the matching
+   needed. Prefer re-running the existing `square-showing-variations` front door
+   over hand-written SQL.
+5. **Close the hole that created it.** A restore mints new ids and leaves our
+   mapping pointing at the old ones. Either the restore path should re-point
+   `showing_square_variations`, or the guard's `check` should report mappings
+   that no longer resolve. Without this, the next restore silently recreates the
+   whole problem.
+
+## Degrade per line, not per order
+
+Independent of the cause, one design change is worth making: today a **single**
+bad `catalog_object_id` fails the whole `POST /orders`, and the sale loses *all*
+attribution — every line, including the ones that were fine.
+
+Falling back per line would be strictly better. A line whose catalog id Square
+rejects becomes a **named ad-hoc line** (`variationName()` already produces
+`Friday, August 28 at 7 PM`), while its siblings keep their catalog link. The
+sale would then read `1776 ~ Roots of a Nation… (Friday, August 28 at 7 PM)` in
+Square instead of `Custom Amount` — degraded reporting rather than none.
+
+This does not weaken the money guard, which is the part worth protecting: the
+totals are still compared, and a genuine mismatch still falls back to a bare
+payment. It only stops one dead id from discarding the attribution of an entire
+order.
 
 ## Acceptance
 
@@ -142,3 +270,92 @@ purchase and worth its own brief:
 
 A bare-payment sale has no fulfillment at all, so fixing this brief is a
 prerequisite for the contact data appearing on those orders anyway.
+
+## Verification — staging sandbox, 28 Aug 2026
+
+A probe posted the output of the **real `orderRequestBody`** — not a
+hand-written body — once per calling shape. All six accepted:
+
+| Caller | Result | Square stored |
+|---|---|---|
+| `ticket-checkout` | ✅ 200, total 848 | `PICKUP` / `PROPOSED`, showtime, `A Patron / patron@example.com` |
+| `square-cash-sale` | ✅ 200, total 848 | `PICKUP` / `PROPOSED`, showtime, `Kenworthy patron` |
+| `film-pass-checkout` (pickup) | ✅ 200, total 848 | `PICKUP` / `PROPOSED`, purchase time, passholder |
+| `film-pass-checkout` (mail) | ✅ 200, total 848 | no fulfillment |
+| `square-donation` | ✅ 200, total 2500 | no fulfillment |
+| `ticket-checkout`, no showtime | ✅ 200, total 848 | no fulfillment — degraded, order still created |
+
+Totals are right in every case: 848 = 800 + 48 tax, and the 2500 donation
+carries none.
+
+**Why a probe and not just unit tests.** The old unit test asserted `DIGITAL`,
+`COMPLETED` and `delivery_details` — and passed, every day Square was rejecting
+every one of those orders. A unit test proves we built what we meant to build;
+only the vendor can say whether it is acceptable. The tests now assert the
+measured-good shape and say so in a comment, but the probe is what actually
+established it.
+
+`square-cash-sale` was also broken, and nobody knew. It sent
+`type: 'IN_STORE'` — not a Square fulfillment type — with the same invalid
+`state: 'COMPLETED'`. Unlike the online paths it does not fall back; it returns
+502. Worth asking the box office whether they have been seeing "Could not record
+the sale in Square", because that is what this would have produced.
+
+## Still open after this fix
+
+- **Deploy to production.** Staging only so far.
+- **The unmapped showing** from the same log —
+  `369a2c42-55a2-432d-9229-f4ac8ecc21da` has no
+  `showing_square_variations` row, so it will now sell as a *named ad-hoc line*
+  with no item-sales or category rollup. Fixing the fulfillment exposes this
+  rather than solving it.
+- **A fallback should be visible.** Every failure here was a `console.error`
+  nobody read, for nine days, across every online sale. Whatever surfaces it —
+  a counter on the admin transactions screen, or extending
+  `square-catalog-guard` — matters more than this particular bug.
+
+## Why PICKUP was tried and then rejected
+
+The first fix used `PICKUP` + `pickup_details`, because Square **stores the
+recipient** there and that was the obvious way to get the buyer's name and email
+onto the order — a complaint raised in the same session.
+
+Taking it end to end on the sandbox — order, then a real payment against it with
+a sandbox card — showed the cost:
+
+| Shape | Payment | Order after payment |
+|---|---|---|
+| `PICKUP` + `pickup_details` | ✅ COMPLETED | ⚠️ **`OPEN`**, fulfillment `PROPOSED` |
+| `PICKUP`, then fulfillment updated to COMPLETED | ✅ COMPLETED | ⚠️ still **`OPEN`** |
+| **no fulfillment** | ✅ COMPLETED | ✅ **`COMPLETED`** |
+
+A paid PICKUP order stays open, and updating the fulfillment to `COMPLETED`
+does not close it. Every online sale would leave a phantom unfulfilled pickup on
+the theatre's Orders screen, permanently. That is a live operational change
+traded for something nearly redundant: `createPayment` already sends
+`buyer_email_address`, so the buyer's email reaches Square on the payment
+either way. Only the *name* was gained.
+
+So every caller ships the no-fulfillment shape. `PICKUP` stays supported in the
+builder, one argument away, if the buyer's name on the order is ever judged
+worth an open order per sale.
+
+**The lesson is the size of the test.** "Square accepts this order" and "the sale
+still works and leaves nothing behind" are different questions, and only the
+second one is what production has to survive. The first probe answered the first
+question and would have shipped an operational regression.
+
+## Blast radius reviewed before shipping
+
+- **All four `orderRequestBody` callers** were changed; a search confirms there
+  are no others.
+- **`_shared/transactions.ts:267`** already reads `pickup_details.recipient`,
+  then `shipment_details`, then `delivery_details`, and tolerates absent
+  fulfillments — so the admin transactions view is unaffected either way.
+- **`square-refund`** works from our own `order_token`, never Square's order, so
+  refunds are untouched.
+- **`mailchimp-ecommerce`** does not read Square orders.
+- **`square_order_id`** is persisted only by `square-cash-sale`; that write is
+  unchanged.
+- **Production matches `main`** for all four functions — each was deployed after
+  its last source commit — so deploying ships this change and nothing else.

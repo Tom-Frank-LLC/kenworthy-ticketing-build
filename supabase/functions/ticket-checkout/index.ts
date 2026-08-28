@@ -397,7 +397,14 @@ Deno.serve(async (req: Request) => {
             referenceId: orderToken,
             built,
             idempotencyKey: `order-${idempotencyKey}`,
-            fulfillment: 'DIGITAL',
+            // No fulfillment. PICKUP also works and would carry the buyer's
+            // name, but a paid pickup order stays OPEN in Square — measured —
+            // so every online sale would leave a phantom unfulfilled pickup on
+            // the theatre's Orders screen. The buyer's email already reaches
+            // Square on the payment (`buyer_email_address`), and the line item
+            // already names the showtime, so the fulfillment bought us little
+            // and cost operational noise.
+            fulfillment: 'NONE',
             buyerEmail: contact.email,
             buyerName: contact.name,
           }),
