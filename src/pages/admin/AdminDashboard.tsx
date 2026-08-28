@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Home
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
@@ -41,6 +41,7 @@ import LglTab from '@/components/admin/LglTab';
 import HiringTab from '@/components/admin/HiringTab';
 import PressTab from '@/components/admin/PressTab';
 import BackstageTab from '@/components/admin/BackstageTab';
+import FeaturedSlidesTab from '@/components/admin/FeaturedSlidesTab';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
@@ -1257,6 +1258,13 @@ export default function AdminDashboard() {
                 <TabsTrigger value="backstage">
                   <Martini className="h-4 w-4 mr-1 inline" />Backstage
                 </TabsTrigger>
+                {/* The home page is not edited here the way the others are —
+                    its listings come from the productions. What is editable is
+                    the one thing on it that has no production behind it: the
+                    hand-written slides at the front of the curator carousel. */}
+                <TabsTrigger value="home">
+                  <Home className="h-4 w-4 mr-1 inline" />Home
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="festival">
                 <FestivalProgramsTab />
@@ -1269,6 +1277,9 @@ export default function AdminDashboard() {
               </TabsContent>
               <TabsContent value="backstage">
                 <BackstageTab />
+              </TabsContent>
+              <TabsContent value="home">
+                <FeaturedSlidesTab />
               </TabsContent>
             </Tabs>
           </TabsContent>

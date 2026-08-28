@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { BoothNote } from './BoothNote';
 import { attachUpcomingShowings } from '@/lib/feed';
 import type { FeedItem } from './TrailerFeed';
+import type { FeaturedSlideView } from '@/lib/featuredSlides';
 
 /**
  * What a curator's pick is a pick *of* — a title, or one night of it.
@@ -37,12 +38,30 @@ const threeShowingsOfOneFilm: FeedItem[] = [
   { ...base, id: 'c', showingId: 's3', startTime: '2099-01-03T19:00:00Z' },
 ];
 
-const renderBooth = (items: FeedItem[]) =>
+const renderBooth = (items: FeedItem[], slides: FeaturedSlideView[] = []) =>
   render(
     <MemoryRouter>
-      <BoothNote items={items} />
+      <BoothNote items={items} slides={slides} />
     </MemoryRouter>,
   );
+
+/** A hand-written slide, the kind with no production behind it. */
+const manual = (over: Partial<FeaturedSlideView> = {}): FeaturedSlideView => ({
+  id: 'festival',
+  title: 'Kenworthy Silent Film Festival',
+  blurb: null,
+  image_path: null,
+  image_alt: null,
+  imageUrl: null,
+  link_url: '/silent-film-festival',
+  cta_label: 'Explore the Festival',
+  is_active: true,
+  display_order: 0,
+  starts_at: null,
+  ends_at: null,
+  created_at: '2026-08-01T00:00:00Z',
+  ...over,
+});
 
 describe('BoothNote', () => {
   it('gives a film with three showings one slide, not three', () => {
@@ -150,6 +169,80 @@ describe('BoothNote', () => {
       const { container } = renderBooth(items);
 
       expect(container.querySelectorAll('[aria-roledescription="slide"]')).toHaveLength(2);
+    });
+  });
+
+  /**
+   * The second source: slides written by hand, for pages with nothing to sell.
+   *
+   * The ordering rule is the thing worth pinning. Manual slides lead, in the
+   * admin's own order; the picks derived from the feed follow, chronologically.
+   * Two orders rather than one, because a manual slide has no date to sort by
+   * — a festival in November and a standing rentals promo are not points on the
+   * same line as "Thursday at 7" — and any unified sort would have to invent
+   * one, which is a rule the admin cannot see.
+   */
+  describe('hand-written slides', () => {
+    it('puts the manual slides in front of the featured films', () => {
+      const { container } = renderBooth(threeShowingsOfOneFilm, [manual()]);
+
+      const slides = container.querySelectorAll('[aria-roledescription="slide"]');
+      expect(slides).toHaveLength(2);
+      expect(slides[0].textContent).toContain('Kenworthy Silent Film Festival');
+      expect(slides[1].textContent).toContain('Page to Screen: Divergent');
+    });
+
+    it('orders the manual slides by the order the admin gave them', () => {
+      const { container } = renderBooth([], [
+        manual({ id: 'b', title: 'Rent the theatre', display_order: 1, link_url: '/rentals' }),
+        manual({ id: 'a', title: 'Silent Film Festival', display_order: 0 }),
+      ]);
+
+      const slides = container.querySelectorAll('[aria-roledescription="slide"]');
+      expect(slides[0].textContent).toContain('Silent Film Festival');
+      expect(slides[1].textContent).toContain('Rent the theatre');
+    });
+
+    it('renders with no showings at all, which is the whole point', () => {
+      // A page with nothing to sell has to be promotable on a week when
+      // nothing is on. Nothing in the feed can produce this slide.
+      renderBooth([], [manual()]);
+
+      expect(screen.getByRole('heading', { name: 'Kenworthy Silent Film Festival' })).toBeTruthy();
+      const cta = screen.getByRole('link', { name: /Explore the Festival/i });
+      expect(cta.getAttribute('href')).toBe('/silent-film-festival');
+      expect(cta.getAttribute('target')).toBeNull();
+    });
+
+    it('opens an outside link in a new tab, with the opener cut', () => {
+      renderBooth([], [manual({ link_url: 'https://example.org/tickets', cta_label: 'Buy from the venue' })]);
+
+      const cta = screen.getByRole('link', { name: /Buy from the venue/i });
+      expect(cta.getAttribute('href')).toBe('https://example.org/tickets');
+      expect(cta.getAttribute('target')).toBe('_blank');
+      expect(cta.getAttribute('rel')).toContain('noopener');
+    });
+
+    it('does not staple an unpicked film to a deliberate slide', () => {
+      // The fallback exists so the band never renders empty. A manual slide
+      // means it is not empty, so the fallback has nothing to do — pulling in
+      // a film nobody flagged would be second-guessing the admin.
+      renderBooth(
+        [{ ...base, id: 'a', showingId: 's1', startTime: '2099-01-01T19:00:00Z', isFeatured: false }],
+        [manual()],
+      );
+
+      expect(screen.queryByText('Page to Screen: Divergent')).toBeNull();
+      expect(screen.getByRole('heading', { name: 'Kenworthy Silent Film Festival' })).toBeTruthy();
+    });
+
+    it('describes the picture by its own description, not the headline', () => {
+      renderBooth([], [manual({
+        imageUrl: 'https://example.test/organ.jpg',
+        image_alt: 'An organist at the Wurlitzer',
+      })]);
+
+      expect(screen.getByAltText('An organist at the Wurlitzer')).toBeTruthy();
     });
   });
 });

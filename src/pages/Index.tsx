@@ -10,6 +10,8 @@ import { RenovationCard } from '@/components/home/RenovationCard';
 import { HomeMarquee } from '@/components/home/HomeMarquee';
 import { SEO } from '@/components/SEO';
 import { filterFeed } from '@/hooks/useFeed';
+import { useFeaturedSlides } from '@/hooks/useFeaturedSlides';
+import { filterSlides } from '@/lib/featuredSlides';
 import { attachUpcomingShowings } from '@/lib/feed';
 
 type ProductionType = 'movie' | 'event' | 'concert';
@@ -129,6 +131,12 @@ export default function Index() {
     const [selectedProduction, setSelectedProduction] = useState<any>(null);
     const [query, setQuery] = useState('');
     const filteredFeed = useMemo(() => filterFeed(feed, query), [feed, query]);
+    // The second source of curator's picks — slides written by hand, for pages
+    // that have nothing to sell. Filtered by the same query as the feed, so a
+    // search narrows the whole band rather than leaving a promo sitting beside
+    // a one-item result as an advertisement.
+    const { slides } = useFeaturedSlides();
+    const filteredSlides = useMemo(() => filterSlides(slides, query), [slides, query]);
     
     useEffect(() => {
         async function fetchAll() {
@@ -206,8 +214,16 @@ export default function Index() {
                 listing they comment on. This block used to render on
                 /calendar, where it buried the calendar under a featured
                 poster and gave that page a second <h1>. */}
-            {!loading && filteredFeed.length > 0 && (
-                                                     <BoothNote items={filteredFeed} onSelect={handleSelect} />
+            {/* Gated on either source. A manual slide is the only thing on
+                the page that can be a pick without a showing behind it, so a
+                week with nothing flagged — or nothing on at all — is exactly
+                when it has to still render. */}
+            {!loading && (filteredFeed.length > 0 || filteredSlides.length > 0) && (
+                                                     <BoothNote
+                                                     items={filteredFeed}
+                                                     slides={filteredSlides}
+                                                     onSelect={handleSelect}
+                                                     />
                                                      )}
             {/*
 
