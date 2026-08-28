@@ -35,8 +35,10 @@ function bindTrailingToken(text: string) {
   return text.replace(/\s+(\S{1,2})$/u, '\u00A0$1');
 }
 
+// Doubles as the page's meta description — see the SEO block below — so it has
+// to read as a standalone sentence, not just as a line under a heading.
 const BLURB =
-  'Popcorn popped fresh, candy by the handful, a cold drink to carry in.';
+  'Freshly-popped popcorn, your favorite candies, and an ice-cold beverage — in combo form or à la carte.';
 
 /**
  * The concessions menu, on its own page under Info.
