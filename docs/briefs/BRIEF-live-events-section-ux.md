@@ -1,11 +1,20 @@
 ---
 brief: live-events-section-ux
 title: Live Events manages its own showings, and one door replaces two create buttons
-status: built
+status: shipped
 track: ux
 severity: P2
 date: 2026-08-25
-verified: false
+shipped_at: 2026-08-28
+verified: true
+evidence: >-
+  Deployed to production 2026-08-28T05:07:21Z as worker version
+  959f714f-8ad5-4f0b-8daf-104d217720a9 (rollback: 9d870cf0-ef06-4466-937d-a0123aacd1fc,
+  a clean deploy of 272d20a). Verified against the live origin: AdminDashboard-DBHq4D1T.js
+  and ShowingForm-C0i21v2B.js are byte-identical to the local production build and carry
+  the change. Behaviour verified on staging in a signed-in browser — inline showings on
+  each Live Event card, the Add Live Event chooser, and ?event= opening the form scoped
+  with the standard film passes left unticked.
 ---
 
 # Brief (for Claude Code): Improve the Live Events section of the admin dashboard (UX/UI flow)
@@ -108,6 +117,26 @@ defaults are now gated on the resolved category, with a test either way.
 
 - No section-level Add Showing in Live Events. An unscoped showing form opens on
   Movie, so the button would have been a step backwards from the per-card one.
-- Not verified in a running browser: `/admin` needs a staff sign-in.
-  `npx tsc -p tsconfig.app.json --noEmit`, `npx vitest run` (49 files, 613
-  passing, 15 of them new) and `npm run build:staging` all pass.
+- No merged PR: this was built on `feat/live-events-showings`, rebased onto
+  `a4a49bf` and deployed directly, which is how this project ships. The branch
+  is pushed and still wants a PR for the record.
+
+### Verified in production (2026-08-28)
+
+Checks: `tsc -p tsconfig.app.json --noEmit`, `vitest` (51 files, 647 passing,
+15 of them new), `build:production`. `deno check` fails on an unresolvable
+`npm:zod@3.23.8` — pre-existing, reproduces on an untouched checkout, and no
+edge function was changed here.
+
+Before deploying, production was confirmed *not* ahead of main: the live entry
+bundle was byte-identical to a local build of `272d20a`, so nothing unmerged
+was at risk of being reverted. The deploy also carried `f5c882c` (the
+curator-slide feature, #218), which was already `status: built` on main with its
+migration applied to production and only its frontend outstanding.
+
+Behaviour confirmed on staging in a signed-in browser, not from bundle strings:
+each Live Event card lists its showings inline, the Add Live Event chooser
+renders both kinds with their explanations, and
+`/admin/showings/new?event=<id>` opens on the named event with the category
+stated rather than offered — and with "Accept passes at the door" unticked,
+which is the film-pass trap above staying shut.
