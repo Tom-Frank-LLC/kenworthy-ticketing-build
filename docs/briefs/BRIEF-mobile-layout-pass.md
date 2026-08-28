@@ -1,11 +1,20 @@
 ---
 brief: mobile-layout-pass
 title: Port the type bump and rentals hero to phone widths
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-28
-verified: false
+shipped_in: ["#235"]
+shipped_at: 2026-08-28
+verified: true
+evidence: >-
+  PR #235 squash-merged as cbff6e5. Production worker version
+  08041e84-4b39-44ad-ae1f-ef158da55d58; kenworthy.org and the workers.dev origin
+  both serve assets/index-BfUZTXWW.js (text/javascript, 273246 bytes), and that
+  bundle carries the `hidden lg:inline`, `px-3 sm:px-5`, Film Pass `sm:` gate
+  and `whitespace-normal` changes with zero occurrences of "What's On".
+  Staging runs the identical tree: a staging build of merged main reproduces
+  assets/index-CMLKS4P-.js, the hash already deployed there.
 ---
 
 # Brief (for Claude Code): Mobile layout pass — port the recent desktop changes to small screens
@@ -57,7 +66,7 @@ The recent desktop-focused work is the likely source of other mobile regressions
 
 ## Outcome (2026-08-28)
 
-Built, not deployed. Verified at 360/375/390/414 portrait and 844×390
+Shipped in #235 (2026-08-28). Verified at 360/375/390/414 portrait and 844×390
 landscape, at an 18px root, against `origin/main` @ `925dbab`.
 
 ### Method note — the viewport is not resizable, but an iframe is
