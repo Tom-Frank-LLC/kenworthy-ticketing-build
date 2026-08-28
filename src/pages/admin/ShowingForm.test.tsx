@@ -506,14 +506,33 @@ describe('ShowingForm — opened from a title’s card', () => {
  * listing's categories now — and calls the row what that listing calls it.
  */
 describe('ShowingForm — scoped to the listing it was opened from', () => {
-  it('offers no category at all from Movies, because there is only one', async () => {
+  it('says nothing about category from Movies — not even as a readout', async () => {
     renderForm('/admin/showings/new?kind=movie');
 
     await waitFor(() => expect(screen.getByLabelText('Movie *')).toBeInTheDocument());
+    // Neither the selector nor the "Category: Movie" line it was replaced by.
+    // With one category and no way out of it, both answer a question the admin
+    // was never asked, and the picker underneath already says Movie.
     expect(screen.queryByText('Category *')).toBeNull();
-    // Nothing to switch to, so no way to reach an event from here.
+    expect(screen.queryByText('Category')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Create Showing' })).toBeInTheDocument();
+  });
+
+  it('says nothing about category when opened from a film’s own card either', async () => {
+    renderForm(`/admin/showings/new?kind=movie&movie=${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Dune'));
+    expect(screen.queryByText('Category')).toBeNull();
+  });
+
+  it('keeps the readout on the live side, where there is another category', async () => {
+    renderForm(`/admin/showings/new?kind=live&event=${EVENT_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+    // Here it earns its place: a performance is one click away.
+    expect(screen.getByText('Category')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
   });
 
   it('offers events and performances from Live Events, and never a film', async () => {

@@ -1019,7 +1019,13 @@ export default function ShowingForm() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {scope || allowedCategories?.length === 1 ? (
+            {allowedCategories?.length === 1 ? (
+              /* Nothing to say. Opened from Movies there is one category and
+                 no way to leave it, so a "Category: Movie" line is a field
+                 that answers a question the admin was never asked — and the
+                 picker below already says Movie. */
+              null
+            ) : scope ? (
               /* Opened from a title's card, so the category is already
                  settled and showing the selector only invites it to be
                  changed by accident. Reversible: Change puts both pickers
@@ -1030,17 +1036,15 @@ export default function ShowingForm() {
                   <span className="text-sm">
                     {category === 'movie' ? 'Movie' : category === 'event' ? 'Event' : 'Live Performance'}
                   </span>
-                  {scope && (allowedCategories?.length ?? 3) > 1 && (
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() => setScope(null)}
-                    >
-                      Change
-                    </Button>
-                  )}
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setScope(null)}
+                  >
+                    Change
+                  </Button>
                 </div>
               </div>
             ) : (

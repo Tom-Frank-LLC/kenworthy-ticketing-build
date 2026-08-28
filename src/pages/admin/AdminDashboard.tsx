@@ -863,7 +863,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="sm" title="Add showing" asChild>
-                            <Link to={`/admin/showings/new?movie=${movie.id}`}><Calendar className="h-4 w-4" /></Link>
+                            <Link to={`/admin/showings/new?kind=movie&movie=${movie.id}`}><Calendar className="h-4 w-4" /></Link>
                           </Button>
                           <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(movie, 'movie')}>
                             <Eye className="h-4 w-4" />
@@ -942,7 +942,7 @@ export default function AdminDashboard() {
                 // cannot reach the title it was opened from. Those are dated by
                 // their RSVP link, or not dated at all.
                 const canAddShowing = item.ticket_type === 'ticketed';
-                const showingScope = isEvent ? `event=${item.id}` : `performance=${item.id}`;
+                const showingScope = isEvent ? `kind=live&event=${item.id}` : `kind=live&performance=${item.id}`;
                 return (
                   <Card key={`${item.kind}-${item.id}`} className="glass">
                     <CardContent className="p-4">
