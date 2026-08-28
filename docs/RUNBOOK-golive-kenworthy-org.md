@@ -231,6 +231,39 @@ step safe.
 address from outside and one out, and confirm the received headers show
 `dkim=pass`. Do not touch Phase 2 until that passes.
 
+### Propagation complete — 28 Aug 2026
+
+Google, Cloudflare and Quad9 all now return `justin.ns.cloudflare.com` /
+`ursula.ns.cloudflare.com`. Cloudflare is authoritative in the real world,
+about 24h after the registrar change, exactly on the old delegation's 86400s
+TTL.
+
+All eleven critical records were re-read through a public resolver and match
+the recorded inventory exactly — apex A/MX/TXT, `www`, `send` TXT+MX, `_dmarc`,
+and all three DKIM selectors. The Google DKIM key comes back **joined
+correctly**, `…QMqSf4G90AtO3H9…` with no space at the 255-byte split. The trap
+this runbook warned about did not land in production.
+
+`https://kenworthy.org` still 301s to `www`, which still returns 200 from
+`64.126.133.214`. Mail was confirmed working in both directions by Tom before
+the flip.
+
+**FSR has removed the zone from their nameservers.** `ns.fsr.com` no longer
+answers for kenworthy.org at all. Two consequences:
+
+- `cf-zone-mirror.mjs` can no longer run `plan`/`apply`/`verify` — it reads the
+  live zone from `ns.fsr.com` on every run and refuses to act on an empty view.
+  That guard did its job; the script has simply finished its purpose. `dump`
+  is equally dead. Cloudflare is now the only source of truth, and the
+  inventory table above is the historical record of what the zone looked like
+  before the move.
+- Rollback is **unaffected**. It never depended on FSR's DNS — only on their
+  web server, which is still serving. Rolling back means pointing the apex A
+  record back at `64.126.133.214` inside Cloudflare, which is where it already
+  points.
+
+Phase 2 is now unblocked.
+
 ## Phase 2 — the flip (minutes)
 
 The order here matters. Every step before the domain moves is additive and
