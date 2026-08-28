@@ -5,7 +5,7 @@ status: built
 track: feature
 severity: P2
 date: 2026-08-25
-shipped_in: ["#218", "#220"]
+shipped_in: ["#218", "#220", "#222"]
 verified: true
 evidence: on main as f5c882c; migration 20260828030114 applied to BOTH staging and production; staging worker deployed 2026-08-28 (version 1032a9e1-0be6-45c0-914a-88234c121870). Production frontend NOT deployed.
 ---
@@ -128,14 +128,14 @@ image description saved on the first try; the row listed as **Live**; the home
 page put it at the front of the carousel with the image drawn at 640px and the
 description as its alt text; and the button routed in-app to
 `/silent-film-festival`. That test slide is still on staging — delete it from
-Admin → Pages → Home when you are done with it.
+Admin → Listings → Featured when you are done with it.
 
 Production still has only the table. The frontend change is not deployed there,
 so nothing on kenworthy.org has changed yet.
 
 ## Follow-up: the screen shows every pick, not just the written ones (#220)
 
-Tom asked for the other half. The Home tab listed only the slides written in it,
+Tom asked for the other half. The tab listed only the slides written in it,
 which made it a screen about one of the three flags that fill the carousel — the
 `is_featured` flags on a film, on an event or live performance, and on one
 showing are set on each title's own form, three tabs away, and were listed
@@ -160,3 +160,18 @@ kinds and dates — a past flagged night badged `Past`, a film with several date
 reading "2 dates upcoming" — and **Remove** on the past night cleared
 `showings.is_featured` in the database and dropped the row. The flag was put back
 afterwards, so staging is as it was found.
+
+## Follow-up: it lives in Listings, as **Featured** (#222)
+
+The screen shipped as a sub-tab of Pages, which was the wrong shelf. Pages is
+for editing a specific public page's copy — Press, Backstage, the festival. This
+one edits what the *listings* promote, and the three flags it gathers are set on
+the forms in the tabs beside it. So it is a sub-tab of **Listings**, called
+**Featured**, next to Movies, Live Events and Venues.
+
+`?section=pages&page=home` was a live link for about a day, including in the
+notes from that session, so it redirects to Listings → Featured rather than
+opening Pages with the editor nowhere in sight. `adminSections.ts` now owns the
+Listings sub-tab list too — the rule for an unrecognised `?tab=` is the same rule
+as for an unrecognised `?section=`, and Radix renders a blank panel for either
+if nobody writes it down.
