@@ -61,6 +61,7 @@ export function TicketCountBadge({
 export function ProductionShowings({
   showings,
   productionTitle,
+  heading = 'Showings',
   getSold,
   getScanned,
   onOpenAttendees,
@@ -69,6 +70,8 @@ export function ProductionShowings({
 }: {
   showings: any[];
   productionTitle: string;
+  /** "Showings" under a film, "Shows" under a live event. */
+  heading?: string;
   getSold: (showingId: string) => number;
   getScanned: (showingId: string) => number;
   onOpenAttendees: (title: string, showingIds: string[], capacity: number) => void;
@@ -79,7 +82,7 @@ export function ProductionShowings({
 
   return (
     <div className="mt-3 pl-8 space-y-2">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Showings</p>
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{heading}</p>
       {showings.map(showing => (
         <div key={showing.id} className="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2">
           <div className="flex gap-2 items-center flex-wrap">

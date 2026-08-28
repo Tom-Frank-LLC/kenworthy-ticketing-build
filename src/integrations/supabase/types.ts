@@ -10,7 +10,32 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.17"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -105,6 +130,86 @@ export type Database = {
           value?: Json
         }
         Relationships: []
+      }
+      audit_suppression: {
+        Row: {
+          expires_at: string
+          reason: string | null
+          run_id: string
+          table_name: string
+        }
+        Insert: {
+          expires_at: string
+          reason?: string | null
+          run_id: string
+          table_name: string
+        }
+        Update: {
+          expires_at?: string
+          reason?: string | null
+          run_id?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
+      backstage_page_content: {
+        Row: {
+          body_text: string | null
+          hero_path: string | null
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          body_text?: string | null
+          hero_path?: string | null
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          body_text?: string | null
+          hero_path?: string | null
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      backstage_photos: {
+        Row: {
+          caption: string | null
+          created_at: string
+          display_order: number
+          file_path: string
+          id: string
+          is_published: boolean
+          uploaded_by: string | null
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          display_order?: number
+          file_path: string
+          id?: string
+          is_published?: boolean
+          uploaded_by?: string | null
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          display_order?: number
+          file_path?: string
+          id?: string
+          is_published?: boolean
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "backstage_photos_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chart_of_accounts: {
         Row: {
@@ -368,6 +473,8 @@ export type Database = {
       donations: {
         Row: {
           amount_cents: number
+          confirmation_error: string | null
+          confirmation_sent_at: string | null
           created_at: string
           dedicate_to: string | null
           dedication_type: string | null
@@ -381,26 +488,26 @@ export type Database = {
           lgl_synced_at: string | null
           message: string | null
           notify_email: string | null
-          notify_name: string | null
-          square_payment_id: string | null
-          square_receipt_url: string | null
-          status: string
-          user_id: string | null
-          confirmation_error: string | null
-          confirmation_sent_at: string | null
           notify_error: string | null
+          notify_name: string | null
           notify_sent_at: string | null
           order_token: string | null
           payment_channel: string | null
           showing_id: string | null
           source: string
+          square_payment_id: string | null
+          square_receipt_url: string | null
+          status: string
+          user_id: string | null
         }
         Insert: {
           amount_cents: number
+          confirmation_error?: string | null
+          confirmation_sent_at?: string | null
           created_at?: string
           dedicate_to?: string | null
           dedication_type?: string | null
-          donor_email: string | null
+          donor_email?: string | null
           donor_name: string
           donor_phone?: string | null
           id?: string
@@ -410,22 +517,22 @@ export type Database = {
           lgl_synced_at?: string | null
           message?: string | null
           notify_email?: string | null
-          notify_name?: string | null
-          square_payment_id?: string | null
-          square_receipt_url?: string | null
-          status?: string
-          user_id?: string | null
-          confirmation_error?: string | null
-          confirmation_sent_at?: string | null
           notify_error?: string | null
+          notify_name?: string | null
           notify_sent_at?: string | null
           order_token?: string | null
           payment_channel?: string | null
           showing_id?: string | null
           source?: string
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          status?: string
+          user_id?: string | null
         }
         Update: {
           amount_cents?: number
+          confirmation_error?: string | null
+          confirmation_sent_at?: string | null
           created_at?: string
           dedicate_to?: string | null
           dedication_type?: string | null
@@ -439,21 +546,27 @@ export type Database = {
           lgl_synced_at?: string | null
           message?: string | null
           notify_email?: string | null
-          notify_name?: string | null
-          square_payment_id?: string | null
-          square_receipt_url?: string | null
-          status?: string
-          user_id?: string | null
-          confirmation_error?: string | null
-          confirmation_sent_at?: string | null
           notify_error?: string | null
+          notify_name?: string | null
           notify_sent_at?: string | null
           order_token?: string | null
           payment_channel?: string | null
           showing_id?: string | null
           source?: string
+          square_payment_id?: string | null
+          square_receipt_url?: string | null
+          status?: string
+          user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "donations_showing_id_fkey"
+            columns: ["showing_id"]
+            isOneToOne: false
+            referencedRelation: "showings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dvd_rentals: {
         Row: {
@@ -622,6 +735,8 @@ export type Database = {
           poster_url: string | null
           rating: string | null
           rsvp_url: string | null
+          square_item_id: string | null
+          subcategory: Database["public"]["Enums"]["live_event_type"] | null
           ticket_type: Database["public"]["Enums"]["event_ticket_type"]
           title: string
           trailer_url: string | null
@@ -638,6 +753,8 @@ export type Database = {
           poster_url?: string | null
           rating?: string | null
           rsvp_url?: string | null
+          square_item_id?: string | null
+          subcategory?: Database["public"]["Enums"]["live_event_type"] | null
           ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
           title: string
           trailer_url?: string | null
@@ -654,12 +771,73 @@ export type Database = {
           poster_url?: string | null
           rating?: string | null
           rsvp_url?: string | null
+          square_item_id?: string | null
+          subcategory?: Database["public"]["Enums"]["live_event_type"] | null
           ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
           title?: string
           trailer_url?: string | null
           updated_at?: string
         }
         Relationships: []
+      }
+      featured_slides: {
+        Row: {
+          blurb: string | null
+          created_at: string
+          created_by: string | null
+          cta_label: string
+          display_order: number
+          ends_at: string | null
+          id: string
+          image_alt: string | null
+          image_path: string | null
+          is_active: boolean
+          link_url: string
+          starts_at: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          blurb?: string | null
+          created_at?: string
+          created_by?: string | null
+          cta_label?: string
+          display_order?: number
+          ends_at?: string | null
+          id?: string
+          image_alt?: string | null
+          image_path?: string | null
+          is_active?: boolean
+          link_url: string
+          starts_at?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          blurb?: string | null
+          created_at?: string
+          created_by?: string | null
+          cta_label?: string
+          display_order?: number
+          ends_at?: string | null
+          id?: string
+          image_alt?: string | null
+          image_path?: string | null
+          is_active?: boolean
+          link_url?: string
+          starts_at?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "featured_slides_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       festival_programs: {
         Row: {
@@ -763,10 +941,15 @@ export type Database = {
           pass_id: string | null
           pass_type_id: string
           payment_method: string
+          posted_at: string | null
+          posted_by: string | null
+          posted_notice_error: string | null
+          posted_notice_sent_at: string | null
           quantity: number
           square_payment_id: string | null
           square_receipt_url: string | null
           status: string
+          tax_amount: number
           updated_at: string
           user_id: string
         }
@@ -788,10 +971,15 @@ export type Database = {
           pass_id?: string | null
           pass_type_id: string
           payment_method?: string
+          posted_at?: string | null
+          posted_by?: string | null
+          posted_notice_error?: string | null
+          posted_notice_sent_at?: string | null
           quantity?: number
           square_payment_id?: string | null
           square_receipt_url?: string | null
           status?: string
+          tax_amount?: number
           updated_at?: string
           user_id: string
         }
@@ -813,10 +1001,15 @@ export type Database = {
           pass_id?: string | null
           pass_type_id?: string
           payment_method?: string
+          posted_at?: string | null
+          posted_by?: string | null
+          posted_notice_error?: string | null
+          posted_notice_sent_at?: string | null
           quantity?: number
           square_payment_id?: string | null
           square_receipt_url?: string | null
           status?: string
+          tax_amount?: number
           updated_at?: string
           user_id?: string
         }
@@ -840,6 +1033,13 @@ export type Database = {
             columns: ["pass_type_id"]
             isOneToOne: false
             referencedRelation: "film_pass_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "film_pass_orders_posted_by_fkey"
+            columns: ["posted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -925,6 +1125,8 @@ export type Database = {
           per_showing_use_limit: number | null
           price: number
           redemption_price: number
+          square_item_id: string | null
+          square_variation_id: string | null
           ticket_face_value: number | null
           updated_at: string
         }
@@ -942,6 +1144,8 @@ export type Database = {
           per_showing_use_limit?: number | null
           price?: number
           redemption_price?: number
+          square_item_id?: string | null
+          square_variation_id?: string | null
           ticket_face_value?: number | null
           updated_at?: string
         }
@@ -959,6 +1163,8 @@ export type Database = {
           per_showing_use_limit?: number | null
           price?: number
           redemption_price?: number
+          square_item_id?: string | null
+          square_variation_id?: string | null
           ticket_face_value?: number | null
           updated_at?: string
         }
@@ -1253,6 +1459,36 @@ export type Database = {
           },
         ]
       }
+      job_postings: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       kenworthy_history: {
         Row: {
           category: string
@@ -1339,7 +1575,10 @@ export type Database = {
           pass_processing_fee: boolean
           poster_url: string | null
           rating: string | null
+          rsvp_url: string | null
+          square_item_id: string | null
           subcategory: Database["public"]["Enums"]["live_performance_subcategory"]
+          ticket_type: Database["public"]["Enums"]["event_ticket_type"]
           title: string
           trailer_url: string | null
           updated_at: string
@@ -1354,7 +1593,10 @@ export type Database = {
           pass_processing_fee?: boolean
           poster_url?: string | null
           rating?: string | null
+          rsvp_url?: string | null
+          square_item_id?: string | null
           subcategory?: Database["public"]["Enums"]["live_performance_subcategory"]
+          ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
           title: string
           trailer_url?: string | null
           updated_at?: string
@@ -1369,7 +1611,10 @@ export type Database = {
           pass_processing_fee?: boolean
           poster_url?: string | null
           rating?: string | null
+          rsvp_url?: string | null
+          square_item_id?: string | null
           subcategory?: Database["public"]["Enums"]["live_performance_subcategory"]
+          ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
           title?: string
           trailer_url?: string | null
           updated_at?: string
@@ -1392,6 +1637,7 @@ export type Database = {
           rating: string | null
           release_label: string | null
           release_year: number | null
+          square_item_id: string | null
           terms_percent: number | null
           title: string
           trailer_url: string | null
@@ -1412,6 +1658,7 @@ export type Database = {
           rating?: string | null
           release_label?: string | null
           release_year?: number | null
+          square_item_id?: string | null
           terms_percent?: number | null
           title: string
           trailer_url?: string | null
@@ -1432,48 +1679,10 @@ export type Database = {
           rating?: string | null
           release_label?: string | null
           release_year?: number | null
+          square_item_id?: string | null
           terms_percent?: number | null
           title?: string
           trailer_url?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      payroll_exports: {
-        Row: {
-          created_at: string
-          error_message: string | null
-          exported_by: string | null
-          id: string
-          period_end: string
-          period_start: string
-          qbo_batch_id: string | null
-          status: string
-          totals: Json
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          error_message?: string | null
-          exported_by?: string | null
-          id?: string
-          period_end: string
-          period_start: string
-          qbo_batch_id?: string | null
-          status?: string
-          totals?: Json
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          error_message?: string | null
-          exported_by?: string | null
-          id?: string
-          period_end?: string
-          period_start?: string
-          qbo_batch_id?: string | null
-          status?: string
-          totals?: Json
           updated_at?: string
         }
         Relationships: []
@@ -1523,6 +1732,111 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      payroll_exports: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          exported_by: string | null
+          id: string
+          period_end: string
+          period_start: string
+          qbo_batch_id: string | null
+          status: string
+          totals: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          exported_by?: string | null
+          id?: string
+          period_end: string
+          period_start: string
+          qbo_batch_id?: string | null
+          status?: string
+          totals?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          exported_by?: string | null
+          id?: string
+          period_end?: string
+          period_start?: string
+          qbo_batch_id?: string | null
+          status?: string
+          totals?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      press_articles: {
+        Row: {
+          created_at: string
+          excerpt: string | null
+          feature_order: number
+          id: string
+          image_url: string | null
+          is_active: boolean
+          is_featured: boolean
+          outlet: string
+          published_date: string | null
+          title: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          excerpt?: string | null
+          feature_order?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          is_featured?: boolean
+          outlet: string
+          published_date?: string | null
+          title: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          excerpt?: string | null
+          feature_order?: number
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          is_featured?: boolean
+          outlet?: string
+          published_date?: string | null
+          title?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
+      press_page_content: {
+        Row: {
+          id: boolean
+          intro_text: string | null
+          photo_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          intro_text?: string | null
+          photo_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: boolean
+          intro_text?: string | null
+          photo_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       production_price_tiers: {
         Row: {
@@ -1745,6 +2059,27 @@ export type Database = {
           },
         ]
       }
+      rate_limits: {
+        Row: {
+          bucket: string
+          count: number
+          expires_at: string
+          identifier: string
+        }
+        Insert: {
+          bucket: string
+          count?: number
+          expires_at: string
+          identifier: string
+        }
+        Update: {
+          bucket?: string
+          count?: number
+          expires_at?: string
+          identifier?: string
+        }
+        Relationships: []
+      }
       rental_invoice_lines: {
         Row: {
           account_id: string | null
@@ -1868,7 +2203,7 @@ export type Database = {
           created_at?: string
           departure_time?: string | null
           email: string
-          end_date: string | null
+          end_date?: string | null
           equipment?: Json | null
           event_description?: string | null
           event_end_time?: string | null
@@ -2131,32 +2466,52 @@ export type Database = {
           },
         ]
       }
-      square_link_dismissals: {
+      showing_square_variations: {
         Row: {
           created_at: string
-          dismissed_by: string | null
-          entity_id: string
-          entity_type: string
           id: string
-          reason: string | null
+          price_cents: number
+          showing_id: string
+          square_item_id: string
+          square_variation_id: string
+          tier_name: string
+          updated_at: string
+          variation_name: string
+          verified_at: string | null
         }
         Insert: {
           created_at?: string
-          dismissed_by?: string | null
-          entity_id: string
-          entity_type: string
           id?: string
-          reason?: string | null
+          price_cents: number
+          showing_id: string
+          square_item_id: string
+          square_variation_id: string
+          tier_name?: string
+          updated_at?: string
+          variation_name: string
+          verified_at?: string | null
         }
         Update: {
           created_at?: string
-          dismissed_by?: string | null
-          entity_id?: string
-          entity_type?: string
           id?: string
-          reason?: string | null
+          price_cents?: number
+          showing_id?: string
+          square_item_id?: string
+          square_variation_id?: string
+          tier_name?: string
+          updated_at?: string
+          variation_name?: string
+          verified_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "showing_square_variations_showing_id_fkey"
+            columns: ["showing_id"]
+            isOneToOne: false
+            referencedRelation: "showings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       showings: {
         Row: {
@@ -2352,6 +2707,178 @@ export type Database = {
         }
         Relationships: []
       }
+      square_catalog_baseline: {
+        Row: {
+          captured_at: string
+          category_id: string | null
+          event_start_at: string | null
+          has_event_block: boolean
+          is_archived: boolean
+          item_updated_at: string | null
+          item_version: number | null
+          last_ok_at: string | null
+          name: string | null
+          product_type: string | null
+          square_item_id: string
+          variation_count: number
+          variations: Json
+        }
+        Insert: {
+          captured_at?: string
+          category_id?: string | null
+          event_start_at?: string | null
+          has_event_block?: boolean
+          is_archived?: boolean
+          item_updated_at?: string | null
+          item_version?: number | null
+          last_ok_at?: string | null
+          name?: string | null
+          product_type?: string | null
+          square_item_id: string
+          variation_count?: number
+          variations?: Json
+        }
+        Update: {
+          captured_at?: string
+          category_id?: string | null
+          event_start_at?: string | null
+          has_event_block?: boolean
+          is_archived?: boolean
+          item_updated_at?: string | null
+          item_version?: number | null
+          last_ok_at?: string | null
+          name?: string | null
+          product_type?: string | null
+          square_item_id?: string
+          variation_count?: number
+          variations?: Json
+        }
+        Relationships: []
+      }
+      square_catalog_guard_runs: {
+        Row: {
+          findings: Json
+          id: string
+          items_baselined: number
+          items_seen: number
+          lost_category: number
+          lost_event_block: number
+          lost_variations: number
+          note: string | null
+          ran_at: string
+          vanished: number
+        }
+        Insert: {
+          findings?: Json
+          id?: string
+          items_baselined?: number
+          items_seen?: number
+          lost_category?: number
+          lost_event_block?: number
+          lost_variations?: number
+          note?: string | null
+          ran_at?: string
+          vanished?: number
+        }
+        Update: {
+          findings?: Json
+          id?: string
+          items_baselined?: number
+          items_seen?: number
+          lost_category?: number
+          lost_event_block?: number
+          lost_variations?: number
+          note?: string | null
+          ran_at?: string
+          vanished?: number
+        }
+        Relationships: []
+      }
+      square_link_dismissals: {
+        Row: {
+          created_at: string
+          dismissed_by: string | null
+          entity_id: string
+          entity_type: string
+          id: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          dismissed_by?: string | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          dismissed_by?: string | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "square_link_dismissals_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_bios: {
+        Row: {
+          bio: string | null
+          created_at: string
+          display_on_about: boolean
+          headshot_url: string | null
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+          title: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          bio?: string | null
+          created_at?: string
+          display_on_about?: boolean
+          headshot_url?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          bio?: string | null
+          created_at?: string
+          display_on_about?: boolean
+          headshot_url?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+          title?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_bios_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_square_links: {
         Row: {
           created_at: string
@@ -2385,7 +2912,6 @@ export type Database = {
           confirmation_dismissed_at: string | null
           confirmation_dismissed_by: string | null
           confirmation_error: string | null
-          sms_consent: boolean | null
           confirmation_sent_at: string | null
           id: string
           issued_by_user_id: string | null
@@ -2400,6 +2926,7 @@ export type Database = {
           scanned_at: string | null
           seat_id: string | null
           showing_id: string
+          sms_consent: boolean | null
           square_payment_id: string | null
           square_receipt_url: string | null
           square_refund_id: string | null
@@ -2418,7 +2945,6 @@ export type Database = {
           confirmation_dismissed_at?: string | null
           confirmation_dismissed_by?: string | null
           confirmation_error?: string | null
-          sms_consent?: boolean | null
           confirmation_sent_at?: string | null
           id?: string
           issued_by_user_id?: string | null
@@ -2433,6 +2959,7 @@ export type Database = {
           scanned_at?: string | null
           seat_id?: string | null
           showing_id: string
+          sms_consent?: boolean | null
           square_payment_id?: string | null
           square_receipt_url?: string | null
           square_refund_id?: string | null
@@ -2451,7 +2978,6 @@ export type Database = {
           confirmation_dismissed_at?: string | null
           confirmation_dismissed_by?: string | null
           confirmation_error?: string | null
-          sms_consent?: boolean | null
           confirmation_sent_at?: string | null
           id?: string
           issued_by_user_id?: string | null
@@ -2466,6 +2992,7 @@ export type Database = {
           scanned_at?: string | null
           seat_id?: string | null
           showing_id?: string
+          sms_consent?: boolean | null
           square_payment_id?: string | null
           square_receipt_url?: string | null
           square_refund_id?: string | null
@@ -2527,6 +3054,7 @@ export type Database = {
           square_payment_id: string | null
           square_receipt_url: string | null
           status: string
+          tax_paid: number
           user_id: string | null
         }
         Insert: {
@@ -2548,6 +3076,7 @@ export type Database = {
           square_payment_id?: string | null
           square_receipt_url?: string | null
           status?: string
+          tax_paid?: number
           user_id?: string | null
         }
         Update: {
@@ -2569,6 +3098,7 @@ export type Database = {
           square_payment_id?: string | null
           square_receipt_url?: string | null
           status?: string
+          tax_paid?: number
           user_id?: string | null
         }
         Relationships: [
@@ -2718,10 +3248,46 @@ export type Database = {
         Args: { p_showing_id: string }
         Returns: undefined
       }
+      audit_bulk_begin: {
+        Args: {
+          p_action: string
+          p_actor_id?: string
+          p_details?: Json
+          p_minutes?: number
+          p_tables: string[]
+        }
+        Returns: string
+      }
+      audit_bulk_end: {
+        Args: {
+          p_action: string
+          p_actor_id?: string
+          p_details?: Json
+          p_run_id: string
+        }
+        Returns: undefined
+      }
+      audit_is_secret_key: { Args: { p_key: string }; Returns: boolean }
+      audit_redact: { Args: { p_value: Json }; Returns: Json }
+      audit_uuid_or_null: { Args: { p_text: string }; Returns: string }
       check_in_ticket: {
-        Args: { p_qr_code: string }
+        Args: { p_qr_code: string; p_showing_id?: string }
         Returns: Json
       }
+      check_rate_limit: {
+        Args: {
+          p_bucket: string
+          p_identifier: string
+          p_limit: number
+          p_window_seconds: number
+        }
+        Returns: Json
+      }
+      configure_square_catalog_guard: {
+        Args: { p_service_key: string; p_url: string }
+        Returns: string
+      }
+      door_grace_window: { Args: never; Returns: string }
       get_contract_signature: {
         Args: { p_request_id: string }
         Returns: {
@@ -2828,6 +3394,7 @@ export type Database = {
         Args: { _showing_id: string; _user_id: string }
         Returns: boolean
       }
+      log_failed_staff_login: { Args: { p_email: string }; Returns: undefined }
       qbo_disconnect: { Args: { p_environment?: string }; Returns: boolean }
       qbo_get_active_tokens: {
         Args: { p_environment?: string }
@@ -2868,11 +3435,12 @@ export type Database = {
         Args: { p_source_key: string; p_source_type: string }
         Returns: string
       }
+      run_square_catalog_guard_check: { Args: never; Returns: string }
       search_film_passes: {
         Args: {
           p_limit?: number
           p_offset?: number
-          p_query?: string | null
+          p_query?: string
           p_sort?: string
           p_status?: string
         }
@@ -2881,9 +3449,9 @@ export type Database = {
       showing_attendees: {
         Args: { p_showing_ids: string[] }
         Returns: {
-          display_name: string | null
-          email: string | null
-          phone: string | null
+          display_name: string
+          email: string
+          phone: string
           ticket_id: string
         }[]
       }
@@ -2896,6 +3464,10 @@ export type Database = {
           taken_seat_ids: string[]
           total_seats: number
         }[]
+      }
+      showing_ends_at: {
+        Args: { s: Database["public"]["Tables"]["showings"]["Row"] }
+        Returns: string
       }
       ticket_hold_window: { Args: never; Returns: string }
     }
@@ -2915,6 +3487,13 @@ export type Database = {
         | "overdue"
         | "cancelled"
       event_ticket_type: "ticketed" | "rsvp" | "info_only"
+      live_event_type:
+        | "concert"
+        | "stand_up_comedy"
+        | "theatre"
+        | "dance"
+        | "film_screening"
+        | "community_event"
       live_performance_subcategory:
         | "concert"
         | "stand_up_comedy"
@@ -3051,6 +3630,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "regular_user", "staff", "host", "superadmin"],
@@ -3070,6 +3652,14 @@ export const Constants = {
         "cancelled",
       ],
       event_ticket_type: ["ticketed", "rsvp", "info_only"],
+      live_event_type: [
+        "concert",
+        "stand_up_comedy",
+        "theatre",
+        "dance",
+        "film_screening",
+        "community_event",
+      ],
       live_performance_subcategory: [
         "concert",
         "stand_up_comedy",
@@ -3086,4 +3676,3 @@ export const Constants = {
     },
   },
 } as const
-

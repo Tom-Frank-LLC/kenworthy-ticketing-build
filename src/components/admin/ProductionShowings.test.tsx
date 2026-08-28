@@ -1,16 +1,14 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ProductionShowings } from './ProductionShowings';
-import { AddLiveEventDialog } from './AddLiveEventDialog';
 
 /**
  * The Live Events listing showed a title, some badges and one aggregate ticket
  * count. The nights it played were not on the screen at all, and the only way
- * to add one was through the Movies tab. These cover the two pieces that fixed
- * that: the showings block both listings now share, and the single door in
- * front of the two create forms.
+ * to add one was through the Movies tab. This is the block both listings share
+ * now — "Showings" under a film, "Shows" under a live event.
  */
 
 beforeAll(() => {
@@ -101,43 +99,30 @@ describe('ProductionShowings', () => {
   });
 });
 
-describe('AddLiveEventDialog', () => {
-  function renderDialog() {
-    return render(
-      <MemoryRouter initialEntries={['/admin']}>
-        <Routes>
-          <Route path="/admin" element={<AddLiveEventDialog />} />
-          <Route path="/admin/concerts/new" element={<div>performance form</div>} />
-          <Route path="/admin/events/new" element={<div>event form</div>} />
-        </Routes>
+describe('ProductionShowings — what the child rows are called', () => {
+  it('says Showings by default, for a film', () => {
+    renderShowings([showing()]);
+    expect(screen.getByText('Showings')).toBeInTheDocument();
+  });
+
+  it('says Shows when the listing asks for it', () => {
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <ProductionShowings
+            showings={[showing()]}
+            productionTitle="Palouse Jazz Quartet"
+            heading="Shows"
+            getSold={() => 0}
+            getScanned={() => 0}
+            onOpenAttendees={vi.fn()}
+            onToggleSoldOut={vi.fn()}
+            onDeleteShowing={vi.fn()}
+          />
+        </TooltipProvider>
       </MemoryRouter>,
     );
-  }
-
-  it('replaces the two buttons with one, and explains the choice behind it', async () => {
-    renderDialog();
-    expect(screen.queryByText('Add Performance')).toBeNull();
-    expect(screen.queryByText('Add Event')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: /Add Live Event/ }));
-
-    // The distinction that was nowhere on screen before.
-    expect(await screen.findByText(/A ticketed live show/)).toBeInTheDocument();
-    expect(screen.getByText(/Ticketed, RSVP, or info-only/)).toBeInTheDocument();
-  });
-
-  it('goes to the performance form by default', async () => {
-    renderDialog();
-    fireEvent.click(screen.getByRole('button', { name: /Add Live Event/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
-    expect(await screen.findByText('performance form')).toBeInTheDocument();
-  });
-
-  it('goes to the event form when that is the kind chosen', async () => {
-    renderDialog();
-    fireEvent.click(screen.getByRole('button', { name: /Add Live Event/ }));
-    fireEvent.click(await screen.findByRole('radio', { name: /Community event/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(await screen.findByText('event form')).toBeInTheDocument();
+    expect(screen.getByText('Shows')).toBeInTheDocument();
+    expect(screen.queryByText('Showings')).toBeNull();
   });
 });

@@ -116,7 +116,9 @@ vi.mock('@/integrations/supabase/client', () => {
       ];
     }
     if (table === 'live_performances') {
-      return [{ id: PERFORMANCE_ID, title: 'Palouse Jazz Quartet', is_active: true }];
+      return [
+        { id: PERFORMANCE_ID, title: 'Palouse Jazz Quartet', ticket_type: 'ticketed', is_active: true },
+      ];
     }
     return [];
   };
@@ -490,7 +492,59 @@ describe('ShowingForm — opened from a title’s card', () => {
     renderForm(`/admin/showings/new?event=${RSVP_EVENT_ID}`);
 
     await waitFor(() => expect(state.toasts.error).toHaveLength(1));
-    expect(state.toasts.error[0]).toMatch(/cannot take a showing/i);
+    expect(state.toasts.error[0]).toMatch(/cannot take a show/i);
     expect(await screen.findByText('Category *')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Which listing sent us here.
+ *
+ * One selector used to offer Movie, Event and Live Performance from wherever
+ * the form was opened, which is why dating a concert began in the Movies tab.
+ * A showing belongs to exactly one listing, so the form only ever offers that
+ * listing's categories now — and calls the row what that listing calls it.
+ */
+describe('ShowingForm — scoped to the listing it was opened from', () => {
+  it('offers no category at all from Movies, because there is only one', async () => {
+    renderForm('/admin/showings/new?kind=movie');
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toBeInTheDocument());
+    expect(screen.queryByText('Category *')).toBeNull();
+    // Nothing to switch to, so no way to reach an event from here.
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Create Showing' })).toBeInTheDocument();
+  });
+
+  it('offers events and performances from Live Events, and never a film', async () => {
+    renderForm('/admin/showings/new?kind=live');
+
+    expect(await screen.findByText('Category *')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: /category/i }));
+
+    expect(await screen.findByRole('option', { name: 'Event' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Live Performance' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Movie' })).toBeNull();
+  });
+
+  it('calls it a Show on the live side and a Showing on the film side', async () => {
+    const live = renderForm('/admin/showings/new?kind=live');
+    expect(await screen.findByRole('button', { name: 'Create Show' })).toBeInTheDocument();
+    live.unmount();
+
+    renderForm('/admin/showings/new?kind=movie');
+    expect(await screen.findByRole('button', { name: 'Create Showing' })).toBeInTheDocument();
+  });
+
+  it('still writes the right foreign key when scoped from Live Events', async () => {
+    renderForm(`/admin/showings/new?kind=live&event=${EVENT_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].event_id).toBe(EVENT_ID);
+    expect(state.showingInserts[0].movie_id).toBeNull();
   });
 });

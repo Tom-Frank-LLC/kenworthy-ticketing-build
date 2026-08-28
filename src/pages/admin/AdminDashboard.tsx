@@ -17,7 +17,7 @@ import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import { CollapsibleSection } from '@/components/admin/CollapsibleSection';
 import { ProductionShowings, TicketCountBadge } from '@/components/admin/ProductionShowings';
-import { AddLiveEventDialog } from '@/components/admin/AddLiveEventDialog';
+import { liveEventTypeLabel, ticketingLabel } from '@/lib/liveEventTypes';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import TransactionsTab from '@/components/admin/TransactionsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
@@ -273,9 +273,15 @@ export default function AdminDashboard() {
 
   const uniqueRatings = Array.from(new Set(movies.map(m => m.rating).filter(Boolean))).sort();
   const uniqueMovieGenres = collectGenres(movies.map(m => m.genre));
-  const uniqueEventTypes = Array.from(new Set(events.map(e => e.ticket_type).filter(Boolean))).sort();
-  const uniqueConcertSubcategories = Array.from(new Set(concerts.map(c => c.subcategory).filter(Boolean))).sort();
-  const uniqueConcertGenres = collectGenres(concerts.map(c => c.genre));
+  // Both tables carry both fields now, so the two filters read across both
+  // rather than one applying to events and the other to performances.
+  const uniqueEventTypes = Array.from(new Set(
+    [...events, ...concerts].map((r: any) => r.ticket_type).filter(Boolean)
+  )).sort();
+  const uniqueConcertSubcategories = Array.from(new Set(
+    [...events, ...concerts].map((r: any) => r.subcategory).filter(Boolean)
+  )).sort();
+  const uniqueConcertGenres = collectGenres([...events, ...concerts].map((r: any) => r.genre));
 
   const resetScheduleFilters = () => {
     setScheduleQuery('');
@@ -377,9 +383,9 @@ export default function AdminDashboard() {
       matchesSearch(item.title) &&
       matchesStatus(!!item.is_active) &&
       (liveEventKindFilter === 'all' || item.kind === liveEventKindFilter) &&
-      (eventTypeFilter === 'all' || !isEvent || item.ticket_type === eventTypeFilter) &&
-      (concertSubcategoryFilter === 'all' || !isConcert || item.subcategory === concertSubcategoryFilter) &&
-      (genreFilter === 'all' || !isConcert || hasGenre(item.genre, genreFilter))
+      (eventTypeFilter === 'all' || item.ticket_type === eventTypeFilter) &&
+      (concertSubcategoryFilter === 'all' || item.subcategory === concertSubcategoryFilter) &&
+      (genreFilter === 'all' || hasGenre(item.genre, genreFilter))
     );
   }));
 
@@ -524,23 +530,23 @@ export default function AdminDashboard() {
             </Select>
             <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Ticket type" />
+                <SelectValue placeholder="Ticketing" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All ticket types</SelectItem>
+                <SelectItem value="all">All ticketing</SelectItem>
                 {uniqueEventTypes.map(t => (
-                  <SelectItem key={t} value={t}>{t.replace(/_/g, ' ')}</SelectItem>
+                  <SelectItem key={t} value={t}>{ticketingLabel(t)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Select value={concertSubcategoryFilter} onValueChange={setConcertSubcategoryFilter}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Subcategory" />
+                <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All subcategories</SelectItem>
+                <SelectItem value="all">All types</SelectItem>
                 {uniqueConcertSubcategories.map(s => (
-                  <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>
+                  <SelectItem key={s} value={s}>{liveEventTypeLabel(s)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -826,7 +832,7 @@ export default function AdminDashboard() {
               actions={
                 <>
                   <Button size="sm" variant="outline" asChild>
-                    <Link to="/admin/showings/new"><Plus className="h-4 w-4 mr-1" /> Add Showing</Link>
+                    <Link to="/admin/showings/new?kind=movie"><Plus className="h-4 w-4 mr-1" /> Add Showing</Link>
                   </Button>
                   <Button size="sm" asChild>
                     <Link to="/admin/movies/new"><Plus className="h-4 w-4 mr-1" /> Add Movie</Link>
@@ -904,13 +910,22 @@ export default function AdminDashboard() {
               title="Live Events"
               count={filteredLiveEvents.length}
               defaultOpen
-              /* One button, not two. "Add Performance" and "Add Event" sat
-                 here side by side with nothing saying which was which; the
-                 dialog asks the question and explains the answer. There is no
-                 section-level Add Showing to match Movies, because an unscoped
-                 showing form opens on Movie — every live event's showings are
-                 added from its own card instead. */
-              actions={<AddLiveEventDialog />}
+              /* Add Show and Add Event, mirroring Movies' Add Showing and Add
+                 Movie. "Add Performance" is gone: a performance is a type of
+                 event now, chosen inside the form, not a second button beside
+                 it. Add Show is safe here in a way it wasn't before — ?kind
+                 keeps the picker on events and performances, so it can no
+                 longer land on a film. */
+              actions={
+                <>
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/admin/showings/new?kind=live"><Plus className="h-4 w-4 mr-1" /> Add Show</Link>
+                  </Button>
+                  <Button size="sm" asChild>
+                    <Link to="/admin/events/new"><Plus className="h-4 w-4 mr-1" /> Add Event</Link>
+                  </Button>
+                </>
+              }
             >
             {listingFilters}
             <div className="space-y-4">
@@ -926,7 +941,7 @@ export default function AdminDashboard() {
                 // button on an RSVP or info-only card would open a picker that
                 // cannot reach the title it was opened from. Those are dated by
                 // their RSVP link, or not dated at all.
-                const canAddShowing = isConcert || item.ticket_type === 'ticketed';
+                const canAddShowing = item.ticket_type === 'ticketed';
                 const showingScope = isEvent ? `event=${item.id}` : `performance=${item.id}`;
                 return (
                   <Card key={`${item.kind}-${item.id}`} className="glass">
@@ -937,15 +952,20 @@ export default function AdminDashboard() {
                           <div>
                             <p className="font-medium">{item.title}</p>
                             <div className="flex flex-wrap gap-2 mt-1">
-                              {isEvent && (
-                                <Badge variant="outline" className="text-xs capitalize">{item.ticket_type.replace('_', ' ')}</Badge>
-                              )}
-                              {isConcert && item.subcategory && (
-                                <Badge variant="outline" className="text-xs capitalize">
-                                  {item.subcategory.replace(/_/g, ' ')}
+                              {/* What it is, then how people get in — the two
+                                  fields the create form now asks for, said in
+                                  the same order on every card. An untyped row
+                                  is one created before the type existed; it
+                                  shows nothing rather than a guess. */}
+                              {liveEventTypeLabel(item.subcategory) && (
+                                <Badge variant="outline" className="text-xs">
+                                  {liveEventTypeLabel(item.subcategory)}
                                 </Badge>
                               )}
-                              {isConcert && parseGenres(item.genre).map(g => <Badge key={g} variant="outline" className="text-xs">{g}</Badge>)}
+                              <Badge variant="outline" className="text-xs">
+                                {ticketingLabel(item.ticket_type) ?? 'Ticketed'}
+                              </Badge>
+                              {parseGenres(item.genre).map(g => <Badge key={g} variant="outline" className="text-xs">{g}</Badge>)}
                               <Badge variant={item.is_active ? 'default' : 'secondary'} className="text-xs">
                                 {item.is_active ? 'Active' : 'Inactive'}
                               </Badge>
@@ -968,7 +988,7 @@ export default function AdminDashboard() {
                           {/* Scoped to this title, so the showing form opens on
                               it instead of on an empty Movie picker. */}
                           {canAddShowing && (
-                            <Button variant="ghost" size="sm" title="Add showing" asChild>
+                            <Button variant="ghost" size="sm" title="Add show" asChild>
                               <Link to={`/admin/showings/new?${showingScope}`}><Calendar className="h-4 w-4" /></Link>
                             </Button>
                           )}
@@ -993,6 +1013,7 @@ export default function AdminDashboard() {
                       <ProductionShowings
                         showings={itemShowings}
                         productionTitle={item.title}
+                        heading="Shows"
                         getSold={getTicketsSoldForShowing}
                         getScanned={getScannedForShowing}
                         onOpenAttendees={openAttendees}
