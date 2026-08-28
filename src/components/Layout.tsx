@@ -307,7 +307,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div>
             <KenworthyLogo size="footer" className="mb-3" />
             <p className="font-serif italic text-muted-foreground">
-              A century of stories, shared one showing at a time.
+              A century of stories, shared on a single screen.
             </p>
           </div>
           <div className="space-y-2 text-muted-foreground">
@@ -317,9 +317,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <NewsletterSignup />
           <div className="md:text-right text-muted-foreground">
-            <p className="font-serif">Performing Arts Centre</p>
-            <p className="font-serif">Celebrating 100 Years · Est. 1926</p>
-            <p className="mt-3 text-sm">© {new Date().getFullYear()} Kenworthy</p>
+            {/* No top margin: this used to sit under two centenary lines that
+                are gone, and the leftover mt-3 pushed it out of line with the
+                other three footer columns. */}
+            <p className="text-sm">© {new Date().getFullYear()} Kenworthy</p>
             <p className="mt-2 text-sm">
               <Link to="/privacy" className="hover:text-primary transition-colors">
                 Privacy Policy

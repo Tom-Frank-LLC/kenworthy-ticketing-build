@@ -1,23 +1,17 @@
 import { Heart } from 'lucide-react';
 import { SEO } from '@/components/SEO';
-import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { SponsorshipOpportunityCard } from '@/components/SponsorshipOpportunityCard';
-import type { SponsorshipOpportunity } from '@/lib/sponsorshipPdf';
 
-
+/**
+ * The public sponsors page.
+ *
+ * It used to open with a "Current Sponsorship Opportunities" section fed live
+ * from `sponsorship_opportunities`. The section is gone, and so is the query —
+ * this was its only reader, so leaving it would have fetched the table on every
+ * visit to render nothing. The admin Sponsors tab still manages the rows, and
+ * SponsorshipOpportunityCard is still there to render them, so putting the
+ * section back is a matter of restoring this component, not the data.
+ */
 export default function Sponsors() {
-  const [opportunities, setOpportunities] = useState<(SponsorshipOpportunity & { id: string })[]>([]);
-
-  useEffect(() => {
-    (supabase as any)
-      .from('sponsorship_opportunities')
-      .select('id,slug,title,tagline,intro_text,hook_text,cta_label,section_heading,section_body,benefits,stats_text,price_text,availability_text,hero_image_url,display_order,is_active,created_by,created_at,updated_at')
-      .eq('is_active', true)
-      .order('display_order', { ascending: true })
-      .then(({ data }: any) => setOpportunities(data || []));
-  }, []);
-
   return (
     <div className="container py-16 max-w-5xl">
       <SEO
@@ -39,24 +33,6 @@ export default function Sponsors() {
           operations.
         </p>
       </header>
-
-      {opportunities.length > 0 && (
-        <section className="mb-20">
-          <div className="text-center mb-8">
-            <p className="text-xs uppercase tracking-[0.3em] text-accent font-display mb-3">
-              Now Accepting
-            </p>
-            <h2 className="font-display text-3xl md:text-4xl uppercase tracking-wide text-foreground">
-              Current Sponsorship Opportunities
-            </h2>
-          </div>
-          <div className="space-y-8">
-            {opportunities.map((o) => (
-              <SponsorshipOpportunityCard key={o.id} opportunity={o} />
-            ))}
-          </div>
-        </section>
-      )}
 
       <figure className="border-l-2 border-accent/40 pl-6 max-w-2xl mx-auto mb-16">
         <blockquote className="font-serif italic text-lg text-foreground/90 leading-relaxed">
