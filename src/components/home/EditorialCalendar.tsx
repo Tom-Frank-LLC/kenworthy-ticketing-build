@@ -194,7 +194,7 @@ export function EditorialCalendar({
                 508 S Main Street · Moscow, Idaho
               </p>
               <p className="font-serif text-sm text-muted-foreground/70 mt-2 italic">
-                A century of stories, shared one showing at a time.
+                A century of stories, shared on a single screen.
               </p>
             </div>
           </>
