@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**82 briefs** — 72 shipped, 5 built, 5 open, 0 needs triage, 0 closed.
+**83 briefs** — 73 shipped, 5 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -30,6 +30,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - **Live Events manages its own showings, and one door replaces two create buttons**<br>`ux` — `#226` — [brief](briefs/BRIEF-live-events-section-ux.md)
 - **A page with nothing to sell can be a curator's pick**<br>`feature` — `#218`, `#220`, `#222`, `#223` — [brief](briefs/BRIEF-manual-curator-slide.md)
 - **Port the type bump and rentals hero to phone widths**<br>`ux` — `#235` — [brief](briefs/BRIEF-mobile-layout-pass.md)
+- **Shorter hero, larger site-wide type, and a preview pane that clears the nav**<br>`ux` — `#228`, `#195` — [brief](briefs/BRIEF-ui-polish-hero-fonts-sticky.md)
 - **An admin adds a whole run of showtimes in one pass, and is told exactly which ones landed**<br>`feature` — `#203`, `#208` — [brief](briefs/BRIEF-batch-showtimes.md)
 - **Give each film pass its own purchase page**<br>`ux` — `#207` — [brief](briefs/BRIEF-film-pass-detail-pages.md)
 - **The Support menu sits on top of the Tickets button at tablet width**<br>`bug` — `#216` — [brief](briefs/BRIEF-header-nav-overlap-768.md)
