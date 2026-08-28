@@ -23,11 +23,11 @@ export const LEGACY_PAGE_SECTIONS = ['festival', 'hiring', 'press'] as const;
  * `LEGACY_PAGE_SECTIONS` answers "was this once a top-level tab, so does an old
  * `?section=` link have to be redirected?" — a closed set that can only shrink.
  * This one answers "is this a sub-tab that exists?", and it grows every time a
- * page gets an editor. Backstage was born inside Pages, so it belongs here and
- * not there: `?section=backstage` was never a working link and should not start
- * being one.
+ * page gets an editor. Backstage and Home were both born inside Pages, so they
+ * belong here and not there: `?section=backstage` was never a working link and
+ * should not start being one.
  */
-export const PAGES_SUB_TABS = [...LEGACY_PAGE_SECTIONS, 'backstage'] as const;
+export const PAGES_SUB_TABS = [...LEGACY_PAGE_SECTIONS, 'backstage', 'home'] as const;
 
 export type LegacyPageSection = (typeof LEGACY_PAGE_SECTIONS)[number];
 
