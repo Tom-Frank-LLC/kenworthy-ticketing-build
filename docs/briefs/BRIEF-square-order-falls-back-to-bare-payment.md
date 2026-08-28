@@ -144,27 +144,59 @@ separately rather than assuming.
   a named ad-hoc line with no item-sales or category rollup. **Fixing the
   fulfillment exposes this rather than solving it.**
 
-### The fix — take it from the working code, not from the API docs
+### The fix — measured on the staging sandbox, 28 Aug 2026
 
-`square-invoice` is the one order builder in this repo that has always worked,
-and it sends **no `fulfillments` array at all**. Fulfillments are optional on a
-Square order.
+A throwaway probe posted seven order shapes to the staging Square sandbox
+(`SQUARE_SANDBOX_*`, cannot touch the live catalog). Ad-hoc lines only, so no
+catalogue was referenced.
 
-Two candidates, to be settled on the **staging Square sandbox**, which is real
-and free to break (`square-staging-has-a-real-sandbox`):
+| # | Shape | Result |
+|---|---|---|
+| A | no `fulfillments` at all | ✅ **200** |
+| B | `DIGITAL` + `delivery_details`, `state: COMPLETED` — what ships today | ❌ 400 |
+| C | `DIGITAL` + `digital_details: {}` | ❌ 400, same error |
+| D | `DIGITAL` + `digital_details.recipient` | ❌ 400, same error |
+| E | `PICKUP` + `pickup_details.recipient`, `state: PROPOSED` | ✅ **200, recipient stored** |
+| F | `DIGITAL` + `digital_details.recipient`, `state: PROPOSED` | ❌ 400, same error |
+| G | as F, but `Square-Version: 2025-01-23` | ❌ 400, same error |
 
-1. **Drop the fulfillment** — matches `square-invoice`, the proven path here.
-   Lowest risk. Cost: the buyer name and email currently ride on
-   `delivery_details.recipient`, so that data would need another home. Note it
-   reaches Square *nowhere* today, since the order never gets created.
-2. **Supply `digital_details`** — keeps the recipient, and keeps parity with how
-   Square Online records web sales, which is what the original design wanted.
-   There is no working example of this shape in the repo, so its required fields
-   must be confirmed against the sandbox before shipping. Do not guess it from
-   memory.
+**`DIGITAL` cannot be made to work.** C, D, F and G all supply
+`digital_details` and Square still answers *"must have `digital_details`
+supplied"* — including under a 2025 API version. Whatever the message says, this
+account/API will not accept a DIGITAL fulfillment, so renaming the field would
+not have fixed it. Guessing the shape from the error text would have burned a
+deploy and produced the same failure.
 
-Prefer (2) if the sandbox accepts it, since it preserves the buyer contact data
-the original design intended. Fall back to (1) if it does not.
+**A second, independent bug in the same block.** Shape E first failed with
+*"Fulfillments must be created with `state` of PROPOSED or HELD"*. Our code
+sends `state: 'COMPLETED'`, which is invalid at creation for **every**
+fulfillment type. Fixing only the type would have hit this next.
+
+### Recommendation: PICKUP, not "drop the fulfillment"
+
+Both A and E work. **E is better**, and it resolves a second complaint at the
+same time:
+
+- Square **stored the recipient** — `display_name` and `email_address` came back
+  on the order. That is the buyer contact data that "never reaches Square"
+  today, and it lands without any extra call.
+- `PICKUP` is arguably more truthful than `DIGITAL` for this theatre anyway:
+  the ticket is presented at the door.
+- `pickup_details.pickup_at` is required, and there is an obviously correct
+  value for it — **the showing's start time** — which makes the order carry the
+  showtime as structured data rather than only inside a variation name.
+
+So the change to `orderRequestBody` is:
+
+```
+type:  'DIGITAL'          ->  'PICKUP'
+state: 'COMPLETED'        ->  'PROPOSED'
+delivery_details: {...}   ->  pickup_details: { pickup_at: <showtime ISO>, recipient: {...} }
+```
+
+Fall back to shape A (no fulfillments, the `square-invoice` pattern) only if
+`pickup_at` turns out to be awkward to thread through every caller —
+`square-donation` has no showtime, so it likely wants A regardless.
 
 ## Steps
 
