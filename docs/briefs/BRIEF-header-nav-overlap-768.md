@@ -1,12 +1,14 @@
 ---
 brief: header-nav-overlap-768
 title: The Support menu sits on top of the Tickets button at tablet width
-status: built
+status: shipped
 track: bug
 severity: P2
 date: 2026-08-27
 verified: true
-evidence: On staging at version 53ed241b — zero pairwise header overlaps at 375/414/640/768/900/1024/1280/1440, with the visible nav-item count identical to production at every width. Production still overlaps Support|Tickets at 768.
+shipped_in: ["#216"]
+shipped_at: 2026-08-27
+evidence: Verified in production at Worker version 9d870cf0: zero pairwise header overlaps at 375-1440, with the visible nav-item count unchanged at every width.
 ---
 
 # Brief: header links collide with the header buttons at ~768px
