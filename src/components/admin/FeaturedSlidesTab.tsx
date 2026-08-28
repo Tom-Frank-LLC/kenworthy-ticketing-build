@@ -48,9 +48,11 @@ import {
  *
  * The derived half is the three `is_featured` flags: on a film, on an event or
  * live performance, and on one showing. Those are set on each title's own
- * form, three tabs away, and nothing ever listed them together — so "what is on
- * the front page" was a question you could only answer by opening the front
- * page, and a flag left on a film whose last date has passed was invisible.
+ * form — the three tabs beside this one, which is why this screen sits in
+ * Listings rather than among the page editors — and nothing ever listed them
+ * together, so "what is on the front page" was a question you could only
+ * answer by opening the front page, and a flag left on a film whose last date
+ * has passed was invisible.
  * They are listed below the slides, in the order the band runs them, and can be
  * cleared from here. They cannot be *set* from here: featuring a title is a
  * decision about that title, and it belongs on its form beside everything else
@@ -527,9 +529,9 @@ export default function FeaturedSlidesTab() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="max-w-2xl">
-          <h3 className="font-display text-2xl">Curator&rsquo;s picks</h3>
+          <h3 className="font-display text-2xl">Featured on the home page</h3>
           <p className="text-sm text-muted-foreground font-serif">
-            Everything in the carousel on the home page, in the order it runs.
+            Everything in the curator&rsquo;s-pick carousel, in the order it runs.
             Slides you write by hand come first — use one to point at a page that
             has no showing behind it, like the Silent Film Festival. Then the films,
             events and single nights flagged &ldquo;featured&rdquo; on their own
@@ -653,8 +655,8 @@ export default function FeaturedSlidesTab() {
           Set on each title&rsquo;s own form, and shown here so the whole band can be
           read in one place. <strong className="text-foreground">Remove</strong> only
           clears the featured flag — the film, event or showing itself is untouched
-          and stays in the listings. To feature something, open it in Listings and
-          tick it there.
+          and stays in the listings. To feature something, open it in Movies, Live
+          Events or its showing and tick it there.
         </p>
 
         {picksLoading ? (

@@ -6,7 +6,8 @@
  * *production* pick is `is_featured` on a movie, an event or a live
  * performance, set on that title's own form. A *showing* pick is `is_featured`
  * on one date, set on that showing's form. A *slide* is a row of
- * `featured_slides`, written in the admin's Home tab. Nothing until now could
+ * `featured_slides`, written in the admin's Listings → Featured tab. Nothing
+ * until that tab existed could
  * see all three at once, so "what is on the front page right now" was a
  * question that could only be answered by opening the front page.
  *

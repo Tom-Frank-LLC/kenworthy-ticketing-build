@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Home
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
@@ -23,7 +23,11 @@ import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
 import FestivalProgramsTab from '@/components/admin/FestivalProgramsTab';
 import { SquareLinkPanel } from '@/components/admin/SquareLinkPanel';
 import SquareCatalogTab from '@/components/admin/SquareCatalogTab';
-import { DEFAULT_PAGES_TAB, resolveAdminSection } from '@/lib/adminSections';
+import {
+  DEFAULT_PAGES_TAB,
+  DEFAULT_SCHEDULE_TAB,
+  resolveAdminSection,
+} from '@/lib/adminSections';
 import FilmPassesTab from '@/components/admin/FilmPassesTab';
 import HostManagementTab from '@/components/admin/HostManagementTab';
 import AccountingTab from '@/components/admin/AccountingTab';
@@ -121,7 +125,6 @@ async function fetchAllPages<T>(
 }
 
 /** The Listings sub-tabs that `?tab=` may name. */
-const SCHEDULE_TABS = ['movies', 'live-events', 'venues'];
 
 export default function AdminDashboard() {
   const { isAdmin, isSuperadmin, loading: authLoading } = useAuth();
@@ -143,16 +146,20 @@ export default function AdminDashboard() {
    * values land on Movies instead. (Same contract `adminSections.ts` keeps for
    * the top-level `?section=`.)
    */
-  const [activeScheduleTab, setActiveScheduleTab] = useState(() => {
-    const wanted = searchParams.get('tab');
-    return wanted && SCHEDULE_TABS.includes(wanted) ? wanted : 'movies';
-  });
-  // Festival, Hiring and Press were each a top-level tab until the dashboard
-  // grew past what a row of tabs can hold. They are all one job — editing a
-  // specific public page — so they live under Pages now. Their old ?section=
-  // values still work: an existing bookmark or a link in someone's notes lands
-  // on Pages with the right sub-tab open rather than on a blank panel.
-  const initialTabs = resolveAdminSection(searchParams.get('section'), searchParams.get('page'));
+  /*
+   * Every tab on this screen is a query parameter, so every value of one is a
+   * link somebody may have bookmarked. Festival, Hiring and Press were each a
+   * top-level tab until the dashboard outgrew a single row; the curator's-pick
+   * editor was a sub-tab of Pages until it moved to Listings. Old links to all
+   * of those still land on the right panel — the rule, and the reason it is a
+   * rule, is `adminSections.ts`.
+   */
+  const initialTabs = resolveAdminSection(
+    searchParams.get('section'),
+    searchParams.get('page'),
+    searchParams.get('tab'),
+  );
+  const [activeScheduleTab, setActiveScheduleTab] = useState(() => initialTabs.scheduleTab);
   const [activeTopTab, setActiveTopTab] = useState(initialTabs.section);
   const [activePagesTab, setActivePagesTab] = useState(initialTabs.pagesTab);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>(
@@ -188,7 +195,7 @@ export default function AdminDashboard() {
       else next.delete(key);
     };
     setOrDel('q', scheduleQuery, '');
-    setOrDel('tab', activeScheduleTab, 'movies');
+    setOrDel('tab', activeScheduleTab, DEFAULT_SCHEDULE_TAB);
     setOrDel('section', activeTopTab, 'listings');
     setOrDel('page', activePagesTab, DEFAULT_PAGES_TAB);
     setOrDel('status', statusFilter, 'all');
@@ -829,6 +836,14 @@ export default function AdminDashboard() {
                 <TabsTrigger value="movies">Movies</TabsTrigger>
                 <TabsTrigger value="live-events">Live Events</TabsTrigger>
                 <TabsTrigger value="venues">Venues</TabsTrigger>
+                {/* Not a fourth kind of listing — it is what the listings
+                    promote. The flags that fill the home page's carousel are
+                    set on the forms in the three tabs beside this one, so the
+                    screen that gathers them belongs next to them rather than
+                    among the page editors. */}
+                <TabsTrigger value="featured">
+                  <Star className="h-4 w-4 mr-1 inline" />Featured
+                </TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value="movies">
@@ -1140,6 +1155,10 @@ export default function AdminDashboard() {
             </CollapsibleSection>
             </TabsContent>
 
+            <TabsContent value="featured">
+              <FeaturedSlidesTab />
+            </TabsContent>
+
           </Tabs>
         </TabsContent>
 
@@ -1258,13 +1277,6 @@ export default function AdminDashboard() {
                 <TabsTrigger value="backstage">
                   <Martini className="h-4 w-4 mr-1 inline" />Backstage
                 </TabsTrigger>
-                {/* The home page is not edited here the way the others are —
-                    its listings come from the productions. What is editable is
-                    the one thing on it that has no production behind it: the
-                    hand-written slides at the front of the curator carousel. */}
-                <TabsTrigger value="home">
-                  <Home className="h-4 w-4 mr-1 inline" />Home
-                </TabsTrigger>
               </TabsList>
               <TabsContent value="festival">
                 <FestivalProgramsTab />
@@ -1277,9 +1289,6 @@ export default function AdminDashboard() {
               </TabsContent>
               <TabsContent value="backstage">
                 <BackstageTab />
-              </TabsContent>
-              <TabsContent value="home">
-                <FeaturedSlidesTab />
               </TabsContent>
             </Tabs>
           </TabsContent>
