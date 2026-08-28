@@ -125,6 +125,11 @@ export default function ShowingForm() {
   const noun = category === 'movie' ? 'showing' : 'show';
   const Noun = category === 'movie' ? 'Showing' : 'Show';
 
+  // Where Back and Done return to. `tab` names the listing sub-tab and falls
+  // back to Movies when absent, so a bare '/admin' dropped anyone working in
+  // Live Events onto the film list every time they closed this form.
+  const listingPath = category === 'movie' ? '/admin?tab=movies' : '/admin?tab=live-events';
+
   const [movies, setMovies] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [concerts, setConcerts] = useState<any[]>([]);
@@ -829,7 +834,7 @@ export default function ShowingForm() {
       const square = await runSquareEnsure(id!);
       if (square) toast.warning(square.message);
       toast.success(`${Noun} updated!`);
-      navigate('/admin');
+      navigate(listingPath);
       setSaving(false);
       return;
     }
@@ -897,7 +902,7 @@ export default function ShowingForm() {
     if (summary.tone === 'success') {
       if (squareMessage) toast.warning(squareMessage);
       toast.success(summary.headline);
-      navigate('/admin');
+      navigate(listingPath);
       setSaving(false);
       return;
     }
@@ -931,7 +936,7 @@ export default function ShowingForm() {
 
   return (
     <div className={`container py-8 px-4 ${showSeatOverride ? 'max-w-4xl' : 'max-w-lg'}`}>
-      <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="mb-4">← Back</Button>
+      <Button variant="ghost" size="sm" onClick={() => navigate(listingPath)} className="mb-4">← Back</Button>
 
       {/* What the batch actually did, per showtime.
           There is no transaction behind a batch — it is a client-side loop over
@@ -1005,7 +1010,7 @@ export default function ShowingForm() {
               </div>
             )}
 
-            <Button type="button" variant="outline" size="sm" onClick={() => navigate('/admin')}>
+            <Button type="button" variant="outline" size="sm" onClick={() => navigate(listingPath)}>
               Done — back to admin
             </Button>
           </CardContent>

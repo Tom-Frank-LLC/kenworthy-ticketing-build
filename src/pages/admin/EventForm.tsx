@@ -129,7 +129,7 @@ export default function EventForm() {
 
     if (error) toast.error(error.message);
     else if (!data || data.length === 0) toast.error('Nothing was saved — your account may not have permission to edit this.');
-    else { toast.success(isEdit ? 'Event updated!' : 'Event created!'); navigate('/admin?tab=listings'); }
+    else { toast.success(isEdit ? 'Event updated!' : 'Event created!'); navigate('/admin?tab=live-events'); }
     setSaving(false);
   };
 
@@ -139,7 +139,7 @@ export default function EventForm() {
 
   return (
     <div className={`container py-8 px-4 ${showsSeatPricing ? 'max-w-4xl' : 'max-w-lg'}`}>
-      <Button variant="ghost" size="sm" onClick={() => navigate('/admin?tab=listings')} className="mb-4">← Back</Button>
+      <Button variant="ghost" size="sm" onClick={() => navigate('/admin?tab=live-events')} className="mb-4">← Back</Button>
       <div className={showsSeatPricing ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}>
       <Card className="glass">
         <CardHeader>

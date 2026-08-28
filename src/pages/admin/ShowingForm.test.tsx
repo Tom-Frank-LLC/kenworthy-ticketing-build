@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useSearchParams } from 'react-router-dom';
 import { venueLocalToInstant } from '@/lib/datetime';
 
 /** The instant the form will actually send for a wall clock, as it computes it. */
@@ -176,13 +176,23 @@ beforeEach(() => {
   state.toasts = { error: [], success: [], warning: [] };
 });
 
+function LandedOnAdmin() {
+  const [params] = useSearchParams();
+  return (
+    <div>
+      <div>admin dashboard</div>
+      <div>{`tab=${params.get('tab') ?? 'movies'}`}</div>
+    </div>
+  );
+}
+
 function renderForm(entry = '/admin/showings/new') {
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/admin/showings/new" element={<ShowingForm />} />
         <Route path="/admin/showings/:id" element={<div>showing detail</div>} />
-        <Route path="/admin" element={<div>admin dashboard</div>} />
+        <Route path="/admin" element={<LandedOnAdmin />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -565,5 +575,38 @@ describe('ShowingForm — scoped to the listing it was opened from', () => {
     await waitFor(() => expect(state.showingInserts).toHaveLength(1));
     expect(state.showingInserts[0].event_id).toBe(EVENT_ID);
     expect(state.showingInserts[0].movie_id).toBeNull();
+  });
+});
+
+/**
+ * Closing the form should put you back where you were working.
+ *
+ * `?tab=` names the listing sub-tab and falls back to Movies when absent, so
+ * every exit here went to a bare `/admin` and dropped anyone mid-way through
+ * scheduling a run of concerts back onto the film list.
+ */
+describe('ShowingForm — closing returns to the listing you came from', () => {
+  it('goes back to Live Events from a show', async () => {
+    renderForm('/admin/showings/new?kind=live');
+    fireEvent.click(await screen.findByRole('button', { name: '← Back' }));
+    expect(await screen.findByText(/tab=live-events/)).toBeInTheDocument();
+  });
+
+  it('goes back to Movies from a showing', async () => {
+    renderForm('/admin/showings/new?kind=movie');
+    fireEvent.click(await screen.findByRole('button', { name: '← Back' }));
+    expect(await screen.findByText(/tab=movies/)).toBeInTheDocument();
+  });
+
+  it('lands on Live Events after actually saving a run of shows', async () => {
+    renderForm(`/admin/showings/new?kind=live&event=${EVENT_ID}`);
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+    fillShowtimes(['2026-09-12T19:30', '2026-09-13T19:30']);
+    submit();
+
+    // A clean batch leaves the form on its own, so there is no Done to press.
+    await waitFor(() => expect(state.showingInserts).toHaveLength(2));
+    expect(await screen.findByText('admin dashboard')).toBeInTheDocument();
+    expect(screen.getByText(/tab=live-events/)).toBeInTheDocument();
   });
 });
