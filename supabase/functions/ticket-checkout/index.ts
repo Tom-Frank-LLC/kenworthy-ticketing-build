@@ -397,11 +397,14 @@ Deno.serve(async (req: Request) => {
             referenceId: orderToken,
             built,
             idempotencyKey: `order-${idempotencyKey}`,
-            // The patron collects at the door, so the showtime is the pickup
-            // time. This also puts the showtime on the order as structured
-            // data, not only inside a variation name.
-            fulfillment: 'PICKUP',
-            pickupAt: order.showing.start_time,
+            // No fulfillment. PICKUP also works and would carry the buyer's
+            // name, but a paid pickup order stays OPEN in Square — measured —
+            // so every online sale would leave a phantom unfulfilled pickup on
+            // the theatre's Orders screen. The buyer's email already reaches
+            // Square on the payment (`buyer_email_address`), and the line item
+            // already names the showtime, so the fulfillment bought us little
+            // and cost operational noise.
+            fulfillment: 'NONE',
             buyerEmail: contact.email,
             buyerName: contact.name,
           }),

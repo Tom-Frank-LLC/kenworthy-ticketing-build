@@ -12,10 +12,10 @@ verified: true
 # Brief: every online sale registers as "Custom Amount"
 
 > **Fixed and verified on staging, 28 Aug 2026 — not yet deployed to
-> production.** `orderRequestBody` now builds `PICKUP` / `PROPOSED` /
-> `pickup_details`. The real builder's output was posted to the Square sandbox
-> once per calling shape and **all six were accepted**, with the recipient
-> stored where expected. See *Verification* at the end.
+> production.** Every caller now sends **no fulfillment**, the shape
+> `square-invoice` has always used. Verified end to end against the Square
+> sandbox — order created, payment attached, order `COMPLETED`. See
+> *Verification* at the end, including why PICKUP was tried and rejected.
 
 **Status:** 🔴 Open. Found 28 Aug 2026 by the first real-card purchase on the
 newly live kenworthy.org.
@@ -313,3 +313,49 @@ the sale in Square", because that is what this would have produced.
   nobody read, for nine days, across every online sale. Whatever surfaces it —
   a counter on the admin transactions screen, or extending
   `square-catalog-guard` — matters more than this particular bug.
+
+## Why PICKUP was tried and then rejected
+
+The first fix used `PICKUP` + `pickup_details`, because Square **stores the
+recipient** there and that was the obvious way to get the buyer's name and email
+onto the order — a complaint raised in the same session.
+
+Taking it end to end on the sandbox — order, then a real payment against it with
+a sandbox card — showed the cost:
+
+| Shape | Payment | Order after payment |
+|---|---|---|
+| `PICKUP` + `pickup_details` | ✅ COMPLETED | ⚠️ **`OPEN`**, fulfillment `PROPOSED` |
+| `PICKUP`, then fulfillment updated to COMPLETED | ✅ COMPLETED | ⚠️ still **`OPEN`** |
+| **no fulfillment** | ✅ COMPLETED | ✅ **`COMPLETED`** |
+
+A paid PICKUP order stays open, and updating the fulfillment to `COMPLETED`
+does not close it. Every online sale would leave a phantom unfulfilled pickup on
+the theatre's Orders screen, permanently. That is a live operational change
+traded for something nearly redundant: `createPayment` already sends
+`buyer_email_address`, so the buyer's email reaches Square on the payment
+either way. Only the *name* was gained.
+
+So every caller ships the no-fulfillment shape. `PICKUP` stays supported in the
+builder, one argument away, if the buyer's name on the order is ever judged
+worth an open order per sale.
+
+**The lesson is the size of the test.** "Square accepts this order" and "the sale
+still works and leaves nothing behind" are different questions, and only the
+second one is what production has to survive. The first probe answered the first
+question and would have shipped an operational regression.
+
+## Blast radius reviewed before shipping
+
+- **All four `orderRequestBody` callers** were changed; a search confirms there
+  are no others.
+- **`_shared/transactions.ts:267`** already reads `pickup_details.recipient`,
+  then `shipment_details`, then `delivery_details`, and tolerates absent
+  fulfillments — so the admin transactions view is unaffected either way.
+- **`square-refund`** works from our own `order_token`, never Square's order, so
+  refunds are untouched.
+- **`mailchimp-ecommerce`** does not read Square orders.
+- **`square_order_id`** is persisted only by `square-cash-sale`; that write is
+  unchanged.
+- **Production matches `main`** for all four functions — each was deployed after
+  its last source commit — so deploying ships this change and nothing else.

@@ -169,10 +169,21 @@ export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
  * does not work for this account, whatever the error text invites you to try.
  *
  * Two shapes were measured working: no `fulfillments` at all, and PICKUP with
- * `pickup_details` and `state: PROPOSED`. PICKUP is chosen because Square
- * **stores the recipient**, which is how the buyer's name and email reach
- * Square at all — and because a ticket presented at the door is a pickup more
- * honestly than it is a digital delivery.
+ * `pickup_details` and `state: PROPOSED`.
+ *
+ * **Every caller uses the no-fulfillment shape**, which is what `square-invoice`
+ * has always sent. PICKUP was tried first because Square stores the recipient
+ * there, but an end-to-end sandbox run showed the cost: a *paid* PICKUP order
+ * stays `state: OPEN` with an unfulfilled pickup, even after the fulfillment is
+ * updated to COMPLETED. Every online sale would leave a phantom pickup on the
+ * theatre's Orders screen forever. A no-fulfillment order goes straight to
+ * COMPLETED once paid.
+ *
+ * The recipient was the only thing PICKUP bought, and it was nearly redundant:
+ * `createPayment` already sends `buyer_email_address`, so the buyer's email
+ * reaches Square on the payment regardless. PICKUP remains supported here — it
+ * is one argument away — if the buyer's *name* on the order is ever worth an
+ * open order per sale.
  *
  * `state` must be `PROPOSED` or `HELD` at creation. `COMPLETED` — which this
  * sent for every type, including `IN_STORE` — is rejected outright, so that was

@@ -897,12 +897,10 @@ Deno.serve(async (req: Request) => {
           referenceId: pending.id,
           built,
           idempotencyKey: `order-${idempotencyKey}`,
-          // A pass collected at the box office is a pickup, available from
-          // the moment it is bought. A mailed pass is not collected at all, so
-          // it takes the no-fulfillment shape rather than claiming a pickup
-          // that never happens — Square SHIPMENT is untested here.
-          fulfillment: fulfillment === 'pickup' ? 'PICKUP' : 'NONE',
-          pickupAt: new Date().toISOString(),
+          // No fulfillment, for the same reason as ticket-checkout: a paid
+          // PICKUP order stays OPEN in Square. How the pass reaches the buyer
+          // is tracked in our own tables, not Square's.
+          fulfillment: 'NONE',
           buyerEmail: contact.email,
           buyerName: contact.name,
         }),

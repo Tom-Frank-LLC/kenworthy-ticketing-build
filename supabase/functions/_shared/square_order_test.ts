@@ -142,7 +142,7 @@ Deno.test('reference_id is truncated to what Square accepts', () => {
  * re-measuring, not re-reasoning.
  */
 
-Deno.test('a ticket sale is a PICKUP, PROPOSED, carrying the showtime and the buyer', () => {
+Deno.test('PICKUP, when used, is PROPOSED and carries the showtime and the buyer', () => {
   const body: any = orderRequestBody({
     locationId: 'LOC1', referenceId: 'r', idempotencyKey: 'i',
     built: buildTicketOrder([g()]),
@@ -162,7 +162,7 @@ Deno.test('a ticket sale is a PICKUP, PROPOSED, carrying the showtime and the bu
   assertEquals(f.delivery_details, undefined);
 });
 
-Deno.test('a donation carries no fulfillment at all', () => {
+Deno.test('every caller ships the no-fulfillment shape: a paid one completes', () => {
   const body: any = orderRequestBody({
     locationId: 'LOC1', referenceId: 'r', idempotencyKey: 'i',
     built: buildTicketOrder([g()]), fulfillment: 'NONE',
