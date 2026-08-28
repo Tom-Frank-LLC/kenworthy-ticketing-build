@@ -1,13 +1,13 @@
 ---
 brief: live-events-section-ux
 title: Live Events manages its own showings, and one door replaces two create buttons
-status: built
+status: shipped
 track: ux
 severity: P2
 date: 2026-08-25
+shipped_in: ["#226"]
 shipped_at: 2026-08-28
 verified: true
-superseded_by: partial
 evidence: >-
   Deployed to production 2026-08-28T05:07:21Z as worker version
   959f714f-8ad5-4f0b-8daf-104d217720a9 (rollback: 9d870cf0-ef06-4466-937d-a0123aacd1fc,
@@ -220,11 +220,29 @@ Checks: `tsc -p tsconfig.app.json --noEmit`, `vitest` (52 files, 657 passing —
 `build:staging`. Migration tested in a throwaway `postgres:15` first, including
 its rollback, before it touched staging.
 
-### Not done
+### Shipped to production 2026-08-28
 
-- **Production is not migrated and not deployed.** It still runs the chooser
-  build (worker `959f714f`) against a schema without these columns. The
-  frontend must not ship before the migration.
+Merged as **#226** (`aa30f3c`). Migration applied to production *before* the
+frontend, since the form writes `subcategory`. Worker version
+**`e91393f4-14af-4e7e-a901-323bf4dfbd4a`**; rollback is
+`8af88346-a6f1-4004-8fa3-1acb964c6dd7`.
+
+Production was confirmed not ahead of main first: the live bundle was
+byte-identical to a local build of `fc85c83`, so nothing unmerged was at risk.
+(That 06:22 deploy by another session had already replaced the chooser build,
+which is moot — the chooser is gone.)
+
+After the migration, production reads 199 events / 1 live performance / 1800
+showings — unchanged counts, nothing moved, and the one legacy performance kept
+`subcategory: concert` while gaining `ticket_type: ticketed`.
+
+Verified against the live origin: entry `index-BEHeYWQD.js` served as
+`text/javascript`, and `AdminDashboard-DHku1OD7.js` / `EventForm-S_3HxVXk.js`
+byte-identical to the local production build. Public site loads with no console
+errors. The admin screens themselves were verified in a signed-in browser on
+**staging** — production admin needs a sign-in this session does not perform.
+
+### Not done
 - The label fixes (Title, Rating, Trailer, RSVP URL, switches, category select
   had no `htmlFor`) were needed to test the form and are worth keeping, but a
   proper pass over the admin forms is its own brief.
