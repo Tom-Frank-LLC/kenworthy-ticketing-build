@@ -237,11 +237,6 @@ export default function Press() {
                   Press Contact, Colin Mannex
                 </a>
               </p>
-              <Button asChild variant="outline" className="mt-4">
-                <a href="mailto:events@kenworthy.org">
-                  <Mail className="h-4 w-4 mr-2" /> Email the box office
-                </a>
-              </Button>
             </div>
           </section>
         </>
