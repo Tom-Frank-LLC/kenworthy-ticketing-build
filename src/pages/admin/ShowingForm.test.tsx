@@ -35,6 +35,10 @@ beforeAll(() => {
 
 const MOVIE_ID = 'aaaaaaaa-1111-4000-8000-000000000001';
 const VENUE_ID = 'vvvvvvvv-1111-4000-8000-000000000001';
+const EVENT_ID = 'eeeeeeee-1111-4000-8000-000000000001';
+const RSVP_EVENT_ID = 'eeeeeeee-1111-4000-8000-000000000002';
+const PERFORMANCE_ID = 'cccccccc-1111-4000-8000-000000000001';
+const MOVIE_PASS_ID = 'pppppppp-1111-4000-8000-000000000001';
 
 const state = vi.hoisted(() => ({
   showingInserts: [] as any[],
@@ -48,6 +52,7 @@ const state = vi.hoisted(() => ({
   tierFailures: {} as Record<string, string>,
   squareResponse: null as any,
   existingShowings: [] as any[],
+  passTypes: [] as any[],
   toasts: { error: [] as string[], success: [] as string[], warning: [] as string[] },
 }));
 
@@ -73,7 +78,7 @@ vi.mock('@/lib/fetchAllRows', () => ({
 
 vi.mock('@/lib/passEligibility', () => ({
   STANDARD_MOVIE_TICKET_PRICE: 8,
-  fetchPassTypes: () => Promise.resolve([]),
+  fetchPassTypes: () => Promise.resolve(state.passTypes),
   fetchShowingEligibility: () => Promise.resolve([]),
   setShowingEligibility: (showingId: string, passTypeIds: string[]) => {
     state.eligibility.push({ showingId, passTypeIds });
@@ -102,6 +107,17 @@ vi.mock('@/integrations/supabase/client', () => {
       return [{ id: VENUE_ID, name: 'Main Auditorium', has_assigned_seating: false, total_seats: 265 }];
     }
     if (table === 'showings') return state.existingShowings;
+    if (table === 'events') {
+      return [
+        { id: EVENT_ID, title: 'Gala Night', ticket_type: 'ticketed', is_active: true },
+        // Non-ticketed, so the form's own filter drops it — the case a
+        // hand-edited ?event= can still name.
+        { id: RSVP_EVENT_ID, title: 'Community Potluck', ticket_type: 'rsvp', is_active: true },
+      ];
+    }
+    if (table === 'live_performances') {
+      return [{ id: PERFORMANCE_ID, title: 'Palouse Jazz Quartet', is_active: true }];
+    }
     return [];
   };
 
@@ -154,12 +170,13 @@ beforeEach(() => {
   // A clean planner response: something was planned and nothing fell short.
   state.squareResponse = { counts: { created: 2 }, tally: { written: 2 }, skipped: [] };
   state.existingShowings = [];
+  state.passTypes = [];
   state.toasts = { error: [], success: [], warning: [] };
 });
 
-function renderForm() {
+function renderForm(entry = '/admin/showings/new') {
   return render(
-    <MemoryRouter initialEntries={['/admin/showings/new']}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/admin/showings/new" element={<ShowingForm />} />
         <Route path="/admin/showings/:id" element={<div>showing detail</div>} />
@@ -362,5 +379,118 @@ describe('ShowingForm — one showtime is still the form it always was', () => {
     await chooseMovie();
     fillShowtimes(['2026-08-14T19:30', '2026-08-15T19:30', '2026-08-16T19:30']);
     expect(screen.getByRole('button', { name: 'Create 3 Showtimes' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The deep link that makes Live Events usable.
+ *
+ * Adding a showing to a concert used to mean opening the *Movies* tab, pressing
+ * Add Showing, switching the category and hunting the title out of a picker —
+ * the Live Events listing offered no way in at all. Each card now links here
+ * pre-scoped, so these pin down that the scope actually lands on the right
+ * foreign key, and that the one path which never touches the category selector
+ * still gets what switching that selector by hand would have done.
+ */
+describe('ShowingForm — opened from a title’s card', () => {
+  it('attaches the showing to the performance named in the URL', async () => {
+    renderForm(`/admin/showings/new?performance=${PERFORMANCE_ID}`);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Live Performance *')).toHaveTextContent('Palouse Jazz Quartet'),
+    );
+    // The category is settled by the link, so it is stated rather than offered.
+    expect(screen.queryByText('Category *')).toBeNull();
+
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].live_performance_id).toBe(PERFORMANCE_ID);
+    expect(state.showingInserts[0].movie_id).toBeNull();
+    expect(state.showingInserts[0].event_id).toBeNull();
+  });
+
+  it('attaches the showing to the event named in the URL', async () => {
+    renderForm(`/admin/showings/new?event=${EVENT_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].event_id).toBe(EVENT_ID);
+    expect(state.showingInserts[0].live_performance_id).toBeNull();
+  });
+
+  it('still works for a movie, which is what the Movies card links to', async () => {
+    renderForm(`/admin/showings/new?movie=${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Dune'));
+
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].movie_id).toBe(MOVIE_ID);
+  });
+
+  it('leaves the standard film passes off a performance, as switching category does', async () => {
+    state.passTypes = [
+      {
+        id: MOVIE_PASS_ID,
+        name: 'Standard',
+        redemption_price: 8,
+        per_showing_use_limit: null,
+        is_default_for_movies: true,
+        is_active: true,
+      },
+    ];
+    renderForm(`/admin/showings/new?performance=${PERFORMANCE_ID}`);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Live Performance *')).toHaveTextContent('Palouse Jazz Quartet'),
+    );
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    // Pre-ticking here would make a concert redeemable against a film pass
+    // without anyone choosing that — the form's one path that never passes
+    // through the category selector where the same default is dropped.
+    await waitFor(() => expect(state.eligibility).toHaveLength(1));
+    expect(state.eligibility[0].passTypeIds).toEqual([]);
+  });
+
+  it('still ticks the standard passes for a movie opened the same way', async () => {
+    state.passTypes = [
+      {
+        id: MOVIE_PASS_ID,
+        name: 'Standard',
+        redemption_price: 8,
+        per_showing_use_limit: null,
+        is_default_for_movies: true,
+        is_active: true,
+      },
+    ];
+    renderForm(`/admin/showings/new?movie=${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Dune'));
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.eligibility).toHaveLength(1));
+    expect(state.eligibility[0].passTypeIds).toEqual([MOVIE_PASS_ID]);
+  });
+
+  it('hands back the pickers when the URL names a title that cannot take a showing', async () => {
+    // An RSVP event: the listing offers no Add Showing for one, but the URL can
+    // still be typed. Without this it would open on an empty, unchangeable
+    // picker with no way out.
+    renderForm(`/admin/showings/new?event=${RSVP_EVENT_ID}`);
+
+    await waitFor(() => expect(state.toasts.error).toHaveLength(1));
+    expect(state.toasts.error[0]).toMatch(/cannot take a showing/i);
+    expect(await screen.findByText('Category *')).toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,19 +56,54 @@ const DEFAULT_TIERS: TierRow[] = [
   { tier_name: 'Student', price: '6.00', display_order: 2 },
 ];
 
+/** `?movie=` / `?event=` / `?performance=` → the category each one scopes to. */
+const SCOPE_PARAMS: { param: string; category: Category }[] = [
+  { param: 'movie', category: 'movie' },
+  { param: 'event', category: 'event' },
+  { param: 'performance', category: 'concert' },
+];
+
+/**
+ * Read the production this form was deep-linked to, if any.
+ *
+ * The listings open this form from a specific title's card, so the item is
+ * already decided by the time the admin gets here. Before this, every new
+ * showing started at "Movie" with an empty picker no matter where it was
+ * opened from, which is why a concert could only be dated by going to the
+ * Movies tab and hunting for it in a category selector.
+ *
+ * Edit mode ignores the params entirely: the showing's own row already says
+ * what it is attached to, and letting a URL argue with it is how a showing
+ * gets silently reparented.
+ */
+function readScope(params: URLSearchParams): { category: Category; itemId: string } | null {
+  for (const { param, category } of SCOPE_PARAMS) {
+    const itemId = params.get(param);
+    if (itemId) return { category, itemId };
+  }
+  return null;
+}
+
 export default function ShowingForm() {
   const { id } = useParams();
   const isEdit = !!id && id !== 'new';
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAdmin, loading: authLoading } = useAuth();
 
-  const [category, setCategory] = useState<Category>('movie');
+  // Read once, on the first render. A useState initialiser rather than an
+  // effect so the form never paints as an unscoped "Movie" form for a frame,
+  // and — more importantly — so the loader below can see the scope when it
+  // decides whether to pre-tick the standard film passes.
+  const [scope, setScope] = useState(() => (isEdit ? null : readScope(searchParams)));
+
+  const [category, setCategory] = useState<Category>(scope?.category ?? 'movie');
   const [movies, setMovies] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [concerts, setConcerts] = useState<any[]>([]);
   const [venues, setVenues] = useState<any[]>([]);
 
-  const [itemId, setItemId] = useState('');
+  const [itemId, setItemId] = useState(scope?.itemId ?? '');
   const [venueId, setVenueId] = useState('');
   // Edit mode edits the one showing it opened, so it keeps the single field.
   // Create mode builds a list instead: every other field on this form is shared
@@ -153,9 +188,26 @@ export default function ShowingForm() {
       supabase.from('venues').select('id, name, has_assigned_seating, total_seats').order('name'),
       fetchPassTypes().catch(() => [] as PassTypeOption[]),
     ]).then(([moviesRes, eventsRes, concertsRes, venuesRes, types]) => {
+      // Only ticketed events can carry a showing: an RSVP or info-only event
+      // is dated by its external link, or not dated at all.
+      const ticketedEvents = (eventsRes.data || []).filter((e: any) => e.ticket_type === 'ticketed');
       setMovies(moviesRes.data || []);
-      setEvents((eventsRes.data || []).filter((e: any) => e.ticket_type === 'ticketed'));
+      setEvents(ticketedEvents);
       setConcerts(concertsRes.data || []);
+
+      // A hand-edited URL can name a title this picker never lists — a
+      // non-ticketed event, say. Dropping the scope puts the selectors back,
+      // rather than presenting an empty picker with nothing reachable in it.
+      if (scope) {
+        const scopedList = scope.category === 'movie' ? (moviesRes.data || [])
+          : scope.category === 'event' ? ticketedEvents
+          : (concertsRes.data || []);
+        if (!scopedList.some((row: any) => row.id === scope.itemId)) {
+          setScope(null);
+          setItemId('');
+          toast.error('That title cannot take a showing — choose one below.');
+        }
+      }
       const venueList = venuesRes.data || [];
       setVenues(venueList);
       // One venue means there is no choice to make, so don't make the admin
@@ -171,7 +223,13 @@ export default function ShowingForm() {
       // somewhere or the standard pass quietly stops working at everything
       // created from now on; this is where it is stated, in front of an admin
       // who can see it and change it.
-      if (!isEdit) {
+      //
+      // Movies only. Switching the category by hand drops these again (see the
+      // Category select), so opening the form pre-scoped to an event or a
+      // performance has to skip them in the first place — otherwise the one
+      // path that never touches the selector is the one path that leaves a
+      // gala silently redeemable against a film pass.
+      if (!isEdit && category === 'movie') {
         const defaults = types.filter(t => t.is_default_for_movies && t.is_active);
         setEligiblePassTypeIds(defaults.map(t => t.id));
         setPassEligible(defaults.length > 0);
@@ -930,6 +988,29 @@ export default function ShowingForm() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {scope ? (
+              /* Opened from a title's card, so the category is already
+                 settled and showing the selector only invites it to be
+                 changed by accident. Reversible: Change puts both pickers
+                 back, keeping whatever is already selected. */
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm">
+                    {category === 'movie' ? 'Movie' : category === 'event' ? 'Event' : 'Live Performance'}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setScope(null)}
+                  >
+                    Change
+                  </Button>
+                </div>
+              </div>
+            ) : (
             <div className="space-y-2">
               <Label>Category *</Label>
               {/* Switching away from Movie drops the standard passes with it.
@@ -957,6 +1038,7 @@ export default function ShowingForm() {
                 </SelectContent>
               </Select>
             </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="showing-item">
                 {category === 'movie' ? 'Movie' : category === 'event' ? 'Event' : 'Live Performance'} *

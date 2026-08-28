@@ -16,6 +16,8 @@ import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, 
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import { CollapsibleSection } from '@/components/admin/CollapsibleSection';
+import { ProductionShowings, TicketCountBadge } from '@/components/admin/ProductionShowings';
+import { AddLiveEventDialog } from '@/components/admin/AddLiveEventDialog';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
 import TransactionsTab from '@/components/admin/TransactionsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
@@ -70,48 +72,6 @@ type SortOrder = 'showtime_desc' | 'showtime_asc' | 'title_asc' | 'title_desc' |
  * Title A–Z.
  */
 const DEFAULT_SORT: SortOrder = 'showtime_desc';
-
-/**
- * `sold / capacity`, plus how many of those have been checked in, clickable to
- * open the attendee list for that showing.
- *
- * The check-in figure is only meaningful once someone has actually scanned, so
- * it stays hidden at zero rather than showing "· 0 in" against every future
- * showing on the schedule.
- */
-function TicketCountBadge({
-  sold,
-  scanned,
-  capacity,
-  onClick,
-}: {
-  sold: number;
-  scanned: number;
-  capacity: number;
-  onClick: () => void;
-}) {
-  const soldOut = capacity > 0 && sold >= capacity;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={
-        `${sold} of ${capacity} tickets sold${soldOut ? ' (sold out)' : ''}` +
-        `${scanned > 0 ? `, ${scanned} checked in` : ''} — click to see attendees`
-      }
-      aria-label={`View ${sold} attendees`}
-      className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <Badge
-        variant={soldOut ? 'default' : 'secondary'}
-        className="text-xs whitespace-nowrap cursor-pointer hover:bg-secondary/70 transition-colors"
-      >
-        {sold} / {capacity}
-        {scanned > 0 && ` · ${scanned} in`}
-      </Badge>
-    </button>
-  );
-}
 
 // Thin wrapper over the shared pager: this screen wants the rows bare and a
 // failure logged rather than surfaced, which is local to the dashboard. The
@@ -896,6 +856,9 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                         <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" title="Add showing" asChild>
+                            <Link to={`/admin/showings/new?movie=${movie.id}`}><Calendar className="h-4 w-4" /></Link>
+                          </Button>
                           <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(movie, 'movie')}>
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -907,75 +870,15 @@ export default function AdminDashboard() {
                           </Button>
                         </div>
                       </div>
-                      {movieShowings.length > 0 && (
-                        <div className="mt-3 pl-8 space-y-2">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Showings</p>
-                          {movieShowings.map(showing => (
-                            <div key={showing.id} className="flex items-center justify-between rounded-md bg-secondary/50 px-3 py-2">
-                              <div className="flex gap-2 items-center flex-wrap">
-                                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span className="text-sm">
-                                  {formatShowtime(showing.start_time, 'MMM d, yyyy h:mm a')}
-                                </span>
-                                <span className="text-sm text-muted-foreground">• ${Number(showing.ticket_price).toFixed(2)}</span>
-                                {showing.venues?.name && (
-                                  <Badge variant="secondary" className="text-xs">{showing.venues.name}</Badge>
-                                )}
-                                {/* Said on the row as well as in the toggle's
-                                    tooltip. A closed showing looks identical to
-                                    an open one otherwise, and the difference
-                                    matters most when scanning the list. */}
-                                {showing.manually_sold_out && (
-                                  <Badge variant="destructive" className="text-xs">Sold Out</Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <TicketCountBadge
-                                  sold={getTicketsSoldForShowing(showing.id)}
-                                  scanned={getScannedForShowing(showing.id)}
-                                  capacity={showing.total_seats || 0}
-                                  onClick={() =>
-                                    openAttendees(
-                                      `${movie.title} — ${formatShowtime(showing.start_time, 'MMM d, yyyy h:mm a')}`,
-                                      [showing.id],
-                                      showing.total_seats || 0
-                                    )
-                                  }
-                                />
-                                {/* Not offered on a walk-in night: nothing is
-                                    issued, so there is nothing to sell out. */}
-                                {!showing.no_ticket_required && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        aria-label={showing.manually_sold_out ? 'Reopen online sales' : 'Mark sold out'}
-                                        onClick={() => toggleSoldOut(showing)}
-                                      >
-                                        {showing.manually_sold_out
-                                          ? <LockOpen className="h-3.5 w-3.5 text-success" />
-                                          : <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {showing.manually_sold_out
-                                        ? 'Reopen online sales. The showing starts selling again if seats and timing allow.'
-                                        : 'Mark sold out. Closes online sales only — the box office can still sell and comp.'}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                                <Button variant="ghost" size="sm" asChild>
-                                  <Link to={`/admin/showings/${showing.id}`}><Edit className="h-3.5 w-3.5" /></Link>
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => deleteItem('showings', showing.id, 'Showing')}>
-                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <ProductionShowings
+                        showings={movieShowings}
+                        productionTitle={movie.title}
+                        getSold={getTicketsSoldForShowing}
+                        getScanned={getScannedForShowing}
+                        onOpenAttendees={openAttendees}
+                        onToggleSoldOut={toggleSoldOut}
+                        onDeleteShowing={id => deleteItem('showings', id, 'Showing')}
+                      />
                     </CardContent>
                   </Card>
                 );
@@ -1001,78 +904,101 @@ export default function AdminDashboard() {
               title="Live Events"
               count={filteredLiveEvents.length}
               defaultOpen
-              actions={
-                <>
-                  <Button size="sm" variant="outline" asChild>
-                    <Link to="/admin/concerts/new"><Plus className="h-4 w-4 mr-1" /> Add Performance</Link>
-                  </Button>
-                  <Button size="sm" asChild>
-                    <Link to="/admin/events/new"><Plus className="h-4 w-4 mr-1" /> Add Event</Link>
-                  </Button>
-                </>
-              }
+              /* One button, not two. "Add Performance" and "Add Event" sat
+                 here side by side with nothing saying which was which; the
+                 dialog asks the question and explains the answer. There is no
+                 section-level Add Showing to match Movies, because an unscoped
+                 showing form opens on Movie — every live event's showings are
+                 added from its own card instead. */
+              actions={<AddLiveEventDialog />}
             >
             {listingFilters}
-            <div className="space-y-3">
+            <div className="space-y-4">
               {filteredLiveEvents.map(item => {
                 const isEvent = item.kind === 'event';
                 const isConcert = item.kind === 'concert';
                 const { sold, scanned, capacity } = isEvent
                   ? getTicketsSoldForEvent(item.id)
                   : getTicketsSoldForConcert(item.id);
+                const itemShowings = showingsForProduction(item.kind, item.id);
+                // Only a ticketed event can hold a showing — the showing form
+                // lists ticketed events and nothing else, so offering the
+                // button on an RSVP or info-only card would open a picker that
+                // cannot reach the title it was opened from. Those are dated by
+                // their RSVP link, or not dated at all.
+                const canAddShowing = isConcert || item.ticket_type === 'ticketed';
+                const showingScope = isEvent ? `event=${item.id}` : `performance=${item.id}`;
                 return (
                   <Card key={`${item.kind}-${item.id}`} className="glass">
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        {isEvent ? <PartyPopper className="h-5 w-5 text-primary" /> : <Music className="h-5 w-5 text-primary" />}
-                        <div>
-                          <p className="font-medium">{item.title}</p>
-                          <div className="flex flex-wrap gap-2 mt-1">
-                            {isEvent && (
-                              <Badge variant="outline" className="text-xs capitalize">{item.ticket_type.replace('_', ' ')}</Badge>
-                            )}
-                            {isConcert && item.subcategory && (
-                              <Badge variant="outline" className="text-xs capitalize">
-                                {item.subcategory.replace(/_/g, ' ')}
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {isEvent ? <PartyPopper className="h-5 w-5 text-primary" /> : <Music className="h-5 w-5 text-primary" />}
+                          <div>
+                            <p className="font-medium">{item.title}</p>
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {isEvent && (
+                                <Badge variant="outline" className="text-xs capitalize">{item.ticket_type.replace('_', ' ')}</Badge>
+                              )}
+                              {isConcert && item.subcategory && (
+                                <Badge variant="outline" className="text-xs capitalize">
+                                  {item.subcategory.replace(/_/g, ' ')}
+                                </Badge>
+                              )}
+                              {isConcert && parseGenres(item.genre).map(g => <Badge key={g} variant="outline" className="text-xs">{g}</Badge>)}
+                              <Badge variant={item.is_active ? 'default' : 'secondary'} className="text-xs">
+                                {item.is_active ? 'Active' : 'Inactive'}
                               </Badge>
-                            )}
-                            {isConcert && parseGenres(item.genre).map(g => <Badge key={g} variant="outline" className="text-xs">{g}</Badge>)}
-                            <Badge variant={item.is_active ? 'default' : 'secondary'} className="text-xs">
-                              {item.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
+                            </div>
                           </div>
                         </div>
+                        <div className="flex items-center gap-1">
+                          <TicketCountBadge
+                            sold={sold}
+                            scanned={scanned}
+                            capacity={capacity}
+                            onClick={() =>
+                              openAttendees(
+                                item.title,
+                                itemShowings.map(s => s.id),
+                                capacity
+                              )
+                            }
+                          />
+                          {/* Scoped to this title, so the showing form opens on
+                              it instead of on an empty Movie picker. */}
+                          {canAddShowing && (
+                            <Button variant="ghost" size="sm" title="Add showing" asChild>
+                              <Link to={`/admin/showings/new?${showingScope}`}><Calendar className="h-4 w-4" /></Link>
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(item, item.kind)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" title="Export contacts" onClick={async () => {
+                            const count = await exportContactsCsv(item.kind, item.id, item.title);
+                            if (count === null) toast.info('No attendees found');
+                            else toast.success(`Exported ${count} contacts`);
+                          }}>
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" asChild>
+                            <Link to={`/admin/${item.kind}s/${item.id}`}><Edit className="h-4 w-4" /></Link>
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => deleteItem(item.kind === 'event' ? 'events' : 'live_performances', item.id, item.kind === 'event' ? 'Event' : 'Live Performance')}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <TicketCountBadge
-                          sold={sold}
-                          scanned={scanned}
-                          capacity={capacity}
-                          onClick={() =>
-                            openAttendees(
-                              item.title,
-                              showingsForProduction(item.kind, item.id).map(s => s.id),
-                              capacity
-                            )
-                          }
-                        />
-                        <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(item, item.kind)}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" title="Export contacts" onClick={async () => {
-                          const count = await exportContactsCsv(item.kind, item.id, item.title);
-                          if (count === null) toast.info('No attendees found');
-                          else toast.success(`Exported ${count} contacts`);
-                        }}>
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/admin/${item.kind}s/${item.id}`}><Edit className="h-4 w-4" /></Link>
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => deleteItem(item.kind === 'event' ? 'events' : 'live_performances', item.id, item.kind === 'event' ? 'Event' : 'Live Performance')}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                      <ProductionShowings
+                        showings={itemShowings}
+                        productionTitle={item.title}
+                        getSold={getTicketsSoldForShowing}
+                        getScanned={getScannedForShowing}
+                        onOpenAttendees={openAttendees}
+                        onToggleSoldOut={toggleSoldOut}
+                        onDeleteShowing={id => deleteItem('showings', id, 'Showing')}
+                      />
                     </CardContent>
                   </Card>
                 );
