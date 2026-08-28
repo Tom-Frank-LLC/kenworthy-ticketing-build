@@ -9,6 +9,12 @@ import hero768Webp from '@/assets/optimized/hero-768.webp';
 import hero1280Webp from '@/assets/optimized/hero-1280.webp';
 import hero1920Webp from '@/assets/optimized/hero-1920.webp';
 
+const DESKTOP_SCRIM =
+  'linear-gradient(180deg, hsl(var(--background) / 0.65) 0%, hsl(var(--background) / 0.15) 25%, hsl(var(--background) / 0.05) 50%, hsl(var(--background) / 0.55) 80%, hsl(var(--background) / 0.92) 100%)';
+
+const MOBILE_SCRIM =
+  'linear-gradient(180deg, hsl(var(--background) / 0.68) 0%, hsl(var(--background) / 0.18) 22%, hsl(var(--background) / 0.10) 42%, hsl(var(--background) / 0.74) 68%, hsl(var(--background) / 0.95) 100%)';
+
 const heroWebpSrcSet = `${hero768Webp} 768w, ${hero1280Webp} 1280w, ${hero1920Webp} 1920w`;
 const heroJpegSrcSet = `${hero768} 768w, ${hero1280} 1280w, ${hero1920} 1920w`;
 
@@ -57,14 +63,29 @@ export function HomeMarquee() {
         </picture>
         {/* Scrim — keep the marquee itself clear by concentrating darkness
             at the top (above the sign) and bottom (over the crowd
-            silhouettes where the headline lives). */}
+            silhouettes where the headline lives).
+
+            Two of them, because the phone and the desktop row are not looking
+            at the same crop. From `md` the band is wider than it is tall, so
+            `object-cover` scales the photo to the *width* and the sign sits
+            small in the middle with clear space beneath it. On a phone the
+            band is taller than it is wide, the photo scales to the height
+            instead, and the sign is rendered roughly twice the size — its lit
+            face reaches all the way down into the foot of the band, which is
+            exactly where the tagline and the address sit. Against 0.55 of
+            background the white marquee letters still read through the text.
+
+            So the phone gets its darkness earlier (68% rather than 80%) and
+            heavier. The desktop gradient is unchanged. */}
         <div
           aria-hidden
-          className="absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(180deg, hsl(var(--background) / 0.65) 0%, hsl(var(--background) / 0.15) 25%, hsl(var(--background) / 0.05) 50%, hsl(var(--background) / 0.55) 80%, hsl(var(--background) / 0.92) 100%)',
-          }}
+          className="absolute inset-0 md:hidden"
+          style={{ background: MOBILE_SCRIM }}
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0 hidden md:block"
+          style={{ background: DESKTOP_SCRIM }}
         />
       </div>
 
@@ -90,7 +111,12 @@ export function HomeMarquee() {
             is restored — one copy of each line, not a hidden duplicate. */}
         <div className="contents md:mt-auto md:flex md:pt-44 lg:pt-52 md:flex-row md:gap-5 md:items-end md:justify-between">
           <div className="contents md:block md:max-w-xl lg:max-w-2xl md:min-w-0">
-            <h1 className="font-display uppercase text-[1.75rem] sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground break-words hyphens-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
+            {/* 1.5rem on a phone, not 1.75rem. After the site-wide type bump
+                the old size ran "Shared One Showing at a Time." to two lines at
+                360px, so the headline took three and pushed the tagline further
+                down into the sign. A step down puts it back to two lines with
+                room to breathe; `sm` up is untouched. */}
+            <h1 className="font-display uppercase text-2xl sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground break-words hyphens-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
               A Century of Stories,
               <span className="block text-primary">Shared One Showing at a Time.</span>
             </h1>

@@ -261,10 +261,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 {/* The one green thing in the header. Donate sits beside it as
                     a purple outline; green is what separates "buy a ticket"
                     from every other call on the page. See lib/greenCta.ts. */}
-                <Button size="sm" asChild className={cn('h-10 px-4 sm:px-5', GREEN_CTA)}>
+                {/* One CTA on a phone, two from `sm`.
+
+                    Both buttons at full padding cost ~207px of a 360px screen's
+                    324px of container, and the logo is the flex item that
+                    yields: it was rendering 28px wide by 7px tall — a smudge,
+                    not a wordmark, and not a tappable link home either. Film
+                    Pass is the one that goes, because Tickets is the primary
+                    ask and the drawer already carries Film Pass as a full-width
+                    button of its own (see MobileNav's footer), so nothing is
+                    lost below `sm` — it moves rather than disappears.
+
+                    Tickets keeps a tighter `px-3` on a phone for the same
+                    reason; `sm:px-5` restores it once there is room. */}
+                <Button size="sm" asChild className={cn('h-10 px-3 sm:px-5', GREEN_CTA)}>
                   <Link to="/calendar">Tickets</Link>
                 </Button>
-                <Button size="sm" variant="outline" asChild className="h-10 px-4 sm:px-5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                  className="hidden sm:inline-flex h-10 px-4 sm:px-5"
+                >
                   <Link to="/film-passes">Film Pass</Link>
                 </Button>
               </>
