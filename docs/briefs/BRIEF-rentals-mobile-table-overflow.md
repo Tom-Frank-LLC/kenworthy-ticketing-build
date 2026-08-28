@@ -1,12 +1,14 @@
 ---
 brief: rentals-mobile-table-overflow
 title: The rentals availability table pushes /rentals sideways on a phone
-status: built
+status: shipped
 track: bug
 severity: P2
 date: 2026-08-27
 verified: true
-evidence: On staging at version 53ed241b — /rentals scrollWidth == innerWidth at 375/414/640, and an injected long booking detail truncates without widening the table (337px before and after). Production still overflows 91px at 375.
+shipped_in: ["#216"]
+shipped_at: 2026-08-27
+evidence: Verified in production at Worker version 9d870cf0: /rentals scrollWidth == innerWidth at 375/414/640, where it overflowed 91px and 52px before.
 ---
 
 # Brief: `/rentals` scrolls sideways on mobile
