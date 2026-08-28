@@ -5,7 +5,7 @@ status: built
 track: feature
 severity: P2
 date: 2026-08-25
-shipped_in: ["#218"]
+shipped_in: ["#218", "#220"]
 verified: true
 evidence: on main as f5c882c; migration 20260828030114 applied to BOTH staging and production; staging worker deployed 2026-08-28 (version 1032a9e1-0be6-45c0-914a-88234c121870). Production frontend NOT deployed.
 ---
@@ -132,3 +132,31 @@ Admin → Pages → Home when you are done with it.
 
 Production still has only the table. The frontend change is not deployed there,
 so nothing on kenworthy.org has changed yet.
+
+## Follow-up: the screen shows every pick, not just the written ones (#220)
+
+Tom asked for the other half. The Home tab listed only the slides written in it,
+which made it a screen about one of the three flags that fill the carousel — the
+`is_featured` flags on a film, on an event or live performance, and on one
+showing are set on each title's own form, three tabs away, and were listed
+nowhere together. "What is on the front page right now" was a question you could
+only answer by opening the front page.
+
+They are listed under the slides now, in the order the band runs them, each with
+**Edit** (to its own form) and **Remove**. Remove clears the flag only; the film,
+event or showing is untouched. Picks cannot be *set* here — featuring a title is
+a decision about that title and belongs on its form.
+
+The part that needed a module (`src/lib/curatorPicks.ts`): **a flag is not the
+same thing as being on the page.** The home feed is built from upcoming, active
+showings, so a film can carry the flag and appear nowhere — its dates have
+passed, none were scheduled, or it was deactivated — and nothing said so. Each
+row now carries a badge naming which case it is in a word that says what to do:
+`Live`, `No dates`, `Past`, `Hidden`. An RSVP or info-only event with no dates is
+not faulted, because `buildFeed` puts those in the feed deliberately.
+
+Verified on the deployed staging worker: three flagged rows listed with posters,
+kinds and dates — a past flagged night badged `Past`, a film with several dates
+reading "2 dates upcoming" — and **Remove** on the past night cleared
+`showings.is_featured` in the database and dropped the row. The flag was put back
+afterwards, so staging is as it was found.
