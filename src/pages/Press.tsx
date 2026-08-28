@@ -220,8 +220,22 @@ export default function Press() {
 
           <section className="border-t border-accent/20 bg-card/40">
             <div className="container py-12 max-w-4xl">
+              {/* Deliberately carries no link styling — no underline, no colour
+                  change — because it is meant to read as a plain contact line.
+                  Nothing here needs a `no-underline`: the global underline rule
+                  in index.css is scoped to `.rich-text`, so a bare anchor
+                  already inherits the paragraph exactly.
+
+                  The focus ring stays. Without any visual affordance at rest,
+                  it is the only way somebody tabbing through the page can tell
+                  this line is the thing they can activate. */}
               <p className="font-serif text-muted-foreground">
-                Writing about Kenworthy? We’re glad to help with images, history, and interviews.
+                <a
+                  href="mailto:executive@kenworthy.org"
+                  className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Press Contact, Colin Mannex
+                </a>
               </p>
               <Button asChild variant="outline" className="mt-4">
                 <a href="mailto:events@kenworthy.org">
