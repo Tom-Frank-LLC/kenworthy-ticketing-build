@@ -63,7 +63,6 @@ const PrintQrs = lazyWithRecovery(() => import("./pages/staff/PrintQrs"));
 const AdminDashboard = lazyWithRecovery(() => import("./pages/admin/AdminDashboard"));
 const MovieForm = lazyWithRecovery(() => import("./pages/admin/MovieForm"));
 const EventForm = lazyWithRecovery(() => import("./pages/admin/EventForm"));
-const ConcertForm = lazyWithRecovery(() => import("./pages/admin/ConcertForm"));
 const VenueForm = lazyWithRecovery(() => import("./pages/admin/VenueForm"));
 const ShowingForm = lazyWithRecovery(() => import("./pages/admin/ShowingForm"));
 const HostDashboard = lazyWithRecovery(() => import("./pages/admin/HostDashboard"));
@@ -126,8 +125,7 @@ const App = () => (
                   <Route path="/admin/movies/new" element={<AdminOnly><MovieForm /></AdminOnly>} />
                   <Route path="/admin/events/:id" element={<AdminOnly><EventForm /></AdminOnly>} />
                   <Route path="/admin/events/new" element={<AdminOnly><EventForm /></AdminOnly>} />
-                  <Route path="/admin/concerts/:id" element={<AdminOnly><ConcertForm /></AdminOnly>} />
-                  <Route path="/admin/concerts/new" element={<AdminOnly><ConcertForm /></AdminOnly>} />
+                  <Route path="/admin/concerts/:id" element={<AdminOnly><EventForm /></AdminOnly>} />
                   <Route path="/admin/venues/:id" element={<AdminOnly><VenueForm /></AdminOnly>} />
                   <Route path="/admin/venues/new" element={<AdminOnly><VenueForm /></AdminOnly>} />
                   <Route path="/admin/showings/new" element={<AdminOnly><ShowingForm /></AdminOnly>} />

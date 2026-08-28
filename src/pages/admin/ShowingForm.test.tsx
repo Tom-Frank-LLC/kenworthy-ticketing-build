@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useSearchParams } from 'react-router-dom';
 import { venueLocalToInstant } from '@/lib/datetime';
 
 /** The instant the form will actually send for a wall clock, as it computes it. */
@@ -35,6 +35,10 @@ beforeAll(() => {
 
 const MOVIE_ID = 'aaaaaaaa-1111-4000-8000-000000000001';
 const VENUE_ID = 'vvvvvvvv-1111-4000-8000-000000000001';
+const EVENT_ID = 'eeeeeeee-1111-4000-8000-000000000001';
+const RSVP_EVENT_ID = 'eeeeeeee-1111-4000-8000-000000000002';
+const PERFORMANCE_ID = 'cccccccc-1111-4000-8000-000000000001';
+const MOVIE_PASS_ID = 'pppppppp-1111-4000-8000-000000000001';
 
 const state = vi.hoisted(() => ({
   showingInserts: [] as any[],
@@ -48,6 +52,7 @@ const state = vi.hoisted(() => ({
   tierFailures: {} as Record<string, string>,
   squareResponse: null as any,
   existingShowings: [] as any[],
+  passTypes: [] as any[],
   toasts: { error: [] as string[], success: [] as string[], warning: [] as string[] },
 }));
 
@@ -73,7 +78,7 @@ vi.mock('@/lib/fetchAllRows', () => ({
 
 vi.mock('@/lib/passEligibility', () => ({
   STANDARD_MOVIE_TICKET_PRICE: 8,
-  fetchPassTypes: () => Promise.resolve([]),
+  fetchPassTypes: () => Promise.resolve(state.passTypes),
   fetchShowingEligibility: () => Promise.resolve([]),
   setShowingEligibility: (showingId: string, passTypeIds: string[]) => {
     state.eligibility.push({ showingId, passTypeIds });
@@ -102,6 +107,19 @@ vi.mock('@/integrations/supabase/client', () => {
       return [{ id: VENUE_ID, name: 'Main Auditorium', has_assigned_seating: false, total_seats: 265 }];
     }
     if (table === 'showings') return state.existingShowings;
+    if (table === 'events') {
+      return [
+        { id: EVENT_ID, title: 'Gala Night', ticket_type: 'ticketed', is_active: true },
+        // Non-ticketed, so the form's own filter drops it — the case a
+        // hand-edited ?event= can still name.
+        { id: RSVP_EVENT_ID, title: 'Community Potluck', ticket_type: 'rsvp', is_active: true },
+      ];
+    }
+    if (table === 'live_performances') {
+      return [
+        { id: PERFORMANCE_ID, title: 'Palouse Jazz Quartet', ticket_type: 'ticketed', is_active: true },
+      ];
+    }
     return [];
   };
 
@@ -154,16 +172,27 @@ beforeEach(() => {
   // A clean planner response: something was planned and nothing fell short.
   state.squareResponse = { counts: { created: 2 }, tally: { written: 2 }, skipped: [] };
   state.existingShowings = [];
+  state.passTypes = [];
   state.toasts = { error: [], success: [], warning: [] };
 });
 
-function renderForm() {
+function LandedOnAdmin() {
+  const [params] = useSearchParams();
+  return (
+    <div>
+      <div>admin dashboard</div>
+      <div>{`tab=${params.get('tab') ?? 'movies'}`}</div>
+    </div>
+  );
+}
+
+function renderForm(entry = '/admin/showings/new') {
   return render(
-    <MemoryRouter initialEntries={['/admin/showings/new']}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/admin/showings/new" element={<ShowingForm />} />
         <Route path="/admin/showings/:id" element={<div>showing detail</div>} />
-        <Route path="/admin" element={<div>admin dashboard</div>} />
+        <Route path="/admin" element={<LandedOnAdmin />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -362,5 +391,222 @@ describe('ShowingForm — one showtime is still the form it always was', () => {
     await chooseMovie();
     fillShowtimes(['2026-08-14T19:30', '2026-08-15T19:30', '2026-08-16T19:30']);
     expect(screen.getByRole('button', { name: 'Create 3 Showtimes' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The deep link that makes Live Events usable.
+ *
+ * Adding a showing to a concert used to mean opening the *Movies* tab, pressing
+ * Add Showing, switching the category and hunting the title out of a picker —
+ * the Live Events listing offered no way in at all. Each card now links here
+ * pre-scoped, so these pin down that the scope actually lands on the right
+ * foreign key, and that the one path which never touches the category selector
+ * still gets what switching that selector by hand would have done.
+ */
+describe('ShowingForm — opened from a title’s card', () => {
+  it('attaches the showing to the performance named in the URL', async () => {
+    renderForm(`/admin/showings/new?performance=${PERFORMANCE_ID}`);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Live Performance *')).toHaveTextContent('Palouse Jazz Quartet'),
+    );
+    // The category is settled by the link, so it is stated rather than offered.
+    expect(screen.queryByText('Category *')).toBeNull();
+
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].live_performance_id).toBe(PERFORMANCE_ID);
+    expect(state.showingInserts[0].movie_id).toBeNull();
+    expect(state.showingInserts[0].event_id).toBeNull();
+  });
+
+  it('attaches the showing to the event named in the URL', async () => {
+    renderForm(`/admin/showings/new?event=${EVENT_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].event_id).toBe(EVENT_ID);
+    expect(state.showingInserts[0].live_performance_id).toBeNull();
+  });
+
+  it('still works for a movie, which is what the Movies card links to', async () => {
+    renderForm(`/admin/showings/new?movie=${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Dune'));
+
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].movie_id).toBe(MOVIE_ID);
+  });
+
+  it('leaves the standard film passes off a performance, as switching category does', async () => {
+    state.passTypes = [
+      {
+        id: MOVIE_PASS_ID,
+        name: 'Standard',
+        redemption_price: 8,
+        per_showing_use_limit: null,
+        is_default_for_movies: true,
+        is_active: true,
+      },
+    ];
+    renderForm(`/admin/showings/new?performance=${PERFORMANCE_ID}`);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Live Performance *')).toHaveTextContent('Palouse Jazz Quartet'),
+    );
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    // Pre-ticking here would make a concert redeemable against a film pass
+    // without anyone choosing that — the form's one path that never passes
+    // through the category selector where the same default is dropped.
+    await waitFor(() => expect(state.eligibility).toHaveLength(1));
+    expect(state.eligibility[0].passTypeIds).toEqual([]);
+  });
+
+  it('still ticks the standard passes for a movie opened the same way', async () => {
+    state.passTypes = [
+      {
+        id: MOVIE_PASS_ID,
+        name: 'Standard',
+        redemption_price: 8,
+        per_showing_use_limit: null,
+        is_default_for_movies: true,
+        is_active: true,
+      },
+    ];
+    renderForm(`/admin/showings/new?movie=${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Dune'));
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.eligibility).toHaveLength(1));
+    expect(state.eligibility[0].passTypeIds).toEqual([MOVIE_PASS_ID]);
+  });
+
+  it('hands back the pickers when the URL names a title that cannot take a showing', async () => {
+    // An RSVP event: the listing offers no Add Showing for one, but the URL can
+    // still be typed. Without this it would open on an empty, unchangeable
+    // picker with no way out.
+    renderForm(`/admin/showings/new?event=${RSVP_EVENT_ID}`);
+
+    await waitFor(() => expect(state.toasts.error).toHaveLength(1));
+    expect(state.toasts.error[0]).toMatch(/cannot take a show/i);
+    expect(await screen.findByText('Category *')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Which listing sent us here.
+ *
+ * One selector used to offer Movie, Event and Live Performance from wherever
+ * the form was opened, which is why dating a concert began in the Movies tab.
+ * A showing belongs to exactly one listing, so the form only ever offers that
+ * listing's categories now — and calls the row what that listing calls it.
+ */
+describe('ShowingForm — scoped to the listing it was opened from', () => {
+  it('says nothing about category from Movies — not even as a readout', async () => {
+    renderForm('/admin/showings/new?kind=movie');
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toBeInTheDocument());
+    // Neither the selector nor the "Category: Movie" line it was replaced by.
+    // With one category and no way out of it, both answer a question the admin
+    // was never asked, and the picker underneath already says Movie.
+    expect(screen.queryByText('Category *')).toBeNull();
+    expect(screen.queryByText('Category')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Create Showing' })).toBeInTheDocument();
+  });
+
+  it('says nothing about category when opened from a film’s own card either', async () => {
+    renderForm(`/admin/showings/new?kind=movie&movie=${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Dune'));
+    expect(screen.queryByText('Category')).toBeNull();
+  });
+
+  it('keeps the readout on the live side, where there is another category', async () => {
+    renderForm(`/admin/showings/new?kind=live&event=${EVENT_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+    // Here it earns its place: a performance is one click away.
+    expect(screen.getByText('Category')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
+  });
+
+  it('offers events and performances from Live Events, and never a film', async () => {
+    renderForm('/admin/showings/new?kind=live');
+
+    expect(await screen.findByText('Category *')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('combobox', { name: /category/i }));
+
+    expect(await screen.findByRole('option', { name: 'Event' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Live Performance' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Movie' })).toBeNull();
+  });
+
+  it('calls it a Show on the live side and a Showing on the film side', async () => {
+    const live = renderForm('/admin/showings/new?kind=live');
+    expect(await screen.findByRole('button', { name: 'Create Show' })).toBeInTheDocument();
+    live.unmount();
+
+    renderForm('/admin/showings/new?kind=movie');
+    expect(await screen.findByRole('button', { name: 'Create Showing' })).toBeInTheDocument();
+  });
+
+  it('still writes the right foreign key when scoped from Live Events', async () => {
+    renderForm(`/admin/showings/new?kind=live&event=${EVENT_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].event_id).toBe(EVENT_ID);
+    expect(state.showingInserts[0].movie_id).toBeNull();
+  });
+});
+
+/**
+ * Closing the form should put you back where you were working.
+ *
+ * `?tab=` names the listing sub-tab and falls back to Movies when absent, so
+ * every exit here went to a bare `/admin` and dropped anyone mid-way through
+ * scheduling a run of concerts back onto the film list.
+ */
+describe('ShowingForm — closing returns to the listing you came from', () => {
+  it('goes back to Live Events from a show', async () => {
+    renderForm('/admin/showings/new?kind=live');
+    fireEvent.click(await screen.findByRole('button', { name: '← Back' }));
+    expect(await screen.findByText(/tab=live-events/)).toBeInTheDocument();
+  });
+
+  it('goes back to Movies from a showing', async () => {
+    renderForm('/admin/showings/new?kind=movie');
+    fireEvent.click(await screen.findByRole('button', { name: '← Back' }));
+    expect(await screen.findByText(/tab=movies/)).toBeInTheDocument();
+  });
+
+  it('lands on Live Events after actually saving a run of shows', async () => {
+    renderForm(`/admin/showings/new?kind=live&event=${EVENT_ID}`);
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+    fillShowtimes(['2026-09-12T19:30', '2026-09-13T19:30']);
+    submit();
+
+    // A clean batch leaves the form on its own, so there is no Done to press.
+    await waitFor(() => expect(state.showingInserts).toHaveLength(2));
+    expect(await screen.findByText('admin dashboard')).toBeInTheDocument();
+    expect(screen.getByText(/tab=live-events/)).toBeInTheDocument();
   });
 });

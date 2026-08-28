@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,19 +56,86 @@ const DEFAULT_TIERS: TierRow[] = [
   { tier_name: 'Student', price: '6.00', display_order: 2 },
 ];
 
+/**
+ * Which categories the picker may offer, from `?kind=`.
+ *
+ * The listings are two separate screens and a showing belongs to exactly one
+ * of them, so the form no longer offers all three from both. Opened from
+ * Movies it is a movie; opened from Live Events it is an event or a
+ * performance and never a film. The old single selector listing all three was
+ * the reason dating a concert began in the Movies tab.
+ */
+const KIND_CATEGORIES: Record<string, Category[]> = {
+  movie: ['movie'],
+  live: ['event', 'concert'],
+};
+
+/** `?movie=` / `?event=` / `?performance=` → the category each one scopes to. */
+const SCOPE_PARAMS: { param: string; category: Category }[] = [
+  { param: 'movie', category: 'movie' },
+  { param: 'event', category: 'event' },
+  { param: 'performance', category: 'concert' },
+];
+
+/**
+ * Read the production this form was deep-linked to, if any.
+ *
+ * The listings open this form from a specific title's card, so the item is
+ * already decided by the time the admin gets here. Before this, every new
+ * showing started at "Movie" with an empty picker no matter where it was
+ * opened from, which is why a concert could only be dated by going to the
+ * Movies tab and hunting for it in a category selector.
+ *
+ * Edit mode ignores the params entirely: the showing's own row already says
+ * what it is attached to, and letting a URL argue with it is how a showing
+ * gets silently reparented.
+ */
+function readScope(params: URLSearchParams): { category: Category; itemId: string } | null {
+  for (const { param, category } of SCOPE_PARAMS) {
+    const itemId = params.get(param);
+    if (itemId) return { category, itemId };
+  }
+  return null;
+}
+
 export default function ShowingForm() {
   const { id } = useParams();
   const isEdit = !!id && id !== 'new';
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAdmin, loading: authLoading } = useAuth();
 
-  const [category, setCategory] = useState<Category>('movie');
+  // Read once, on the first render. A useState initialiser rather than an
+  // effect so the form never paints as an unscoped "Movie" form for a frame,
+  // and — more importantly — so the loader below can see the scope when it
+  // decides whether to pre-tick the standard film passes.
+  const [scope, setScope] = useState(() => (isEdit ? null : readScope(searchParams)));
+
+  // Which listing sent us here. Narrows the picker even when no single title
+  // was named — "Add Show" from Live Events offers events and performances,
+  // and nothing else.
+  const allowedCategories = (!isEdit && KIND_CATEGORIES[searchParams.get('kind') ?? '']) || null;
+
+  const [category, setCategory] = useState<Category>(
+    scope?.category ?? allowedCategories?.[0] ?? 'movie',
+  );
+  // A movie has showings; an event has shows. Same row, same table — the word
+  // follows the listing it was opened from so the two screens read like the
+  // two things they are.
+  const noun = category === 'movie' ? 'showing' : 'show';
+  const Noun = category === 'movie' ? 'Showing' : 'Show';
+
+  // Where Back and Done return to. `tab` names the listing sub-tab and falls
+  // back to Movies when absent, so a bare '/admin' dropped anyone working in
+  // Live Events onto the film list every time they closed this form.
+  const listingPath = category === 'movie' ? '/admin?tab=movies' : '/admin?tab=live-events';
+
   const [movies, setMovies] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [concerts, setConcerts] = useState<any[]>([]);
   const [venues, setVenues] = useState<any[]>([]);
 
-  const [itemId, setItemId] = useState('');
+  const [itemId, setItemId] = useState(scope?.itemId ?? '');
   const [venueId, setVenueId] = useState('');
   // Edit mode edits the one showing it opened, so it keeps the single field.
   // Create mode builds a list instead: every other field on this form is shared
@@ -149,13 +216,34 @@ export default function ShowingForm() {
       // events and live_performances are ~200 and ~0 rows, well under the
       // ceiling; they would need the same treatment before they approach it.
       supabase.from('events').select('id, title, ticket_type, is_active').order('title'),
-      supabase.from('live_performances').select('id, title, is_active').order('title'),
+      supabase.from('live_performances').select('id, title, ticket_type, is_active').order('title'),
       supabase.from('venues').select('id, name, has_assigned_seating, total_seats').order('name'),
       fetchPassTypes().catch(() => [] as PassTypeOption[]),
     ]).then(([moviesRes, eventsRes, concertsRes, venuesRes, types]) => {
+      // Only ticketed events can carry a showing: an RSVP or info-only event
+      // is dated by its external link, or not dated at all.
+      const ticketedEvents = (eventsRes.data || []).filter((e: any) => e.ticket_type === 'ticketed');
+      // The same rule for performances now that they carry a ticketing mode:
+      // before, the column did not exist and every row was ticketed by
+      // default, so this filter changes nothing for the rows already there.
+      const ticketedConcerts = (concertsRes.data || []).filter((c: any) => c.ticket_type === 'ticketed');
       setMovies(moviesRes.data || []);
-      setEvents((eventsRes.data || []).filter((e: any) => e.ticket_type === 'ticketed'));
-      setConcerts(concertsRes.data || []);
+      setEvents(ticketedEvents);
+      setConcerts(ticketedConcerts);
+
+      // A hand-edited URL can name a title this picker never lists — a
+      // non-ticketed event, say. Dropping the scope puts the selectors back,
+      // rather than presenting an empty picker with nothing reachable in it.
+      if (scope) {
+        const scopedList = scope.category === 'movie' ? (moviesRes.data || [])
+          : scope.category === 'event' ? ticketedEvents
+          : ticketedConcerts;
+        if (!scopedList.some((row: any) => row.id === scope.itemId)) {
+          setScope(null);
+          setItemId('');
+          toast.error(`That title cannot take a ${noun} — choose one below.`);
+        }
+      }
       const venueList = venuesRes.data || [];
       setVenues(venueList);
       // One venue means there is no choice to make, so don't make the admin
@@ -171,7 +259,13 @@ export default function ShowingForm() {
       // somewhere or the standard pass quietly stops working at everything
       // created from now on; this is where it is stated, in front of an admin
       // who can see it and change it.
-      if (!isEdit) {
+      //
+      // Movies only. Switching the category by hand drops these again (see the
+      // Category select), so opening the form pre-scoped to an event or a
+      // performance has to skip them in the first place — otherwise the one
+      // path that never touches the selector is the one path that leaves a
+      // gala silently redeemable against a film pass.
+      if (!isEdit && category === 'movie') {
         const defaults = types.filter(t => t.is_default_for_movies && t.is_active);
         setEligiblePassTypeIds(defaults.map(t => t.id));
         setPassEligible(defaults.length > 0);
@@ -739,8 +833,8 @@ export default function ShowingForm() {
 
       const square = await runSquareEnsure(id!);
       if (square) toast.warning(square.message);
-      toast.success('Showing updated!');
-      navigate('/admin');
+      toast.success(`${Noun} updated!`);
+      navigate(listingPath);
       setSaving(false);
       return;
     }
@@ -783,7 +877,7 @@ export default function ShowingForm() {
       const only = outcomes[0];
       if (only.status === 'created') {
         if (squareMessage) toast.warning(squareMessage);
-        toast.success('Showing created!');
+        toast.success(`${Noun} created!`);
         setSavedShowingId(only.showingId!);
         navigate(`/admin/showings/${only.showingId}`, { replace: true });
       } else {
@@ -808,7 +902,7 @@ export default function ShowingForm() {
     if (summary.tone === 'success') {
       if (squareMessage) toast.warning(squareMessage);
       toast.success(summary.headline);
-      navigate('/admin');
+      navigate(listingPath);
       setSaving(false);
       return;
     }
@@ -842,7 +936,7 @@ export default function ShowingForm() {
 
   return (
     <div className={`container py-8 px-4 ${showSeatOverride ? 'max-w-4xl' : 'max-w-lg'}`}>
-      <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="mb-4">← Back</Button>
+      <Button variant="ghost" size="sm" onClick={() => navigate(listingPath)} className="mb-4">← Back</Button>
 
       {/* What the batch actually did, per showtime.
           There is no transaction behind a batch — it is a client-side loop over
@@ -916,7 +1010,7 @@ export default function ShowingForm() {
               </div>
             )}
 
-            <Button type="button" variant="outline" size="sm" onClick={() => navigate('/admin')}>
+            <Button type="button" variant="outline" size="sm" onClick={() => navigate(listingPath)}>
               Done — back to admin
             </Button>
           </CardContent>
@@ -926,12 +1020,41 @@ export default function ShowingForm() {
       <div className={showSeatOverride ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}>
       <Card className="glass">
         <CardHeader>
-          <CardTitle className="font-display">{isEdit ? 'Edit Showing' : 'Add Showing'}</CardTitle>
+          <CardTitle className="font-display">{isEdit ? `Edit ${Noun}` : `Add ${Noun}`}</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {allowedCategories?.length === 1 ? (
+              /* Nothing to say. Opened from Movies there is one category and
+                 no way to leave it, so a "Category: Movie" line is a field
+                 that answers a question the admin was never asked — and the
+                 picker below already says Movie. */
+              null
+            ) : scope ? (
+              /* Opened from a title's card, so the category is already
+                 settled and showing the selector only invites it to be
+                 changed by accident. Reversible: Change puts both pickers
+                 back, keeping whatever is already selected. */
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm">
+                    {category === 'movie' ? 'Movie' : category === 'event' ? 'Event' : 'Live Performance'}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setScope(null)}
+                  >
+                    Change
+                  </Button>
+                </div>
+              </div>
+            ) : (
             <div className="space-y-2">
-              <Label>Category *</Label>
+              <Label htmlFor="showing-category">Category *</Label>
               {/* Switching away from Movie drops the standard passes with it.
                   They are pre-ticked because a new film at the standard price
                   takes them; an event is not that, and carrying the tick across
@@ -949,14 +1072,17 @@ export default function ShowingForm() {
                   }
                 }}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="showing-category"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="movie">Movie</SelectItem>
-                  <SelectItem value="event">Event</SelectItem>
-                  <SelectItem value="concert">Live Performance</SelectItem>
+                  {(allowedCategories ?? (['movie', 'event', 'concert'] as Category[])).map(c => (
+                    <SelectItem key={c} value={c}>
+                      {c === 'movie' ? 'Movie' : c === 'event' ? 'Event' : 'Live Performance'}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="showing-item">
                 {category === 'movie' ? 'Movie' : category === 'event' ? 'Event' : 'Live Performance'} *
@@ -1016,7 +1142,7 @@ export default function ShowingForm() {
                     onChange={e => setRequiresSeatSelection(e.target.checked)}
                     className="rounded"
                   />
-                  <span className="font-semibold">Assigned seating for this showing</span>
+                  <span className="font-semibold">Assigned seating for this {noun}</span>
                 </label>
                 <p className="text-xs text-muted-foreground">
                   Off: general admission — buyers pick a quantity and capacity is a simple count.
@@ -1038,7 +1164,7 @@ export default function ShowingForm() {
                   onChange={e => setIsFeatured(e.target.checked)}
                   className="rounded"
                 />
-                <span className="font-semibold">Curator's pick — this screening</span>
+                <span className="font-semibold">Curator's pick — this {noun}</span>
               </label>
               <p className="text-xs text-muted-foreground">
                 Highlights this one date on the homepage, for the night that is worth
@@ -1437,10 +1563,10 @@ export default function ShowingForm() {
                   ? `Saving ${batchProgress.done + 1} of ${batchProgress.total}...`
                   : 'Saving...'
                 : isEdit
-                  ? 'Update Showing'
+                  ? `Update ${Noun}`
                   : plannedRows.length > 1
                     ? `Create ${plannedRows.length} Showtimes`
-                    : 'Create Showing'}
+                    : `Create ${Noun}`}
             </Button>
           </form>
         </CardContent>
