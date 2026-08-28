@@ -1,9 +1,10 @@
 ---
 brief: square-order-falls-back-to-bare-payment
-title: Some online sales still register in Square as "Custom Amount", not catalogued line items
+title: Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed
 status: queued
+findings: confirmed from production logs 28 Aug 2026
 track: bug
-severity: P1
+severity: P0
 date: 2026-08-28
 verified: true
 ---
@@ -84,48 +85,86 @@ badly but does not produce "Custom Amount"):
 <n> tier(s) had no Square variation for showing <id>; billed as ad-hoc lines
 ```
 
-## Leading hypothesis — dangling `catalog_object_id` from the Aug 14 restore
+## CAUSE CONFIRMED — 28 Aug 2026, from the production log
 
-Revised 28 Aug after reading the arithmetic. **Branch 1 can be close to ruled
-out on inspection**: `expectedTotalCents` and `chargeCents` are equal by
-construction. Every ticket's `tax_amount` is `taxCents / 100` where
-`taxCents = Math.round(priceCents * TAX_RATE)`, so `Math.round(tax_amount * 100)`
-returns exactly `taxCents` again; groups key on `tier|priceCents` so every
-member shares one price and one tax; and the processing-fee and donation groups
-are added to both sides. The sums cannot drift. `pricing.ts` works in integer
-cents precisely to avoid this, and the comment there says so.
+Not a hypothesis any more. `ticket-checkout` logged:
 
-That points at **branch 2 — Square rejected the order** — and there is a known
-mechanism.
+```
+order create failed 400 {"errors":[{"code":"MISSING_REQUIRED_PARAMETER",
+"detail":"Fulfillments of type DIGITAL must have digital_details supplied.",
+"field":"order.fulfillments[0].digital_details",
+"category":"INVALID_REQUEST_ERROR"}]}
+```
 
-1. The 14 Aug incident deleted catalog variations.
-2. `square-variation-restore` put them back, and
-   `RUNBOOK-square-catalog-integrity.md:108` records that **restored variations
-   come back with new ids** — Square will not reissue a deleted one.
-3. **Nothing re-points `showing_square_variations` after a restore.** Searching
-   the functions, that table is written only by `square-showing-variations` (the
-   mapping front door) and read by `_shared/square-order.ts` and
-   `square-cash-sale`. No restore path updates it.
+`orderRequestBody` (`_shared/square-order.ts:176`) attaches
+**`delivery_details`** to a fulfillment of **`type: 'DIGITAL'`**.
+`delivery_details` belongs to type `DELIVERY`. Square requires
+`digital_details` on a DIGITAL fulfillment and rejects the order without it.
 
-So any showing mapped **before** the damage still stores the **pre-restore id**.
-Checkout sends that dead id as `catalog_object_id`, Square rejects the order,
-and the code does exactly what it was told to do: log it and charge bare rather
-than risk the money. Sales for showings mapped *after* the restore — or never
-damaged — go through catalogued, which is why *Silent Film Festival* and
-*HADESTOWN* look right on the same day.
+So **branch 2 fires on every attempt**. The order is never created, and the
+payment goes through bare — which is exactly the behaviour #103 was written to
+eliminate.
 
-This also predicts the failure is **per showing and permanent**, not
-intermittent: the same showing will fail every time until its mapping is
-repaired. That is a sharper and more falsifiable claim than the tier hypothesis
-below, and it should be tested first.
+### Scope: all three online money paths, not "some sales"
 
-### Demoted: the untiered hypothesis
+Three callers pass `fulfillment: 'DIGITAL'`, and the parameter defaults to
+`'DIGITAL'` when omitted:
 
-Both failures showed no tier and both successes showed `Adult`, which first
-suggested the single-price path. Keep it as a fallback explanation, but note it
-predicts an **ad-hoc named line** (`variationName()` always returns at least the
-showtime), *not* the `Custom Amount` that was actually seen. It cannot on its
-own produce this symptom.
+| Caller | Covers |
+|---|---|
+| `ticket-checkout:400` | every online ticket sale |
+| `film-pass-checkout:900` | every online film-pass sale |
+| `square-donation:204` | every online donation |
+
+All three build the same malformed body, so **every online sale has registered
+as a bare `Custom Amount` since #103 shipped on 19 Aug** — the whole point of
+that work, defeated by one wrong field name.
+
+The two sales that looked correct the same day (*Silent Film Festival*,
+*HADESTOWN*) carry a tier and a variation name, so they came through a
+different path — POS, Terminal, or Square Online — not `ticket-checkout`.
+
+`square-cash-sale` passes `IN_STORE` and takes no details block; it also returns
+502 rather than falling back, so if it were broken it would be loud. Confirm it
+separately rather than assuming.
+
+### Both earlier hypotheses were wrong, and one was wrong usefully
+
+- **Dangling catalog id from the Aug 14 restore**: wrong. The reasoning that
+  `showing_square_variations` is never re-pointed after a restore still holds and
+  is worth its own brief, but it is not what is happening here.
+- **Untiered showings**: wrong as a cause, but it correctly predicted a *named
+  ad-hoc line* rather than `Custom Amount` — and the same log confirms that
+  problem is real and separate:
+  ```
+  1 tier(s) had no Square variation for showing 369a2c42-55a2-432d-9229-f4ac8ecc21da;
+  billed as ad-hoc lines
+  ```
+  That showing has no mapping. Once the order actually succeeds, it will sell as
+  a named ad-hoc line with no item-sales or category rollup. **Fixing the
+  fulfillment exposes this rather than solving it.**
+
+### The fix — take it from the working code, not from the API docs
+
+`square-invoice` is the one order builder in this repo that has always worked,
+and it sends **no `fulfillments` array at all**. Fulfillments are optional on a
+Square order.
+
+Two candidates, to be settled on the **staging Square sandbox**, which is real
+and free to break (`square-staging-has-a-real-sandbox`):
+
+1. **Drop the fulfillment** — matches `square-invoice`, the proven path here.
+   Lowest risk. Cost: the buyer name and email currently ride on
+   `delivery_details.recipient`, so that data would need another home. Note it
+   reaches Square *nowhere* today, since the order never gets created.
+2. **Supply `digital_details`** — keeps the recipient, and keeps parity with how
+   Square Online records web sales, which is what the original design wanted.
+   There is no working example of this shape in the repo, so its required fields
+   must be confirmed against the sandbox before shipping. Do not guess it from
+   memory.
+
+Prefer (2) if the sandbox accepts it, since it preserves the buyer contact data
+the original design intended. Fall back to (1) if it does not.
 
 ## Steps
 
