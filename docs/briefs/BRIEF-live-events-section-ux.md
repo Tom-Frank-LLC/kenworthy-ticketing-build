@@ -1,12 +1,13 @@
 ---
 brief: live-events-section-ux
 title: Live Events manages its own showings, and one door replaces two create buttons
-status: shipped
+status: built
 track: ux
 severity: P2
 date: 2026-08-25
 shipped_at: 2026-08-28
 verified: true
+superseded_by: partial
 evidence: >-
   Deployed to production 2026-08-28T05:07:21Z as worker version
   959f714f-8ad5-4f0b-8daf-104d217720a9 (rollback: 9d870cf0-ef06-4466-937d-a0123aacd1fc,
@@ -140,3 +141,90 @@ renders both kinds with their explanations, and
 `/admin/showings/new?event=<id>` opens on the named event with the category
 stated rather than offered — and with "Accept passes at the door" unticked,
 which is the film-pass trap above staying shut.
+
+
+---
+
+## Correction (2026-08-28) — the chooser was the wrong fix
+
+Tom, on seeing it: *"The goal was to merge the functionality of the add event
+and add performance, not to just have them be moved inside a new button that
+offers both as choices."*
+
+He was right, and Decision 1 above was the wrong question to have asked. Two
+buttons behind one button is still two forms; the "which do I press?" moment
+only moved one click later.
+
+### What the numbers changed
+
+The brief called merging the tables a heavy data migration and deferred it on
+that basis. Measured instead of assumed:
+
+| | production | staging |
+|---|---|---|
+| `events` | 199 | 198 |
+| `live_performances` | **1** | **0** |
+
+One row, created the same day, with one showing and **no Square link**. The
+"bigger, decide separately" option had been sized from the code surface, not
+from the data. This is the third time on this project that an unmeasured
+"that's too heavy" has misdirected the work — see the Aug 14 Square note.
+
+### What was built instead
+
+One form. It asks the two things that actually differed, and that neither table
+could hold together:
+
+- **Type** — concert, stand-up comedy, theatre, dance, film screening,
+  community event. A performance is a *type of event* now.
+- **Ticketing** — ticketed, RSVP, info-only.
+
+They are independent, which is the point. An **RSVP concert** was unsayable
+before: `events` carried ticketing and no type, `live_performances` carried a
+type and was silently always ticketed.
+
+`20260828060159_unify_live_event_type_and_ticketing.sql` adds the missing half
+to each — `events.subcategory`, `live_performances.ticket_type` + `rsvp_url`.
+Additive only: no row moved, no table dropped, existing values untouched, and
+`events.subcategory` left NULL rather than defaulted, because those 199 rows
+are a real mix and stamping them all 'community_event' would invent data.
+
+**Tables kept, but only one is written to.** Everything new goes to `events`.
+Routing new rows by type was the obvious alternative and is wrong on this data:
+`events` already holds a ballet and a stand-up tour, so "performances live over
+there" is false, and editing one would have offered a type list excluding what
+it is. `live_performances` is read/edit only, for its single row, and its type
+list is restricted to the four its own enum can store.
+
+### The showing form belongs to a listing
+
+`?kind=movie` offers films and drops the category selector entirely — there is
+nothing to choose. `?kind=live` offers events and performances and cannot reach
+a film. One selector listing all three from everywhere is why dating a concert
+used to begin in the Movies tab.
+
+### Shows, not showings
+
+A film has showings; an event has shows. The word follows the listing — heading,
+buttons, toasts, field labels.
+
+### Verified on staging in a signed-in browser
+
+Live Events shows **Add Show** and **Add Event**, cards head their child rows
+**SHOWS**, Movies still says **SHOWINGS**. Add Event offers all six types.
+`?kind=live` offers Event and Live Performance and no Movie; `?kind=movie`
+states "Movie" with no selector and no Change.
+
+Checks: `tsc -p tsconfig.app.json --noEmit`, `vitest` (52 files, 657 passing —
+7 new on the unified form, 4 on listing scope, 2 on the Shows heading),
+`build:staging`. Migration tested in a throwaway `postgres:15` first, including
+its rollback, before it touched staging.
+
+### Not done
+
+- **Production is not migrated and not deployed.** It still runs the chooser
+  build (worker `959f714f`) against a schema without these columns. The
+  frontend must not ship before the migration.
+- The label fixes (Title, Rating, Trailer, RSVP URL, switches, category select
+  had no `htmlFor`) were needed to test the form and are worth keeping, but a
+  proper pass over the admin forms is its own brief.
