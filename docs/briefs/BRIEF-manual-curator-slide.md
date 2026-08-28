@@ -1,13 +1,14 @@
 ---
 brief: manual-curator-slide
 title: A page with nothing to sell can be a curator's pick
-status: built
+status: shipped
 track: feature
 severity: P2
 date: 2026-08-25
-shipped_in: ["#218", "#220", "#222"]
+shipped_in: ["#218", "#220", "#222", "#223"]
+shipped_at: 2026-08-28
 verified: true
-evidence: on main as f5c882c; migration 20260828030114 applied to BOTH staging and production; staging worker deployed 2026-08-28 (version 1032a9e1-0be6-45c0-914a-88234c121870). Production frontend NOT deployed.
+evidence: production worker version 8af88346-a6f1-4004-8fa3-1acb964c6dd7 (rollback 959f714f-8ad5-4f0b-8daf-104d217720a9), serving assets/index-Byyca59i.js; migration 20260828030114 on both refs.
 ---
 
 # Brief (for Claude Code): Manual curator's-pick slides (promote any page, e.g. the Silent Film Festival)
@@ -130,8 +131,10 @@ description as its alt text; and the button routed in-app to
 `/silent-film-festival`. That test slide is still on staging — delete it from
 Admin → Listings → Featured when you are done with it.
 
-Production still has only the table. The frontend change is not deployed there,
-so nothing on kenworthy.org has changed yet.
+**Deployed to production on 2026-08-28** — worker version
+`8af88346-a6f1-4004-8fa3-1acb964c6dd7`, rollback
+`959f714f-8ad5-4f0b-8daf-104d217720a9`. See the note at the end for what was
+checked before deploying.
 
 ## Follow-up: the screen shows every pick, not just the written ones (#220)
 
@@ -175,3 +178,48 @@ opening Pages with the editor nowhere in sight. `adminSections.ts` now owns the
 Listings sub-tab list too — the rule for an unrecognised `?tab=` is the same rule
 as for an unrecognised `?section=`, and Radix renders a blank panel for either
 if nobody writes it down.
+
+## The production deploy (2026-08-28)
+
+The check that mattered was the one `CLAUDE.md` insists on: **is production
+ahead of main?** It was not, and proving that took more than comparing hashes,
+because the hashes disagreed for a reason that had nothing to do with the code.
+
+Production was serving `index-zZlVCsb-.js`. No commit in main's recent history
+built to that hash — not the commit before this work, not the commit after the
+first PR. On the hash alone it read as "production is running something nobody
+merged", which would have made a deploy from main a silent revert of someone
+else's work.
+
+It was not. Diffing the *content* rather than the names:
+
+- The entry chunk's string content is identical to main's, once the referenced
+  chunk filenames are normalised — chunk hashes cascade, so one differing chunk
+  renames every chunk that imports it.
+- All 54 page chunks were downloaded from production and compared against the
+  main build. No user-facing string exists in any of them that main lacks. Two
+  chunks flagged: `AdminDashboard`, whose only differences are minified symbol
+  names inside the xlsx library (`Mz` vs `zz`), and `ShowingForm`, where the
+  flagged copy turned out to be byte-identical and merely wrapped differently by
+  the minifier.
+- Production carried one extra chunk, `radio-group.js`, and one extra import
+  binding from the shared dialog chunk. Both are code-splitting boundaries
+  moving, not code — consistent with production having been built by a
+  different runner or a differently-resolved `node_modules`.
+
+So production was the #218 state, built elsewhere; main was that plus #220, #222
+and #223, all from this line of work. Deploying main shipped only those.
+
+Before deploying: rollback version recorded, `migration list` on the production
+ref confirmed nothing pending, and the bundle confirmed to carry the production
+Supabase ref and none of staging's. After: the live origin serves
+`index-Byyca59i.js` as `text/javascript` (not the SPA fallback pretending to be
+an asset), the home page renders with its curator band, no `[featured_slides]`
+warning reaches the console, and the live `AdminDashboard` chunk contains
+"Flagged in the listings" and "Featured on the home page" and no "Staff POS".
+
+Not checked in the running production UI: the admin screens themselves. The
+Chrome profile has no session on the production origin, and Claude does not
+enter credentials. They are the same build verified end to end on staging, and
+the deployed chunk was confirmed by content — but that is evidence of shipping,
+not of someone having used it. Worth five minutes of clicking on the real thing.

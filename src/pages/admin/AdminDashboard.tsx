@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, ShoppingCart, ScanLine, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
@@ -628,13 +628,13 @@ export default function AdminDashboard() {
     <div className="container py-8 px-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8">
         <h1 className="font-display text-3xl font-bold">Admin Dashboard</h1>
+        {/* The box office and the door scanner used to be shortcuts here too.
+            They are not admin work — they are the two things a volunteer does
+            on a shift — and they already have a home on /staff, which is one
+            click away in the header on every page. Two buttons pointing out of
+            this screen made the row read as a launcher rather than as a
+            heading. */}
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" asChild>
-            <Link to="/staff/pos"><ShoppingCart className="h-4 w-4 mr-1" /> Staff POS</Link>
-          </Button>
-          <Button size="sm" variant="outline" asChild>
-            <Link to="/staff/scanner"><ScanLine className="h-4 w-4 mr-1" /> Scanner</Link>
-          </Button>
           {isAdmin && (
             <Button size="sm" variant="outline" asChild>
               <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
