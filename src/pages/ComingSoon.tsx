@@ -44,6 +44,6 @@ export const AccessibilityPage = () => (
   <ComingSoon
     title="Accessibility"
     path="/accessibility"
-    blurb="A full accessibility guide — seating, entry, hearing assist, and quiet screenings — is being drafted. Reach out with any questions."
+    blurb="A full accessibility guide is in progress. KPAC facilities include one ADA restroom, wheelchair seating, stairless entry and access throughout the entire auditorium, stage lift, assistive listening devices, and open caption screening options. Reach out with any questions."
   />
 );
