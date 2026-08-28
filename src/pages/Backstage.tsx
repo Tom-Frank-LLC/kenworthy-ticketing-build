@@ -254,9 +254,14 @@ export default function Backstage() {
 
           {/* Backstage has been a rental option all along — `venue_area` on the
               request form has carried 'backstage_speakeasy' since before this
-              page existed. This is the first place that says so out loud. */}
+              page existed. This is the first place that says so out loud.
+
+              It used to point at /rental-request, which asked about projection,
+              seating and Blu-ray players and read as a form for the auditorium
+              somebody had landed on by mistake. Same form, same queue, scoped
+              to this room: see the mode comment in RentalRequest. */}
           <Button asChild variant="outline" className="mt-8">
-            <Link to="/rental-request">Enquire about booking Backstage</Link>
+            <Link to="/backstage-enquiry">Enquire about booking Backstage</Link>
           </Button>
         </section>
       )}
