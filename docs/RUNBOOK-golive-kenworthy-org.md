@@ -392,6 +392,45 @@ issue rather than a breakage.
 - PWA updates cleanly; no stale service worker serving the old origin.
 - Submit `https://kenworthy.org/sitemap.xml` to Search Console.
 
+### The cutover was reverted four minutes after it shipped
+
+`www` → apex was deployed and verified: 301 with path and query preserved,
+apex still 200, single hop. Rule name *Redirect from WWW to root [Template]*.
+
+Cloudflare warned *"This rule may not apply to your traffic — your DNS
+configuration may not be proxying traffic for www"*. That warning is **wrong
+here and must be ignored**: a Worker custom domain creates a proxied `AAAA
+100::` placeholder rather than a conventional A/CNAME, and Cloudflare's
+pre-flight check does not recognise it. `www` was verifiably proxied —
+`proxied=True` on the record, `server: cloudflare` and a `cf-ray` header on
+live requests. **Do not accept the dialog's offer to "Create a new proxied DNS
+record"** — that adds a record competing with the custom domain.
+
+Then the frontend reverted on its own. Timeline:
+
+| Time (UTC) | Version | What |
+|---|---|---|
+| 15:41:48 | `e6954c1a` | our deploy — kenworthy.org baked in |
+| 15:45:38 | `b654d1f5` | **another session's deploy — reverted it** |
+
+Four minutes. That session shipped #229 from a tree that did not carry
+`.env.production`, so `VITE_SITE_URL` went back to the Worker URL and took
+`og:url`, `sitemap.xml` and `robots.txt` with it. DNS, Auth and the `SITE_URL`
+secret were untouched — only the bundle.
+
+Recovery was to rebase onto their commit, rebuild and redeploy
+(`dd3993fe-1eba-4386-ae54-b63625123f73`), which carries both their work and the
+domain change.
+
+**The real lesson is about ordering.** `parallel-sessions-clobber-frontend-deploys`
+already says unmerged work is not safe. What this adds: when the config being
+deployed lives in a **committed file** like `.env.production`, every other
+session builds from a tree that silently contradicts it, so the revert is not a
+risk but a certainty on the next deploy by anyone. The window was four minutes.
+
+**Merge the PR before deploying, not after.** For a change of this shape that
+ordering is the fix; redeploying is only first aid.
+
 ## Rollback
 
 At any point after Phase 1, in Cloudflare DNS:
