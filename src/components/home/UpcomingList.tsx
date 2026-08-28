@@ -227,7 +227,7 @@ export function UpcomingList({
           {active && (
             <ShowingPreview
               item={active}
-              className="hidden min-w-0 lg:block lg:sticky lg:top-4 lg:self-start"
+              className="hidden min-w-0 lg:block lg:sticky lg:sticky-below-header lg:self-start"
             />
           )}
         </div>

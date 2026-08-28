@@ -133,7 +133,7 @@ export default function CalendarPage() {
               // for the month grid and for anything narrower than `lg`.
               <ShowingPreview
                 item={previewItem}
-                className="min-w-0 sticky top-4 self-start"
+                className="min-w-0 sticky sticky-below-header self-start"
               />
             )}
           </div>

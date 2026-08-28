@@ -237,8 +237,21 @@ export default function Rentals() {
         </p>
 
         <div className="grid lg:grid-cols-[auto_1fr] gap-10 items-start">
-          <div>
-            <div className="rounded-lg border border-accent/20 bg-card/40 p-2 inline-block">
+          {/* min-w-0: a grid item defaults to `min-width: auto`, so this column
+              could not shrink below the picker's intrinsic width and the track
+              grew past the viewport instead — taking the availability table,
+              which shares the track on a phone, off-screen with it. */}
+          <div className="min-w-0">
+            {/* max-w-full + overflow-x-auto, because `inline-block` sizes to the
+                picker's intrinsic width and that width is in rem: seven 2.25rem
+                cells plus the padding came to ~330px at the old root, which fit a
+                335px phone column, and at a larger root it does not. Worse, this is
+                the first item in the grid below, so its min-content width set the
+                shared column and pushed the availability table off-screen with it.
+                Capped here, the picker scrolls on its own on a narrow phone and
+                nothing else moves — and it stays correct under browser zoom and OS
+                large-text, which a px width would not. */}
+            <div className="rounded-lg border border-accent/20 bg-card/40 p-2 inline-block max-w-full overflow-x-auto">
               <Calendar
                 mode="single"
                 selected={selected}
