@@ -1,18 +1,24 @@
 ---
 brief: square-order-falls-back-to-bare-payment
 title: Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed
-status: built
+status: shipped
 findings: confirmed from production logs 28 Aug 2026
 track: bug
 severity: P0
 date: 2026-08-28
+shipped_in: ["#233"]
+shipped_at: 2026-08-28
 verified: true
 ---
 
 # Brief: every online sale registers as "Custom Amount"
 
-> **Fixed and verified on staging, 28 Aug 2026 — not yet deployed to
-> production.** Every caller now sends **no fulfillment**, the shape
+> **Shipped to production 28 Aug 2026, 21:23 UTC** — `ticket-checkout` v47,
+> `film-pass-checkout` v37, `square-donation` v36, `square-cash-sale` v4.
+> The deployed bundle was downloaded and confirmed to contain no
+> `delivery_details` and to still build orders.
+>
+> Every caller sends **no fulfillment**, the shape
 > `square-invoice` has always used. Verified end to end against the Square
 > sandbox — order created, payment attached, order `COMPLETED`. See
 > *Verification* at the end, including why PICKUP was tried and rejected.
