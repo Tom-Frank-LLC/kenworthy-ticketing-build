@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**76 briefs** — 69 shipped, 4 built, 3 open, 0 needs triage, 0 closed.
+**76 briefs** — 70 shipped, 3 built, 3 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -13,7 +13,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P2` **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../ai-provenance-images.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
-- `P2` **A page with nothing to sell can be a curator's pick**<br>`feature` — `#218`, `#220`, `#222` — [brief](briefs/BRIEF-manual-curator-slide.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open
@@ -24,6 +23,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A page with nothing to sell can be a curator's pick**<br>`feature` — `#218`, `#220`, `#222`, `#223` — [brief](briefs/BRIEF-manual-curator-slide.md)
 - **An admin adds a whole run of showtimes in one pass, and is told exactly which ones landed**<br>`feature` — `#203`, `#208` — [brief](briefs/BRIEF-batch-showtimes.md)
 - **Give each film pass its own purchase page**<br>`ux` — `#207` — [brief](briefs/BRIEF-film-pass-detail-pages.md)
 - **The Support menu sits on top of the Tickets button at tablet width**<br>`bug` — `#216` — [brief](briefs/BRIEF-header-nav-overlap-768.md)
