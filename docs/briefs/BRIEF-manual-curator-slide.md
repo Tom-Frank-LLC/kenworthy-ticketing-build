@@ -5,8 +5,9 @@ status: built
 track: feature
 severity: P2
 date: 2026-08-25
-verified: false
-evidence: supabase/migrations/20260828030114_featured_slides.sql, src/components/admin/FeaturedSlidesTab.tsx, src/lib/featuredSlides.ts
+shipped_in: ["#218"]
+verified: true
+evidence: on main as f5c882c; migration 20260828030114 applied to BOTH staging and production; staging worker deployed 2026-08-28 (version 1032a9e1-0be6-45c0-914a-88234c121870). Production frontend NOT deployed.
 ---
 
 # Brief (for Claude Code): Manual curator's-pick slides (promote any page, e.g. the Silent Film Festival)
@@ -121,5 +122,13 @@ Against staging (`rpqzrpboyhshdrfdwayk`), after `supabase db push`:
 - `tsc -p tsconfig.app.json --noEmit`, `vitest run` (632 passing, 24 of them
   new), `npm run build:staging`.
 
-The admin tab has not been clicked through end to end: doing that needs an admin
-session on the dev server, and the branch is not deployed to staging yet.
+Then on the deployed staging worker, signed in as an admin: **Add slide** with a
+title, blurb, `/silent-film-festival`, a CTA label, a 958 KB JPEG and its own
+image description saved on the first try; the row listed as **Live**; the home
+page put it at the front of the carousel with the image drawn at 640px and the
+description as its alt text; and the button routed in-app to
+`/silent-film-festival`. That test slide is still on staging — delete it from
+Admin → Pages → Home when you are done with it.
+
+Production still has only the table. The frontend change is not deployed there,
+so nothing on kenworthy.org has changed yet.
