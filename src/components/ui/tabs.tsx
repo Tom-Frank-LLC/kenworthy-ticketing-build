@@ -12,7 +12,21 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
+      // Wraps rather than overflows. A tab bar is as wide as its labels, and
+      // `whitespace-nowrap` on the triggers means it cannot shrink — so on a
+      // phone a bar of more than about three labels grew past the viewport
+      // and took the whole page's horizontal scroll with it. Observed on the
+      // admin Analytics bar (six triggers) at 375px, where it dragged the
+      // header, the marquee title and every table sideways with it.
+      //
+      // `max-w-full` is what actually stops the overflow; `flex-wrap` is what
+      // makes the overflow legible instead of clipped, and `gap-y-1` keeps
+      // two rows from touching. Height has to come off with them: a fixed
+      // `h-10` around wrapped rows crops the second one.
+      //
+      // Only the vertical gap is set. A horizontal one would re-space every
+      // single-row bar in the app, and this is a bug fix, not a restyle.
+      "inline-flex h-auto min-h-10 max-w-full flex-wrap items-center justify-center gap-y-1 rounded-md bg-muted p-1 text-muted-foreground",
       className,
     )}
     {...props}
