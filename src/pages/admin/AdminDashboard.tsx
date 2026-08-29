@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
+import { MarqueeFrame } from '@/components/MarqueeFrame';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star
 } from 'lucide-react';
@@ -591,66 +592,84 @@ export default function AdminDashboard() {
   if (authLoading) return <div className="container py-16 text-center text-muted-foreground">Loading...</div>;
 
   return (
-    <div className="container py-8 px-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8">
-        <h1 className="font-display text-3xl font-bold">Admin Dashboard</h1>
-        {/* The box office and the door scanner used to be shortcuts here too.
-            They are not admin work — they are the two things a volunteer does
-            on a shift — and they already have a home on /staff, which is one
-            click away in the header on every page. Two buttons pointing out of
-            this screen made the row read as a launcher rather than as a
-            heading. */}
-        <div className="flex flex-wrap gap-2">
-          {isAdmin && (
-            <Button size="sm" variant="outline" asChild>
-              <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
-            </Button>
-          )}
-        </div>
-      </div>
+    <div className="container py-8 px-4 md:py-10">
+      {/* At a glance: the four running counts, and the way out to the audit log.
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card className="glass">
-          <CardContent className="p-4 flex items-center gap-3">
-            <Film className="h-6 w-6 text-primary" />
-            <div>
-              <p className="text-xl font-bold">{movies.length}</p>
-              <p className="text-xs text-muted-foreground">Movies</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="glass">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="flex -space-x-2">
-              <PartyPopper className="h-6 w-6 text-primary" />
-              <Music className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <p className="text-xl font-bold">{events.length + concerts.length}</p>
-              <p className="text-xs text-muted-foreground">Live Events</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="glass">
-          <CardContent className="p-4 flex items-center gap-3">
-            <Calendar className="h-6 w-6 text-primary" />
-            <div>
-              <p className="text-xl font-bold">{showings.length}</p>
-              <p className="text-xs text-muted-foreground">Showings</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="glass">
-          <CardContent className="p-4 flex items-center gap-3">
-            <Ticket className="h-6 w-6 text-primary" />
-            <div>
-              <p className="text-xl font-bold">{ticketCount}</p>
-              <p className="text-xs text-muted-foreground">Tickets Sold</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          The page used to open with an `h1 "Admin Dashboard"`. It named the
+          screen you had already chosen and never named the section you were
+          actually in, which is the orientation gap the framed title below
+          closes — so the h1 moved there, and this row keeps a caption only.
+
+          A caption and not an `h2`: the h1 now sits *below* this block, and a
+          heading here would put an h2 above it and invert the document
+          outline. The `section` still gets the name via `aria-labelledby`,
+          which accepts any element, so the grouping survives without the
+          heading. */}
+      <section aria-labelledby="admin-glance" className="mb-10 md:mb-12">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+          <p
+            id="admin-glance"
+            className="font-display text-sm uppercase tracking-widest text-muted-foreground"
+          >
+            At a glance
+          </p>
+          {/* The box office and the door scanner used to be shortcuts here too.
+              They are not admin work — they are the two things a volunteer does
+              on a shift — and they already have a home on /staff, which is one
+              click away in the header on every page. Two buttons pointing out of
+              this screen made the row read as a launcher rather than as a
+              heading. */}
+          <div className="flex flex-wrap gap-2">
+            {isAdmin && (
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
+          <Card className="glass">
+            <CardContent className="p-4 md:p-5 flex items-center gap-3">
+              <Film className="h-6 w-6 text-primary" />
+              <div>
+                <p className="text-xl font-bold">{movies.length}</p>
+                <p className="text-xs text-muted-foreground">Movies</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="glass">
+            <CardContent className="p-4 md:p-5 flex items-center gap-3">
+              <div className="flex -space-x-2">
+                <PartyPopper className="h-6 w-6 text-primary" />
+                <Music className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-xl font-bold">{events.length + concerts.length}</p>
+                <p className="text-xs text-muted-foreground">Live Events</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="glass">
+            <CardContent className="p-4 md:p-5 flex items-center gap-3">
+              <Calendar className="h-6 w-6 text-primary" />
+              <div>
+                <p className="text-xl font-bold">{showings.length}</p>
+                <p className="text-xs text-muted-foreground">Showings</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="glass">
+            <CardContent className="p-4 md:p-5 flex items-center gap-3">
+              <Ticket className="h-6 w-6 text-primary" />
+              <div>
+                <p className="text-xl font-bold">{ticketCount}</p>
+                <p className="text-xs text-muted-foreground">Tickets Sold</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
 
       {/* Above the tabs, and only when it has something to say. Delivery is
           fire-and-forget so a failed send is silent everywhere else — the buyer
@@ -658,22 +677,57 @@ export default function AdminDashboard() {
           only screen that reads confirmation_error back. */}
       <UndeliveredOrdersCard />
 
-      <Tabs value={activeTopTab} onValueChange={setActiveTopTab} className="space-y-4">
+      <Tabs value={activeTopTab} onValueChange={setActiveTopTab} className="space-y-6 md:space-y-8">
         {(() => {
-          const topTabs = [
-            { value: 'listings', label: 'Listings', icon: Calendar, show: true },
-            { value: 'concessions', label: 'Concessions', icon: UtensilsCrossed, show: true },
-            { value: 'passes', label: 'Passes', icon: CreditCard, show: true },
-            { value: 'dvds', label: 'DVDs', icon: Disc, show: true },
-            { value: 'rentals', label: 'Rentals', icon: KeyRound, show: true },
-            { value: 'labor', label: 'Staff', icon: Clock, show: isAdmin },
-            { value: 'sponsors', label: 'Sponsors', icon: Handshake, show: true },
-            { value: 'pages', label: 'Pages', icon: Globe, show: isAdmin },
-            { value: 'analytics', label: 'Analytics', icon: BarChart3, show: isAdmin },
-            { value: 'mailchimp', label: 'Mailchimp', icon: Mail, show: isAdmin },
-            { value: 'lgl', label: 'LGL', icon: Heart, show: isAdmin },
-            { value: 'bor', label: 'BOR', icon: FileText, show: true },
-          ].filter(t => t.show);
+          /* Twelve equal glyphs in one flat row was a memory test. The bar
+             said nothing about which tools belong with which, so finding one
+             meant scanning all of them — the "cluster to clarify" ask.
+
+             Declared as groups and flattened for the pager, rather than kept
+             flat and grouped at render time: the mobile ‹ › order and the
+             desktop bar then read from one list and cannot drift apart.
+
+             Filtering runs per group and then drops the empties. It has to be
+             that way round for a non-admin: five of the twelve are `isAdmin`,
+             and Site is all of Pages, so a plain filter would leave a "SITE"
+             caption sitting over a divider with nothing under it. */
+          const tabGroups = [
+            {
+              label: 'Programming',
+              tabs: [
+                { value: 'listings', label: 'Listings', icon: Calendar, show: true },
+                { value: 'passes', label: 'Passes', icon: CreditCard, show: true },
+                { value: 'concessions', label: 'Concessions', icon: UtensilsCrossed, show: true },
+                { value: 'dvds', label: 'DVDs', icon: Disc, show: true },
+              ],
+            },
+            {
+              label: 'Operations',
+              tabs: [
+                { value: 'rentals', label: 'Rentals', icon: KeyRound, show: true },
+                { value: 'labor', label: 'Staff', icon: Clock, show: isAdmin },
+                { value: 'bor', label: 'BOR', icon: FileText, show: true },
+              ],
+            },
+            {
+              label: 'Audience & Growth',
+              tabs: [
+                { value: 'sponsors', label: 'Sponsors', icon: Handshake, show: true },
+                { value: 'analytics', label: 'Analytics', icon: BarChart3, show: isAdmin },
+                { value: 'mailchimp', label: 'Mailchimp', icon: Mail, show: isAdmin },
+                { value: 'lgl', label: 'LGL', icon: Heart, show: isAdmin },
+              ],
+            },
+            {
+              label: 'Site',
+              tabs: [
+                { value: 'pages', label: 'Pages', icon: Globe, show: isAdmin },
+              ],
+            },
+          ]
+            .map(g => ({ ...g, tabs: g.tabs.filter(t => t.show) }))
+            .filter(g => g.tabs.length > 0);
+          const topTabs = tabGroups.flatMap(g => g.tabs);
           const currentIdx = Math.max(0, topTabs.findIndex(t => t.value === activeTopTab));
           const current = topTabs[currentIdx] ?? topTabs[0];
           const goPrev = () => setActiveTopTab(topTabs[(currentIdx - 1 + topTabs.length) % topTabs.length].value);
@@ -681,7 +735,50 @@ export default function AdminDashboard() {
           const CurrentIcon = current.icon;
           return (
             <>
-              {/* Mobile: arrow pager */}
+              {/* You are here.
+
+                  The desktop bar is glyphs only: the label lives in a tooltip,
+                  so the name of the section you are *in* was never on screen —
+                  the one thing a twelve-way switch has to tell you. This is
+                  that name, in the ring of bulbs off the Kenworthy's own
+                  marquee, directly above the bar it labels.
+
+                  It is the page's `h1`. The old one read "Admin Dashboard",
+                  naming the screen you had already chosen; this one changes
+                  with the tab and answers the question the screen was actually
+                  raising.
+
+                  `MarqueeFrame` is reused, not rebuilt — same component as the
+                  concessions menu, worn lighter through `.marquee-frame--title`
+                  (see index.css). The ring is ornamental and `aria-hidden`
+                  inside the component, so the heading is the whole accessible
+                  name, and the frame is static: nothing here animates, so
+                  there is no reduced-motion case to answer yet. */}
+              <MarqueeFrame className="marquee-frame--title text-center">
+                <h1 className="flex flex-wrap items-center justify-center gap-3 font-display text-2xl font-bold uppercase tracking-wider md:text-3xl">
+                  <span className="relative flex shrink-0 items-center justify-center">
+                    <CurrentIcon
+                      aria-hidden="true"
+                      strokeWidth={1.75}
+                      className="absolute h-7 w-7 text-accent opacity-70 blur-[4px] md:h-8 md:w-8"
+                    />
+                    <CurrentIcon
+                      aria-hidden="true"
+                      strokeWidth={1.75}
+                      className="relative h-7 w-7 glyph-lit md:h-8 md:w-8"
+                    />
+                  </span>
+                  {current.label}
+                </h1>
+              </MarqueeFrame>
+
+              {/* Mobile: arrow pager.
+
+                  Kept whole, label and counter included. The framed title above
+                  says where you are; the pager says where you are in the run of
+                  twelve and moves you, and stripping it to bare arrows would
+                  have made the control stop describing itself on the one
+                  surface with no tooltips to fall back on. */}
               <div className="md:hidden flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -719,83 +816,136 @@ export default function AdminDashboard() {
                   an `aria-label` and gains a tooltip. Twelve unlabelled glyphs
                   would otherwise be a memory test, and a screen reader would
                   hear twelve buttons named nothing at all. */}
-              <TabsList
-                className="hidden md:grid w-full h-auto p-1.5"
-                style={{ gridTemplateColumns: `repeat(${topTabs.length}, minmax(0, 1fr))` }}
-              >
-                {topTabs.map(t => {
-                  const Icon = t.icon;
-                  const isActive = activeTopTab === t.value;
-                  /*
-                   * The tooltip wraps the icon, NOT the trigger.
-                   *
-                   * `TooltipTrigger asChild` merges its props onto its child, and
-                   * Radix Tabs and Radix Tooltip both write `data-state`. Put the
-                   * tooltip on the trigger and the tooltip's open/closed wins, so
-                   * every `data-[state=active]:` rule on that tab goes silently
-                   * inert. It still *looks* right when the styling is driven from
-                   * JS, which is exactly what makes it worth writing down.
-                   */
-                  return (
-                    <TabsTrigger
-                      key={t.value}
-                      value={t.value}
-                      aria-label={t.label}
-                      /* The lit glyph is the selected state, so the default active
-                         pill comes off: a lighter rectangle behind a glow reads as
-                         two competing highlights. */
-                      className="h-12 px-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+              <TabsList className="hidden md:flex w-full h-auto items-stretch gap-1 p-1.5">
+                {tabGroups.map((group, groupIdx) => (
+                  <Fragment key={group.label}>
+                    {groupIdx > 0 && (
+                      /* A rule, not just a gap. At these widths the run of
+                         glyphs is tight enough that proximity alone did not
+                         read as a break.
+
+                         `aria-hidden`, and a sibling of the triggers rather
+                         than one of them: a `tablist` may only own tabs, so
+                         this stays out of the accessibility tree and out of
+                         Radix's roving-focus order. Arrow keys still walk the
+                         twelve tabs and skip the rules. */
+                      <div aria-hidden="true" className="w-px self-stretch bg-border" />
+                    )}
+                    <div
+                      className="min-w-0"
+                      /* Grow by tab count on a zero basis, so a glyph is the
+                         same size in every group. A plain `flex-1` per group
+                         would give Site's one icon the same width as
+                         Programming's four and stretch it four times over. */
+                      style={{ flexGrow: group.tabs.length, flexBasis: 0 }}
                     >
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="relative flex items-center justify-center">
-                            {/* The glow is the icon, drawn a second time.
+                      {/* Fixed height, bottom-aligned, and it has to be both:
+                          "Audience & Growth" wraps to two lines in a narrow
+                          group while "Site" stays on one, and without a shared
+                          height the wrapped caption pushed its own glyphs a
+                          line lower than every other group's. The icon row has
+                          to start at one y across the bar or the grouping reads
+                          as a mistake.
+
+                          The solid muted token, not a faded variant: the faded
+                          ones fall under 4.5:1 on this background. */}
+                      <p className="flex min-h-[2.25rem] items-end justify-center px-1 pb-1.5 text-center text-xs uppercase leading-tight tracking-wider text-muted-foreground">
+                        {group.label}
+                      </p>
+                      {/* Capped and centred inside the group's share of the bar.
+
+                          Without the cap the run stretches to fill its share, and
+                          a four-glyph group on a wide screen spreads its icons
+                          further apart than the gap to the next group — which
+                          inverts the proximity the grouping is built on and
+                          makes the clusters stop reading as clusters. Capping
+                          the pitch spends the surplus width *between* groups
+                          instead of inside them. Below the cap it stretches as
+                          before, so nothing overflows on a narrow screen. */}
+                      <div
+                        className="mx-auto grid w-full"
+                        style={{
+                          gridTemplateColumns: `repeat(${group.tabs.length}, minmax(0, 1fr))`,
+                          maxWidth: `${group.tabs.length * 4}rem`,
+                        }}
+                      >
+                        {group.tabs.map(t => {
+                          const Icon = t.icon;
+                          const isActive = activeTopTab === t.value;
+                          /*
+                           * The tooltip wraps the icon, NOT the trigger.
+                           *
+                           * `TooltipTrigger asChild` merges its props onto its child, and
+                           * Radix Tabs and Radix Tooltip both write `data-state`. Put the
+                           * tooltip on the trigger and the tooltip's open/closed wins, so
+                           * every `data-[state=active]:` rule on that tab goes silently
+                           * inert. It still *looks* right when the styling is driven from
+                           * JS, which is exactly what makes it worth writing down.
+                           */
+                          return (
+                            <TabsTrigger
+                              key={t.value}
+                              value={t.value}
+                              aria-label={t.label}
+                              /* The lit glyph is the selected state, so the default active
+                                 pill comes off: a lighter rectangle behind a glow reads as
+                                 two competing highlights. */
+                              className="h-12 px-1 lg:px-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                            >
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="relative flex items-center justify-center">
+                                    {/* The glow is the icon, drawn a second time.
                                 
-                                A radial gradient behind the glyph lit the *area*
-                                and read as a spotlight on a button. Light that
-                                follows the shape has to be drawn from the shape,
-                                so the back copy is the same glyph in gold, blurred;
-                                the front copy sits on top and masks the middle,
-                                which leaves the glow escaping around the strokes. */}
-                            {isActive && (
-                              <Icon
-                                aria-hidden="true"
-                                strokeWidth={1.75}
-                                className="absolute h-10 w-10 text-accent opacity-70 blur-[5px]"
-                              />
-                            )}
-                            <Icon
-                              aria-hidden="true"
-                              /* Bolder while selected, which a stroke weight does
-                                 and a font weight cannot: these are strokes, not text. */
-                              /* One weight for both states now. Selection is
-                                 carried by size, colour and the glow; a heavier
-                                 stroke on top of those read as clotted at 45px. */
-                              strokeWidth={1.75}
-                              className={
-                                'relative shrink-0 transition-all duration-200 ' +
-                                /* The bar's own `bg-muted`, so the lit glyph reads as
-                                   a cut-out with the background showing through the
-                                   glow rather than as a black shape laid over it. */
-                                (isActive
-                                  ? 'h-10 w-10 glyph-lit opacity-90 blur-[0.4px]'
-                                  : 'h-8 w-8 text-muted-foreground')
-                              }
-                            />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">{t.label}</TooltipContent>
-                      </Tooltip>
-                    </TabsTrigger>
-                  );
-                })}
+                                        A radial gradient behind the glyph lit the *area*
+                                        and read as a spotlight on a button. Light that
+                                        follows the shape has to be drawn from the shape,
+                                        so the back copy is the same glyph in gold, blurred;
+                                        the front copy sits on top and masks the middle,
+                                        which leaves the glow escaping around the strokes. */}
+                                    {isActive && (
+                                      <Icon
+                                        aria-hidden="true"
+                                        strokeWidth={1.75}
+                                        className="absolute h-10 w-10 text-accent opacity-70 blur-[5px]"
+                                      />
+                                    )}
+                                    <Icon
+                                      aria-hidden="true"
+                                      /* Bolder while selected, which a stroke weight does
+                                         and a font weight cannot: these are strokes, not text. */
+                                      /* One weight for both states now. Selection is
+                                         carried by size, colour and the glow; a heavier
+                                         stroke on top of those read as clotted at 45px. */
+                                      strokeWidth={1.75}
+                                      className={
+                                        'relative shrink-0 transition-all duration-200 ' +
+                                        /* The bar's own `bg-muted`, so the lit glyph reads as
+                                           a cut-out with the background showing through the
+                                           glow rather than as a black shape laid over it. */
+                                        (isActive
+                                          ? 'h-10 w-10 glyph-lit opacity-90 blur-[0.4px]'
+                                          : 'h-8 w-8 text-muted-foreground')
+                                      }
+                                    />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom">{t.label}</TooltipContent>
+                              </Tooltip>
+                            </TabsTrigger>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </Fragment>
+                ))}
               </TabsList>
             </>
           );
         })()}
 
         {/* Listings Tab (Movies, Live Events) */}
-        <TabsContent value="listings">
+        <TabsContent value="listings" className="space-y-6">
           <Tabs value={activeScheduleTab} onValueChange={setActiveScheduleTab} defaultValue="movies" className="space-y-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <TabsList>
@@ -812,7 +962,7 @@ export default function AdminDashboard() {
                 </TabsTrigger>
               </TabsList>
             </div>
-            <TabsContent value="movies">
+            <TabsContent value="movies" className="space-y-6">
             <SquareLinkPanel scope="movies" title="Square catalog — movies" />
             {/* The showtime half of the old Square screen, scoped to this
                 listing. Its own tab is gone: the work is about these titles,
@@ -893,7 +1043,7 @@ export default function AdminDashboard() {
             </div>
             </CollapsibleSection>
             </TabsContent>
-            <TabsContent value="live-events">
+            <TabsContent value="live-events" className="space-y-6">
             <SquareLinkPanel scope="live_performances" title="Square catalog — live events" />
             {/* The showtime half of the old Square screen, scoped to this
                 listing. Its own tab is gone: the work is about these titles,
@@ -1031,7 +1181,7 @@ export default function AdminDashboard() {
             {/* Venues. Previously reachable only by typing /admin/venues/new,
                 which is why the theatre ran for months with no venue row at all
                 and an empty venue picker on every showing. */}
-            <TabsContent value="venues">
+            <TabsContent value="venues" className="space-y-6">
             <CollapsibleSection
               id="listings.venues"
               title="Venues"
@@ -1102,7 +1252,7 @@ export default function AdminDashboard() {
             </CollapsibleSection>
             </TabsContent>
 
-            <TabsContent value="featured">
+            <TabsContent value="featured" className="space-y-6">
               <FeaturedSlidesTab />
             </TabsContent>
 
@@ -1110,16 +1260,16 @@ export default function AdminDashboard() {
         </TabsContent>
 
         {/* Concessions Tab */}
-        <TabsContent value="concessions">
+        <TabsContent value="concessions" className="space-y-6">
           <Tabs defaultValue="items" className="space-y-4">
             <TabsList>
               <TabsTrigger value="items">Items & combos</TabsTrigger>
               <TabsTrigger value="menus">Menu PDFs</TabsTrigger>
             </TabsList>
-            <TabsContent value="items">
+            <TabsContent value="items" className="space-y-6">
               <ConcessionItemsTab />
             </TabsContent>
-            <TabsContent value="menus">
+            <TabsContent value="menus" className="space-y-6">
               <ConcessionMenusTab />
             </TabsContent>
           </Tabs>
@@ -1128,19 +1278,19 @@ export default function AdminDashboard() {
         {/* Film Passes Tab.
             The Square panel sits with the thing it is about rather than under
             Analytics, where someone editing a pass had to know to look. */}
-        <TabsContent value="passes" className="space-y-4">
+        <TabsContent value="passes" className="space-y-6">
           <SquareLinkPanel scope="passes" title="Square catalog — passes" />
           <FilmPassesTab />
         </TabsContent>
 
         {/* DVDs Tab */}
-        <TabsContent value="dvds">
+        <TabsContent value="dvds" className="space-y-6">
           <DvdLibraryTab />
         </TabsContent>
 
         {/* Analytics Tab (with Accounting sub-tab) — admin only */}
         {isAdmin && (
-        <TabsContent value="analytics">
+        <TabsContent value="analytics" className="space-y-6">
           <Tabs defaultValue="overview" className="space-y-4">
             <TabsList>
               <TabsTrigger value="overview"><BarChart3 className="h-4 w-4 mr-1 inline" />Overview</TabsTrigger>
@@ -1156,60 +1306,60 @@ export default function AdminDashboard() {
               <TabsTrigger value="mappings">Mappings</TabsTrigger>
               <TabsTrigger value="qbo-export">QBO Export</TabsTrigger>
             </TabsList>
-            <TabsContent value="overview">
+            <TabsContent value="overview" className="space-y-6">
               <AnalyticsTab />
             </TabsContent>
-            <TabsContent value="transactions">
+            <TabsContent value="transactions" className="space-y-6">
               <TransactionsTab />
             </TabsContent>
             {/* Hidden, not deleted — the workbook import is not part of the
                 workflow yet (see FINANCIAL_IMPORTS_ENABLED). */}
             {FINANCIAL_IMPORTS_ENABLED && (
-              <TabsContent value="accounting">
+              <TabsContent value="accounting" className="space-y-6">
                 <AccountingTab />
               </TabsContent>
             )}
-            <TabsContent value="coa"><ChartOfAccountsTab /></TabsContent>
-            <TabsContent value="mappings"><AccountMappingsTab /></TabsContent>
-            <TabsContent value="qbo-export"><QboExportTab /></TabsContent>
+            <TabsContent value="coa" className="space-y-6"><ChartOfAccountsTab /></TabsContent>
+            <TabsContent value="mappings" className="space-y-6"><AccountMappingsTab /></TabsContent>
+            <TabsContent value="qbo-export" className="space-y-6"><QboExportTab /></TabsContent>
           </Tabs>
         </TabsContent>
         )}
 
-        <TabsContent value="bor">
+        <TabsContent value="bor" className="space-y-6">
           <BoxOfficeReceiptsTab />
         </TabsContent>
 
         {/* Rentals Tab (with Hosts sub-tab) */}
-        <TabsContent value="rentals">
+        <TabsContent value="rentals" className="space-y-6">
           <Tabs defaultValue="requests" className="space-y-4">
             <TabsList>
               <TabsTrigger value="requests"><KeyRound className="h-4 w-4 mr-1 inline" />Requests</TabsTrigger>
               <TabsTrigger value="hosts"><Users className="h-4 w-4 mr-1 inline" />Hosts</TabsTrigger>
             </TabsList>
-            <TabsContent value="requests">
+            <TabsContent value="requests" className="space-y-6">
               <RentalRequestsTab />
             </TabsContent>
-            <TabsContent value="hosts">
+            <TabsContent value="hosts" className="space-y-6">
               <HostManagementTab />
             </TabsContent>
           </Tabs>
         </TabsContent>
 
         {isAdmin && (
-          <TabsContent value="labor">
+          <TabsContent value="labor" className="space-y-6">
             <LaborTab />
           </TabsContent>
         )}
 
-        <TabsContent value="sponsors">
+        <TabsContent value="sponsors" className="space-y-6">
           <SponsorsTab />
         </TabsContent>
 
         {/* Pages — each sub-tab edits one public page. Admin-only, which is
             also what the RLS behind all three enforces. */}
         {isAdmin && (
-          <TabsContent value="pages">
+          <TabsContent value="pages" className="space-y-6">
             <Tabs value={activePagesTab} onValueChange={setActivePagesTab} className="space-y-4">
               <TabsList>
                 <TabsTrigger value="festival">
@@ -1225,16 +1375,16 @@ export default function AdminDashboard() {
                   <Martini className="h-4 w-4 mr-1 inline" />Backstage
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="festival">
+              <TabsContent value="festival" className="space-y-6">
                 <FestivalProgramsTab />
               </TabsContent>
-              <TabsContent value="hiring">
+              <TabsContent value="hiring" className="space-y-6">
                 <HiringTab />
               </TabsContent>
-              <TabsContent value="press">
+              <TabsContent value="press" className="space-y-6">
                 <PressTab />
               </TabsContent>
-              <TabsContent value="backstage">
+              <TabsContent value="backstage" className="space-y-6">
                 <BackstageTab />
               </TabsContent>
             </Tabs>
@@ -1242,13 +1392,13 @@ export default function AdminDashboard() {
         )}
 
         {isAdmin && (
-          <TabsContent value="mailchimp">
+          <TabsContent value="mailchimp" className="space-y-6">
             <MailchimpTab />
           </TabsContent>
         )}
 
         {isAdmin && (
-          <TabsContent value="lgl">
+          <TabsContent value="lgl" className="space-y-6">
             <LglTab />
           </TabsContent>
         )}

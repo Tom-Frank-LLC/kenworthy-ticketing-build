@@ -511,4 +511,33 @@
       --mq-inset: 1rem;
     }
   }
+
+  /* ------------------------------------------------------------------
+     The title strip: the same ring, worn lighter.
+
+     A section heading is a strip, not a panel. The concessions weight — a
+     1.75rem band inside a 3.25rem inset — puts 5rem of padding on every
+     side, which around a single line of display type is more frame than
+     title. Band and inset both come down.
+
+     Only those two numbers move. The bulb radius and the pitch are derived
+     from the band (see above), so the marquee's measured rhythm survives
+     the rescale rather than being re-guessed at a second size.
+
+     Doubled class, not a bare modifier: the small-screen rule above sets
+     `--mq-band` on `.marquee-frame`, and media queries carry no specificity
+     of their own. `.marquee-frame.marquee-frame--title` outranks it at every
+     width, so the strip cannot inherit the panel's band on a phone.
+     ------------------------------------------------------------------ */
+  .marquee-frame.marquee-frame--title {
+    --mq-band: 1rem;
+    --mq-inset: 0.6rem;
+  }
+
+  @media (max-width: 767px) {
+    .marquee-frame.marquee-frame--title {
+      --mq-band: 0.8rem;
+      --mq-inset: 0.4rem;
+    }
+  }
 }
