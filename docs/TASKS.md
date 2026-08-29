@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**87 briefs** — 77 shipped, 5 built, 5 open, 0 needs triage, 0 closed.
+**87 briefs** — 78 shipped, 4 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -15,7 +15,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
-- **On a phone, a tapped calendar day opens under its own week**<br>`ux` — [brief](briefs/BRIEF-calendar-mobile-day-accordion.md)
 
 ## Open
 
@@ -30,6 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - **Admin dashboard — a lit section title, more breathing room, clustered tabs**<br>`ux` — `#248` — [brief](briefs/BRIEF-admin-dashboard-breathing-room.md)
 - **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — `#247` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../FINDINGS-ai-provenance.md)
 - **Month calendar opens with the current week as the top row**<br>`ux` — `#242` — [brief](briefs/BRIEF-calendar-current-week-top.md)
+- **On a phone, a tapped calendar day opens under its own week**<br>`ux` — `#249` — [brief](briefs/BRIEF-calendar-mobile-day-accordion.md)
 - **An online gift requires an email, and a stuck gift can be given one**<br>`bug` — `#245` — [brief](briefs/BRIEF-donation-requires-email.md)
 - **Live Events manages its own showings, and one door replaces two create buttons**<br>`ux` — `#226` — [brief](briefs/BRIEF-live-events-section-ux.md)
 - **A page with nothing to sell can be a curator's pick**<br>`feature` — `#218`, `#220`, `#222`, `#223` — [brief](briefs/BRIEF-manual-curator-slide.md)
