@@ -54,57 +54,80 @@ Recommend **A** for a planning calendar (past weeks are always empty here, so a 
 
 ## Outcome (2026-08-28)
 
-Built as **Option A**, a rolling six-week window. Window math lives in
-`src/lib/calendarWindow.ts` with `src/lib/calendarWindow.test.ts` covering it,
-rather than inside the component — the date arithmetic is the part that can be
-wrong quietly, and it is the part a component test would exercise least.
+Two framings, because opening position and navigation answer different
+questions. The grid **opens week-anchored** on the current week, and switches to
+**month-anchored** navigation the moment the reader pages — whole months from
+the 1st, a month per arrow press, which is what this grid did before.
+
+Window and view math live in `src/lib/calendarWindow.ts` with
+`src/lib/calendarWindow.test.ts` covering them, rather than inside the
+component: the date arithmetic is the part that can be wrong quietly, and it is
+the part a component test would exercise least.
 
 Decisions as taken:
 
-1. **Option A**, rolling weeks. `windowStart` is a week start, not a month.
-2. **Header** names the first and last month in view. Ranges abbreviate the
-   month (`Aug–Oct 2026`): spelled out, the longest case
-   ("September–November 2026") makes the nav row 414px and wraps the arrows
-   onto a second line on a 375px viewport. Abbreviated, the widest case is
-   327px. Measured, not estimated.
-3. **Six weeks**, paging by a whole window. Six matches the tallest month grid
-   this replaced, so surrounding layout is unchanged.
-4. **Cross-month cells** drop the old in/out-of-month dimming — with no single
-   current month it had nothing to mean, and it faded text on the days it
-   applied to. Alternate months get a background band instead, keyed on the
-   absolute month ordinal so a month keeps its shade while you page.
+1. **Opening view**: six rolling weeks from the current week. Six matches the
+   tallest month grid, so switching modes does not resize the page.
+2. **In-grid month headings.** Every month in view is named on the row it
+   begins, and the month at the top of the calendar is always named — including
+   in a month view, where the heading is the month itself and not the month its
+   first row happens to start in (September's grid opens on Aug 30 and still
+   reads "September 2026").
+3. **Header** names the range in the week view (`Aug–Oct 2026`) and the month
+   itself in a month view (`September 2026`). Ranges abbreviate the month:
+   spelled out, the longest case ("September–November 2026") makes the nav row
+   414px and wraps the arrows onto a second line on a 375px viewport;
+   abbreviated, the widest case is 327px. Measured, not estimated.
+4. **Forward from the opening view lands on the next month**, not the current
+   one — forward should always move forward in time, never back onto a screen
+   the reader has already partly seen. **Back lands on the current month in
+   full**, which is the floor: `useFeed` fetches with `.gte('start_time', now)`,
+   so everything before the current month is empty and the arrow disables there.
+5. **Arrows are labelled by destination** (`Go to September 2026`), because from
+   the opening week view "previous month" and "next month" would name neither
+   of the two things the arrows actually do.
+6. **Cross-month cells** drop the old in/out-of-month dimming, which faded the
+   text on the days it applied to. Alternate months get a background band
+   instead, keyed on the absolute month ordinal so a month keeps its shade while
+   you page. In a month view this reproduces the old in/out-of-month reading for
+   free: a focal month and both its neighbours always fall on opposite parities.
 
-Two behaviours the brief did not specify, both settled with Tom:
+Two behaviours the brief did not specify:
 
-- **Paging back is floored at the current week** and the button disables there.
-  `useFeed` fetches with `.gte('start_time', now)`, so everything behind that
-  week is guaranteed empty; letting the reader page into it would restore
-  exactly the dead rows this change removes.
 - **Search follows its results.** `/calendar` passes the *search-filtered* feed,
   so a query matching only a December show would have rendered an empty grid
-  with no hint of where the match was. `anchorWindow` moves the window (and the
-  selected-day panel) only when the visible window holds nothing at all, so it
-  never yanks a window the reader paged to themselves.
+  with no hint of where the match was. `anchorView` moves the view only when the
+  visible grid holds nothing at all, so it never yanks a view the reader paged
+  to themselves — and it never changes mode, so a reader navigating by month
+  stays in months.
+- **The panel follows the grid.** It re-selects whenever the selected day is not
+  on screen, rather than only when that day has no showings — otherwise paging
+  to another month left the panel describing a day that had scrolled out of
+  view.
 
-The same rule runs at mount, which is why the grid still opens on the current
-week in every real case and shows the first upcoming shows rather than six
-blank rows if programming ever gaps.
+The same anchor rule runs at mount, which is why the grid still opens on the
+current week in every real case and shows the first upcoming shows rather than
+six blank rows if programming ever gaps.
 
-**Known consequence:** clearing a search leaves the window where the search put
-it, because the rule only moves on an empty view. Returning to the current week
+**Known consequence:** clearing a search leaves the view where the search put
+it, because the rule only moves on an empty grid. Returning to the current week
 on clear would mean passing the query into the component, which is wider than
-this brief.
+this brief. Paging is likewise one-way: once in month navigation the grid stays
+there until reload.
 
 ### Verified in the running app (staging data, 2026-08-28)
 
-- `/calendar` and the home Upcoming section both open on the current week
-  (Aug 23 top row), today highlighted, 42 cells, back button disabled.
-- Paging forward: Aug 23 → Oct 4, both week starts; header tracks the window;
-  back re-enables.
-- Searching "Nutcracker" moved the window to `Dec 2026–Jan 2027` and the panel
-  to December 20, the day of the match.
-- Month bands alternate at the real boundaries (Aug shaded, Sep card, Oct
-  shaded), measured from computed styles.
+- `/calendar` and the home Upcoming section both open on the current week, today
+  highlighted, 42 cells, headings August / September / October.
+- Forward steps week view → September (Aug 30–Oct 3, headings September +
+  October, *not* August) → October → November. Back retraces and stops on
+  August in full, where the arrow disables and further clicks are no-ops.
+- Searching "Nutcracker" from a November month view moved to December 2026,
+  still in month mode, panel on December 20.
+- The month band separates in-month from out-of-month days in a month view,
+  measured from computed styles: `rgb(36,36,36)` against `rgb(23,23,23)`.
+- Headings span all seven columns and their text is 151px, well inside a 375px
+  viewport.
 - Not verified in-browser: the 375px and 768px layouts. The driven Chrome tab's
   viewport is pinned at 1280, so the mobile grid could not be rendered. The
-  header width — the only new mobile risk — was measured directly instead.
+  header and heading widths — the new mobile risks — were measured directly.

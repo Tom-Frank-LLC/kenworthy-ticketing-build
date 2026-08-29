@@ -1,25 +1,51 @@
-import { addDays, format, isSameMonth, isSameYear, startOfWeek } from 'date-fns';
+import {
+  addDays,
+  addMonths,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameMonth,
+  isSameYear,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from 'date-fns';
 
 /**
- * Week-anchored window math for the month grid.
+ * View math for the month grid.
  *
- * The grid used to be month-anchored: it always began at the week containing
- * the 1st. Because `useFeed` fetches showings with `.gte('start_time', now)`,
- * every day before today is guaranteed empty, so that framing opened the
- * calendar on up to four dead rows before the first useful one. These helpers
- * anchor it to the current week instead and roll forward across month
- * boundaries.
+ * The grid opens **week-anchored**: `useFeed` fetches showings with
+ * `.gte('start_time', now)`, so every day before this week is guaranteed empty,
+ * and a month-anchored grid opened on up to four dead rows before the first
+ * useful one.
+ *
+ * The moment the reader pages, it switches to **month-anchored** and navigates
+ * a month at a time from the 1st, which is the familiar calendar metaphor and
+ * what this grid did before. Opening position and navigation are answering two
+ * different questions, so they are allowed two different framings.
  */
 
-/** Weeks visible at once. Six matches the tallest month grid this replaced, so
- *  the surrounding page layout is unchanged. */
+/** Weeks visible in the opening week view. Six matches the tallest month grid,
+ *  so switching between the two modes does not resize the page. */
 export const WEEKS_IN_VIEW = 6;
 
 /** Sunday-first, matching the Sun..Sat column headers the grid renders. */
 export const WEEK_STARTS_ON = 0 as const;
 
+export type CalendarView =
+  /** `start` is a week start; the grid runs six weeks forward from it. */
+  | { mode: 'week'; start: Date }
+  /** `start` is a month start; the grid runs whole weeks across that month. */
+  | { mode: 'month'; start: Date };
+
 export function weekStart(day: Date): Date {
   return startOfWeek(day, { weekStartsOn: WEEK_STARTS_ON });
+}
+
+/** The earliest month the reader may page back to. Everything before the
+ *  current month holds no showings at all. */
+export function monthFloor(today: Date): Date {
+  return startOfMonth(today);
 }
 
 /**
@@ -36,9 +62,26 @@ export function windowDays(start: Date, weeks = WEEKS_IN_VIEW): Date[] {
   return days;
 }
 
+/** The days a view renders: six rolling weeks, or the whole of one month
+ *  padded out to week boundaries. */
+export function viewDays(view: CalendarView): Date[] {
+  if (view.mode === 'week') return windowDays(view.start);
+  const gridStart = weekStart(startOfMonth(view.start));
+  const gridEnd = endOfWeek(endOfMonth(view.start), { weekStartsOn: WEEK_STARTS_ON });
+  const days: Date[] = [];
+  for (
+    let d = gridStart;
+    d <= gridEnd;
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+  ) {
+    days.push(d);
+  }
+  return days;
+}
+
 /**
- * Header text for a window. A six-week window can span three months, so this
- * names the first and last rather than every one in between.
+ * Header text for a rolling window. A six-week window can span three months, so
+ * this names the first and last rather than every one in between.
  *
  * Ranges abbreviate the month. Spelled out, the longest of them
  * ("September–November 2026") makes the header wider than a 375px viewport and
@@ -51,25 +94,77 @@ export function windowLabel(start: Date, weeks = WEEKS_IN_VIEW): string {
   return `${format(start, 'MMM yyyy')}–${format(end, 'MMM yyyy')}`;
 }
 
+/** Header text for a view. The rolling window names its range; a month names
+ *  itself, as it did before. */
+export function viewLabel(view: CalendarView): string {
+  return view.mode === 'week' ? windowLabel(view.start) : format(view.start, 'MMMM yyyy');
+}
+
+/** The month a view is "about" — what its first in-grid divider announces.
+ *  For a month view that is the month itself, not the month its first row
+ *  happens to start in. */
+export function principalMonth(view: CalendarView): Date {
+  return startOfMonth(view.start);
+}
+
 /**
- * Move the window by whole pages, never earlier than `floor`.
+ * Where an arrow goes.
  *
- * `floor` is the current week: there is provably nothing behind it, so paging
- * back into it would only restore the empty rows this change removes.
+ * Forward from the opening week view lands on the *next* month rather than the
+ * current one: forward should always move forward in time, never back onto a
+ * screen the reader has already partly seen. Back from it lands on the current
+ * month in full, which is the floor.
  */
-export function shiftWindow(start: Date, pages: number, floor: Date, weeks = WEEKS_IN_VIEW): Date {
-  const moved = new Date(
-    start.getFullYear(),
-    start.getMonth(),
-    start.getDate() + pages * weeks * 7,
-  );
-  return moved < floor ? floor : moved;
+export function stepView(view: CalendarView, direction: 1 | -1, floor: Date): CalendarView {
+  const anchor = startOfMonth(view.start);
+  if (view.mode === 'week') {
+    const target = direction === 1 ? addMonths(anchor, 1) : anchor;
+    return { mode: 'month', start: target < floor ? floor : target };
+  }
+  const target = direction === 1 ? addMonths(view.start, 1) : subMonths(view.start, 1);
+  return { mode: 'month', start: target < floor ? floor : target };
+}
+
+/** Whether the back arrow does anything. In the week view it always does — it
+ *  drops to the current month in full. In a month view it stops at the floor. */
+export function canStepBack(view: CalendarView, floor: Date): boolean {
+  if (view.mode === 'week') return true;
+  return startOfMonth(view.start) > startOfMonth(floor);
 }
 
 /** Whether a day sits in a shaded month band. Keyed on the absolute month
- *  ordinal, not on the window, so a month keeps its shade while you page. */
+ *  ordinal, not on the view, so a month keeps its shade while you page. */
 export function isShadedMonth(day: Date): boolean {
   return (day.getFullYear() * 12 + day.getMonth()) % 2 === 1;
+}
+
+/**
+ * Where to draw an in-grid month heading, as `day index -> label`.
+ *
+ * The first row always gets one, so the month at the top of the calendar is
+ * named. After that a heading appears on the row that contains the 1st of a
+ * month the grid has not announced yet — which is why a month view of September
+ * reads "September" at the top and "October" where it spills, rather than
+ * "August" at the top because the first row happens to start on Aug 30.
+ */
+export function monthDividers(days: Date[], view: CalendarView): Map<number, string> {
+  const out = new Map<number, string>();
+  if (days.length === 0) return out;
+  const principal = principalMonth(view);
+  let last = principal.getFullYear() * 12 + principal.getMonth();
+  out.set(0, format(principal, 'MMMM yyyy'));
+  for (let row = 7; row < days.length; row += 7) {
+    for (let i = row; i < Math.min(row + 7, days.length); i++) {
+      const d = days[i];
+      const ord = d.getFullYear() * 12 + d.getMonth();
+      if (d.getDate() === 1 && ord !== last) {
+        out.set(row, format(d, 'MMMM yyyy'));
+        last = ord;
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 function parseDayKey(key: string): Date | null {
@@ -79,29 +174,34 @@ function parseDayKey(key: string): Date | null {
 }
 
 /**
- * Where the window should sit for a given set of populated days.
+ * Where the view should sit for a given set of populated days.
  *
- * Keeps `current` whenever it already holds something. Only when the visible
- * window is completely empty does it follow the earliest populated day — which
- * is what makes search on /calendar usable: a query matching only a November
- * show would otherwise render an empty grid with no hint of where the match is.
- * Never moves behind `floor`.
+ * Keeps the current view whenever it already holds something. Only when the
+ * visible grid is completely empty does it follow the earliest populated day —
+ * which is what makes search on /calendar usable: a query matching only a
+ * November show would otherwise render an empty grid with no hint of where the
+ * match is. Never moves behind the floor, and never changes mode: a reader who
+ * has switched to month navigation stays in it.
  */
-export function anchorWindow(
-  current: Date,
+export function anchorView(
+  view: CalendarView,
   itemDayKeys: Iterable<string>,
   floor: Date,
-  weeks = WEEKS_IN_VIEW,
-): Date {
-  const visible = new Set(windowDays(current, weeks).map((d) => format(d, 'yyyy-MM-dd')));
+): CalendarView {
+  const visible = new Set(viewDays(view).map((d) => format(d, 'yyyy-MM-dd')));
   let earliest: string | null = null;
   for (const key of itemDayKeys) {
-    if (visible.has(key)) return current;
+    if (visible.has(key)) return view;
     if (earliest === null || key < earliest) earliest = key;
   }
-  if (earliest === null) return current;
+  if (earliest === null) return view;
   const parsed = parseDayKey(earliest);
-  if (!parsed) return current;
+  if (!parsed) return view;
+  if (view.mode === 'month') {
+    const target = startOfMonth(parsed);
+    return { mode: 'month', start: target < floor ? floor : target };
+  }
   const target = weekStart(parsed);
-  return target < floor ? floor : target;
+  const weekFloor = weekStart(new Date());
+  return { mode: 'week', start: target < weekFloor ? weekFloor : target };
 }

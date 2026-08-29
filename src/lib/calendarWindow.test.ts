@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { format } from 'date-fns';
 import {
   WEEKS_IN_VIEW,
-  anchorWindow,
+  type CalendarView,
+  anchorView,
+  canStepBack,
   isShadedMonth,
-  shiftWindow,
+  monthDividers,
+  monthFloor,
+  stepView,
+  viewDays,
+  viewLabel,
   weekStart,
   windowDays,
   windowLabel,
@@ -13,6 +19,9 @@ import {
 const key = (d: Date) => format(d, 'yyyy-MM-dd');
 // 2026-08-28 is a Friday; its week starts Sunday 2026-08-23.
 const FRI = new Date(2026, 7, 28);
+const FLOOR = monthFloor(FRI); // 2026-08-01
+const WEEK_VIEW: CalendarView = { mode: 'week', start: weekStart(FRI) };
+const month = (y: number, m: number): CalendarView => ({ mode: 'month', start: new Date(y, m, 1) });
 
 describe('weekStart', () => {
   it('snaps to the preceding Sunday', () => {
@@ -41,10 +50,37 @@ describe('windowDays', () => {
   });
 });
 
+describe('viewDays', () => {
+  it('rolls six weeks forward in the week view', () => {
+    expect(viewDays(WEEK_VIEW)).toHaveLength(42);
+    expect(key(viewDays(WEEK_VIEW)[0])).toBe('2026-08-23');
+  });
+
+  it('covers a whole month padded to week boundaries', () => {
+    const days = viewDays(month(2026, 8)); // September 2026
+    expect(key(days[0])).toBe('2026-08-30'); // Sunday before Sep 1
+    expect(key(days[days.length - 1])).toBe('2026-10-03'); // Saturday after Sep 30
+    expect(days.length % 7).toBe(0);
+  });
+
+  it('starts a month view on a week boundary even when the 1st is a Sunday', () => {
+    const days = viewDays(month(2026, 10)); // November 2026, 1st is a Sunday
+    expect(key(days[0])).toBe('2026-11-01');
+  });
+});
+
+describe('viewLabel', () => {
+  it('names the range in the week view', () => {
+    expect(viewLabel(WEEK_VIEW)).toBe('Aug–Oct 2026');
+  });
+
+  it('names the month itself in a month view', () => {
+    expect(viewLabel(month(2026, 8))).toBe('September 2026');
+  });
+});
+
 describe('windowLabel', () => {
   it('names one month when the window does not cross a boundary', () => {
-    // 2026-03-01 is a Sunday; six weeks runs to 2026-04-11, so use a shorter
-    // window to exercise the single-month branch.
     expect(windowLabel(new Date(2026, 2, 1), 4)).toBe('March 2026');
   });
 
@@ -57,21 +93,49 @@ describe('windowLabel', () => {
   });
 });
 
-describe('shiftWindow', () => {
-  const floor = weekStart(FRI);
-
-  it('pages forward by a whole window', () => {
-    expect(key(shiftWindow(floor, 1, floor))).toBe('2026-10-04');
+describe('stepView', () => {
+  it('leaves the week view forward onto the next month, not the current one', () => {
+    const next = stepView(WEEK_VIEW, 1, FLOOR);
+    expect(next.mode).toBe('month');
+    expect(key(next.start)).toBe('2026-09-01');
   });
 
-  it('pages back to where it started', () => {
-    const next = shiftWindow(floor, 1, floor);
-    expect(key(shiftWindow(next, -1, floor))).toBe(key(floor));
+  it('leaves the week view backward onto the current month in full', () => {
+    const back = stepView(WEEK_VIEW, -1, FLOOR);
+    expect(back.mode).toBe('month');
+    expect(key(back.start)).toBe('2026-08-01');
   });
 
-  it('will not page behind the floor', () => {
-    expect(key(shiftWindow(floor, -1, floor))).toBe(key(floor));
-    expect(key(shiftWindow(floor, -5, floor))).toBe(key(floor));
+  it('steps a month at a time once in month mode', () => {
+    expect(key(stepView(month(2026, 8), 1, FLOOR).start)).toBe('2026-10-01');
+    expect(key(stepView(month(2026, 8), -1, FLOOR).start)).toBe('2026-08-01');
+  });
+
+  it('stays in month mode rather than returning to the week view', () => {
+    expect(stepView(month(2026, 8), -1, FLOOR).mode).toBe('month');
+  });
+
+  it('will not step behind the floor month', () => {
+    expect(key(stepView(month(2026, 7), -1, FLOOR).start)).toBe('2026-08-01');
+  });
+
+  it('crosses a year boundary in both directions', () => {
+    expect(key(stepView(month(2026, 11), 1, FLOOR).start)).toBe('2027-01-01');
+    expect(key(stepView(month(2027, 0), -1, FLOOR).start)).toBe('2026-12-01');
+  });
+});
+
+describe('canStepBack', () => {
+  it('is available from the week view, which drops to the current month', () => {
+    expect(canStepBack(WEEK_VIEW, FLOOR)).toBe(true);
+  });
+
+  it('is unavailable on the floor month', () => {
+    expect(canStepBack(month(2026, 7), FLOOR)).toBe(false);
+  });
+
+  it('is available on any later month', () => {
+    expect(canStepBack(month(2026, 8), FLOOR)).toBe(true);
   });
 });
 
@@ -89,27 +153,73 @@ describe('isShadedMonth', () => {
   });
 });
 
-describe('anchorWindow', () => {
-  const floor = weekStart(FRI); // 2026-08-23
+describe('monthDividers', () => {
+  it('names the month at the top of the week view, then each new month', () => {
+    const days = viewDays(WEEK_VIEW);
+    expect(Object.fromEntries(monthDividers(days, WEEK_VIEW))).toEqual({
+      0: 'August 2026', // the current month, at the top
+      7: 'September 2026', // the row holding Sep 1 (starts Aug 30)
+      35: 'October 2026', // the row holding Oct 1 (starts Sep 27)
+    });
+  });
 
-  it('stays put when the window already holds an item', () => {
-    expect(key(anchorWindow(floor, ['2026-09-12'], floor))).toBe('2026-08-23');
+  it('names a month view after its own month, not the month its first row starts in', () => {
+    // September's grid opens on Aug 30, but the view is September.
+    const view = month(2026, 8);
+    const dividers = monthDividers(viewDays(view), view);
+    expect(dividers.get(0)).toBe('September 2026');
+    expect([...dividers.values()]).not.toContain('August 2026');
+  });
+
+  it('marks where a month view spills into the next month', () => {
+    const view = month(2026, 8);
+    expect(Object.fromEntries(monthDividers(viewDays(view), view))).toEqual({
+      0: 'September 2026',
+      28: 'October 2026', // the row holding Oct 1 (starts Sep 27)
+    });
+  });
+
+  it('carries the year across a boundary', () => {
+    const view = month(2026, 11); // December 2026
+    expect([...monthDividers(viewDays(view), view).values()]).toEqual([
+      'December 2026',
+      'January 2027',
+    ]);
+  });
+
+  it('emits one heading when a month never spills', () => {
+    const view = month(2026, 1); // February 2026 starts Sunday, ends Saturday
+    expect([...monthDividers(viewDays(view), view).values()]).toEqual(['February 2026']);
+  });
+});
+
+describe('anchorView', () => {
+  it('stays put when the view already holds an item', () => {
+    expect(key(anchorView(WEEK_VIEW, ['2026-09-12'], FLOOR).start)).toBe('2026-08-23');
   });
 
   it('stays put when there are no items at all', () => {
-    expect(key(anchorWindow(floor, [], floor))).toBe('2026-08-23');
+    expect(key(anchorView(WEEK_VIEW, [], FLOOR).start)).toBe('2026-08-23');
   });
 
-  it('follows the earliest item when the window is empty', () => {
+  it('follows the earliest item when the week view is empty', () => {
     // 2026-11-19 is a Thursday; its week starts Sunday 2026-11-15.
-    expect(key(anchorWindow(floor, ['2026-12-02', '2026-11-19'], floor))).toBe('2026-11-15');
+    const next = anchorView(WEEK_VIEW, ['2026-12-02', '2026-11-19'], FLOOR);
+    expect(next.mode).toBe('week');
+    expect(key(next.start)).toBe('2026-11-15');
+  });
+
+  it('follows by whole months once the reader is navigating months', () => {
+    const next = anchorView(month(2026, 8), ['2026-11-19'], FLOOR);
+    expect(next.mode).toBe('month');
+    expect(key(next.start)).toBe('2026-11-01');
   });
 
   it('never follows an item behind the floor', () => {
-    expect(key(anchorWindow(floor, ['2026-01-05'], floor))).toBe('2026-08-23');
+    expect(key(anchorView(month(2026, 8), ['2026-01-05'], FLOOR).start)).toBe('2026-08-01');
   });
 
   it('ignores a malformed key rather than jumping somewhere absurd', () => {
-    expect(key(anchorWindow(floor, ['not-a-date'], floor))).toBe('2026-08-23');
+    expect(key(anchorView(WEEK_VIEW, ['not-a-date'], FLOOR).start)).toBe('2026-08-23');
   });
 });
