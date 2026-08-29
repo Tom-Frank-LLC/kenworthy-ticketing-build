@@ -1,11 +1,12 @@
 ---
 brief: admin-dashboard-breathing-room
 title: Admin dashboard — a lit section title, more breathing room, clustered tabs
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-28
-verified: false
+shipped_in: ["#248"]
+shipped_at: 2026-08-29
+verified: true
 ---
 
 # Brief (for Claude Code): Admin dashboard — a lit section title, more breathing room, better grouping
