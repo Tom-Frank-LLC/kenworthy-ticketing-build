@@ -1283,6 +1283,7 @@ export default function Showing() {
                       ticketCount={ticketCount}
                       total={chargeTotal}
                       purchasing={purchasing}
+                      donationCents={donationCents}
                       onPurchase={handleGuestPurchase}
                     />
                   )}

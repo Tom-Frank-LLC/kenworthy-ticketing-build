@@ -126,6 +126,17 @@ export function DonationPrompt({
         />
       </div>
 
+      {/* Said here, where the gift is chosen, rather than only at the email
+          field below — a requirement that appears without a reason reads as an
+          obstacle. Customer-facing only: the box office still takes an
+          emailless walk-in gift, which is recorded locally and not synced. */}
+      {valueCents > 0 && variant === 'customer' && (
+        <p className="text-sm text-muted-foreground mt-2">
+          We&rsquo;ll need your email below &mdash; that&rsquo;s where your tax-deductible receipt
+          goes.
+        </p>
+      )}
+
       {valueCents >= MAX_BUNDLED_DONATION_CENTS && !isPreset && (
         <p className="text-sm text-muted-foreground mt-2">
           For a gift larger than ${MAX_BUNDLED_DONATION_CENTS / 100}, visit our{' '}

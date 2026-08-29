@@ -12,6 +12,11 @@ interface GuestCheckoutFormProps {
   total: number;
   purchasing: boolean;
   /**
+   * The gift attached to this order, in cents. Non-zero makes the email field
+   * required — see the contact rule in `validate` below.
+   */
+  donationCents?: number;
+  /**
    * Receives the buyer's details plus a single-use Square card token.
    *
    * `newsletter` is the buyer's own answer, not an inference. It used to be
@@ -47,7 +52,13 @@ interface GuestCheckoutFormProps {
  * and the price is recomputed server-side regardless of what this component
  * displays.
  */
-export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }: GuestCheckoutFormProps) {
+export function GuestCheckoutForm({
+  ticketCount,
+  total,
+  purchasing,
+  donationCents = 0,
+  onPurchase,
+}: GuestCheckoutFormProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -61,6 +72,17 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
   const [tokenizing, setTokenizing] = useState(false);
   const [cardReady, setCardReady] = useState(false);
   const cardRef = useRef<SquareCardFormHandle>(null);
+
+  // A gift on the order makes email mandatory whatever the delivery flags say.
+  // Tickets can go by text; a donation cannot. Its value to the theatre beyond
+  // the money is the Little Green Light constituent record it becomes, and LGL
+  // matches constituents on an email address — so a phone-only gift is charged
+  // and then permanently un-syncable, which is what happened to a $1 gift on 28
+  // Aug 2026. The server refuses it too (bundledDonationEmailError in
+  // _shared/pricing.ts); this is here so the buyer is asked before the pay
+  // button rather than rejected after it.
+  const donationAttached = donationCents > 0;
+  const emailRequired = donationAttached || !SMS_DELIVERY_LIVE;
 
   // The contact rule follows the channels that can actually deliver, which is
   // SMS_DELIVERY_LIVE and deliberately not COLLECT_PHONE. Showing the field is
@@ -76,7 +98,10 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
     // and none of that is worth turning a paying customer away over. The
     // server agrees: ticket-checkout dropped its own name check with this
     // change, so a blank name is a complete order, not a rejected one.
-    if (SMS_DELIVERY_LIVE) {
+    if (donationAttached && !email.trim()) {
+      newErrors.email =
+        'An email is required to add a donation — it is where your gift receipt goes.';
+    } else if (SMS_DELIVERY_LIVE) {
       // A phone only counts as a contact if it has been consented to. Without
       // the tick we will not text it, so a buyer with no email and no consent
       // has given us nothing we can deliver to — which is the same hole as the
@@ -160,7 +185,7 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
           </div>
           <div>
             <Label htmlFor="guest-email" className="text-sm flex items-center gap-1">
-              <Mail className="h-3 w-3" /> Email{SMS_DELIVERY_LIVE ? '' : ' *'}
+              <Mail className="h-3 w-3" /> Email{emailRequired ? ' *' : ''}
             </Label>
             <Input
               id="guest-email"
@@ -217,9 +242,11 @@ export function GuestCheckoutForm({ ticketCount, total, purchasing, onPurchase }
           )}
           {errors.contact && <p className="text-sm text-destructive mt-1">{errors.contact}</p>}
           <p className="text-sm text-muted-foreground">
-            {SMS_DELIVERY_LIVE
-              ? 'Provide email or phone so we can send your tickets and QR codes.'
-              : 'Enter your email so we can send your tickets and QR codes.'}
+            {donationAttached
+              ? 'Enter your email so we can send your tickets and the receipt for your gift.'
+              : SMS_DELIVERY_LIVE
+                ? 'Provide email or phone so we can send your tickets and QR codes.'
+                : 'Enter your email so we can send your tickets and QR codes.'}
           </p>
           {/* The one place a ticket buyer can opt into email. The signup form
               used to carry this and fed Mailchimp off the new account; there is

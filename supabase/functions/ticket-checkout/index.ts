@@ -42,6 +42,7 @@ import {
 import { canonicalTier, variationName } from '../_shared/square-catalog.ts';
 import {
   PricingError,
+  bundledDonationEmailError,
   priceTicketOrder,
   readDonationCents,
   type TicketDescriptor,
@@ -164,6 +165,11 @@ Deno.serve(async (req: Request) => {
   if (signedIn) {
     userId = signedIn.id;
     contact = await contactForUser(admin, userId, contact);
+    // A gift is not a ticket — see bundledDonationEmailError. Checked on both
+    // branches rather than once below, because the guest branch creates an
+    // account as a side effect and a refused order should not leave one behind.
+    const giftContactError = bundledDonationEmailError(contact.email, donationCents);
+    if (giftContactError) return json({ error: giftContactError }, 400);
   } else {
     // No name check. It used to be required here and on the form, and it was
     // never worth a rejected purchase — a name is a courtesy for the receipt
@@ -177,6 +183,13 @@ Deno.serve(async (req: Request) => {
     if (contact.email && !EMAIL_RE.test(contact.email)) {
       return json({ error: 'Invalid email format' }, 400);
     }
+    // The authoritative half of the donation rule. GuestCheckoutForm asks for
+    // the address before the pay button so nobody meets this message, but a
+    // stale tab or a direct call has to be refused here — same discipline as
+    // every other purchase rule on this path, which is priced from the database
+    // and never from the request.
+    const giftContactError = bundledDonationEmailError(contact.email, donationCents);
+    if (giftContactError) return json({ error: giftContactError }, 400);
     try {
       const buyer = await findOrCreateBuyer(admin, contact);
       userId = buyer.userId;

@@ -137,6 +137,34 @@ export function readDonationCents(raw: unknown): { ok: true; cents: number } | {
 }
 
 /**
+ * Why a gift may not ride along on this order, or null if it may.
+ *
+ * Tickets are deliverable by email *or* phone, and SMS-only ticketing is a real
+ * feature rather than an oversight. A gift is not a ticket. What a donation is
+ * worth to the theatre beyond the money is the constituent record it becomes in
+ * Little Green Light, and LGL keys constituents on an email address — so
+ * `_shared/lgl.ts` declines an emailless gift outright, deliberately, rather
+ * than seeding the donor database with a record nobody can reach. A phone-only
+ * gift is therefore charged, banked, and then permanently un-syncable. That is
+ * not hypothetical: it is what happened to a $1 gift on 28 Aug 2026, whose
+ * buyer gave a number and no address.
+ *
+ * The rule is narrow on purpose. It fires only when a gift is actually
+ * attached, so a ticket-only order keeps email-or-phone untouched; and only the
+ * online paths call it, so the box office still takes an emailless walk-in
+ * gift. That walk-in is the case `donations.donor_email` was made nullable for,
+ * and such a gift stays correctly recorded locally and unsynced.
+ */
+export function bundledDonationEmailError(
+  email: string | null | undefined,
+  donationCents: number,
+): string | null {
+  if (donationCents <= 0) return null;
+  if (email && email.trim()) return null;
+  return 'An email address is required to add a donation — it is where the receipt for your gift goes, and how we record it. Remove the donation to check out with a phone number only.';
+}
+
+/**
  * Recompute an order from the database.
  *
  * `channel` decides which Square rate the surcharge uses; pass 'none' for
