@@ -1,20 +1,21 @@
-import { useMemo, useState } from 'react';
-import {
-  addMonths,
-  endOfMonth,
-  endOfWeek,
-  format,
-  isSameDay,
-  isSameMonth,
-  isToday,
-  startOfMonth,
-  startOfWeek,
-  subMonths,
-} from 'date-fns';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { format, isSameDay, isToday } from 'date-fns';
 import { ChevronLeft, ChevronRight, Film, Sparkles, Music } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
+import { formatShowtime, venueDayKey } from '@/lib/datetime';
+import {
+  type CalendarView,
+  anchorView,
+  canStepBack,
+  isShadedMonth,
+  monthDividers,
+  monthFloor,
+  stepView,
+  viewDays,
+  viewLabel,
+  weekStart,
+} from '@/lib/calendarWindow';
 import type { FeedItem } from './TrailerFeed';
 
 const TYPE_ICON = {
@@ -41,21 +42,6 @@ export function MonthCalendar({
   onSelect?: (item: FeedItem) => void;
   showHint?: boolean;
 }) {
-  // Anchor the visible month to the first upcoming dated item, falling back
-  // to today so the calendar never opens on an empty month.
-  const firstDated = items.find((i) => i.showingId);
-  // Shifted to the venue's wall clock so the grid below — which reads local
-  // date fields off this Date — anchors on the day the show actually plays.
-  const initial = firstDated ? toVenueWallClock(firstDated.startTime) : new Date();
-
-  const [cursor, setCursor] = useState<Date>(startOfMonth(initial));
-  const [selectedDay, setSelectedDay] = useState<Date>(initial);
-
-  const monthStart = startOfMonth(cursor);
-  const monthEnd = endOfMonth(cursor);
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
-
   // Group dated items by yyyy-MM-dd for instant per-day lookups.
   const byDay = useMemo(() => {
     const map = new Map<string, FeedItem[]>();
@@ -71,10 +57,63 @@ export function MonthCalendar({
     return map;
   }, [items]);
 
-  const days: Date[] = [];
-  for (let d = gridStart; d <= gridEnd; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
-    days.push(d);
-  }
+  // The earliest month the arrows reach. `useFeed` fetches showings with
+  // `.gte('start_time', now)`, so everything before the current month is
+  // guaranteed empty and there is nothing back there to page to.
+  const floor = useMemo(() => monthFloor(new Date()), []);
+
+  const dayKeys = useMemo(() => [...byDay.keys()].sort(), [byDay]);
+
+  // Opens week-anchored on the current week, then switches to month navigation
+  // the moment the reader pages. `anchorView` only moves off the current week
+  // if the next six weeks are completely empty, which for a venue that
+  // programmes weekly means it opens on the current week in every real case.
+  const [view, setView] = useState<CalendarView>(() =>
+    anchorView({ mode: 'week', start: weekStart(new Date()) }, dayKeys, floor),
+  );
+
+  // Opens on today so the panel beside the grid is populated on a night we
+  // have something on; otherwise on the first upcoming day, which is the
+  // nearest day that has anything to show.
+  const [selectedDay, setSelectedDay] = useState<Date>(() => {
+    const today = new Date();
+    if (byDay.has(format(today, 'yyyy-MM-dd'))) return today;
+    const firstKey = [...byDay.keys()].sort()[0];
+    if (!firstKey) return today;
+    const [y, m, d] = firstKey.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  });
+
+  // Follow the results when a search leaves nothing in view. Keyed on the set
+  // of populated days rather than on `items` identity, so this fires when the
+  // filter actually changes something and not when the caller re-renders — and
+  // it never yanks a view the reader paged to themselves, because `anchorView`
+  // stays put whenever the current grid holds anything.
+  const dayKeySignature = dayKeys.join(',');
+  const lastSignature = useRef(dayKeySignature);
+  useEffect(() => {
+    if (lastSignature.current === dayKeySignature) return;
+    lastSignature.current = dayKeySignature;
+    setView((current) => {
+      const next = anchorView(current, dayKeys, floor);
+      return isSameDay(next.start, current.start) && next.mode === current.mode ? current : next;
+    });
+  }, [dayKeySignature, dayKeys, floor]);
+
+  const days = useMemo(() => viewDays(view), [view]);
+  const dividers = useMemo(() => monthDividers(days, view), [days, view]);
+  const canGoBack = canStepBack(view, floor);
+
+  // Keep the panel on a day the grid is actually showing. Paging to another
+  // month otherwise leaves it describing a day that scrolled out of view — and
+  // a search that re-anchored would show "Nothing on the marquee" beside a grid
+  // full of matches. Whether the old day still has showings is not the
+  // question; whether it is on screen is.
+  useEffect(() => {
+    if (days.some((d) => isSameDay(d, selectedDay))) return;
+    const firstWithItems = days.find((d) => byDay.has(format(d, 'yyyy-MM-dd')));
+    setSelectedDay(firstWithItems ?? days[0]);
+  }, [days, byDay, selectedDay]);
 
   const selectedKey = format(selectedDay, 'yyyy-MM-dd');
   const selectedItems = byDay.get(selectedKey) ?? [];
@@ -97,22 +136,29 @@ export function MonthCalendar({
             <div />
           )}
           <div className="flex items-center gap-2">
+            {/* Labelled by destination rather than "previous/next month": from
+                the opening week view, back goes to the current month and
+                forward to the next one, and "previous month" would name
+                neither. */}
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setCursor((c) => subMonths(c, 1))}
-              aria-label="Previous month"
+              disabled={!canGoBack}
+              onClick={() => setView((v) => stepView(v, -1, floor))}
+              aria-label={`Go to ${viewLabel(stepView(view, -1, floor))}`}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="font-display text-xl uppercase tracking-wider min-w-[10ch] text-center">
-              {format(cursor, 'MMMM yyyy')}
+            {/* Wide enough for the longest label either mode produces without
+                the arrows shifting as the reader pages. */}
+            <div className="font-display text-xl uppercase tracking-wider min-w-[16ch] text-center">
+              {viewLabel(view)}
             </div>
             <Button
               variant="outline"
               size="icon"
-              onClick={() => setCursor((c) => addMonths(c, 1))}
-              aria-label="Next month"
+              onClick={() => setView((v) => stepView(v, 1, floor))}
+              aria-label={`Go to ${viewLabel(stepView(view, 1, floor))}`}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -130,10 +176,15 @@ export function MonthCalendar({
               ))}
             </div>
             <div className="grid grid-cols-7 md:grid-cols-[repeat(7,minmax(0,132px))] justify-start gap-1 md:gap-2">
-              {days.map((day) => {
+              {days.map((day, index) => {
                 const key = format(day, 'yyyy-MM-dd');
+                const heading = dividers.get(index);
                 const dayItems = byDay.get(key) ?? [];
-                const inMonth = isSameMonth(day, cursor);
+                // No single "current month" any more, so the old in/out-of-month
+                // dimming has nothing to mean. Alternate months get a light band
+                // instead, which keeps the boundary legible without pushing any
+                // day's text to a fainter colour.
+                const shaded = isShadedMonth(day);
                 const selected = isSameDay(day, selectedDay);
                 const today = isToday(day);
                 const hasItems = dayItems.length > 0;
@@ -150,8 +201,19 @@ export function MonthCalendar({
                   .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
                 return (
+                  <Fragment key={key}>
+                  {/* Full-width month heading. Every row here is exactly seven
+                      cells, so a col-span-7 child always lands cleanly on its
+                      own row. */}
+                  {heading && (
+                    <div className="col-span-7 flex items-center gap-3 mt-2 first:mt-0">
+                      <span className="font-display text-sm uppercase tracking-[0.2em] text-accent whitespace-nowrap">
+                        {heading}
+                      </span>
+                      <span className="h-px flex-1 bg-accent/20" />
+                    </div>
+                  )}
                   <div
-                    key={key}
                     role="button"
                     tabIndex={0}
                     onClick={() => setSelectedDay(day)}
@@ -164,7 +226,8 @@ export function MonthCalendar({
                     className={cn(
                       'relative h-[6.25rem] md:h-[9.375rem] rounded-md border text-left p-1 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
                       'hover:border-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      inMonth ? 'border-accent/20 bg-card' : 'border-transparent bg-muted/20 text-muted-foreground/75',
+                      'border-accent/20',
+                      shaded ? 'bg-muted' : 'bg-card',
                       selected && 'border-primary bg-primary/10 ring-1 ring-primary',
                       today && !selected && 'border-accent/60',
                     )}
@@ -247,6 +310,7 @@ export function MonthCalendar({
                       </div>
                     )}
                   </div>
+                  </Fragment>
                 );
               })}
             </div>
