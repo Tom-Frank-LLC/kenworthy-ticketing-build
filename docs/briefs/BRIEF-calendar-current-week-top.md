@@ -1,11 +1,12 @@
 ---
 brief: calendar-current-week-top
 title: Month calendar opens with the current week as the top row
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-25
-verified: false
+shipped_in: ["#242"]
+shipped_at: 2026-08-29
+verified: true
 ---
 
 # Brief (for Claude Code): Calendar opens with the current week at the top (not the first week of the month)
@@ -131,3 +132,20 @@ there until reload.
 - Not verified in-browser: the 375px and 768px layouts. The driven Chrome tab's
   viewport is pinned at 1280, so the mobile grid could not be rendered. The
   header and heading widths — the new mobile risks — were measured directly.
+
+### Shipped to production 2026-08-29
+
+Merged as `c34b463` (#242) and deployed with `wrangler deploy`; merging alone
+does not ship. Production was confirmed to be exactly pre-merge main before
+deploying — a `build:production` of `96e5917` produced `index-CoaSkvPC.js`,
+the hash prod was serving — so no other session's unmerged work was overwritten.
+
+Verified against the live origin rather than the upload log, which reported
+"No updated asset files to upload": `/` serves `index-D8HfnFqj.js`, that chunk
+returns `text/javascript` at 299,022 bytes, and the old "Previous month" label
+is absent from it. The running page opens on the current week with headings
+August/September/October, steps forward to September and back to August, and
+disables the back arrow there.
+
+Rollback version: `bbfdd153-6e5a-486d-b4a4-2f63c1280ee6`. Deployed version:
+`1cb6fb0a-f1eb-448e-8f3c-19e9293aa8ce`.
