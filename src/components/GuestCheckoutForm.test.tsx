@@ -324,4 +324,108 @@ describe('GuestCheckoutForm', () => {
       );
     });
   });
+
+  /**
+   * A gift on the order makes email mandatory, whatever the delivery flags say.
+   *
+   * Tickets can go by text. A donation cannot: what it becomes beyond the money
+   * is a constituent record in Little Green Light, and LGL matches donors by
+   * email address — so `_shared/lgl.ts` declines an emailless gift by design,
+   * every time, forever. A phone-only gift is charged, banked and then stuck,
+   * which is what happened to a $1 gift on 28 Aug 2026.
+   *
+   * These are keyed on no flag on purpose. The rule holds on both sides of
+   * SMS_DELIVERY_LIVE, which is the point of it: it is not a delivery
+   * question, so it must not move when the delivery answer does.
+   */
+  describe('with a donation attached', () => {
+    it('refuses to submit without an email, whatever else the buyer gave', async () => {
+      const onPurchase = vi.fn();
+      render(
+        <GuestCheckoutForm
+          ticketCount={1}
+          total={9.48}
+          purchasing={false}
+          donationCents={100}
+          onPurchase={onPurchase}
+        />,
+      );
+
+      const payButton = await screen.findByRole('button', { name: /Pay/ });
+      await waitFor(() => expect(payButton).toBeEnabled());
+
+      fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Sheri' } });
+      if (COLLECT_PHONE) {
+        fireEvent.change(screen.getByLabelText(/^Phone$/), { target: { value: '(208) 892-9752' } });
+        fireEvent.click(screen.getByRole('checkbox', { name: /Text me my tickets/i }));
+      }
+      fireEvent.click(payButton);
+
+      // A phone number and SMS consent buy a ticket. They do not buy a gift.
+      expect(await screen.findByText(/required to add a donation/i)).toBeInTheDocument();
+      expect(tokenizeCard).not.toHaveBeenCalled();
+      expect(onPurchase).not.toHaveBeenCalled();
+    });
+
+    it('marks the email field required and says why', async () => {
+      render(
+        <GuestCheckoutForm
+          ticketCount={1}
+          total={9.48}
+          purchasing={false}
+          donationCents={100}
+          onPurchase={vi.fn()}
+        />,
+      );
+
+      await screen.findByRole('button', { name: /Pay/ });
+      expect(screen.getByLabelText(/^Email \*$/)).toBeInTheDocument();
+      expect(screen.getByText(/receipt for your gift/i)).toBeInTheDocument();
+    });
+
+    it('goes through once an email is given', async () => {
+      const onPurchase = vi.fn();
+      render(
+        <GuestCheckoutForm
+          ticketCount={1}
+          total={9.48}
+          purchasing={false}
+          donationCents={100}
+          onPurchase={onPurchase}
+        />,
+      );
+
+      const payButton = await screen.findByRole('button', { name: /Pay/ });
+      await waitFor(() => expect(payButton).toBeEnabled());
+
+      fireEvent.change(emailField(), { target: { value: 'sheri@example.com' } });
+      fireEvent.click(payButton);
+
+      await waitFor(() =>
+        expect(onPurchase).toHaveBeenCalledWith(
+          expect.objectContaining({ email: 'sheri@example.com' }),
+          'cnon:card-nonce-ok',
+        ),
+      );
+    });
+
+    it('leaves the ticket-only rule alone', async () => {
+      // The same form with no gift on it must behave exactly as before, or the
+      // fix for donations has quietly ended SMS-only ticketing.
+      const onPurchase = vi.fn();
+      render(
+        <GuestCheckoutForm
+          ticketCount={1}
+          total={8.48}
+          purchasing={false}
+          donationCents={0}
+          onPurchase={onPurchase}
+        />,
+      );
+
+      const payButton = await screen.findByRole('button', { name: /Pay/ });
+      await waitFor(() => expect(payButton).toBeEnabled());
+      expect(screen.getByLabelText(SMS_DELIVERY_LIVE ? /^Email$/ : /^Email \*$/)).toBeInTheDocument();
+    });
+  });
 });

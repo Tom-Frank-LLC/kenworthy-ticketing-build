@@ -5,9 +5,10 @@ import { CollapsibleSection } from './CollapsibleSection';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth';
 import { toast } from 'sonner';
-import { Heart, RefreshCw, Loader2, CheckCircle2, AlertCircle, PauseCircle } from 'lucide-react';
+import { Heart, RefreshCw, Loader2, CheckCircle2, AlertCircle, PauseCircle, Mail } from 'lucide-react';
 import { format } from 'date-fns';
 
 /**
@@ -16,6 +17,7 @@ import { format } from 'date-fns';
  * LGL is the fundraising CRM. Every completed donation is auto-synced from
  * the square-donation edge function (constituent + gift). This tab is for:
  *   - Manually re-syncing a single donation
+ *   - Adding the donor email to a gift that has none, which is what unblocks it
  *   - Backfilling everything that hasn't hit LGL yet (e.g. after a network
  *     hiccup or before the integration existed)
  *   - Seeing at a glance which donations synced and which failed
@@ -29,6 +31,9 @@ export default function LglTab() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [paused, setPaused] = useState<boolean | null>(null);
   const [pauseBusy, setPauseBusy] = useState(false);
+  /** Donation id whose email is being edited inline, and the draft address. */
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
 
   async function load() {
     setLoading(true);
@@ -98,6 +103,38 @@ export default function LglTab() {
     }
   }
 
+  /**
+   * Put an email address on a gift that has none, so it can reach LGL at all.
+   *
+   * The case: a donation collected online from a buyer who gave a phone number
+   * and no address. Nothing is at financial risk — Square took the money and the
+   * row is on our books — but the gift cannot become a constituent record,
+   * because LGL matches donors by email. Checkout no longer allows this, so this
+   * is for the gifts taken before that and for an address typed wrong.
+   *
+   * Deliberately not a direct table write: the edge function logs who changed
+   * the address and from what, and refuses a gift already in LGL.
+   */
+  async function saveDonorEmail(id: string) {
+    const email = draft.trim();
+    setBusy(id);
+    try {
+      const { data, error } = await supabase.functions.invoke('lgl-sync-donation', {
+        body: { action: 'set_donor_email', donationId: id, email },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      setEditing(null);
+      setDraft('');
+      toast.success('Email saved — this gift can now sync and be sent a receipt.');
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not save that email address');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function backfill() {
     const unsynced = rows.filter(r => !r.lgl_gift_id);
     if (unsynced.length === 0) { toast.info('Everything is already synced.'); return; }
@@ -127,6 +164,12 @@ export default function LglTab() {
           Completed donations sync automatically. Each donor becomes a constituent (matched
           by email) and each gift is posted with a note referencing the Kenworthy donation id.
           Use the backfill button below if any donations failed to sync in real time.
+        </p>
+        <p className="font-serif text-sm text-muted-foreground">
+          A gift with no email on it cannot sync at all &mdash; there is nothing for LGL to match a
+          donor on. Use <strong>Add email</strong> on the gift to put an address on it, then sync.
+          Online donations now require an email at checkout, so this is for gifts taken before
+          that and for an address typed wrong.
         </p>
         {isSuperadmin && paused !== null && (
           <div className="rounded-md border border-primary/30 bg-primary/5 p-3 flex items-start gap-3">
@@ -174,7 +217,7 @@ export default function LglTab() {
                     {r.donor_name} <span className="text-muted-foreground font-normal">${(r.amount_cents / 100).toFixed(2)}</span>
                   </p>
                   <p className="text-xs text-muted-foreground font-serif truncate">
-                    {r.donor_email} • {format(new Date(r.created_at), 'MMM d, yyyy')}
+                    {r.donor_email || 'No email on file'} • {format(new Date(r.created_at), 'MMM d, yyyy')}
                   </p>
                   {r.lgl_sync_error && !r.lgl_gift_id && (
                     <p className="text-xs text-destructive font-serif truncate mt-0.5">
@@ -207,18 +250,76 @@ export default function LglTab() {
                       <span className="text-muted-foreground">No email on file — no receipt to send</span>
                     )}
                   </p>
+                  {editing === r.id && (
+                    <div className="mt-2 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          type="email"
+                          autoFocus
+                          placeholder="donor@example.com"
+                          aria-label={`Donor email for ${r.donor_name}`}
+                          value={draft}
+                          disabled={busy === r.id}
+                          onChange={e => setDraft(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') saveDonorEmail(r.id); }}
+                          className="h-8 max-w-xs"
+                        />
+                        <Button
+                          size="sm"
+                          disabled={busy === r.id || !draft.trim()}
+                          onClick={() => saveDonorEmail(r.id)}
+                        >
+                          {busy === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy === r.id}
+                          onClick={() => { setEditing(null); setDraft(''); }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                      {/* Both consequences are outward-facing and neither is
+                          undoable from this screen, so both are stated. */}
+                      <p className="text-xs font-serif text-muted-foreground">
+                        Saving lets this gift sync to Little Green Light, and lets you send the
+                        receipt that had nowhere to go. The money itself was captured by Square
+                        either way.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1">
+                  {/* Sync is offered only when it can do something. Without an
+                      address the sync declines by design, and a button that
+                      always fails reads as a broken integration rather than as
+                      the missing field it actually is. */}
                   <Button
                     size="sm"
                     variant={r.lgl_gift_id ? 'outline' : 'default'}
-                    disabled={busy === r.id}
+                    disabled={busy === r.id || !r.donor_email}
+                    title={r.donor_email ? undefined : 'Add a donor email first — LGL matches donors by email.'}
                     onClick={() => syncOne(r.id, !!r.lgl_gift_id)}
                   >
                     {busy === r.id
                       ? <Loader2 className="h-4 w-4 animate-spin" />
                       : r.lgl_gift_id ? 'Re-sync' : 'Sync now'}
                   </Button>
+                  {/* Only while the gift is still ours to fix. Once it is in
+                      LGL the constituent is keyed on the old address there, and
+                      the server refuses the edit for the same reason. */}
+                  {!r.lgl_gift_id && editing !== r.id && (
+                    <Button
+                      size="sm"
+                      variant={r.donor_email ? 'ghost' : 'secondary'}
+                      disabled={busy === r.id}
+                      onClick={() => { setEditing(r.id); setDraft(r.donor_email || ''); }}
+                    >
+                      <Mail className="h-3 w-3 mr-1" />
+                      {r.donor_email ? 'Fix email' : 'Add email'}
+                    </Button>
+                  )}
                   {r.donor_email && (
                     <Button
                       size="sm"

@@ -30,6 +30,37 @@ export type LglResult =
   | { ok: false; error: string; status: number; detail?: string };
 
 /**
+ * Why this donation's donor email may not be set to `email`, or null if it may.
+ *
+ * The gift this exists for is the one collected online from a buyer who gave a
+ * phone number and no address: the money is in Square, the row is on our books,
+ * and `syncDonationToLgl` below declines it forever because LGL has nothing to
+ * key a constituent on. Adding the address by hand is the only way back, so it
+ * needs a rule of its own rather than a raw table update.
+ *
+ * An already-synced gift is refused outright. Its constituent and gift exist in
+ * LGL keyed on the old address, and nothing here can rename them — a re-sync
+ * after an edit would at best be a no-op and at worst attach the gift to a
+ * second constituent for the same human. That correction belongs in LGL, which
+ * is the system of record for the donor once the gift has landed there.
+ */
+export function donorEmailEditError(
+  donation: { lgl_gift_id?: string | null },
+  email: string,
+): string | null {
+  if (donation.lgl_gift_id) {
+    return 'This gift is already in Little Green Light. Change the donor’s email there — editing it here cannot rename the constituent, and re-syncing could create a second one.';
+  }
+  const trimmed = email.trim();
+  if (!trimmed) return 'An email address is required';
+  if (trimmed.length > 255) return 'That email address is too long';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return 'That is not a valid email address';
+  }
+  return null;
+}
+
+/**
  * Post one completed donation to LGL as a constituent + gift.
  *
  * Idempotent per donation via donations.lgl_gift_id, so a retry after a partial

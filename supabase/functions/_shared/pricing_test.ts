@@ -8,10 +8,16 @@
 //
 //   deno test supabase/functions/_shared/pricing_test.ts
 
-import { assertEquals, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
   MAX_BUNDLED_DONATION_CENTS,
   PricingError,
+  bundledDonationEmailError,
   computeProcessingFee,
   priceTicketOrder,
   readDonationCents,
@@ -498,4 +504,42 @@ Deno.test('treats a showing row with no sold-out column as open', async () => {
 
   const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}]);
   assertEquals(order.subtotal, 10);
+});
+
+// ---------------------------------------------------------------------------
+// The gift's own contact rule
+// ---------------------------------------------------------------------------
+//
+// The narrowness is the whole point, so it is what these pin down: a ticket
+// order is untouched, and only the presence of a gift changes the answer. A
+// phone-only buyer who adds a dollar was charged, banked and then permanently
+// un-syncable — LGL has nothing to key a constituent on — which is the failure
+// this rule exists to make impossible.
+
+Deno.test('no gift: a phone-only buyer is unaffected', () => {
+  assertEquals(bundledDonationEmailError(null, 0), null);
+  assertEquals(bundledDonationEmailError('', 0), null);
+  assertEquals(bundledDonationEmailError(undefined, 0), null);
+});
+
+Deno.test('gift with no email is refused', () => {
+  const err = bundledDonationEmailError(null, 100);
+  assert(err, 'a $1 gift with no email must be refused');
+  assertStringIncludes(err, 'email');
+});
+
+Deno.test('gift with no email: blank and whitespace count as no email', () => {
+  assert(bundledDonationEmailError('', 500));
+  assert(bundledDonationEmailError('   ', 500));
+  assert(bundledDonationEmailError(undefined, 500));
+});
+
+Deno.test('gift with an email is allowed', () => {
+  assertEquals(bundledDonationEmailError('donor@example.com', 100), null);
+  assertEquals(bundledDonationEmailError('donor@example.com', MAX_BUNDLED_DONATION_CENTS), null);
+});
+
+Deno.test('a negative or zero gift never triggers the rule', () => {
+  assertEquals(bundledDonationEmailError(null, -1), null);
+  assertEquals(bundledDonationEmailError(null, 0), null);
 });
