@@ -1,10 +1,12 @@
 ---
 brief: calendar-mobile-day-accordion
 title: On a phone, a tapped calendar day opens under its own week
-status: built
+status: shipped
 track: ux
 date: 2026-08-28
-verified: false
+shipped_in: ["#249"]
+shipped_at: 2026-08-29
+verified: true
 ---
 
 # Brief (for Claude Code): Mobile calendar — expand the selected day inline (accordion), not below the whole grid
@@ -98,6 +100,14 @@ slides shut, and disappears only once it is closed.
 
 `expandedKey` holds a day key rather than a boolean, so it self-clears whenever
 the selection moves for a reason other than a tap.
+
+## Shipped
+
+Merged as `#249` and deployed to production on 2026-08-29 (worker version
+`585c5f01-44a6-4488-a7ae-d0d53fd651f0`, entry chunk `index-D1Be5vum.js`;
+rollback is `7f974ac6-6f92-473f-95fc-d64bff6984b3`). Before that deploy, a
+build of the previous `main` reproduced the exact hash production was serving,
+which is what proved production held no unmerged work from another session.
 
 ## Verified
 
