@@ -756,7 +756,14 @@ export default function AdminDashboard() {
                   there is no reduced-motion case to answer yet. */}
               <MarqueeFrame className="marquee-frame--title text-center">
                 <h1 className="flex flex-wrap items-center justify-center gap-3 font-display text-2xl font-bold uppercase tracking-wider md:text-3xl">
-                  <span className="relative flex shrink-0 items-center justify-center">
+                  {/* Desktop only. On a phone the glyph directly below this, in
+                      the pager, is already the lit one for this section — the
+                      title carries the name and the pager carries the mark, and
+                      showing both twice in two inches read as a stutter. From
+                      `md` the pager is gone and the bar is twelve glyphs, so the
+                      title's own icon is the only thing tying the name to the
+                      one that is lit. */}
+                  <span className="relative hidden shrink-0 items-center justify-center md:flex">
                     <CurrentIcon
                       aria-hidden="true"
                       strokeWidth={1.75}
@@ -789,14 +796,21 @@ export default function AdminDashboard() {
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <div className="flex-1 min-w-0 flex items-center justify-center gap-2 h-10 rounded-md border border-input bg-muted/40 px-3 font-display uppercase tracking-wider text-sm">
+                {/* The lit glyph alone. The framed title directly above already
+                    names the section, and repeating it here put the same word on
+                    screen twice within an inch of itself.
+
+                    Nothing accessible is lost with the text gone: this box is
+                    not a control — the two arrows are, and they keep their own
+                    labels — and the `h1` above is still the section's accessible
+                    name. So the glyph is decorative here and marked as such. */}
+                <div
+                  aria-hidden="true"
+                  className="flex-1 min-w-0 flex items-center justify-center h-10 rounded-md border border-input bg-muted/40 px-3"
+                >
                   <span className="relative flex items-center justify-center shrink-0">
-                    <CurrentIcon aria-hidden="true" strokeWidth={1.75} className="absolute h-6 w-6 text-accent opacity-70 blur-[4px]" />
-                    <CurrentIcon className="relative h-6 w-6 glyph-lit" strokeWidth={1.75} />
-                  </span>
-                  <span className="truncate">{current.label}</span>
-                  <span className="text-xs text-muted-foreground ml-1 shrink-0">
-                    {currentIdx + 1}/{topTabs.length}
+                    <CurrentIcon aria-hidden="true" strokeWidth={1.75} className="absolute h-7 w-7 text-accent opacity-70 blur-[4px]" />
+                    <CurrentIcon aria-hidden="true" strokeWidth={1.75} className="relative h-7 w-7 glyph-lit" />
                   </span>
                 </div>
                 <Button
