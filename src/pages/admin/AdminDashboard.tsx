@@ -830,7 +830,7 @@ export default function AdminDashboard() {
                   an `aria-label` and gains a tooltip. Twelve unlabelled glyphs
                   would otherwise be a memory test, and a screen reader would
                   hear twelve buttons named nothing at all. */}
-              <TabsList className="hidden md:flex w-full h-auto items-stretch gap-1 p-1.5">
+              <TabsList className="hidden md:flex w-full h-auto flex-nowrap items-stretch gap-1 p-1.5">
                 {tabGroups.map((group, groupIdx) => (
                   <Fragment key={group.label}>
                     {groupIdx > 0 && (
