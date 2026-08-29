@@ -1,11 +1,13 @@
 ---
 brief: donation-requires-email
 title: An online gift requires an email, and a stuck gift can be given one
-status: built
+status: shipped
 track: bug
-severity: P1
 date: 2026-08-28
-verified: false
+shipped_in: ["#245"]
+shipped_at: 2026-08-29
+verified: true
+evidence: "Worker version 5560c657-a3a3-4a3e-96ee-2c96bf4ab794; ticket-checkout v48 and lgl-sync-donation v20 on vlmslygnimfbamrtwvyo. Live probe of ticket-checkout returns the new rule for a phone-only gift and the pre-existing rule for a contactless ticket order. Add email -> Sync now walked in the production admin by Tom."
 ---
 
 # An online gift requires an email, and a stuck gift can be given one
@@ -114,8 +116,31 @@ refusal (`lgl_test.ts`, new), and the client rule on both sides of
 `SMS_DELIVERY_LIVE` plus a regression guard that a ticket-only order is
 unchanged (`GuestCheckoutForm.test.tsx`).
 
-**Not deployed.** Merging to main does not deploy; this needs
-`npx wrangler deploy` for the frontend and
-`supabase functions deploy lgl-sync-donation ticket-checkout` for the two
-functions. Both function deploys are required — the rule and the recovery path
-each live in one of them.
+## Shipped
+
+Merged as `1885269` (#245) and deployed to production on 2026-08-29 — all three
+artifacts, because the rule and the recovery path live in different ones:
+
+| | |
+|---|---|
+| Worker | version `5560c657-a3a3-4a3e-96ee-2c96bf4ab794` (rollback: `1cb6fb0a-f1eb-448e-8f3c-19e9293aa8ce`) |
+| `ticket-checkout` | v48 |
+| `lgl-sync-donation` | v20 |
+
+Verified against production rather than the deploy logs. A live probe carrying a
+gift and a phone number but no email returns the new rule; the control — no
+gift, no contact — still returns `Email or phone is required so we can send your
+tickets`, so SMS-only ticketing is intact. Both probes are refused before
+`findOrCreateBuyer` and before pricing, so neither wrote a row. `set_donor_email`
+answers `401 Sign in required` to an unauthenticated call, which is what proves
+it booted rather than returning a `BOOT_ERROR`.
+
+Tom walked **Add email → Sync now** in the production admin and confirmed it
+works. That was the one path unit tests could not cover, and the one where a
+mistake reaches Little Green Light, which has no sandbox and no reversal.
+
+Two false alarms worth remembering from the deploy: `wrangler` printed *"No
+updated asset files to upload"* while shipping a real change (Workers Builds had
+already uploaded the assets on the PR), and the pre-deploy check that production
+was not *ahead* of main mattered — it wasn't, but only building `835516b` and
+matching the live bundle established that.
