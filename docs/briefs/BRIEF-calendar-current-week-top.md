@@ -129,9 +129,12 @@ there until reload.
   measured from computed styles: `rgb(36,36,36)` against `rgb(23,23,23)`.
 - Headings span all seven columns and their text is 151px, well inside a 375px
   viewport.
-- Not verified in-browser: the 375px and 768px layouts. The driven Chrome tab's
-  viewport is pinned at 1280, so the mobile grid could not be rendered. The
-  header and heading widths — the new mobile risks — were measured directly.
+- The 375px and 768px layouts could not be rendered here — the driven Chrome
+  tab's viewport is pinned at 1280 — so the header and heading widths, the new
+  mobile risks, were measured directly instead. **Tom confirmed the mobile view
+  on a real device on 2026-08-29**, after the production deploy. That is the
+  only check on this brief that came from a person rather than from this
+  session.
 
 ### Shipped to production 2026-08-29
 
