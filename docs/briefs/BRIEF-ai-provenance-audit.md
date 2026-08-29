@@ -1,20 +1,24 @@
 ---
 brief: ai-provenance-audit
 title: Inventory what on the site would be flagged as AI-generated, and decide how to disclose it
-status: built
+status: shipped
 track: docs
 severity: P2
 date: 2026-08-18
 verified: true
-findings: ../ai-provenance-images.md
-evidence: docs/ai-provenance-images.md, docs/ai-provenance-text.md, docs/ai-provenance-disclosure-stance.md
+shipped_in: ["#247"]
+shipped_at: 2026-08-29
+findings: ../FINDINGS-ai-provenance.md
+evidence: docs/FINDINGS-ai-provenance.md
 ---
 
 # Brief (for Claude Code): Audit what on the site could be flagged as AI-generated
 
-**Status:** 🟡 Assessment → a provenance inventory + a disclosure recommendation. No content changes without Tom's sign-off.
+**Status:** ✅ Assessment delivered. The inventory and the disclosure recommendation are in `docs/FINDINGS-ai-provenance.md`. The four decisions it puts to Tom are still open, and no content was changed.
 **Date:** August 18, 2026
 **Requested by:** Tom — now that AI provenance markers (watermarks, Content Credentials) are being embedded widely, assess what on the site might get flagged as AI-generated, including AI-generated text.
+
+**Outcome:** ran 23–26 Aug 2026. Findings are in `docs/FINDINGS-ai-provenance.md`. The two deliverable files named under Scope A and Scope B below were written, then removed in favour of that single shorter note; the ask is left as written.
 
 ## Framing (read first)
 The goal is **awareness and honest handling**, not concealment. AI provenance signals — Google's **SynthID** (invisible image/text watermark), **C2PA / Content Credentials** (signed metadata) — exist to make origin transparent. So this audit **inventories** what would flag and recommends a **disclosure stance**; it does **not** strip provenance to make AI content pass as human. Removing a watermark or C2PA manifest to deceive a detector is out of scope and not something to do. Cleaning *incidental* metadata (privacy EXIF) or deciding *how to disclose* is in scope.
