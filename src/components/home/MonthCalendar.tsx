@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { format, isSameDay, isToday } from 'date-fns';
-import { ChevronLeft, ChevronRight, Film, Sparkles, Music } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Film, Sparkles, Music, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatShowtime, venueDayKey } from '@/lib/datetime';
@@ -29,6 +29,80 @@ const TYPE_LABEL = {
   event: 'Event',
   concert: 'Live',
 } as const;
+
+/**
+ * What plays on one day.
+ *
+ * Shared by the desktop side panel and the mobile inline accordion so the two
+ * cannot drift — they are the same list read at two widths. The `lg:` variants
+ * below are the desktop column's poster-on-top layout; the inline panel is
+ * `lg:hidden`, so they never apply there.
+ */
+function DayShowings({
+  items,
+  onSelect,
+}: {
+  items: FeedItem[];
+  onSelect?: (item: FeedItem) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <p className="font-serif text-sm text-muted-foreground italic">
+        Nothing on the marquee this day.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="space-y-2">
+      {items
+        .slice()
+        .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+        .map((it) => {
+          const Icon = TYPE_ICON[it.type];
+          return (
+            <li key={it.id}>
+              <button
+                type="button"
+                onClick={() => onSelect?.(it)}
+                className="w-full text-left rounded-md border border-accent/20 bg-card hover:border-primary hover:bg-primary/5 transition-colors p-3 flex items-start gap-3 group lg:flex-col lg:items-stretch"
+              >
+                {it.posterUrl ? (
+                  <img
+                    src={it.posterUrl}
+                    alt=""
+                    loading="lazy"
+                    className="w-14 h-20 shrink-0 object-cover rounded bg-muted lg:w-full lg:h-auto lg:aspect-[2/3]"
+                  />
+                ) : (
+                  <div className="w-14 h-20 shrink-0 rounded bg-muted flex items-center justify-center lg:w-full lg:h-auto lg:aspect-[2/3]">
+                    <Icon className="w-5 h-5 text-muted-foreground lg:w-8 lg:h-8" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 lg:flex-none lg:w-full">
+                  <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-0.5">
+                    <Icon className="w-3 h-3" />
+                    {TYPE_LABEL[it.type]}
+                  </div>
+                  <div className="font-display text-lg text-accent tabular-nums leading-none">
+                    {formatShowtime(it.startTime, 'h:mm a')}
+                  </div>
+                  <div className="font-serif text-base leading-snug mt-1 group-hover:text-primary transition-colors">
+                    {it.title}
+                  </div>
+                  {typeof it.ticketPrice === 'number' && it.ticketPrice > 0 && (
+                    <div className="text-sm text-muted-foreground mt-1">
+                      ${it.ticketPrice.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              </button>
+            </li>
+          );
+        })}
+    </ul>
+  );
+}
 
 export function MonthCalendar({
   items,
@@ -84,6 +158,13 @@ export function MonthCalendar({
     return new Date(y, m - 1, d);
   });
 
+  // Mobile only: which day's inline panel is open. `null` is a real state and
+  // the one we open in — a day is always *selected* (the desktop column has to
+  // say something), but on a phone the month should be scannable before any of
+  // it is pushed down. Kept as a key rather than a boolean so it self-clears
+  // whenever the selection moves for a reason other than a tap.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
   // Follow the results when a search leaves nothing in view. Keyed on the set
   // of populated days rather than on `items` identity, so this fires when the
   // filter actually changes something and not when the caller re-renders — and
@@ -104,6 +185,15 @@ export function MonthCalendar({
   const dividers = useMemo(() => monthDividers(days, view), [days, view]);
   const canGoBack = canStepBack(view, floor);
 
+  // One row per week. The flat grid could not hold the mobile day panel: a
+  // panel between two weeks has to be a sibling of the rows, not a cell inside
+  // one. Every window is a whole number of weeks, so this never leaves a stub.
+  const weeks = useMemo(() => {
+    const out: Date[][] = [];
+    for (let i = 0; i < days.length; i += 7) out.push(days.slice(i, i + 7));
+    return out;
+  }, [days]);
+
   // Keep the panel on a day the grid is actually showing. Paging to another
   // month otherwise leaves it describing a day that scrolled out of view — and
   // a search that re-anchored would show "Nothing on the marquee" beside a grid
@@ -113,10 +203,41 @@ export function MonthCalendar({
     if (days.some((d) => isSameDay(d, selectedDay))) return;
     const firstWithItems = days.find((d) => byDay.has(format(d, 'yyyy-MM-dd')));
     setSelectedDay(firstWithItems ?? days[0]);
+    // Paging is not a request to read a day, so the phone gets its scannable
+    // month back rather than a panel it never asked to open.
+    setExpandedKey(null);
   }, [days, byDay, selectedDay]);
 
   const selectedKey = format(selectedDay, 'yyyy-MM-dd');
   const selectedItems = byDay.get(selectedKey) ?? [];
+  const expanded = expandedKey === selectedKey;
+
+  const instanceId = useId();
+  const panelId = `${instanceId}-day-panel`;
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // The day cells are the disclosure controls, so closing has to hand focus
+  // back to the one that opened the panel.
+  const cellRefs = useRef(new Map<string, HTMLDivElement>());
+
+  // Announce the panel when it opens. On `lg` the panel is `display: none`, so
+  // this is a no-op there and desktop focus stays where the reader put it.
+  useEffect(() => {
+    if (!expandedKey) return;
+    panelRef.current?.focus({ preventScroll: true });
+  }, [expandedKey]);
+
+  // Selecting a day and expanding it are the same gesture; tapping the open day
+  // again closes it.
+  const toggleDay = (day: Date) => {
+    const key = format(day, 'yyyy-MM-dd');
+    setSelectedDay(day);
+    setExpandedKey((current) => (current === key ? null : key));
+  };
+
+  const closePanel = () => {
+    setExpandedKey(null);
+    cellRefs.current.get(selectedKey)?.focus();
+  };
 
   return (
     <section className="border-t border-b border-accent/20 bg-background">
@@ -175,142 +296,228 @@ export function MonthCalendar({
                 <div key={d} className="px-2 py-1 text-center">{d}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 md:grid-cols-[repeat(7,minmax(0,132px))] justify-start gap-1 md:gap-2">
-              {days.map((day, index) => {
-                const key = format(day, 'yyyy-MM-dd');
-                const heading = dividers.get(index);
-                const dayItems = byDay.get(key) ?? [];
-                // No single "current month" any more, so the old in/out-of-month
-                // dimming has nothing to mean. Alternate months get a light band
-                // instead, which keeps the boundary legible without pushing any
-                // day's text to a fainter colour.
-                const shaded = isShadedMonth(day);
-                const selected = isSameDay(day, selectedDay);
-                const today = isToday(day);
-                const hasItems = dayItems.length > 0;
-
-                // Fixed, uniform cells: empty or full, every day is the same box.
-                // The height is rem, not px, so the box tracks the type inside it.
-                // As px it did not: raising the root font size grew the event
-                // chips and left the cell the same size, which cut the last one
-                // off mid-line. 6.25/9.375rem are the old 112/168px at the root
-                // this was drawn against, so the grid looks unchanged and now
-                // scales with browser zoom and OS large-text too.
-                const sorted = dayItems
-                  .slice()
-                  .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+            {/* The row gap that used to be the grid's own is now this column's,
+                at the same value, so the weeks sit exactly where they did. */}
+            <div className="flex flex-col gap-1 md:gap-2">
+              {weeks.map((week, weekIndex) => {
+                const heading = dividers.get(weekIndex * 7);
+                const holdsSelected = week.some((d) => isSameDay(d, selectedDay));
 
                 return (
-                  <Fragment key={key}>
-                  {/* Full-width month heading. Every row here is exactly seven
-                      cells, so a col-span-7 child always lands cleanly on its
-                      own row. */}
-                  {heading && (
-                    <div className="col-span-7 flex items-center gap-3 mt-2 first:mt-0">
-                      <span className="font-display text-sm uppercase tracking-[0.2em] text-accent whitespace-nowrap">
-                        {heading}
-                      </span>
-                      <span className="h-px flex-1 bg-accent/20" />
-                    </div>
-                  )}
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedDay(day)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedDay(day);
-                      }
-                    }}
-                    className={cn(
-                      'relative h-[6.25rem] md:h-[9.375rem] rounded-md border text-left p-1 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
-                      'hover:border-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                      'border-accent/20',
-                      shaded ? 'bg-muted' : 'bg-card',
-                      selected && 'border-primary bg-primary/10 ring-1 ring-primary',
-                      today && !selected && 'border-accent/60',
-                    )}
-                  >
-                    <div className="flex items-center justify-between shrink-0">
-                      <span className={cn(
-                        'font-display text-sm md:text-base',
-                        today && 'text-accent',
-                      )}>
-                        {format(day, 'd')}
-                      </span>
-                      {hasItems && (
-                        <span className="hidden md:inline-block text-xs font-semibold px-1.5 rounded-full bg-primary text-primary-foreground">
-                          {dayItems.length}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Mobile: compact dots (grid is too narrow for text). */}
-                    {hasItems && (
-                      <div className="mt-auto flex flex-wrap gap-0.5 md:hidden">
-                        {sorted.slice(0, 4).map((it) => (
-                          <span
-                            key={it.id}
-                            className={cn(
-                              'rounded-full w-1.5 h-1.5',
-                              it.type === 'movie' && 'bg-primary',
-                              it.type === 'event' && 'bg-accent',
-                              it.type === 'concert' && 'bg-foreground',
-                            )}
-                          />
-                        ))}
-                        {dayItems.length > 4 && (
-                          <span className="text-xs text-muted-foreground leading-none">+{dayItems.length - 4}</span>
+                  <div key={format(week[0], 'yyyy-MM-dd')}>
+                    {/* Full-width month heading, above the week it announces. */}
+                    {heading && (
+                      <div
+                        className={cn(
+                          'flex items-center gap-3 mb-1 md:mb-2',
+                          weekIndex > 0 && 'mt-2',
                         )}
+                      >
+                        <span className="font-display text-sm uppercase tracking-[0.2em] text-accent whitespace-nowrap">
+                          {heading}
+                        </span>
+                        <span className="h-px flex-1 bg-accent/20" />
                       </div>
                     )}
 
-                    {/* md+: title only. The cell already says which day this is,
-                        so both of the lines that used to sit here just restated
-                        it — the showtime, and the description, which is written
-                        starting "Tuesday, August 18 at 1 PM..." and so spent the
-                        grid's two scarcest lines repeating the day number above
-                        it. Titles get that room instead. Time and description
-                        both still show in the selected-day panel and the detail
-                        drawer, one tap away. */}
-                    {hasItems && (
-                      <div className="mt-1 hidden md:flex flex-col gap-1 overflow-hidden">
-                        {sorted.slice(0, 2).map((it) => (
-                          <button
-                            key={it.id}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelect?.(it);
+                    <div className="grid grid-cols-7 md:grid-cols-[repeat(7,minmax(0,132px))] justify-start gap-1 md:gap-2">
+                      {week.map((day) => {
+                        const key = format(day, 'yyyy-MM-dd');
+                        const dayItems = byDay.get(key) ?? [];
+                        // No single "current month" any more, so the old in/out-of-month
+                        // dimming has nothing to mean. Alternate months get a light band
+                        // instead, which keeps the boundary legible without pushing any
+                        // day's text to a fainter colour.
+                        const shaded = isShadedMonth(day);
+                        const selected = isSameDay(day, selectedDay);
+                        const today = isToday(day);
+                        const hasItems = dayItems.length > 0;
+                        const dayExpanded = expandedKey === key;
+
+                        // Fixed, uniform cells: empty or full, every day is the same box.
+                        // The height is rem, not px, so the box tracks the type inside it.
+                        // As px it did not: raising the root font size grew the event
+                        // chips and left the cell the same size, which cut the last one
+                        // off mid-line. 6.25/9.375rem are the old 112/168px at the root
+                        // this was drawn against, so the grid looks unchanged and now
+                        // scales with browser zoom and OS large-text too.
+                        const sorted = dayItems
+                          .slice()
+                          .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+                        return (
+                          <div
+                            key={key}
+                            ref={(el) => {
+                              if (el) cellRefs.current.set(key, el);
+                              else cellRefs.current.delete(key);
+                            }}
+                            role="button"
+                            tabIndex={0}
+                            // Without this the cell's accessible name is its own
+                            // contents — a bare day number on a phone, and the
+                            // number plus two film titles from `md`. Naming it
+                            // outright means a screen reader says which day is
+                            // being expanded, which is the whole point of the
+                            // disclosure.
+                            aria-label={
+                              hasItems
+                                ? `${format(day, 'EEEE, MMMM d')}, ${dayItems.length} ${dayItems.length === 1 ? 'showing' : 'showings'}`
+                                : `${format(day, 'EEEE, MMMM d')}, nothing on`
+                            }
+                            aria-expanded={dayExpanded}
+                            aria-controls={dayExpanded ? panelId : undefined}
+                            onClick={() => toggleDay(day)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                toggleDay(day);
+                              }
                             }}
                             className={cn(
-                              'text-left pl-1.5 border-l-2 group/ev',
-                              it.type === 'movie' && 'border-primary',
-                              it.type === 'event' && 'border-accent',
-                              it.type === 'concert' && 'border-foreground',
+                              'relative h-[6.25rem] md:h-[9.375rem] rounded-md border text-left p-1 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
+                              'hover:border-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                              'border-accent/20',
+                              shaded ? 'bg-muted' : 'bg-card',
+                              selected && 'border-primary bg-primary/10 ring-1 ring-primary',
+                              today && !selected && 'border-accent/60',
                             )}
                           >
-                            {/* Two lines at `md`, three from `lg`. The clamp has to
-                                follow the column width: at 768 these cells are only
-                                ~66px wide, so a title runs to three lines and two of
-                                them plus the "+N more" line overflow the cell and get
-                                cut mid-word. From `lg` the column is wide enough that
-                                three lines still fit. */}
-                            <div className="font-serif text-sm leading-tight line-clamp-2 lg:line-clamp-3 group-hover/ev:text-primary transition-colors">
-                              {it.title}
+                            <div className="flex items-center justify-between shrink-0">
+                              <span className={cn(
+                                'font-display text-sm md:text-base',
+                                today && 'text-accent',
+                              )}>
+                                {format(day, 'd')}
+                              </span>
+                              {hasItems && (
+                                <span className="hidden md:inline-block text-xs font-semibold px-1.5 rounded-full bg-primary text-primary-foreground">
+                                  {dayItems.length}
+                                </span>
+                              )}
                             </div>
-                          </button>
-                        ))}
-                        {dayItems.length > 2 && (
-                          <span className="text-sm italic text-muted-foreground pl-1.5">
-                            +{dayItems.length - 2} more
-                          </span>
+
+                            {/* Mobile: compact dots (grid is too narrow for text). */}
+                            {hasItems && (
+                              <div className="mt-auto flex flex-wrap gap-0.5 md:hidden">
+                                {sorted.slice(0, 4).map((it) => (
+                                  <span
+                                    key={it.id}
+                                    className={cn(
+                                      'rounded-full w-1.5 h-1.5',
+                                      it.type === 'movie' && 'bg-primary',
+                                      it.type === 'event' && 'bg-accent',
+                                      it.type === 'concert' && 'bg-foreground',
+                                    )}
+                                  />
+                                ))}
+                                {dayItems.length > 4 && (
+                                  <span className="text-xs text-muted-foreground leading-none">+{dayItems.length - 4}</span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* md+: title only. The cell already says which day this is,
+                                so both of the lines that used to sit here just restated
+                                it — the showtime, and the description, which is written
+                                starting "Tuesday, August 18 at 1 PM..." and so spent the
+                                grid's two scarcest lines repeating the day number above
+                                it. Titles get that room instead. Time and description
+                                both still show in the selected-day panel and the detail
+                                drawer, one tap away. */}
+                            {hasItems && (
+                              <div className="mt-1 hidden md:flex flex-col gap-1 overflow-hidden">
+                                {sorted.slice(0, 2).map((it) => (
+                                  <button
+                                    key={it.id}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onSelect?.(it);
+                                    }}
+                                    className={cn(
+                                      'text-left pl-1.5 border-l-2 group/ev',
+                                      it.type === 'movie' && 'border-primary',
+                                      it.type === 'event' && 'border-accent',
+                                      it.type === 'concert' && 'border-foreground',
+                                    )}
+                                  >
+                                    {/* Two lines at `md`, three from `lg`. The clamp has to
+                                        follow the column width: at 768 these cells are only
+                                        ~66px wide, so a title runs to three lines and two of
+                                        them plus the "+N more" line overflow the cell and get
+                                        cut mid-word. From `lg` the column is wide enough that
+                                        three lines still fit. */}
+                                    <div className="font-serif text-sm leading-tight line-clamp-2 lg:line-clamp-3 group-hover/ev:text-primary transition-colors">
+                                      {it.title}
+                                    </div>
+                                  </button>
+                                ))}
+                                {dayItems.length > 2 && (
+                                  <span className="text-sm italic text-muted-foreground pl-1.5">
+                                    +{dayItems.length - 2} more
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* The selected day, inline under its own week. Mounted
+                        collapsed rather than conditionally rendered: a panel
+                        that appears at full height has nothing to animate from,
+                        and this way the weeks below accordion down instead of
+                        jumping.
+
+                        `0fr -> 1fr` on a one-row grid is the height transition
+                        that does not need the height measured. `invisible`
+                        takes the collapsed panel out of the tab order and the
+                        accessibility tree, and because CSS holds `visibility`
+                        at `visible` for the whole of an outgoing transition,
+                        the content stays on screen while it slides shut. */}
+                    {holdsSelected && (
+                      <div
+                        className={cn(
+                          'lg:hidden grid transition-[grid-template-rows,visibility] duration-200 ease-out motion-reduce:transition-none',
+                          expanded ? 'grid-rows-[1fr] visible' : 'grid-rows-[0fr] invisible',
                         )}
+                      >
+                        <div className="overflow-hidden min-h-0">
+                          <div
+                            id={panelId}
+                            ref={panelRef}
+                            role="region"
+                            tabIndex={-1}
+                            aria-label={`${format(selectedDay, 'EEEE, MMMM d')} — what's on`}
+                            className="mt-1 md:mt-2 rounded-md border border-primary/40 bg-primary/5 p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          >
+                            <div className="flex items-start justify-between gap-4 mb-3">
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-1">
+                                  {isToday(selectedDay) ? 'Tonight' : format(selectedDay, 'EEEE')}
+                                </p>
+                                <h3 className="font-display text-xl uppercase tracking-wide">
+                                  {format(selectedDay, 'MMMM d')}
+                                </h3>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0 -mt-1 -mr-1"
+                                onClick={closePanel}
+                                aria-label={`Close ${format(selectedDay, 'MMMM d')}`}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <DayShowings items={selectedItems} onSelect={onSelect} />
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
-                  </Fragment>
                 );
               })}
             </div>
@@ -330,67 +537,18 @@ export function MonthCalendar({
             </div>
           </div>
 
-          {/* Selected day list */}
-          <div className="lg:flex-1 lg:min-w-[16rem] lg:border-l lg:border-accent/20 lg:pl-8">
+          {/* Selected day list. Desktop only now — below `lg` the same content
+              opens inline under the tapped day's week, where it does not make
+              the reader scroll past the whole grid to find out what they just
+              tapped. */}
+          <div className="hidden lg:block lg:flex-1 lg:min-w-[16rem] lg:border-l lg:border-accent/20 lg:pl-8">
             <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
               {isToday(selectedDay) ? 'Tonight' : format(selectedDay, 'EEEE')}
             </p>
             <h3 className="font-display text-2xl uppercase tracking-wide mb-4">
               {format(selectedDay, 'MMMM d')}
             </h3>
-            {selectedItems.length === 0 ? (
-              <p className="font-serif text-sm text-muted-foreground italic">
-                Nothing on the marquee this day.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {selectedItems
-                  .slice()
-                  .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-                  .map((it) => {
-                    const Icon = TYPE_ICON[it.type];
-                    return (
-                      <li key={it.id}>
-                        <button
-                          type="button"
-                          onClick={() => onSelect?.(it)}
-                          className="w-full text-left rounded-md border border-accent/20 bg-card hover:border-primary hover:bg-primary/5 transition-colors p-3 flex items-start gap-3 group lg:flex-col lg:items-stretch"
-                        >
-                          {it.posterUrl ? (
-                            <img
-                              src={it.posterUrl}
-                              alt=""
-                              loading="lazy"
-                              className="w-14 h-20 shrink-0 object-cover rounded bg-muted lg:w-full lg:h-auto lg:aspect-[2/3]"
-                            />
-                          ) : (
-                            <div className="w-14 h-20 shrink-0 rounded bg-muted flex items-center justify-center lg:w-full lg:h-auto lg:aspect-[2/3]">
-                              <Icon className="w-5 h-5 text-muted-foreground lg:w-8 lg:h-8" />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0 lg:flex-none lg:w-full">
-                            <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-0.5">
-                              <Icon className="w-3 h-3" />
-                              {TYPE_LABEL[it.type]}
-                            </div>
-                            <div className="font-display text-lg text-accent tabular-nums leading-none">
-                              {formatShowtime(it.startTime, 'h:mm a')}
-                            </div>
-                            <div className="font-serif text-base leading-snug mt-1 group-hover:text-primary transition-colors">
-                              {it.title}
-                            </div>
-                            {typeof it.ticketPrice === 'number' && it.ticketPrice > 0 && (
-                              <div className="text-sm text-muted-foreground mt-1">
-                                ${it.ticketPrice.toFixed(2)}
-                              </div>
-                            )}
-                          </div>
-                        </button>
-                      </li>
-                    );
-                  })}
-              </ul>
-            )}
+            <DayShowings items={selectedItems} onSelect={onSelect} />
           </div>
         </div>
       </div>
