@@ -453,7 +453,38 @@ Before Phase 1, rollback is simply "don't change the nameservers".
 4. **Old-URL 301s** — **accept 404s** at launch; revisit after a week using
    Search Console's 404 report, and map only paths with real traffic.
 
+## What is left, as of 29 Aug 2026
+
+The cutover itself is done and verified: kenworthy.org serves the build over
+valid TLS, `www` 301s to the apex with path and query intact, `…workers.dev`
+still answers so emailed ticket links keep working, the old WordPress host
+still serves on `64.126.133.214` so rollback is intact, and mail is unchanged.
+A real card purchase, its QR email, and a password reset were all confirmed.
+
+**Dated, so they do not get lost:**
+
+| When | What |
+|---|---|
+| ~4 Sep | Review Search Console's 404 report and decide which legacy WordPress URLs deserve a 301 — Decision 4, deliberately deferred a week |
+| ~27 Sep | The 30-day old-site fallback ends (Decision 2). **Confirm with First Step Internet in writing before anything is decommissioned.** Never retire the `…workers.dev` domain |
+
+**Not yet done:**
+
+- **Confirm a sale now registers as a named line item.** The `Custom Amount`
+  fix shipped to production on 28 Aug but no real purchase has confirmed it
+  since. This is the only outstanding *verification*.
+- **Submit the sitemap to Search Console** (`https://kenworthy.org/sitemap.xml`).
+  Phase 3 called for it; it was never done.
+- **Revoke the Cloudflare API token.** The DNS work is finished and rollback no
+  longer depends on it — a rollback now is a Worker version rollback, which uses
+  different credentials.
+- **Google Workspace custom DKIM.** Mail signs as
+  `kenworthy-org.<date>.gappssmtp.com`, Google's default key, not the domain's
+  own — `google._domainkey` is published and simply unused. Parked deliberately
+  to avoid two DNS-adjacent changes at once.
+
 ## Open items
+
 
 - **The brief's pre-cutover backups are the wrong protection for this change.**
   Nothing in Phase 2 writes to the Square catalog or the database — it changes

@@ -1,10 +1,12 @@
 ---
 brief: golive-domain-cutover
 title: Cut the live domain over to kenworthy.org
-status: in-progress
+status: shipped
 track: ops
 severity: P0
 date: 2026-08-18
+shipped_in: ["#230"]
+shipped_at: 2026-08-28
 verified: true
 findings: ../RUNBOOK-golive-kenworthy-org.md
 ---

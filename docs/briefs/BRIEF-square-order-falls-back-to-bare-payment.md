@@ -2,7 +2,6 @@
 brief: square-order-falls-back-to-bare-payment
 title: Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed
 status: built
-findings: confirmed from production logs 28 Aug 2026
 track: bug
 severity: P0
 date: 2026-08-28
