@@ -707,13 +707,18 @@ export default function AdminDashboard() {
                 { value: 'rentals', label: 'Rentals', icon: KeyRound, show: true },
                 { value: 'labor', label: 'Staff', icon: Clock, show: isAdmin },
                 { value: 'bor', label: 'BOR', icon: FileText, show: true },
+                /* Next to BOR, not over in Audience & Growth. The two are read
+                   against each other — the receipts and the numbers those
+                   receipts roll up into — and that pairing is what running the
+                   place looks like. Growth is who we reach; this is what we
+                   took. */
+                { value: 'analytics', label: 'Analytics', icon: BarChart3, show: isAdmin },
               ],
             },
             {
               label: 'Audience & Growth',
               tabs: [
                 { value: 'sponsors', label: 'Sponsors', icon: Handshake, show: true },
-                { value: 'analytics', label: 'Analytics', icon: BarChart3, show: isAdmin },
                 { value: 'mailchimp', label: 'Mailchimp', icon: Mail, show: isAdmin },
                 { value: 'lgl', label: 'LGL', icon: Heart, show: isAdmin },
               ],
@@ -753,28 +758,16 @@ export default function AdminDashboard() {
                   (see index.css). The ring is ornamental and `aria-hidden`
                   inside the component, so the heading is the whole accessible
                   name, and the frame is static: nothing here animates, so
-                  there is no reduced-motion case to answer yet. */}
+                  there is no reduced-motion case to answer yet.
+
+                  The name and nothing else. The glyph for this section is
+                  already on screen and already lit — in the bar immediately
+                  below on a desktop, in the pager immediately below on a
+                  phone — so a third copy of it inside the ring was saying a
+                  thing the screen had said twice already. Bulbs, then a word.
+                  `CurrentIcon` is still used, by the pager. */}
               <MarqueeFrame className="marquee-frame--title text-center">
-                <h1 className="flex flex-wrap items-center justify-center gap-3 font-display text-2xl font-bold uppercase tracking-wider md:text-3xl">
-                  {/* Desktop only. On a phone the glyph directly below this, in
-                      the pager, is already the lit one for this section — the
-                      title carries the name and the pager carries the mark, and
-                      showing both twice in two inches read as a stutter. From
-                      `md` the pager is gone and the bar is twelve glyphs, so the
-                      title's own icon is the only thing tying the name to the
-                      one that is lit. */}
-                  <span className="relative hidden shrink-0 items-center justify-center md:flex">
-                    <CurrentIcon
-                      aria-hidden="true"
-                      strokeWidth={1.75}
-                      className="absolute h-7 w-7 text-accent opacity-70 blur-[4px] md:h-8 md:w-8"
-                    />
-                    <CurrentIcon
-                      aria-hidden="true"
-                      strokeWidth={1.75}
-                      className="relative h-7 w-7 glyph-lit md:h-8 md:w-8"
-                    />
-                  </span>
+                <h1 className="font-display text-2xl font-bold uppercase tracking-wider md:text-3xl">
                   {current.label}
                 </h1>
               </MarqueeFrame>
