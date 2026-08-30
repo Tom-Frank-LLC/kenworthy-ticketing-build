@@ -1,22 +1,29 @@
 ---
 brief: square-order-falls-back-to-bare-payment
 title: Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed
-status: built
+status: shipped
 track: bug
 severity: P0
 date: 2026-08-28
+shipped_in: ["#233"]
+shipped_at: 2026-08-28
 verified: true
 ---
 
 # Brief: every online sale registers as "Custom Amount"
 
-> **Fixed and verified on staging, 28 Aug 2026 — not yet deployed to
-> production.** Every caller now sends **no fulfillment**, the shape
-> `square-invoice` has always used. Verified end to end against the Square
-> sandbox — order created, payment attached, order `COMPLETED`. See
-> *Verification* at the end, including why PICKUP was tried and rejected.
+> **Confirmed working in production, 29 Aug 2026.** A real card sale registered
+> in Square under its proper line-item name, not `Custom Amount`. That closes
+> the one loop the sandbox could not: the sandbox proved Square *accepts* the
+> shape, only a live sale could prove the attribution actually lands.
+>
+> Shipped 28 Aug 21:23 UTC — `ticket-checkout` v47, `film-pass-checkout` v37,
+> `square-donation` v36, `square-cash-sale` v4, verified against the downloaded
+> bundle rather than the upload log. Every caller sends **no fulfillment**, the
+> shape `square-invoice` has always used. See *Verification* at the end,
+> including why PICKUP was tried and rejected.
 
-**Status:** 🔴 Open. Found 28 Aug 2026 by the first real-card purchase on the
+**Status:** ✅ Shipped and confirmed. Found 28 Aug 2026 by the first real-card purchase on the
 newly live kenworthy.org.
 **Prerequisite reading:** `docs/SQUARE-TRANSACTION-CONVENTIONS.md`,
 `BRIEF-square-line-items.md` (the work this partially completes), and

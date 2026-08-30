@@ -470,9 +470,9 @@ A real card purchase, its QR email, and a password reset were all confirmed.
 
 **Not yet done:**
 
-- **Confirm a sale now registers as a named line item.** The `Custom Amount`
-  fix shipped to production on 28 Aug but no real purchase has confirmed it
-  since. This is the only outstanding *verification*.
+- ~~Confirm a sale now registers as a named line item.~~ **Done 29 Aug** — a
+  real card sale showed its proper line-item name in Square. **Every
+  verification the cutover called for has now passed.**
 - **Submit the sitemap to Search Console** (`https://kenworthy.org/sitemap.xml`).
   Phase 3 called for it; it was never done.
 - **Revoke the Cloudflare API token.** The DNS work is finished and rollback no
