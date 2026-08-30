@@ -5,20 +5,19 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**87 briefs** — 78 shipped, 4 built, 5 open, 0 needs triage, 0 closed.
+**87 briefs** — 79 shipped, 4 built, 4 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
-- `P0` **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md) · [notes](briefs/confirmed%20from%20production%20logs%2028%20Aug%202026)
+- `P0` **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open
 
-- `P0` **Cut the live domain over to kenworthy.org**<br>`ops` — [brief](briefs/BRIEF-golive-domain-cutover.md) · [notes](briefs/../RUNBOOK-golive-kenworthy-org.md)
 - `P2` **Comp tickets are issued but never delivered to the person receiving them**<br>`bug` — [brief](briefs/BRIEF-comp-ticket-delivery.md)
 - `P2` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **The Mailchimp campaign has never been able to send, because it queries a column that does not exist**<br>`bug` — [brief](briefs/BRIEF-mailchimp-campaign-dead-column.md)
@@ -31,6 +30,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - **Month calendar opens with the current week as the top row**<br>`ux` — `#242` — [brief](briefs/BRIEF-calendar-current-week-top.md)
 - **On a phone, a tapped calendar day opens under its own week**<br>`ux` — `#249` — [brief](briefs/BRIEF-calendar-mobile-day-accordion.md)
 - **An online gift requires an email, and a stuck gift can be given one**<br>`bug` — `#245` — [brief](briefs/BRIEF-donation-requires-email.md)
+- **Cut the live domain over to kenworthy.org**<br>`ops` — `#230` — [brief](briefs/BRIEF-golive-domain-cutover.md) · [notes](briefs/../RUNBOOK-golive-kenworthy-org.md)
 - **Live Events manages its own showings, and one door replaces two create buttons**<br>`ux` — `#226` — [brief](briefs/BRIEF-live-events-section-ux.md)
 - **A page with nothing to sell can be a curator's pick**<br>`feature` — `#218`, `#220`, `#222`, `#223` — [brief](briefs/BRIEF-manual-curator-slide.md)
 - **Port the type bump and rentals hero to phone widths**<br>`ux` — `#235` — [brief](briefs/BRIEF-mobile-layout-pass.md)
