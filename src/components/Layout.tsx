@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
+import { KenworthyLogo, KenworthyMark } from '@/components/brand/KenworthyLogo';
 import { MobileNav } from '@/components/MobileNav';
 import { NewsletterSignup } from '@/components/NewsletterSignup';
 import { useHiringEnabled } from '@/hooks/useHiringEnabled';
@@ -110,10 +110,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-50 glass border-b border-accent/20 pt-[env(safe-area-inset-top)]">
         {/* The bar grows for the centenary lockup, which is a taller piece of
             artwork — see KenworthyLogo. Written as two whole class strings
-            because Tailwind cannot see a class name that is built at runtime. */}
+            because Tailwind cannot see a class name that is built at runtime.
+
+            Below `sm` this is a three-zone grid — hamburger, mark, CTA — so
+            the mark sits at the true centre of the bar rather than at the
+            centre of whatever is left between the two. `1fr auto 1fr` is what
+            makes that true: the side columns take equal shares of the leftover
+            width whatever they hold, so the middle column's centre is the row's
+            centre even though the hamburger (54px) and the Tickets button
+            (~90px) are nothing like the same size. `grid-cols-3` would only
+            agree while both sides fit inside a third, and a signed-in staff
+            member's right-hand zone is empty down here — with equal thirds that
+            alone would push the mark off centre.
+
+            `sm` and not `md`, because `sm` is already where this row changes
+            shape, and because it is where the crowding actually stops: the
+            lockup renders 150x50 at 360px against artwork that is 3.78:1, and
+            206x54 — its true ratio — at 640. Centring past `sm` also puts the
+            two CTAs (~250px) against a 54px hamburger, which leaves the mark
+            mathematically centred and optically jammed into the buttons.
+
+            `sm:flex` restores the previous row verbatim, so every width from
+            640 up is untouched and reverting the experiment is these two
+            lines. */}
         <div
           className={cn(
-            'container flex items-center justify-between gap-2 sm:gap-4',
+            'container grid grid-cols-[1fr_auto_1fr] items-center gap-2',
+            'sm:flex sm:justify-between sm:gap-4',
             isCentenary() ? 'h-[84px]' : 'h-[68px]',
           )}
         >
@@ -122,7 +145,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
               the Support menu 51px on top of the Tickets button — the links are
               inline, so they overflow this box rather than compressing it. Full
               gap-8 returns at lg, which is now also where the links do. */}
-          <div className="flex items-center gap-3 sm:gap-6 md:gap-5 lg:gap-8 min-w-0">
+          {/* `contents` below `sm` dissolves this box so the hamburger and the
+              brand link become grid items of the row above — which is what lets
+              the three-zone layout exist without a second copy of the header
+              for phones. The desktop links inside are `hidden` until `lg`, and
+              `display: none` keeps them out of the grid entirely. */}
+          <div className="contents sm:flex sm:items-center sm:gap-6 md:gap-5 lg:gap-8 min-w-0">
             {/* Full menu below `lg`, where the desktop links below are still
                 hidden — and they really are hidden until `lg` now.
 
@@ -135,10 +163,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 the only navigation and the bar carries the brand and the two
                 CTAs. */}
             <MobileNav />
-            <Link to="/" className="flex items-center group" aria-label="Kenworthy — home">
+            {/* Two pieces of artwork, one link, swapped by breakpoint rather
+                than by JS so the right one is in the first paint.
+
+                The mark carries no `alt`: the link's `aria-label` is the
+                accessible name either way, and an `alt` here would only be
+                text a screen reader never reaches. Both are `eager` — this is
+                the only identification the page has above the fold, and on a
+                phone it is the only one at all.
+
+                The mark has no centenary variant (the "Celebrating 100 Years"
+                line exists only in the lockup), but the bar it sits in is
+                taller when the centenary lockup is current, so its height
+                tracks the bar's to keep the same optical weight in both. */}
+            <Link
+              to="/"
+              className="flex items-center group justify-self-center"
+              aria-label="Kenworthy — home"
+            >
+              <KenworthyMark
+                className={cn(
+                  'sm:hidden transition-opacity group-hover:opacity-80',
+                  isCentenary() ? 'h-11' : 'h-9',
+                )}
+                loading="eager"
+              />
               <KenworthyLogo
                 size="header"
-                className="transition-opacity group-hover:opacity-80"
+                className="hidden sm:block transition-opacity group-hover:opacity-80"
                 loading="eager"
               />
             </Link>
@@ -182,7 +234,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          <nav className="flex items-center gap-1.5" aria-label="Primary">
+          {/* `justify-end` matters only below `sm`, where this nav is a 1fr grid
+              cell wider than its buttons; at `sm` and up it is a flex item
+              sized by its content and the rule does nothing. */}
+          <nav className="flex items-center justify-end gap-1.5" aria-label="Primary">
             {/* Signed out only. Nobody with a role is going to donate from
                 behind the counter, and the header runs out of room at `lg`
                 exactly where the Staff and Admin buttons need to sit — so the
