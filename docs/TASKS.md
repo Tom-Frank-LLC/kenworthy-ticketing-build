@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**88 briefs** — 78 shipped, 6 built, 4 open, 0 needs triage, 0 closed.
+**88 briefs** — 79 shipped, 5 built, 4 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -16,7 +16,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
-- `P3` **On a phone the header carries the "K" mark, centred between the menu and Tickets**<br>`ux` — [brief](briefs/BRIEF-mobile-header-k-mark.md)
 
 ## Open
 
@@ -27,6 +26,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **On a phone the header carries the "K" mark, centred between the menu and Tickets**<br>`ux` — `#257` — [brief](briefs/BRIEF-mobile-header-k-mark.md)
 - **Admin dashboard — a lit section title, more breathing room, clustered tabs**<br>`ux` — `#248` — [brief](briefs/BRIEF-admin-dashboard-breathing-room.md)
 - **Inventory what on the site would be flagged as AI-generated, and decide how to disclose it**<br>`docs` — `#247` — [brief](briefs/BRIEF-ai-provenance-audit.md) · [notes](briefs/../FINDINGS-ai-provenance.md)
 - **Month calendar opens with the current week as the top row**<br>`ux` — `#242` — [brief](briefs/BRIEF-calendar-current-week-top.md)
