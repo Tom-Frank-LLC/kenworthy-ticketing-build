@@ -67,6 +67,59 @@ export function donorEmailEditError(
  * failure does not double-count a gift in the donor database. `admin` must be a
  * service-role client.
  */
+/**
+ * Find an existing LGL constituent by email address.
+ *
+ * Exported so a probe can exercise this exact code against the live API.
+ * LGL has no sandbox, so the only honest test is a read-only one against
+ * production data, and a test of a *copy* of this logic would prove nothing.
+ *
+ * Returns:
+ *   { ok: true, id }        a constituent that genuinely holds this address
+ *   { ok: true, id: null }  searched successfully, nobody has it
+ *   { ok: false, ... }      the search FAILED — not the same as "nobody"
+ *
+ * That third case is the whole point. The old code collapsed it into the
+ * second, so a rejected query read as "new donor" and minted a duplicate on
+ * every repeat gift.
+ */
+export async function findConstituentByEmail(
+  headers: Record<string, string>,
+  email: string,
+): Promise<{ ok: true; id: string | null } | { ok: false; status: number; detail: string }> {
+  // `name` matches EMAIL addresses as well as names — measured, not guessed.
+  // Only `name` and `keyword` are accepted keys at all, and `keyword` is a
+  // trap: it filters correctly but never matches an email, so it would look
+  // fixed while behaving exactly like the bug. Do not "simplify" to `keyword`.
+  const q = encodeURIComponent(`name=${email}`);
+  const res = await fetch(`${LGL_BASE}/constituents/search?q=${q}&limit=5`, { headers });
+
+  if (!res.ok) {
+    if (res.status === 404) return { ok: true, id: null };
+    return { ok: false, status: res.status, detail: (await res.text()).slice(0, 300) };
+  }
+
+  const wanted = email.trim().toLowerCase();
+  const json = await res.json();
+  for (const item of (json?.items ?? [])) {
+    let addresses = (item?.email_addresses ?? [])
+      .map((e: any) => String(e?.address ?? '').trim().toLowerCase());
+    // The search collection omits email_addresses, so confirm against the
+    // record itself. `name=` is a general "who" search; reusing a fuzzy hit
+    // would file this gift on someone else's record — worse than a duplicate.
+    if (!addresses.length && item?.id) {
+      const dRes = await fetch(`${LGL_BASE}/constituents/${item.id}`, { headers });
+      if (dRes.ok) {
+        const dJson = await dRes.json();
+        addresses = (dJson?.email_addresses ?? [])
+          .map((e: any) => String(e?.address ?? '').trim().toLowerCase());
+      }
+    }
+    if (addresses.includes(wanted)) return { ok: true, id: String(item.id) };
+  }
+  return { ok: true, id: null };
+}
+
 export async function syncDonationToLgl(
   admin: any,
   donationId: string,
@@ -132,16 +185,22 @@ export async function syncDonationToLgl(
     let constituentId: string | null = d.lgl_constituent_id ?? null;
 
     if (!constituentId) {
-      const q = encodeURIComponent(`email_address=${d.donor_email}`);
-      const sRes = await fetch(`${LGL_BASE}/constituents/search?q=${q}&limit=1`, { headers });
-      if (sRes.ok) {
-        const sJson = await sRes.json();
-        const first = sJson?.items?.[0];
-        if (first?.id) constituentId = String(first.id);
-      } else if (sRes.status !== 404) {
-        const txt = await sRes.text();
-        console.warn('[lgl] search failed', sRes.status, txt);
+      const found = await findConstituentByEmail(headers, d.donor_email);
+      if (!found.ok) {
+        // A search that ERRORED is not a donor who does not exist. Treating it
+        // as one is what created the duplicates. With no LGL sandbox and no
+        // undo, refusing to act is the only safe reading: the gift stays
+        // recorded locally and a human can retry it.
+        console.error('[lgl] constituent search failed', found.status, found.detail);
+        await markError(`constituent search ${found.status}: ${found.detail.slice(0, 200)}`);
+        return {
+          ok: false,
+          error: 'constituent_search_failed',
+          status: found.status,
+          detail: found.detail,
+        };
       }
+      constituentId = found.id;
     }
 
     if (!constituentId) {
