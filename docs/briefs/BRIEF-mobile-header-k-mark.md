@@ -1,11 +1,25 @@
 ---
 brief: mobile-header-k-mark
 title: On a phone the header carries the "K" mark, centred between the menu and Tickets
-status: built
+status: shipped
 track: ux
-severity: P3
 date: 2026-08-28
-verified: false
+shipped_in: ["#257"]
+shipped_at: 2026-08-31
+verified: true
+evidence: >-
+  PR #257 squash-merged as c6e656b. Production worker version
+  bf604f78-8e54-4c92-ba49-869069998f5f (rollback: 47e269a7-0d4e-439b-ae84-5456fcb4f6da).
+  kenworthy.org and the workers.dev origin both serve assets/index-JCgvsO9H.js
+  (text/javascript, 301208 bytes) and assets/index-BKBZ2qL3.css (text/css), and
+  that stylesheet carries both `grid-template-columns:1fr auto 1fr` and
+  `display:contents`. Driven headlessly against kenworthy.org: at 360/390/414
+  the row computes `display: grid`, the brand image is the inlined K mark at
+  61x54, and its centre offset from the viewport centre is 0px; at 640 and 1280
+  the row is `flex` and the full lockup returns at 206x54 and 242x69, the same
+  geometry a stashed baseline of unmodified main produced. Prior prod was
+  023ee2a, confirmed by reproducing its bundle hash (index-BaFsZB0c.js) from a
+  clean build of that commit — so nothing unmerged was overwritten.
 ---
 
 # Brief (for Claude Code): Mobile header — use the "K" mark, and try the nav bar centered
