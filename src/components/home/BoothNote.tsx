@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
 import {
   Carousel,
+  type CarouselApi,
   CarouselContent,
   CarouselItem,
   CarouselNext,
@@ -141,6 +142,74 @@ function SlideFrame({
   );
 }
 
+/**
+ * Below `lg`, the carousel viewport takes the height of the slide actually on
+ * screen.
+ *
+ * Without it the band is as tall as its tallest slide on every slide, because
+ * the track is a flex row and a flex row stretches its items to match. On
+ * desktop that is exactly right — `BAND` gives every slide the same 440px and
+ * there is nothing to reconcile. On a phone there is no band, so the slides
+ * are whatever their contents come to, and the shortest pick was left sitting
+ * above a screenful of nothing.
+ *
+ * `max-lg:items-start` on the track is the other half of this and does not
+ * work alone: it lets each slide shrink to its own content, but the track is
+ * still as tall as the tallest one, so the empty space merely moves out of the
+ * slide and underneath it. Measured at 390px before this pair went in, the
+ * shortest of three picks carried 1,385px of it.
+ *
+ * The height is set in pixels rather than left at `auto` because `auto` does
+ * not animate, and an unanimated jump reads as the page flinching mid-swipe.
+ * The transition is written to the same inline style for want of a prop that
+ * reaches the primitive's viewport, and is skipped under
+ * `prefers-reduced-motion`. At `lg` the inline height is removed altogether,
+ * so the desktop band is the CSS one and nothing here can drift into it.
+ */
+function useViewportFollowsSlide(api: CarouselApi | undefined) {
+  useEffect(() => {
+    if (!api) return;
+
+    // `rootNode()` is the `overflow-hidden` viewport the primitive puts the
+    // embla ref on, which is the element whose height clips the track.
+    const viewport = api.rootNode();
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    if (!still.matches) viewport.style.transition = 'height 300ms ease-out';
+
+    const apply = () => {
+      if (desktop.matches) {
+        viewport.style.removeProperty('height');
+        return;
+      }
+      const slide = api.slideNodes()[api.selectedScrollSnap()];
+      if (slide) viewport.style.height = `${slide.offsetHeight}px`;
+    };
+
+    apply();
+    api.on('select', apply);
+    api.on('reInit', apply);
+    desktop.addEventListener('change', apply);
+
+    // Posters arrive after first paint and rich text reflows on a font swap,
+    // so the height that was right at mount is not necessarily right a moment
+    // later. Watching every slide rather than the selected one keeps this
+    // correct across a swipe that lands on a slide which resized off screen.
+    const observer = new ResizeObserver(apply);
+    api.slideNodes().forEach((slide) => observer.observe(slide));
+
+    return () => {
+      api.off('select', apply);
+      api.off('reInit', apply);
+      desktop.removeEventListener('change', apply);
+      observer.disconnect();
+      viewport.style.removeProperty('height');
+      viewport.style.removeProperty('transition');
+    };
+  }, [api]);
+}
+
 /** The artwork cell's own classes, shared by the two things that fill it. */
 const MEDIA_CELL =
   'group block w-full max-w-[300px] md:max-w-none mx-auto md:mx-0 md:col-start-1 md:row-start-1 lg:h-full lg:min-h-0';
@@ -189,7 +258,29 @@ function SlideCopy({ label, html }: { label: string; html: string | null | undef
       aria-label={label}
       className="themed-scroll min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
-      <RichText html={html} className="font-serif italic text-foreground/80 leading-relaxed" />
+      {/* Clamped below `lg`, scrolling at `lg`. The band only bounds the note
+          on desktop (`BAND` is `lg:`-prefixed and the scroll with it), so on a
+          phone the note had no bound at all: a 236-word description measured
+          1,447px, making one slide 2,198px on an 844px screen. That is also
+          what produced the empty space the clamp is really here to remove —
+          the carousel track is a flex row, so every slide was stretched to
+          that tallest one, and the shortest pick carried 1,385px of nothing
+          beneath it. Bounding the note fixes both, because the note is the
+          only part of a slide whose height varies; the poster is a constant
+          450px.
+
+          Nothing is lost to the clamp. The note is the production's
+          description, and tapping the poster or the title opens the drawer
+          that prints it in full, as does /showing/:id behind the button.
+
+          `rich-text-teaser` is what makes the clamp count lines rather than
+          margin boxes — see the note on it in src/index.css. It is scoped to
+          `max-lg` because at `lg` the note scrolls instead, where the
+          paragraph spacing it zeroes is still doing its job. */}
+      <RichText
+        html={html}
+        className="max-lg:rich-text-teaser font-serif italic text-foreground/80 leading-relaxed line-clamp-6 lg:line-clamp-none"
+      />
     </div>
   );
 }
@@ -511,6 +602,11 @@ export function BoothNote({
 }) {
   const picks = buildSlides(items, slides);
 
+  // Before the early return: this is a hook, and a band that renders nothing
+  // today may render three picks tomorrow without remounting.
+  const [api, setApi] = useState<CarouselApi>();
+  useViewportFollowsSlide(api);
+
   if (picks.length === 0) return null;
 
   const single = picks.length === 1;
@@ -556,8 +652,15 @@ export function BoothNote({
             opts={{ align: 'start', loop: false }}
             aria-label="Curator's picks"
             className="relative lg:px-16"
+            setApi={setApi}
           >
-            <CarouselContent>
+            {/* `max-lg:items-start` stops the flex row stretching every slide
+                to the tallest one; `useViewportFollowsSlide` then brings the
+                viewport down to the slide on screen. Neither works without the
+                other — see the hook, which also owns the height transition:
+                the element it animates is this one's parent inside the
+                primitive, and there is no prop that reaches it. */}
+            <CarouselContent className="max-lg:items-start">
               {picks.map((pick) => (
                 <CarouselItem key={pick.key}>
                   <Slide slide={pick} onSelect={onSelect} />

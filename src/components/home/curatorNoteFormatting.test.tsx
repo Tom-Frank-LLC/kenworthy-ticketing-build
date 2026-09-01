@@ -74,6 +74,27 @@ describe('a curator note renders as formatted copy, not flattened text', () => {
     expect(note.querySelectorAll('p')).toHaveLength(2);
   });
 
+  it('clamps the pick’s note on a phone and lets it scroll at lg', () => {
+    const { container } = wrap(
+      <BoothNote items={[item({ curatorNote: RICH_NOTE, isFeatured: true })]} />,
+    );
+    const note = container.querySelector('.rich-text')!;
+
+    // The band bounds the note only at `lg` — `BAND` and the note's own
+    // `overflow-y` are both `lg:`-prefixed. Below that it had no bound at all,
+    // so a long description made one slide 2,198px tall on an 844px phone and,
+    // through the carousel's equal-height flex row, left 1,385px of empty
+    // space under the shortest pick. These three classes are that bound.
+    expect(note.classList.contains('line-clamp-6')).toBe(true);
+    expect(note.classList.contains('lg:line-clamp-none')).toBe(true);
+
+    // Scoped to `max-lg`: the zeroed margins are what make the clamp count
+    // lines instead of margin boxes, but at `lg` the note scrolls instead and
+    // the paragraph spacing is still wanted there.
+    expect(note.classList.contains('max-lg:rich-text-teaser')).toBe(true);
+    expect(note.classList.contains('rich-text-teaser')).toBe(false);
+  });
+
   it('renders editor markup as elements in a calendar row, still clamped', () => {
     const { container } = wrap(<EditorialCalendar items={[item({ curatorNote: RICH_NOTE })]} />);
 
