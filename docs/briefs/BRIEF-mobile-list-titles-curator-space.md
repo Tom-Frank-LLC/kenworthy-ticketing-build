@@ -1,11 +1,13 @@
 ---
 brief: mobile-list-titles-curator-space
 title: On a phone, list titles get a second line and the curator's band stops padding itself out
-status: built
+status: shipped
 track: ux
 severity: P2
 date: 2026-09-01
-verified: false
+shipped_in: ["#259"]
+shipped_at: 2026-09-02
+verified: true
 ---
 
 # Brief: Mobile — longer list titles, calendar info, tidy curator's pick
