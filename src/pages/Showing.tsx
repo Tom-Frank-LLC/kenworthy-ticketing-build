@@ -30,6 +30,9 @@ import {
   needsNoTicket,
   soldOutMessage,
 } from '@/lib/purchasable';
+import { fetchSiblingShowings } from '@/lib/showtimes';
+import { ShowtimeChips } from '@/components/home/ShowtimeChips';
+import type { UpcomingShowing } from '@/components/home/TrailerFeed';
 import { SITE_URL } from '@/lib/site';
 import { htmlToPlainText, toMetaDescription } from '@/lib/richText';
 import { RichText } from '@/components/RichText';
@@ -379,6 +382,9 @@ export default function Showing() {
   const [production, setProduction] = useState<any>(null);
   const [productionType, setProductionType] = useState<ProductionType>('movie');
   const [venue, setVenue] = useState<any>(null);
+  // The rest of this production's run. Empty until the showing loads, because
+  // the showing is what names the production.
+  const [siblingShowings, setSiblingShowings] = useState<UpcomingShowing[]>([]);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [takenSeatIds, setTakenSeatIds] = useState<Set<string>>(new Set());
   const [selectedSeats, setSelectedSeats] = useState<Set<string>>(new Set());
@@ -468,19 +474,33 @@ export default function Showing() {
       }
       setProductionType(type);
 
+      // Turned into one real promise here and awaited twice below — the page
+      // wants the row, and the showtimes list wants its runtime to resolve
+      // each date's end. A PostgREST builder runs its query on every `.then`,
+      // so handing the builder itself to both would fetch the production
+      // twice.
+      const productionRow = productionPromise.then((r: any) => r.data ?? null);
+
+      // Started here rather than after the awaits below so it runs alongside
+      // them: it is one more read on a page that already makes four, and it
+      // must not add a round trip to the buy flow it sits above.
+      const siblingsPromise = fetchSiblingShowings(s, productionRow);
+
       const venuePromise = s.venue_id
         ? supabase.from('venues').select('*').eq('id', s.venue_id).single()
         : Promise.resolve({ data: null });
 
       if (s.requires_seat_selection) {
-        const [prodRes, venueRes, seatsRes, availability] = await Promise.all([
-          productionPromise,
+        const [prod, venueRes, seatsRes, availability, siblings] = await Promise.all([
+          productionRow,
           venuePromise,
           supabase.from('seats').select('*').order('seat_row').order('seat_number'),
           fetchShowingAvailability(id),
+          siblingsPromise,
         ]);
-        setProduction(prodRes.data);
+        setProduction(prod);
         setVenue(venueRes.data);
+        setSiblingShowings(siblings);
         setSeats(seatsRes.data || []);
         if (availability) {
           setTakenSeatIds(availability.takenSeatIds);
@@ -521,13 +541,15 @@ export default function Showing() {
           setSeatTierMap(map);
         }
       } else {
-        const [prodRes, venueRes, availability] = await Promise.all([
-          productionPromise,
+        const [prod, venueRes, availability, siblings] = await Promise.all([
+          productionRow,
           venuePromise,
           fetchShowingAvailability(id),
+          siblingsPromise,
         ]);
-        setProduction(prodRes.data);
+        setProduction(prod);
         setVenue(venueRes.data);
+        setSiblingShowings(siblings);
         if (availability) setTicketsSold(availability.held);
       }
       setLoading(false);
@@ -984,6 +1006,27 @@ export default function Showing() {
           </div>
         </div>
       </div>
+
+      {/* The rest of the run, above the buy flow rather than beside it: a
+          reader who arrived from a listing or a calendar day landed on one
+          date of several and the first thing they may want is a different
+          one. In `mark` mode the chips are the whole run with tonight filled
+          in, so nobody has to work out which of them they are already on.
+
+          It renders on a passed showing too, and is the reason that page is
+          no longer a dead end — the heading changes because the list means
+          something different there: not "here are the dates" but "that one is
+          gone, these are not". A production that plays once renders nothing
+          at all; ShowtimeChips returns null when there is no *other* date. */}
+      <ShowtimeChips
+        showings={siblingShowings}
+        currentShowingId={showing.id}
+        currentMode="mark"
+        currentVenueName={venue?.name ?? null}
+        headingId="showing-showtimes"
+        heading={hasPassed ? 'Upcoming showtimes' : 'Showtimes'}
+        className="mt-0 mb-8"
+      />
 
       {/* Everything below is the buy flow, and a past showing has none. The
           block is left at its original indentation rather than shifted a level
