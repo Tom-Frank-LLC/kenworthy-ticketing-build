@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import {
   ShoppingCart, Film, User, Loader2, CheckCircle2, AlertTriangle,
   RotateCcw, Banknote, CreditCard, Minus, Plus, UtensilsCrossed, Ticket,
-  ScanLine, Send, History,
+  ScanLine, Send, History, CalendarDays,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -24,6 +24,7 @@ import { TransactionHistory, type SessionTransaction } from '@/components/pos/Tr
 import { PaymentMethodSelector, type PaymentMethod } from '@/components/pos/PaymentMethodSelector';
 import { ConcessionPOS } from '@/components/pos/ConcessionPOS';
 import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
+import { TodaysPresales } from '@/components/pos/TodaysPresales';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
@@ -840,10 +841,13 @@ export default function StaffPOS() {
 
       <Tabs defaultValue="tickets" className="space-y-6">
         {/* max-w widens with the tab count: at max-w-sm a fourth tab squeezes
-            every label to an ellipsis. */}
+            every label to an ellipsis. Presales makes it four or five, hence
+            another step up. The trigger reads "Presales" rather than "Today's
+            Presales" for the same reason — the panel's own heading carries the
+            full name and the date, so the tab does not have to. */}
         <TabsList
           className={`grid w-full ${
-            CONCESSION_POS_ENABLED ? 'grid-cols-4 max-w-2xl' : 'grid-cols-3 max-w-lg'
+            CONCESSION_POS_ENABLED ? 'grid-cols-5 max-w-3xl' : 'grid-cols-4 max-w-2xl'
           }`}
         >
           <TabsTrigger value="tickets"><ShoppingCart className="h-4 w-4 mr-1" /> Tickets</TabsTrigger>
@@ -851,6 +855,7 @@ export default function StaffPOS() {
             <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1" /> Concessions</TabsTrigger>
           )}
           <TabsTrigger value="film-passes"><Ticket className="h-4 w-4 mr-1" /> Film Passes</TabsTrigger>
+          <TabsTrigger value="presales"><CalendarDays className="h-4 w-4 mr-1" /> Presales</TabsTrigger>
           <TabsTrigger value="transactions">
             <History className="h-4 w-4 mr-1" /> Transactions
             {transactions.length > 0 && (
@@ -989,8 +994,18 @@ export default function StaffPOS() {
         </div>
 
         {/* Right: Patron info + Payment + Order summary */}
+        {/* Nothing here is sticky, deliberately. Patron Info alone used to be
+            `sticky top-20` while Payment and Order Summary scrolled as ordinary
+            siblings beneath it — so it pinned partway down and the two later
+            cards then slid over the top of it, because a sticky element is
+            painted before siblings that come after it in the same stacking
+            context. Making the whole column sticky instead would have traded
+            that for a worse bug: a real order (several seat lines, tax, fee,
+            donation prompt) is taller than a laptop viewport, so pinning it
+            puts the Sell button off-screen with no way to reach it. The counter
+            flow is short; it scrolls. */}
         <div className="space-y-6">
-          <Card className="glass sticky top-20">
+          <Card className="glass">
             <CardHeader>
               <CardTitle className="font-display text-lg flex items-center gap-2">
                 <User className="h-5 w-5 text-primary" /> Patron Info
@@ -1188,6 +1203,13 @@ export default function StaffPOS() {
 
         <TabsContent value="film-passes">
           <FilmPassPOS />
+        </TabsContent>
+
+        {/* The door's list, beside the till. Read-only: check-in is the
+            scanner's job, and this is what staff read off while working out
+            who is still to arrive. */}
+        <TabsContent value="presales">
+          <TodaysPresales />
         </TabsContent>
 
         <TabsContent value="transactions" className="space-y-6">

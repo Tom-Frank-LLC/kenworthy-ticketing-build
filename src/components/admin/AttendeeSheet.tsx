@@ -51,6 +51,8 @@ interface AttendeeRow {
   id: string;
   status: string;
   purchased_at: string;
+  /** Null until the QR is scanned at the door. The whole point of the column. */
+  scanned_at: string | null;
   total_price: number | null;
   payment_method: string | null;
   comp_recipient_name: string | null;
@@ -129,7 +131,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
       supabase
         .from('tickets')
         .select(
-          'id, status, purchased_at, total_price, payment_method, comp_recipient_name, comp_recipient_email, ' +
+          'id, status, purchased_at, scanned_at, total_price, payment_method, comp_recipient_name, comp_recipient_email, ' +
             'seats(seat_row, seat_number, section), showings(start_time)'
         )
         .in('showing_id', showingIds)
@@ -212,7 +214,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
   const exportCsv = () => {
     const header = [
       'Name', 'Email', 'Phone', 'Seat', 'Showing', 'Purchased',
-      'Status', 'Purchase Type', 'Pass', 'Paid',
+      'Checked In', 'Status', 'Purchase Type', 'Pass', 'Paid',
     ];
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const body = rows.map(r =>
@@ -223,6 +225,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
         seatLabel(r.seats),
         r.showings?.start_time ? formatShowtime(r.showings.start_time, 'yyyy-MM-dd HH:mm') : '',
         r.purchased_at ? format(new Date(r.purchased_at), 'yyyy-MM-dd HH:mm') : '',
+        r.scanned_at ? formatShowtime(r.scanned_at, 'yyyy-MM-dd HH:mm') : '',
         r.status,
         purchaseType(r.payment_method),
         // The whole code in an export, not the six-character tail. A
@@ -277,6 +280,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
                   <TableHead>Seat</TableHead>
                   {multiShowing && <TableHead>Showing</TableHead>}
                   <TableHead>Purchased</TableHead>
+                  <TableHead>Checked In</TableHead>
                   <TableHead>Purchase Type</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -299,6 +303,19 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
                     )}
                     <TableCell className="text-xs whitespace-nowrap">
                       {r.purchased_at ? format(new Date(r.purchased_at), 'MMM d, yyyy h:mm a') : '—'}
+                    </TableCell>
+                    {/* The door's own answer to "has this person come in yet".
+                        Rendered in the venue's zone, not the viewer's: a staff
+                        laptop set to Mountain would otherwise report every
+                        admission an hour late, and late shows on the wrong day. */}
+                    <TableCell className="whitespace-nowrap">
+                      {r.scanned_at ? (
+                        <Badge variant="default" className="text-xs">
+                          {formatShowtime(r.scanned_at, 'h:mm a')}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not yet</span>
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       <span className="text-sm">{purchaseType(r.payment_method)}</span>
