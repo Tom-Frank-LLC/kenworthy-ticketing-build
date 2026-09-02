@@ -387,7 +387,7 @@ function Pick({
       {kind === 'production' && (
         <ShowtimeChips
           showings={item.upcomingShowings}
-          excludeShowingId={item.showingId}
+          currentShowingId={item.showingId}
           headingId={`pick-also-playing-${item.id}`}
           className="mt-5 shrink-0"
         />

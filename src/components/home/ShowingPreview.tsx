@@ -200,7 +200,7 @@ export function ShowingPreview({
                 was picked. See ShowtimeChips. */}
             <ShowtimeChips
               showings={item.upcomingShowings}
-              excludeShowingId={item.showingId}
+              currentShowingId={item.showingId}
               headingId={alsoPlayingHeadingId}
             />
           </div>

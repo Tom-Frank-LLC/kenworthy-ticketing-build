@@ -29,6 +29,28 @@ export interface UpcomingShowing {
    * at a time, and the chip list is exactly where that difference shows.
    */
   manually_sold_out?: boolean;
+  /**
+   * How long this date runs, already resolved through
+   * `resolveDurationMinutes` — the showing's own override, then the film's,
+   * then the default. Not the raw column.
+   *
+   * Only `isPast` reads it, and only to stop a long night from vanishing from
+   * its own list: without it the rule falls back to DEFAULT_SHOWING_MINUTES,
+   * so a three-hour programme that started two hours ago reads as over while
+   * it is still selling. Optional because the feed builders do not carry it
+   * and 120 minutes is right for almost every date; absent is exactly the
+   * behaviour this list had before the field existed.
+   */
+  duration_minutes?: number | null;
+  /**
+   * The venue this date plays in, when the caller knows it.
+   *
+   * Rendered only where it *differs* from the venue named beside the chips
+   * (see `currentVenueName`). The house has two rooms — Main Theatre and
+   * Backstage — and no run currently splits across them, but a run that did
+   * would otherwise offer two rooms as one undifferentiated row of dates.
+   */
+  venue_name?: string | null;
 }
 
 export interface FeedItem {
