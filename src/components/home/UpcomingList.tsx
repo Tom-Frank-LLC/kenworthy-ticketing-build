@@ -169,7 +169,7 @@ export function UpcomingList({
           {/* List */}
           {/* min-w-0: grid items default to min-width:auto, which let a long
               title push this column past the viewport (112px of horizontal
-              scroll at 375px) and stopped the `truncate` below from ever
+              scroll at 375px) and stopped the `line-clamp-2` below from ever
               engaging. */}
           <ul className="min-w-0 space-y-2 lg:max-h-[560px] lg:overflow-y-auto lg:pr-2">
             {dated.map((it) => {
@@ -200,7 +200,10 @@ export function UpcomingList({
                       </div>
                       <div
                         className={cn(
-                          'font-serif text-base md:text-lg leading-snug truncate',
+                          // Two lines, not one. Beside the `w-20` date column a phone left a
+                          // single truncated line about 14 characters wide, which is
+                          // not enough of a title to recognise a film by.
+                          'font-serif text-base md:text-lg leading-snug line-clamp-2',
                           selected ? 'text-primary' : 'group-hover:text-primary',
                         )}
                       >
