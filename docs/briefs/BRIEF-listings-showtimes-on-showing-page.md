@@ -144,3 +144,20 @@ Two active showings on production point at event `39564707-c595-41be-a7d9-
 3d91bc744c14`, which the `anon` role cannot read. The ticketing page for
 those dates renders with a blank title and a 406 in the console. This
 predates the change and is untouched by it, but it is live and visible.
+
+### Follow-up: the first sideways link exposed a dormant bug (#264)
+
+Adding links between showings made the page reachable from itself for the
+first time, and `loading` starts `true` but was only ever set `false` — never
+back to `true` when `id` changes. So a chip click changed the URL while the
+page went on rendering the previous showing's date, prices, seat map and
+order summary until the new fetch landed.
+
+Not cosmetic: checkout posts `showing_id: id`, the URL's id, so a purchase
+begun in that window would have been written against the showing the reader
+navigated *to* with the prices and seats of the one they came *from*.
+
+Fixed in #264 — the effect clears the state it is about to replace, and a
+`cancelled` flag stops a superseded load from landing last. Worth
+remembering as a shape rather than an incident: state that is only ever
+*written* on load is safe until something lets you load twice.
