@@ -334,13 +334,21 @@ export function MonthCalendar({
                         const hasItems = dayItems.length > 0;
                         const dayExpanded = expandedKey === key;
 
-                        // Fixed, uniform cells: empty or full, every day is the same box.
-                        // The height is rem, not px, so the box tracks the type inside it.
-                        // As px it did not: raising the root font size grew the event
+                        // A floor, not a fixed height. Every day used to be the same
+                        // box, which meant a third showing could not be drawn and became
+                        // "+1 more" — a line that spent the cell's scarcest row saying
+                        // there was something it would not show. The cells are grid
+                        // children and grid stretches them, so giving the box a minimum
+                        // and letting the content set the rest makes the whole week row
+                        // grow to its busiest day and keeps every cell in that row the
+                        // same height.
+                        //
+                        // The minimum is rem, not px, so the box tracks the type inside
+                        // it. As px it did not: raising the root font size grew the event
                         // chips and left the cell the same size, which cut the last one
                         // off mid-line. 6.25/9.375rem are the old 112/168px at the root
-                        // this was drawn against, so the grid looks unchanged and now
-                        // scales with browser zoom and OS large-text too.
+                        // this was drawn against, so a quiet week looks exactly as it
+                        // did and now scales with browser zoom and OS large-text too.
                         const sorted = dayItems
                           .slice()
                           .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
@@ -375,7 +383,7 @@ export function MonthCalendar({
                               }
                             }}
                             className={cn(
-                              'relative h-[6.25rem] md:h-[9.375rem] rounded-md border text-left p-1 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
+                              'relative min-h-[6.25rem] md:min-h-[9.375rem] rounded-md border text-left p-1 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
                               'hover:border-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                               'border-accent/20',
                               shaded ? 'bg-muted' : 'bg-card',
@@ -426,8 +434,8 @@ export function MonthCalendar({
                                 both still show in the selected-day panel and the detail
                                 drawer, one tap away. */}
                             {hasItems && (
-                              <div className="mt-1 hidden md:flex flex-col gap-1 overflow-hidden">
-                                {sorted.slice(0, 2).map((it) => (
+                              <div className="mt-1 hidden md:flex flex-col gap-1">
+                                {sorted.map((it) => (
                                   <button
                                     key={it.id}
                                     type="button"
@@ -442,22 +450,20 @@ export function MonthCalendar({
                                       it.type === 'concert' && 'border-foreground',
                                     )}
                                   >
-                                    {/* Two lines at `md`, three from `lg`. The clamp has to
-                                        follow the column width: at 768 these cells are only
-                                        ~66px wide, so a title runs to three lines and two of
-                                        them plus the "+N more" line overflow the cell and get
-                                        cut mid-word. From `lg` the column is wide enough that
-                                        three lines still fit. */}
+                                    {/* Two lines at `md`, three from `lg`. This clamps the
+                                        individual title, which is a different question from
+                                        how many showings the cell draws — every one of them
+                                        is drawn now, and the row grows to suit. The clamp
+                                        follows the column width because at 768 these cells
+                                        are only ~66px wide, where a long title would
+                                        otherwise run to a paragraph and bury the day's other
+                                        showings under it. The full title is one tap away in
+                                        the day panel. */}
                                     <div className="font-serif text-sm leading-tight line-clamp-2 lg:line-clamp-3 group-hover/ev:text-primary transition-colors">
                                       {it.title}
                                     </div>
                                   </button>
                                 ))}
-                                {dayItems.length > 2 && (
-                                  <span className="text-sm italic text-muted-foreground pl-1.5">
-                                    +{dayItems.length - 2} more
-                                  </span>
-                                )}
                               </div>
                             )}
                           </div>
