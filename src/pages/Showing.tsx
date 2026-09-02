@@ -431,12 +431,54 @@ export default function Showing() {
   const soldOut = manuallySoldOut || capacitySoldOut;
 
   useEffect(() => {
+    // A different `id` is a different showing, and every piece of state below
+    // describes the old one.
+    //
+    // `loading` starts true and was only ever set false, which was correct
+    // while nothing on this page could reach another showing — you arrived
+    // once and stayed. The showtime chips changed that, and without this the
+    // page keeps rendering the previous showing's date, prices, seat map and
+    // order summary for as long as the new fetch takes, under a URL that
+    // already says otherwise.
+    //
+    // That is not only cosmetic. Checkout posts `showing_id: id` — the URL's
+    // id — so a purchase begun in that window would be written against the
+    // showing the reader navigated *to* while the prices and seats they
+    // agreed to belonged to the one they came *from*.
+    //
+    // The quantities are cleared for the same reason. `tierQuantities` and
+    // `selectedSeats` are only ever written when the new showing has tiers or
+    // assigned seating, so without an explicit reset a seat picked for
+    // Saturday follows the reader to a Sunday that never offered it.
+    setLoading(true);
+    setShowing(null);
+    setProduction(null);
+    setVenue(null);
+    setSiblingShowings([]);
+    setPriceTiers([]);
+    setTierQuantities({});
+    setSelectedTierId('');
+    setSeats([]);
+    setSeatTierMap({});
+    setTakenSeatIds(new Set());
+    setSelectedSeats(new Set());
+    setGaQuantity(0);
+    setTicketsSold(0);
+    setDonationCents(0);
+
+    // A second navigation while the first load is still in flight would
+    // otherwise let the slower one land last and write the wrong showing's
+    // data under the right URL.
+    let cancelled = false;
+
     async function load() {
       if (!id) return;
       const [showingRes, tiersRes] = await Promise.all([
         supabase.from('showings').select('*').eq('id', id).single(),
         supabase.from('showing_price_tiers').select('*').eq('showing_id', id).eq('is_active', true).order('display_order'),
       ]);
+
+      if (cancelled) return;
 
       const s = showingRes.data;
       if (!s) { navigate('/'); return; }
@@ -498,6 +540,7 @@ export default function Showing() {
           fetchShowingAvailability(id),
           siblingsPromise,
         ]);
+        if (cancelled) return;
         setProduction(prod);
         setVenue(venueRes.data);
         setSiblingShowings(siblings);
@@ -538,6 +581,7 @@ export default function Showing() {
               map[seatId] = { tierId: row.tier_id, tierName: meta.tier_name, price: meta.price, color: meta.color };
             }
           }
+          if (cancelled) return;
           setSeatTierMap(map);
         }
       } else {
@@ -547,6 +591,7 @@ export default function Showing() {
           fetchShowingAvailability(id),
           siblingsPromise,
         ]);
+        if (cancelled) return;
         setProduction(prod);
         setVenue(venueRes.data);
         setSiblingShowings(siblings);
@@ -555,6 +600,7 @@ export default function Showing() {
       setLoading(false);
     }
     load();
+    return () => { cancelled = true; };
   }, [id, navigate]);
 
   const toggleSeat = (seatId: string) => {
