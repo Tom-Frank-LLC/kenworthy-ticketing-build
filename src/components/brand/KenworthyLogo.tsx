@@ -1,6 +1,8 @@
 import kenworthyStandardLogo from '@/assets/kenworthy-logo.svg';
 import kenworthyMark from '@/assets/kenworthy-k.svg';
 import kenworthyKLetter from '@/assets/kenworthy-k-letter.svg';
+import kenworthyKArch from '@/assets/kenworthy-k-arch.svg';
+import kenworthyKRays from '@/assets/kenworthy-k-rays.svg';
 import kenworthyCentenaryLogo from '@/assets/KPAC-100-logo-white.svg';
 import { isCentenary } from '@/lib/centenary';
 import { cn } from '@/lib/utils';
@@ -137,19 +139,60 @@ export function KenworthyLogo({
  *   marquee  backlit, but with the letter lit rather than cut out — the sign
  *            on Main Street, where the K is the bright thing and the housing
  *            around it is dark
+ *   sunburst marquee with the rays lit too, so the housing is the only dark
+ *            part of the mark
  *
  * `mask` and `WebkitMask` are both set: Safari still wants the prefix.
  */
-export type MarkTreatment = 'filter' | 'white' | 'gold' | 'backlit' | 'marquee';
+export type MarkTreatment =
+  | 'filter' | 'white' | 'gold' | 'backlit' | 'marquee' | 'sunburst';
 
-const MASK_FILL: Record<Exclude<MarkTreatment, 'filter'>, string> = {
-  white: 'bg-foreground',
+/**
+ * Each painted treatment is a stack of masked layers, back to front.
+ *
+ * Written as data rather than as branches because the mark decomposes into
+ * exactly three pieces — rays, arch housing, letter — and every treatment is
+ * some choice of which of them is lit. `sunburst` is the one that needs all
+ * three; the rest are the same machinery with a shorter list.
+ *
+ * The arch layer uses the *solid* arch, not the artwork's arch-with-the-letter-
+ * knocked-out, so a lit letter can simply sit on top of it. Painting the full
+ * mark light and then covering the housing in dark would reach the same picture
+ * with one fewer file, and was rejected: the two edges coincide exactly, so
+ * antialiasing would blend a light fringe out from under a dark shape, which on
+ * a 54px glyph reads as a defect rather than as a design.
+ */
+const INK = {
+  lit: 'bg-foreground',
   gold: 'bg-accent',
   // Not pure `--background`: against the glass bar (card at 80% over the page)
   // the two are close enough that the glyph loses its edge and the halo reads
   // as a smudge. A touch darker than the bar keeps the silhouette.
-  backlit: 'bg-[hsl(0_0%_4%)]',
-  marquee: 'bg-[hsl(0_0%_4%)]',
+  dark: 'bg-[hsl(0_0%_4%)]',
+} as const;
+
+const ART = {
+  whole: kenworthyMark,
+  rays: kenworthyKRays,
+  arch: kenworthyKArch,
+  letter: kenworthyKLetter,
+} as const;
+
+type Layer = { art: keyof typeof ART; ink: keyof typeof INK };
+
+const MASK_LAYERS: Record<Exclude<MarkTreatment, 'filter'>, Layer[]> = {
+  white: [{ art: 'whole', ink: 'lit' }],
+  gold: [{ art: 'whole', ink: 'gold' }],
+  backlit: [{ art: 'whole', ink: 'dark' }],
+  marquee: [
+    { art: 'whole', ink: 'dark' },
+    { art: 'letter', ink: 'lit' },
+  ],
+  sunburst: [
+    { art: 'rays', ink: 'lit' },
+    { art: 'arch', ink: 'dark' },
+    { art: 'letter', ink: 'lit' },
+  ],
 };
 
 const MASK_GLOW: Record<Exclude<MarkTreatment, 'filter'>, string> = {
@@ -157,7 +200,19 @@ const MASK_GLOW: Record<Exclude<MarkTreatment, 'filter'>, string> = {
   gold: '[filter:var(--mark-glow)]',
   backlit: '[filter:var(--mark-backlight)]',
   marquee: '[filter:var(--mark-backlight)]',
+  sunburst: '[filter:var(--mark-backlight)]',
 };
+
+const maskStyle = (src: string) => ({
+  maskImage: `url("${src}")`,
+  WebkitMaskImage: `url("${src}")`,
+  maskRepeat: 'no-repeat' as const,
+  WebkitMaskRepeat: 'no-repeat' as const,
+  maskPosition: 'center' as const,
+  WebkitMaskPosition: 'center' as const,
+  maskSize: 'contain' as const,
+  WebkitMaskSize: 'contain' as const,
+});
 
 /**
  * The mark's filter, tone by tone, with and without the halo.
@@ -222,56 +277,36 @@ export function KenworthyMark({
   ...rest
 }: Omit<KenworthyLogoProps, 'size'> & { glow?: boolean; treatment?: MarkTreatment }) {
   if (treatment !== 'filter') {
-    // Painted, not drawn: the SVG is the mask and the token is the ink. Neither
-    // span carries an accessible name — every placement wraps this in a link
-    // that already has one.
+    const layers = MASK_LAYERS[treatment];
+    // Every layer is a sibling, never nested. A mask clips its descendants too,
+    // so a lit letter placed inside the masked housing would be trimmed to the
+    // very hole it exists to fill and vanish completely. They all share the
+    // wrapper's box and the one viewBox, so they register with no transform.
     //
-    // Two elements, and it has to be two: CSS applies `filter` *before* `mask`,
-    // so a drop-shadow on the masked element is computed on the un-masked box
-    // and then clipped back to the glyph by the very mask it was meant to
-    // escape. The halo disappears, and it disappears quietly — it renders as a
-    // slightly soft edge rather than as nothing, which is exactly the kind of
-    // wrong that survives review. So the mask goes on the inner span and the
-    // glow on the outer one, which has no mask to clip it.
+    // The glow lives on the wrapper, which carries no mask of its own. CSS
+    // applies `filter` before `mask`, so a drop-shadow on any masked element is
+    // computed on the un-masked box and then clipped back to the glyph by the
+    // mask it was meant to escape — it does not vanish, it comes out as a
+    // faintly soft edge, which is the kind of wrong that survives review.
+    //
+    // Neither span carries an accessible name: every placement wraps this in a
+    // link that already has one.
     return (
       <span
         aria-hidden
         className={cn('relative inline-flex', MASK_GLOW[treatment], className)}
       >
-        <span
-          className={cn('relative block h-full aspect-[212/190]', MASK_FILL[treatment])}
-          style={{
-            maskImage: `url("${kenworthyMark}")`,
-            WebkitMaskImage: `url("${kenworthyMark}")`,
-            maskRepeat: 'no-repeat',
-            WebkitMaskRepeat: 'no-repeat',
-            maskPosition: 'center',
-            WebkitMaskPosition: 'center',
-            maskSize: 'contain',
-            WebkitMaskSize: 'contain',
-          }}
-        />
-        {treatment === 'marquee' && (
-          // The lit letter, laid over the silhouette rather than knocked out
-          // of it. It is a sibling and not a child because the silhouette is
-          // masked, and a mask clips its descendants too — nested inside, this
-          // would be trimmed to the very hole it is meant to fill and vanish
-          // entirely. Both spans share the parent's box and the same viewBox,
-          // so they register with no transform.
+        {layers.map((layer, i) => (
           <span
-            className="absolute inset-0 block bg-foreground"
-            style={{
-              maskImage: `url("${kenworthyKLetter}")`,
-              WebkitMaskImage: `url("${kenworthyKLetter}")`,
-              maskRepeat: 'no-repeat',
-              WebkitMaskRepeat: 'no-repeat',
-              maskPosition: 'center',
-              WebkitMaskPosition: 'center',
-              maskSize: 'contain',
-              WebkitMaskSize: 'contain',
-            }}
+            key={layer.art}
+            className={cn(
+              'block aspect-[212/190]',
+              i === 0 ? 'h-full' : 'absolute inset-0',
+              INK[layer.ink],
+            )}
+            style={maskStyle(ART[layer.art])}
           />
-        )}
+        ))}
       </span>
     );
   }
