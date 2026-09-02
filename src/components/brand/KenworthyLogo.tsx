@@ -116,6 +116,44 @@ export function KenworthyLogo({
 }
 
 /**
+ * How the mark is painted.
+ *
+ * `filter` — today's treatment. Inverts the dark artwork so it reads on a dark
+ * bar. It is also why the mark looks dusty: #414042 inverted and dimmed lands
+ * on #B4B5B4, a neutral grey at 52% the luminance of the warm near-white
+ * (#F4F1EB) it sits beside. The colour is *derived* from the artwork rather
+ * than chosen, so it cannot match anything.
+ *
+ * The other three paint the glyph with a token instead, by using the SVG as a
+ * mask rather than drawing it. That is the difference that matters: the fill
+ * is then exactly `--foreground` or `--accent`, and it follows a re-theme
+ * instead of drifting from one.
+ *
+ *   white    the warm near-white the body copy already uses, unlit
+ *   gold     the brand gold, with the halo
+ *   backlit  the glyph painted in the page's own black so it reads as a
+ *            silhouette, with the light spilling round it — the marquee
+ *
+ * `mask` and `WebkitMask` are both set: Safari still wants the prefix.
+ */
+export type MarkTreatment = 'filter' | 'white' | 'gold' | 'backlit';
+
+const MASK_FILL: Record<Exclude<MarkTreatment, 'filter'>, string> = {
+  white: 'bg-foreground',
+  gold: 'bg-accent',
+  // Not pure `--background`: against the glass bar (card at 80% over the page)
+  // the two are close enough that the glyph loses its edge and the halo reads
+  // as a smudge. A touch darker than the bar keeps the silhouette.
+  backlit: 'bg-[hsl(0_0%_4%)]',
+};
+
+const MASK_GLOW: Record<Exclude<MarkTreatment, 'filter'>, string> = {
+  white: '',
+  gold: '[filter:var(--mark-glow)]',
+  backlit: '[filter:var(--mark-backlight)]',
+};
+
+/**
  * The mark's filter, tone by tone, with and without the halo.
  *
  * Eight whole class strings rather than one built from `INVERT` and a glow
@@ -172,10 +210,45 @@ const MARK_FILTER: Record<LogoTone, { plain: string; glow: string }> = {
 export function KenworthyMark({
   tone = 'on-dark',
   glow = false,
+  treatment = 'filter',
   className,
   alt = '',
   ...rest
-}: Omit<KenworthyLogoProps, 'size'> & { glow?: boolean }) {
+}: Omit<KenworthyLogoProps, 'size'> & { glow?: boolean; treatment?: MarkTreatment }) {
+  if (treatment !== 'filter') {
+    // Painted, not drawn: the SVG is the mask and the token is the ink. Neither
+    // span carries an accessible name — every placement wraps this in a link
+    // that already has one.
+    //
+    // Two elements, and it has to be two: CSS applies `filter` *before* `mask`,
+    // so a drop-shadow on the masked element is computed on the un-masked box
+    // and then clipped back to the glyph by the very mask it was meant to
+    // escape. The halo disappears, and it disappears quietly — it renders as a
+    // slightly soft edge rather than as nothing, which is exactly the kind of
+    // wrong that survives review. So the mask goes on the inner span and the
+    // glow on the outer one, which has no mask to clip it.
+    return (
+      <span
+        aria-hidden
+        className={cn('inline-flex', MASK_GLOW[treatment], className)}
+      >
+        <span
+          className={cn('block h-full aspect-[212/190]', MASK_FILL[treatment])}
+          style={{
+            maskImage: `url("${kenworthyMark}")`,
+            WebkitMaskImage: `url("${kenworthyMark}")`,
+            maskRepeat: 'no-repeat',
+            WebkitMaskRepeat: 'no-repeat',
+            maskPosition: 'center',
+            WebkitMaskPosition: 'center',
+            maskSize: 'contain',
+            WebkitMaskSize: 'contain',
+          }}
+        />
+      </span>
+    );
+  }
+
   return (
     <img
       src={kenworthyMark}

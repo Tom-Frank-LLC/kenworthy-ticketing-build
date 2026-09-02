@@ -204,6 +204,15 @@
     --mark-glow:
       drop-shadow(0 0 0.3rem hsl(var(--accent) / 0.55))
       drop-shadow(0 0 0.8rem hsl(var(--accent) / 0.3));
+
+    /* The backlight, for a mark painted dark rather than light: the glyph
+       reads as a silhouette and the light spills round it, which is what the
+       real marquee does. Brighter and wider than the halo above because it is
+       doing all the work — nothing is lit here except the spill. */
+    --mark-backlight:
+      drop-shadow(0 0 0.35rem hsl(var(--accent) / 0.95))
+      drop-shadow(0 0 0.9rem hsl(var(--accent) / 0.7))
+      drop-shadow(0 0 1.8rem hsl(var(--accent) / 0.4));
   }
 
 
