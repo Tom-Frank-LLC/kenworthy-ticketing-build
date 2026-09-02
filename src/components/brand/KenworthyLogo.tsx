@@ -141,11 +141,16 @@ export function KenworthyLogo({
  *            around it is dark
  *   sunburst marquee with the rays lit too, so the housing is the only dark
  *            part of the mark
+ *   sunburst-gold
+ *            the same, with the rays in the brand gold rather than white, so
+ *            the lit letter is the only white in the mark and the gold reads
+ *            continuously from the rays out into the halo
  *
  * `mask` and `WebkitMask` are both set: Safari still wants the prefix.
  */
 export type MarkTreatment =
-  | 'filter' | 'white' | 'gold' | 'backlit' | 'marquee' | 'sunburst';
+  | 'filter' | 'white' | 'gold' | 'backlit' | 'marquee' | 'sunburst'
+  | 'sunburst-gold';
 
 /**
  * Each painted treatment is a stack of masked layers, back to front.
@@ -193,6 +198,11 @@ const MASK_LAYERS: Record<Exclude<MarkTreatment, 'filter'>, Layer[]> = {
     { art: 'arch', ink: 'dark' },
     { art: 'letter', ink: 'lit' },
   ],
+  'sunburst-gold': [
+    { art: 'rays', ink: 'gold' },
+    { art: 'arch', ink: 'dark' },
+    { art: 'letter', ink: 'lit' },
+  ],
 };
 
 const MASK_GLOW: Record<Exclude<MarkTreatment, 'filter'>, string> = {
@@ -201,6 +211,7 @@ const MASK_GLOW: Record<Exclude<MarkTreatment, 'filter'>, string> = {
   backlit: '[filter:var(--mark-backlight)]',
   marquee: '[filter:var(--mark-backlight)]',
   sunburst: '[filter:var(--mark-backlight)]',
+  'sunburst-gold': '[filter:var(--mark-backlight)]',
 };
 
 const maskStyle = (src: string) => ({
