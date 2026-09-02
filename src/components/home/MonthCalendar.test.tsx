@@ -137,3 +137,55 @@ describe('MonthCalendar mobile day accordion', () => {
     expect(cell).toHaveAttribute('aria-expanded', 'false');
   });
 });
+
+/**
+ * A day cell used to draw two titles and then a "+N more" line, inside a box
+ * with a fixed height. That line spent the cell's scarcest row saying there was
+ * something it would not show — and on the busiest day in production (four
+ * showings) it hid half the day.
+ *
+ * The cells are grid children, so grid stretches every cell in a week to the
+ * tallest one. Giving the box a *minimum* instead of a fixed height therefore
+ * grows the whole week row to its busiest day and keeps the row uniform, which
+ * is what lets every showing be drawn.
+ *
+ * jsdom computes no layout, so what is pinned here is the part that is real
+ * without it: that every showing renders, that the "+N more" line is gone, and
+ * that the height is a floor rather than a cap. The stretching itself is grid's
+ * own behaviour and was measured in a browser against production data.
+ */
+describe('a day cell draws every showing on that day', () => {
+  const fourOnOneDay: FeedItem[] = [
+    item({ id: 'a', showingId: 's1', title: 'The Gold Rush' }),
+    item({ id: 'b', showingId: 's2', title: 'Punch-Drunk Love' }),
+    item({ id: 'c', showingId: 's3', title: 'Tony n’ Tina’s Wedding' }),
+    item({ id: 'd', showingId: 's4', title: 'The Odyssey' }),
+  ];
+
+  it('renders all four titles, not two and a "+2 more"', () => {
+    renderCalendar(fourOnOneDay);
+    const cell = cellFor(TARGET);
+
+    for (const title of ['The Gold Rush', 'Punch-Drunk Love', 'Tony n’ Tina’s Wedding', 'The Odyssey']) {
+      // getAllBy: the selected-day panel prints the same titles beside the grid.
+      expect(screen.getAllByText(title).length).toBeGreaterThan(0);
+    }
+
+    // The cell itself, not the page — the panel would satisfy a page-wide check.
+    const drawn = cell.querySelectorAll('button');
+    expect(drawn).toHaveLength(4);
+    expect(cell.textContent).not.toMatch(/\+\d+ more/);
+  });
+
+  it('sizes the cell with a floor, not a fixed height', () => {
+    renderCalendar(fourOnOneDay);
+    const cls = cellFor(TARGET).className;
+
+    // A fixed height is what forced the truncation; a minimum is what lets the
+    // row grow. `h-[...]` coming back here means the cap is back.
+    expect(cls).toContain('min-h-[6.25rem]');
+    expect(cls).toContain('md:min-h-[9.375rem]');
+    expect(cls).not.toMatch(/(^|\s)h-\[6\.25rem\]/);
+    expect(cls).not.toMatch(/(^|\s)md:h-\[9\.375rem\]/);
+  });
+});
