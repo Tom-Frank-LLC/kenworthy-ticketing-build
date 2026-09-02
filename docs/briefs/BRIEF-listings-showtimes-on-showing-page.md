@@ -1,11 +1,12 @@
 ---
 brief: listings-showtimes-on-showing-page
 title: The ticketing page shows every upcoming showtime of its production
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-28
-verified: false
+shipped_in: ["#263", "#264"]
+shipped_at: 2026-09-02
+verified: true
 ---
 
 # Brief (for Claude Code): Show all upcoming showtimes on a movie/event ticketing page
@@ -161,3 +162,16 @@ Fixed in #264 — the effect clears the state it is about to replace, and a
 `cancelled` flag stops a superseded load from landing last. Worth
 remembering as a shape rather than an incident: state that is only ever
 *written* on load is safe until something lets you load twice.
+
+### Deployed to production 2026-09-02
+
+`wrangler deploy`, version `1678a750-13c3-468f-975c-397e44ec1943` (rollback:
+`51f52d32-3097-4a5d-9215-49a356734f4f`). Production was verified to be exactly
+pre-change `main` before the deploy — a fresh `build:production` of 72ee6fe
+reproduced its entry-chunk hash exactly, so nothing unmerged was overwritten.
+
+Verified in the running production UI, not from the upload log: The Odyssey's
+six dates with the current one marked from two positions, the free event pair
+both reading Free, a single-showing film rendering no section, no horizontal
+overflow at 390 or 1280, and a chip click landing on the new date with no
+stale content at any sample point.

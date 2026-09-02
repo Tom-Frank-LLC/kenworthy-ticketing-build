@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**91 briefs** — 81 shipped, 6 built, 4 open, 0 needs triage, 0 closed.
+**91 briefs** — 82 shipped, 5 built, 4 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -15,7 +15,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
-- `P2` **The ticketing page shows every upcoming showtime of its production**<br>`ux` — [brief](briefs/BRIEF-listings-showtimes-on-showing-page.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open
@@ -28,6 +27,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Shipped
 
 - **A calendar day draws every showing on it, and the week row grows to suit**<br>`ux` — `#261` — [brief](briefs/BRIEF-calendar-cells-fit-all-showings.md)
+- **The ticketing page shows every upcoming showtime of its production**<br>`ux` — `#263`, `#264` — [brief](briefs/BRIEF-listings-showtimes-on-showing-page.md)
 - **On a phone, list titles get a second line and the curator's band stops padding itself out**<br>`ux` — `#259` — [brief](briefs/BRIEF-mobile-list-titles-curator-space.md)
 - **On a phone the header carries the "K" mark, centred between the menu and Tickets**<br>`ux` — `#257` — [brief](briefs/BRIEF-mobile-header-k-mark.md)
 - **Admin dashboard — a lit section title, more breathing room, clustered tabs**<br>`ux` — `#248` — [brief](briefs/BRIEF-admin-dashboard-breathing-room.md)
