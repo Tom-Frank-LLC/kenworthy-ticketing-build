@@ -1,5 +1,6 @@
 import kenworthyStandardLogo from '@/assets/kenworthy-logo.svg';
 import kenworthyMark from '@/assets/kenworthy-k.svg';
+import kenworthyKLetter from '@/assets/kenworthy-k-letter.svg';
 import kenworthyCentenaryLogo from '@/assets/KPAC-100-logo-white.svg';
 import { isCentenary } from '@/lib/centenary';
 import { cn } from '@/lib/utils';
@@ -132,11 +133,14 @@ export function KenworthyLogo({
  *   white    the warm near-white the body copy already uses, unlit
  *   gold     the brand gold, with the halo
  *   backlit  the glyph painted in the page's own black so it reads as a
- *            silhouette, with the light spilling round it — the marquee
+ *            silhouette, with the light spilling round it
+ *   marquee  backlit, but with the letter lit rather than cut out — the sign
+ *            on Main Street, where the K is the bright thing and the housing
+ *            around it is dark
  *
  * `mask` and `WebkitMask` are both set: Safari still wants the prefix.
  */
-export type MarkTreatment = 'filter' | 'white' | 'gold' | 'backlit';
+export type MarkTreatment = 'filter' | 'white' | 'gold' | 'backlit' | 'marquee';
 
 const MASK_FILL: Record<Exclude<MarkTreatment, 'filter'>, string> = {
   white: 'bg-foreground',
@@ -145,12 +149,14 @@ const MASK_FILL: Record<Exclude<MarkTreatment, 'filter'>, string> = {
   // the two are close enough that the glyph loses its edge and the halo reads
   // as a smudge. A touch darker than the bar keeps the silhouette.
   backlit: 'bg-[hsl(0_0%_4%)]',
+  marquee: 'bg-[hsl(0_0%_4%)]',
 };
 
 const MASK_GLOW: Record<Exclude<MarkTreatment, 'filter'>, string> = {
   white: '',
   gold: '[filter:var(--mark-glow)]',
   backlit: '[filter:var(--mark-backlight)]',
+  marquee: '[filter:var(--mark-backlight)]',
 };
 
 /**
@@ -230,10 +236,10 @@ export function KenworthyMark({
     return (
       <span
         aria-hidden
-        className={cn('inline-flex', MASK_GLOW[treatment], className)}
+        className={cn('relative inline-flex', MASK_GLOW[treatment], className)}
       >
         <span
-          className={cn('block h-full aspect-[212/190]', MASK_FILL[treatment])}
+          className={cn('relative block h-full aspect-[212/190]', MASK_FILL[treatment])}
           style={{
             maskImage: `url("${kenworthyMark}")`,
             WebkitMaskImage: `url("${kenworthyMark}")`,
@@ -245,6 +251,27 @@ export function KenworthyMark({
             WebkitMaskSize: 'contain',
           }}
         />
+        {treatment === 'marquee' && (
+          // The lit letter, laid over the silhouette rather than knocked out
+          // of it. It is a sibling and not a child because the silhouette is
+          // masked, and a mask clips its descendants too — nested inside, this
+          // would be trimmed to the very hole it is meant to fill and vanish
+          // entirely. Both spans share the parent's box and the same viewBox,
+          // so they register with no transform.
+          <span
+            className="absolute inset-0 block bg-foreground"
+            style={{
+              maskImage: `url("${kenworthyKLetter}")`,
+              WebkitMaskImage: `url("${kenworthyKLetter}")`,
+              maskRepeat: 'no-repeat',
+              WebkitMaskRepeat: 'no-repeat',
+              maskPosition: 'center',
+              WebkitMaskPosition: 'center',
+              maskSize: 'contain',
+              WebkitMaskSize: 'contain',
+            }}
+          />
+        )}
       </span>
     );
   }
