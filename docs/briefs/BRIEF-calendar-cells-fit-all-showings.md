@@ -1,11 +1,13 @@
 ---
 brief: calendar-cells-fit-all-showings
 title: A calendar day draws every showing on it, and the week row grows to suit
-status: built
+status: shipped
 track: ux
 severity: P2
 date: 2026-09-02
-verified: false
+shipped_in: ["#261"]
+shipped_at: 2026-09-02
+verified: true
 ---
 
 # Brief: the month grid stops saying "+1 more"
