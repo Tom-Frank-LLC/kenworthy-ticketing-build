@@ -180,6 +180,32 @@
     box-shadow: 0 0 40px -8px hsl(var(--accent) / 0.35);
   }
 
+  /* The halo behind the "K" mark in the phone header.
+
+     A custom property rather than a class, because the mark already carries a
+     `filter` (the invert that makes dark artwork read on a dark bar) and a
+     second `filter` declaration would not compose with it — one would simply
+     win. This has to join that chain, so KenworthyLogo drops it in as
+     `[filter:invert(1)_brightness(0.95)_var(--mark-glow)]`. Order matters
+     there and is not cosmetic: put the glow before the invert and `invert(1)`
+     flips the gold to blue.
+
+     `drop-shadow` and not `box-shadow`, for the same reason the marquee bulbs
+     use it — the mark is transparent artwork, so there is no box to shadow and
+     the halo has to follow the alpha of what was actually drawn.
+
+     Two passes, tight over wide, because one even blur reads as fog. Same
+     shape as the marquee bulbs at roughly two thirds their strength: this sits
+     behind a wordmark-sized glyph in a 84px bar, not a string of lights.
+
+     Mixed from `--accent` rather than frozen as a literal, so it follows a
+     re-theme — the trap `.glow-accent` above is named after. */
+  :root {
+    --mark-glow:
+      drop-shadow(0 0 0.3rem hsl(var(--accent) / 0.55))
+      drop-shadow(0 0 0.8rem hsl(var(--accent) / 0.3));
+  }
+
 
   /* Marquee divider — thin gold rule with a centered bulb-dot, evokes
      the hand-painted dividers used on the .org calendar */

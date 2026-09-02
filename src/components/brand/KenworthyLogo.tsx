@@ -116,6 +116,36 @@ export function KenworthyLogo({
 }
 
 /**
+ * The mark's filter, tone by tone, with and without the halo.
+ *
+ * Eight whole class strings rather than one built from `INVERT` and a glow
+ * fragment, because Tailwind cannot see a class name that is assembled at
+ * runtime — the same constraint that makes Layout.tsx write out both header
+ * heights. Keep the `invert(1) brightness(0.95)` here in step with `INVERT`
+ * above; they are the same rule and the compiler cannot tell you when they
+ * drift apart.
+ *
+ * `var(--mark-glow)` is defined in index.css so the halo's colour follows
+ * `--accent` through a re-theme. It goes *after* the invert on purpose: put it
+ * first and `invert(1)` turns the gold halo blue.
+ */
+const MARK_FILTER: Record<LogoTone, { plain: string; glow: string }> = {
+  // Dark grey artwork: invert it on dark surfaces, leave it alone on light.
+  'on-dark': {
+    plain: '[filter:invert(1)_brightness(0.95)]',
+    glow: '[filter:invert(1)_brightness(0.95)_var(--mark-glow)]',
+  },
+  'on-light': {
+    plain: '',
+    glow: '[filter:var(--mark-glow)]',
+  },
+  auto: {
+    plain: 'dark:[filter:invert(1)_brightness(0.95)]',
+    glow: '[filter:var(--mark-glow)] dark:[filter:invert(1)_brightness(0.95)_var(--mark-glow)]',
+  },
+};
+
+/**
  * The "K" mark on its own — the letter inside its sunburst, without the
  * wordmark.
  *
@@ -133,13 +163,19 @@ export function KenworthyLogo({
  *
  * `alt` defaults to empty because every placement so far sits next to the name
  * in text. Pass one where it is the only identification.
+ *
+ * `glow` lights it with the accent halo — see `--mark-glow` in index.css. Off
+ * by default: it is for the phone header, where the mark is the only branding
+ * on the bar and carries it alone. The sign-in card sits under a heading that
+ * already says the name, and does not need it.
  */
 export function KenworthyMark({
   tone = 'on-dark',
+  glow = false,
   className,
   alt = '',
   ...rest
-}: Omit<KenworthyLogoProps, 'size'>) {
+}: Omit<KenworthyLogoProps, 'size'> & { glow?: boolean }) {
   return (
     <img
       src={kenworthyMark}
@@ -150,7 +186,7 @@ export function KenworthyMark({
       decoding="async"
       className={cn(
         'w-auto object-contain',
-        tone === 'on-dark' ? INVERT : tone === 'on-light' ? '' : `dark:${INVERT}`,
+        MARK_FILTER[tone][glow ? 'glow' : 'plain'],
         className,
       )}
       {...rest}

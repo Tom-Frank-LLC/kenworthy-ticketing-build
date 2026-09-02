@@ -190,6 +190,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               aria-label="Kenworthy — home"
             >
               <KenworthyMark
+                glow
                 className={cn(
                   'sm:hidden transition-opacity group-hover:opacity-80',
                   isCentenary() ? 'h-11' : 'h-9',
