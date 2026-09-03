@@ -25,7 +25,7 @@
 // the `invite` action. So the simple call gets the branded email for free.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { EMAIL_RE } from '../_shared/buyers.ts';
+import { EMAIL_RE, findUserIdByEmail } from '../_shared/buyers.ts';
 import { SITE_URL } from '../_shared/brand.ts';
 
 // Deno globals
@@ -52,37 +52,6 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
-}
-
-/**
- * Find an existing account for this email, or null.
- *
- * `profiles` first because it is a single indexed lookup and the
- * `on_auth_user_created` trigger fills `email` for every user it creates. The
- * `listUsers` fallback covers accounts that predate that trigger, and pages
- * properly — `listUsers()` with no arguments returns only the first 50, which
- * would silently report "no such user" for anyone further down the list and
- * then fail the invite with "already registered".
- */
-async function findUserIdByEmail(admin: any, email: string): Promise<string | null> {
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('id')
-    .eq('email', email)
-    .limit(1)
-    .maybeSingle();
-  if (profile?.id) return profile.id;
-
-  const PER_PAGE = 200;
-  for (let page = 1; page <= 50; page++) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: PER_PAGE });
-    if (error) break;
-    const users = data?.users ?? [];
-    const hit = users.find((u: any) => u.email?.toLowerCase() === email);
-    if (hit) return hit.id;
-    if (users.length < PER_PAGE) break;
-  }
-  return null;
 }
 
 Deno.serve(async (req: Request) => {
