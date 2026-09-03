@@ -75,7 +75,23 @@ function loadScript(): Promise<void> {
   });
 }
 
-export function Turnstile({ onToken }: { onToken: (token: string | null) => void }) {
+export function Turnstile({
+  onToken,
+  onInteractive,
+}: {
+  onToken: (token: string | null) => void;
+  /**
+   * Called with `true` when Turnstile decides to put a checkbox in front of the
+   * visitor, and `false` when that is done with.
+   *
+   * The caller needs this because the two waits look identical from the
+   * outside and are not the same instruction. A managed widget usually solves
+   * silently — nothing to do but wait a second. Sometimes it asks the person to
+   * click, and a button that still says "Checking your browser…" is then
+   * telling them to wait at the exact moment they need to act.
+   */
+  onInteractive?: (interactive: boolean) => void;
+}) {
   const boxRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -85,6 +101,9 @@ export function Turnstile({ onToken }: { onToken: (token: string | null) => void
   // re-rendered parent would leave the widget calling a stale setter.
   const onTokenRef = useRef(onToken);
   useEffect(() => { onTokenRef.current = onToken; }, [onToken]);
+
+  const onInteractiveRef = useRef(onInteractive);
+  useEffect(() => { onInteractiveRef.current = onInteractive; }, [onInteractive]);
 
   useEffect(() => {
     if (!SITE_KEY) return;
@@ -96,10 +115,25 @@ export function Turnstile({ onToken }: { onToken: (token: string | null) => void
         if (cancelled || !boxRef.current || !window.turnstile) return;
         widgetId.current = window.turnstile.render(boxRef.current, {
           sitekey: SITE_KEY,
-          callback: (token: string) => onTokenRef.current(token),
+          callback: (token: string) => {
+            onInteractiveRef.current?.(false);
+            onTokenRef.current(token);
+          },
+          // Turnstile fires these around a challenge it is about to put in
+          // front of the visitor. Observed on kenworthy.org the day it went
+          // live: the widget presented a "verify you are human" checkbox rather
+          // than solving silently, and the Send button sat there saying
+          // "Checking your browser…" until somebody worked out that it wanted a
+          // click. Managed mode makes that call per visitor, so both paths are
+          // ordinary and the copy has to be able to say which one is happening.
+          'before-interactive-callback': () => onInteractiveRef.current?.(true),
+          'after-interactive-callback': () => onInteractiveRef.current?.(false),
           // A token is single-use and short-lived. Both of these hand back
           // null so the submit button knows it no longer holds a valid one.
-          'expired-callback': () => onTokenRef.current(null),
+          'expired-callback': () => {
+            onInteractiveRef.current?.(false);
+            onTokenRef.current(null);
+          },
           // A challenge that errors is not the same as a script that failed to
           // load, and it used to be treated as if it were nothing at all: the
           // token was nulled and the submit button went back to being disabled
@@ -111,6 +145,7 @@ export function Turnstile({ onToken }: { onToken: (token: string | null) => void
           // Returning true tells Turnstile we have handled it, so it does not
           // also paint its own error state over ours.
           'error-callback': () => {
+            onInteractiveRef.current?.(false);
             onTokenRef.current(null);
             if (!cancelled) setFailed(true);
             return true;

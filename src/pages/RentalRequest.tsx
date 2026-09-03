@@ -72,6 +72,10 @@ export default function RentalRequest({ mode = 'theatre' }: { mode?: RentalReque
   // null until the bot check hands one over, and null again once it expires.
   // When Turnstile is not configured it stays null and nothing waits on it.
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  // True while Turnstile is showing a checkbox rather than solving silently.
+  // Managed mode decides per visitor, so both are ordinary and the button copy
+  // has to be able to tell them apart.
+  const [needsInteraction, setNeedsInteraction] = useState(false);
 
   const [form, setForm] = useState({
     event_title: '',
@@ -389,7 +393,7 @@ export default function RentalRequest({ mode = 'theatre' }: { mode?: RentalReque
         </Section>
 
         <div className="pt-4 border-t border-border/40 space-y-3">
-          <Turnstile onToken={setTurnstileToken} />
+          <Turnstile onToken={setTurnstileToken} onInteractive={setNeedsInteraction} />
           {/* Stacked on a phone, a row from `sm`.
 
               It was a bare `justify-between` row at every width. The submit
@@ -417,7 +421,9 @@ export default function RentalRequest({ mode = 'theatre' }: { mode?: RentalReque
               visit the only thing a person sees is a Send button that does not
               work — for a second or two normally, longer on a slow network.
               "Send Request" sitting there greyed out reads as a broken form;
-              naming the check turns the same wait into something legible.
+              naming the check turns the same wait into something legible — and
+              when the widget asks for a click instead, the label says so rather
+              than telling somebody to wait on them.
             */}
             <Button
               type="submit"
@@ -427,9 +433,11 @@ export default function RentalRequest({ mode = 'theatre' }: { mode?: RentalReque
             >
               {submitting
                 ? 'Sending…'
-                : turnstileConfigured && !turnstileToken
-                  ? 'Checking your browser…'
-                  : backstage ? 'Send Enquiry' : 'Send Request'}
+                : !turnstileConfigured || turnstileToken
+                  ? (backstage ? 'Send Enquiry' : 'Send Request')
+                  : needsInteraction
+                    ? 'Tick the box above to continue'
+                    : 'Checking your browser…'}
             </Button>
           </div>
         </div>
