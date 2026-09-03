@@ -15,6 +15,34 @@ different reasons, and neither reason is obvious from the schema.
 | Rentals | `rental_invoice_lines.unit_price` | yes | **no — the fact is not recorded** |
 | Donations | `donations.amount_cents` | **admin only** | not for staff |
 
+## Square can be *read* today, safely — and it has both missing streams
+
+Asked later the same day: can we just read concession revenue out of Square,
+without any of the write-path risk? **Yes**, and it is already built.
+
+`square-analytics` is deployed and ACTIVE on production. It uses Square's
+**Reporting API**, which is a different API from the Catalog one that caused the
+14 Aug damage and is **read-only structurally** — it has no write endpoint at
+all, so there is no path from it to a catalog object.
+
+It already returns `concessionRevenueCents` plus per-day
+`ticketsCents / concessionsCents / otherCents`. Concessions is the union of ten
+real categories (`1 Combos`, `2 Candy`, `3 Bottles`, `3 Soda`, `4 Beer`,
+`4 Wine`, `5 Popcorn`, `Cafe`, `Cocktails`, `Concessions`), all measured
+carrying revenue on the live account.
+
+**Rentals are in there too.** `FINDINGS-square-reporting-api.md` records
+Square's own category breakdown as including `Theater Rental` ($9,000),
+`Fall Fundraiser Ticket` ($5,700) and `Rehearsal Hours`. So the rental figure
+that is unreachable from our tables (below) *is* reachable from Square.
+
+Two constraints:
+
+- **Admin-gated.** `square-analytics` answers `403 "Admin only"`. Fine for the
+  admin dashboard; it would need a narrower endpoint to serve a staff screen.
+- **Production-only.** `connect.squareupsandbox.com/reporting/v1/meta` returns
+  **404**. It cannot be exercised on staging at all.
+
 ## Rentals: a data gap, not a permissions gap
 
 This is the surprising one. Staff *can* read both rental tables —
@@ -37,7 +65,8 @@ So the status is frozen at DRAFT/UNPAID from the moment the invoice is made. We
 cannot say which rentals are settled, let alone when the money arrived. Any
 rental figure computed from our tables is "invoiced", never "received".
 
-**Where the truth lives:** Square. `square-analytics` (the Reporting API) is
+**Where the truth lives:** Square — concretely, as a `Theater Rental` category
+in the Reporting API (see above). `square-analytics` (the Reporting API) is
 already wired up and is this codebase's designated authority for revenue —
 `AnalyticsTab` reads it precisely because our own tables under-report. It is
 production-only. See `docs/briefs/FINDINGS-square-reporting-api.md`.

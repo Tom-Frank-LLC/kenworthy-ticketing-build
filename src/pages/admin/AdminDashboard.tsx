@@ -20,6 +20,7 @@ import { CollapsibleSection } from '@/components/admin/CollapsibleSection';
 import { ProductionShowings, TicketCountBadge } from '@/components/admin/ProductionShowings';
 import { liveEventTypeLabel, ticketingLabel } from '@/lib/liveEventTypes';
 import AnalyticsTab from '@/components/admin/AnalyticsTab';
+import { BoxOfficeToday } from '@/components/admin/BoxOfficeToday';
 import TransactionsTab from '@/components/admin/TransactionsTab';
 import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
 import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
@@ -1314,6 +1315,11 @@ export default function AdminDashboard() {
               <TabsTrigger value="qbo-export">QBO Export</TabsTrigger>
             </TabsList>
             <TabsContent value="overview" className="space-y-6">
+              {/* The counter's own day, above the Square-sourced report. It is
+                  the number staff used to see on the POS; it moved here
+                  because running a till and reviewing revenue are different
+                  jobs. */}
+              <BoxOfficeToday />
               <AnalyticsTab />
             </TabsContent>
             <TabsContent value="transactions" className="space-y-6">

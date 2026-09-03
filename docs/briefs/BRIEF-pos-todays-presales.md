@@ -55,12 +55,15 @@ given back — either would overstate the house to the person on the door).
   and the CSV export gained the matching field. This was the one thing the
   brief asked for that the drawer did not already do, and it benefits the admin
   Listings drawer that also uses it.
-- The stat cards were reworked on 2 Sep: "Today's Revenue" gained a
-  tickets/film-passes/concessions breakdown, and "Tickets Sold" became "Tickets
-  for Today" (seats sold for today's showings, whenever bought). Rentals and
-  donations are deliberately absent — see
-  `FINDINGS-pos-revenue-sources.md`, which records why the rental number is not
-  recoverable from the build at all.
+- The stat cards were reworked on 2 Sep, then **moved off the POS entirely on
+  3 Sep**: running a till and reviewing revenue are different jobs, and staff do
+  not need the theatre's takings. They now live as `BoxOfficeToday` on the admin
+  dashboard under Analytics → Overview, directly above the Square-sourced
+  report, labelled "this counter" so the two are not read as disagreeing.
+  The Transactions tab **stays** on the POS: it is customer support (refund a
+  sale, re-send a confirmation), not revenue review.
+  See `FINDINGS-pos-revenue-sources.md` for which streams are readable and why
+  rentals are not recoverable from the build.
 - The tab strip goes to four columns (five with `CONCESSION_POS_ENABLED`) and
   one `max-w` step wider. The trigger reads **Presales** and leads the strip,
   with Transactions second — the two reference tabs sit ahead of the selling
