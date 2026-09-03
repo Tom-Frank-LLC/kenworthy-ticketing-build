@@ -152,6 +152,7 @@ export default function Auth() {
                 there is nothing here for them. Staff are told where it is.
                 Clicking it neither requires nor performs a sign-in. */}
             <KenworthyMark
+              treatment="white"
               className={cn('h-12 sm:h-14', COLOR_LAB_ENABLED && 'cursor-default')}
               onClick={COLOR_LAB_ENABLED ? colorLab.open : undefined}
             />
