@@ -45,7 +45,33 @@ export function HomeMarquee() {
 
           Below `md` none of this applies: the band is taller than it is wide,
           so the image scales to the height and there is no vertical overflow
-          left for the percentage to distribute. */}
+          left for the percentage to distribute.
+
+          The *horizontal* percentage is the mirror image of that, and only
+          does anything below `md` for the same reason. Scaling to the height
+          makes the rendered photo wider than the band — about 382px of
+          overflow on a 390px phone — and the X percentage decides which end
+          of that gets cut.
+
+          51.84% and not `center`, so the marquee's own lit "K" lands under the
+          header's "K" instead of ~9px to its right.
+
+          Derived rather than nudged. The sign is the only saturated green in a
+          frame of red neon, so scanning for it finds it — but scanning the
+          whole frame does not: a first pass put the centre at x=392.5 because
+          it also caught green stage light spilling up the building, well above
+          the sign. Restricted to the rows the sign actually occupies (y=248 to
+          308, where the green extent is a consistent x=370..412), the centre
+          is x=391 of the 768px-wide source. Solving `x·s − overflow·p = w/2`
+          for p then gives 51.79–51.84% on every phone from 360x800 to 430x932
+          — the geometry is nearly self-similar, so one number serves them all,
+          and the 1.5px the first pass was out is now gone.
+
+          Held to below `md` because that is what was asked for, but note it
+          is not inert above it everywhere: a portrait tablet is still
+          height-driven and would shift too. From `md` on a landscape row the
+          photo scales to the width, overflow is zero, and the percentage has
+          nothing to distribute either way. */}
       <div className="absolute inset-0">
         <picture>
           <source type="image/webp" srcSet={heroWebpSrcSet} sizes="100vw" />
@@ -54,8 +80,7 @@ export function HomeMarquee() {
             srcSet={heroJpegSrcSet}
             sizes="100vw"
             alt="The Kenworthy marquee glowing on Main Street during the 2025 relighting ceremony"
-            className="h-full w-full object-cover"
-            style={{ objectPosition: 'center 80%' }}
+            className="h-full w-full object-cover [object-position:51.84%_80%] md:[object-position:center_80%]"
             loading="eager"
             fetchPriority="high"
             decoding="async"

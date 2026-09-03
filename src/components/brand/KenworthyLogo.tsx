@@ -116,6 +116,67 @@ export function KenworthyLogo({
 }
 
 /**
+ * How the mark is coloured.
+ *
+ *   filter  the original inversion, still used by the sign-in card
+ *   white   the glyph painted with `--foreground` through a mask — the phone
+ *           header
+ *
+ * Five further painted treatments (gold, backlit, marquee, sunburst and
+ * sunburst-gold — silhouettes and lit letterforms built from the artwork split
+ * into rays, housing and letter) were built and compared on staging before
+ * `white` was chosen. They are gone rather than left switched off: each needed
+ * a derived SVG carrying a "regenerate me if the original is redrawn" warning,
+ * and unused artwork with a maintenance obligation is the kind of thing that
+ * rots quietly. They are in this branch's history if the question reopens.
+ */
+export type MarkTreatment = 'filter' | 'white';
+
+/**
+ * `white` paints the glyph instead of deriving its colour from the artwork.
+ *
+ * The artwork is #414042. Inverting it to read on a dark bar lands on #BEBFBD,
+ * and dimming that to #B4B5B4 — a neutral grey at 52% the relative luminance of
+ * the warm near-white (#F4F1EB) it sits beside. That is why the filtered mark
+ * looks dusty, and why no amount of tuning the filter was going to fix it: the
+ * colour was a by-product of the artwork rather than a choice.
+ *
+ * So use the SVG as a mask and let the token be the ink. The fill is then
+ * exactly `--foreground` — the same near-white as the body copy — and it
+ * follows a re-theme instead of drifting out of one, which is the reason
+ * `.glow-primary` reads `var(--primary)` rather than the magenta it once
+ * hardcoded.
+ *
+ * `mask` and `WebkitMask` are both set: Safari still wants the prefix.
+ */
+const maskStyle = (src: string) => ({
+  maskImage: `url("${src}")`,
+  WebkitMaskImage: `url("${src}")`,
+  maskRepeat: 'no-repeat' as const,
+  WebkitMaskRepeat: 'no-repeat' as const,
+  maskPosition: 'center' as const,
+  WebkitMaskPosition: 'center' as const,
+  maskSize: 'contain' as const,
+  WebkitMaskSize: 'contain' as const,
+});
+
+/**
+ * The mark's filter, tone by tone — the `filter` treatment.
+ *
+ * Whole class strings rather than one built from `INVERT`, because Tailwind
+ * cannot see a class name that is assembled at runtime — the same constraint
+ * that makes Layout.tsx write out both header heights. Keep the
+ * `invert(1) brightness(0.95)` here in step with `INVERT` above; they are the
+ * same rule and the compiler cannot tell you when they drift apart.
+ */
+const MARK_FILTER: Record<LogoTone, string> = {
+  // Dark grey artwork: invert it on dark surfaces, leave it alone on light.
+  'on-dark': '[filter:invert(1)_brightness(0.95)]',
+  'on-light': '',
+  auto: 'dark:[filter:invert(1)_brightness(0.95)]',
+};
+
+/**
  * The "K" mark on its own — the letter inside its sunburst, without the
  * wordmark.
  *
@@ -133,13 +194,32 @@ export function KenworthyLogo({
  *
  * `alt` defaults to empty because every placement so far sits next to the name
  * in text. Pass one where it is the only identification.
+ *
+ * `treatment` picks how it is coloured. `filter` is the original inversion and
+ * is still the default, because the sign-in card uses it. `white` paints the
+ * glyph with `--foreground` through a mask, and is what the phone header uses
+ * — see the note on `maskStyle` for why the two differ.
  */
 export function KenworthyMark({
   tone = 'on-dark',
+  treatment = 'filter',
   className,
   alt = '',
   ...rest
-}: Omit<KenworthyLogoProps, 'size'>) {
+}: Omit<KenworthyLogoProps, 'size'> & { treatment?: MarkTreatment }) {
+  if (treatment === 'white') {
+    // Painted, not drawn: the SVG is the mask and the token is the ink. It
+    // carries no accessible name — every placement wraps it in a link that
+    // already has one.
+    return (
+      <span
+        aria-hidden
+        className={cn('block aspect-[212/190] bg-foreground', className)}
+        style={maskStyle(kenworthyMark)}
+      />
+    );
+  }
+
   return (
     <img
       src={kenworthyMark}
@@ -150,7 +230,7 @@ export function KenworthyMark({
       decoding="async"
       className={cn(
         'w-auto object-contain',
-        tone === 'on-dark' ? INVERT : tone === 'on-light' ? '' : `dark:${INVERT}`,
+        MARK_FILTER[tone],
         className,
       )}
       {...rest}

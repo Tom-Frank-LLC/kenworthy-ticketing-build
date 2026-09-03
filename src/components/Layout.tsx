@@ -143,14 +143,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* The gap steps with the viewport like the container padding does.
               A flat gap-8 spent ~180px of a 768px row on whitespace and pushed
               the Support menu 51px on top of the Tickets button — the links are
-              inline, so they overflow this box rather than compressing it. Full
-              gap-8 returns at lg, which is now also where the links do. */}
+              inline, so they overflow this box rather than compressing it.
+
+              Full gap-8 now waits for `2xl`, not `lg`. At `lg` the whole link
+              set arrives at once and four gaps at gap-8 cost 144px of a 1022px
+              row — whitespace the lockup was paying for out of its own width.
+              gap-4 hands 72px of that back, and with Donate delayed to `xl`
+              (see the note on that button) the lockup renders at its full
+              262px everywhere from 1100 up, against 24% of that at 1024
+              before. 1024 itself lands at 82%, which makes crossing `lg` a
+              225px→216px step instead of the 225px→64px cliff it was. */}
           {/* `contents` below `sm` dissolves this box so the hamburger and the
               brand link become grid items of the row above — which is what lets
               the three-zone layout exist without a second copy of the header
               for phones. The desktop links inside are `hidden` until `lg`, and
               `display: none` keeps them out of the grid entirely. */}
-          <div className="contents sm:flex sm:items-center sm:gap-6 md:gap-5 lg:gap-8 min-w-0">
+          <div className="contents sm:flex sm:items-center sm:gap-6 md:gap-5 lg:gap-4 2xl:gap-8 min-w-0">
             {/* Full menu below `lg`, where the desktop links below are still
                 hidden — and they really are hidden until `lg` now.
 
@@ -166,11 +174,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Two pieces of artwork, one link, swapped by breakpoint rather
                 than by JS so the right one is in the first paint.
 
-                The mark carries no `alt`: the link's `aria-label` is the
-                accessible name either way, and an `alt` here would only be
-                text a screen reader never reaches. Both are `eager` — this is
-                the only identification the page has above the fold, and on a
-                phone it is the only one at all.
+                Neither carries an accessible name of its own. The link's
+                `aria-label` is the accessible name either way, so an `alt`
+                here would only be text a screen reader never reaches — and
+                below `sm` there is no `img` at all: the mark is a span painted
+                through a mask, which is what lets it be the palette's own
+                near-white rather than whatever inverting the artwork happens
+                to produce. See KenworthyMark. Nothing to load eagerly either;
+                the mask is an inlined data URI, so there is no request.
+
+                The lockup stays `eager` — it is the only identification the
+                page has above the fold at `sm` and up.
 
                 The mark has no centenary variant (the "Celebrating 100 Years"
                 line exists only in the lockup), but the bar it sits in is
@@ -182,11 +196,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               aria-label="Kenworthy — home"
             >
               <KenworthyMark
+                treatment="white"
                 className={cn(
                   'sm:hidden transition-opacity group-hover:opacity-80',
                   isCentenary() ? 'h-11' : 'h-9',
                 )}
-                loading="eager"
               />
               <KenworthyLogo
                 size="header"
@@ -242,13 +256,33 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 behind the counter, and the header runs out of room at `lg`
                 exactly where the Staff and Admin buttons need to sit — so the
                 ask that is aimed at patrons yields to the tools that are not.
-                Donate is still in the Support menu and the mobile drawer. */}
+                Donate is still in the Support menu and the mobile drawer.
+
+                `xl`, not `lg`, and that is the whole fix for a logo that was
+                rendering 64px wide at 1024. At `lg` the entire desktop link set
+                switches on at once *and* this button joins the CTAs, taking the
+                nav from 247px to 381px: the row then wanted ~1180px inside a
+                1022px container. Flexbox has to take that ~158px from
+                somewhere, and the text links cannot give it — their min-content
+                width is the longest word, which is why Theatre Rentals wrapped
+                to two lines instead of compressing. The lockup is the only item
+                that can absorb it, and it absorbed nearly all of it: 262px of
+                artwork drawn at 64px, a quarter size.
+
+                This is the third time this row has been one button too full.
+                The links already moved from `md` to `lg` for the same reason,
+                which fixed the symptom one breakpoint over without buying
+                enough width. Delaying Donate is the smallest thing that gives
+                the width back at the width where it is actually missing, and it
+                costs a patron nothing: at 1024 the ask is still in the Support
+                menu and the drawer, and it returns at 1280 where there is room
+                for it. */}
             {!user && (
               <Button
                 variant="outline"
                 size="sm"
                 asChild
-                className="hidden lg:inline-flex h-10 border-primary/60 text-primary hover:bg-primary hover:text-primary-foreground"
+                className="hidden xl:inline-flex h-10 border-primary/60 text-primary hover:bg-primary hover:text-primary-foreground"
               >
                 <Link to="/donate">
                   <Heart className="h-4 w-4 mr-1" /> Donate
