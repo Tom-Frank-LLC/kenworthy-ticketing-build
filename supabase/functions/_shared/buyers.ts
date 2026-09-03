@@ -56,6 +56,54 @@ export async function authenticatedUser(
   }
 }
 
+/**
+ * The auth user id for an email address, or null.
+ *
+ * `listUsers()` with no arguments returns **the first page only** — 50 users.
+ * Everyone registered after that is invisible to it, so the lookup reports "no
+ * such user", `findOrCreateBuyer` tries to create one, and Supabase refuses with
+ * *"A user with this email address has already been registered"*. Checkout then
+ * dies on the last step, after the buyer has typed a card number.
+ *
+ * That is not hypothetical: it took down a real purchase on kenworthy.org on
+ * 2026-09-03, and it had been failing every returning customer past the 50th
+ * account for as long as there have been more than fifty.
+ *
+ * `profiles` first because it is one indexed lookup and the
+ * `on_auth_user_created` trigger fills `email` for every user it creates. The
+ * paged `listUsers` scan behind it covers accounts that predate that trigger.
+ *
+ * This is the canonical implementation. `invite-staff` grew its own correct
+ * copy of it in July while this one stayed broken, which is exactly how one bug
+ * gets fixed in one place and left standing in another — so it now imports this
+ * rather than keeping a twin.
+ */
+export async function findUserIdByEmail(admin: any, email: string): Promise<string | null> {
+  const normalised = email.trim().toLowerCase();
+  if (!normalised) return null;
+
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('email', normalised)
+    .limit(1)
+    .maybeSingle();
+  if (profile?.id) return profile.id;
+
+  const PER_PAGE = 200;
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: PER_PAGE });
+    if (error) break;
+    const users = data?.users ?? [];
+    const hit = users.find((u: any) => u.email?.toLowerCase() === normalised);
+    if (hit) return hit.id;
+    // A short page is the last page. Without this the loop always runs 50
+    // round trips, on the checkout path, for every guest.
+    if (users.length < PER_PAGE) break;
+  }
+  return null;
+}
+
 /** Find an existing account by email, then phone. Returns null if neither hits. */
 export async function findUserByContact(
   admin: any,
@@ -63,11 +111,8 @@ export async function findUserByContact(
   phone: string | null,
 ): Promise<string | null> {
   if (email) {
-    const { data: usersData } = await admin.auth.admin.listUsers();
-    const existing = usersData?.users?.find(
-      (u: any) => u.email?.toLowerCase() === email.toLowerCase(),
-    );
-    if (existing) return existing.id;
+    const existing = await findUserIdByEmail(admin, email);
+    if (existing) return existing;
   }
 
   if (phone) {
@@ -115,8 +160,28 @@ export async function findOrCreateBuyer(
   if (contact.phone) createPayload.phone = contact.phone;
 
   const { data: newUser, error } = await admin.auth.admin.createUser(createPayload);
+
   if (error || !newUser?.user) {
-    throw new Error(`Failed to create account: ${error?.message ?? 'unknown error'}`);
+    const message = error?.message ?? 'unknown error';
+
+    // "Already registered" means the lookup above missed somebody who is
+    // demonstrably there — so ask again rather than failing the sale. This is
+    // belt-and-braces behind the paging fix in findUserIdByEmail, and it is here
+    // because of how this failed in production: the buyer had already typed a
+    // card number, and the last thing they saw was a raw account-creation error
+    // for an account they did not ask for and already had.
+    //
+    // Whatever the next cause turns out to be, a returning customer must not be
+    // the one who pays for it.
+    if (/already.*(regist|exist)/i.test(message) && contact.email) {
+      const found = await findUserIdByEmail(admin, contact.email);
+      if (found) {
+        console.warn('[buyers] createUser said already-registered; recovered by re-lookup');
+        return { userId: found, created: false };
+      }
+    }
+
+    throw new Error(`Failed to create account: ${message}`);
   }
 
   // The profile trigger does not carry the phone across.
