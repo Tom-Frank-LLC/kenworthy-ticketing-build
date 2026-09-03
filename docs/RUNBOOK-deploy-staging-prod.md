@@ -185,10 +185,10 @@ What is dangerous is either of these:
 
 ## Domain cutover to kenworthy.org
 
-Everything here is inert until `kenworthy.org` is a zone in the Cloudflare
-account (`43864e6c2920a220e2cceb86720d8d1c`) and the Worker answers on it. Today
-it is not: the domain resolves to `64.126.133.214` running Apache — the old
-WordPress site — and `wrangler.jsonc` declares no routes and no custom domain.
+Written before the cutover, when kenworthy.org still resolved to Apache
+elsewhere. It cut over on 28 August 2026: the domain is now a zone in this
+Cloudflare account and the Worker answers on it, so everything below is live
+rather than hypothetical.
 
 ### 1. The two settings already noted above
 `VITE_SITE_URL` in `.env.production`, and the prod `SITE_URL` secret. Rebuild
@@ -199,7 +199,7 @@ The production widget was created with `kenworthy.org` and `www.kenworthy.org`
 in its domain list already, so the rental form keeps working across the move
 with no change. (Staging's widget covers the staging Worker and `localhost`.)
 
-### 3. Cloudflare rate-limiting rules — and what they cannot do
+### 3. Cloudflare rate-limiting rules — the zone is ours now
 
 **Read this before writing the rules, because the obvious expectation is
 wrong.** WAF rate-limiting attaches to a zone. Once `kenworthy.org` is one, a
@@ -213,19 +213,64 @@ protection for the API is `check_rate_limit` in the edge functions
 (`20260825143017`), which is deliberately independent of where the site is
 hosted.
 
-Rules to add, once the zone exists (Security → WAF → Rate limiting rules):
+**Measured 2026-09-03, now that the zone is ours:**
 
-| # | expression | limit | action |
-| --- | --- | --- | --- |
-| 1 | `http.host eq "kenworthy.org"` | 600 / 1 min per IP | Managed Challenge |
-| 2 | `http.host eq "kenworthy.org" and starts_with(http.request.uri.path, "/admin")` | 60 / 1 min per IP | Managed Challenge |
+| | |
+| --- | --- |
+| zone | `kenworthy.org` — `08c627c9b7f7602f6960cc7db88291c7` |
+| plan | **Free Website** |
 
-Rule 1 is a crude ceiling — a real visitor loading a poster-heavy page issues
-tens of requests, so it sits far above that. Rule 2 is tighter because `/admin`
-has no anonymous audience at all; the client route guard is not a security
-boundary (the server checks are), but there is no reason to let anyone probe it
-at speed. Prefer Managed Challenge over Block: a challenge that a real person
-passes is recoverable, a block on a shared NAT is not.
+The plan is the constraint that matters. Cloudflare's WAF rate-limiting rules
+are available on Free, but the allowance is small — expect **one rule**, and
+fewer options on period and action than the docs show for paid plans. The
+dashboard is the authority on what your plan permits; the numbers below are
+written to fit inside one rule for that reason.
+
+I could not apply these myself. The wrangler OAuth token on this machine reads
+zones fine but returns `10000 Authentication error` on
+`/zones/{id}/rulesets` — WAF rules need a scope it does not carry. So this is a
+dashboard job: **Security → WAF → Rate limiting rules**.
+
+### If you get one rule, spend it here
+
+```
+Expression:  (http.host eq "kenworthy.org" and starts_with(http.request.uri.path, "/admin"))
+Rate:        60 requests per 1 minute, per IP
+Action:      Managed Challenge   (fall back to Block if the plan offers no challenge)
+```
+
+`/admin` has no anonymous audience at all, so any volume there is worth
+questioning, and a false positive costs a staff member one challenge rather than
+a customer a ticket. The client-side route guard is not a security boundary —
+the server checks are, and those were verified in the audit — but there is no
+reason to let anyone probe it at speed.
+
+### If you get a second rule
+
+```
+Expression:  (http.host eq "kenworthy.org")
+Rate:        600 requests per 1 minute, per IP
+Action:      Managed Challenge
+```
+
+A crude ceiling. Deliberately far above real use: one poster-heavy page issues
+tens of requests, and a family browsing the calendar on shared wifi is one IP.
+
+**Prefer Managed Challenge over Block wherever the plan allows it.** A challenge
+a real person passes is recoverable; a block on a shared NAT — a school, a
+library, a workplace — is not, and you will never hear about it.
+
+### What these are worth, honestly
+
+Less than the table suggests. They protect **page loads served by the Worker**.
+They do not touch checkout, donations, ticket lookups or password reset, because
+the browser calls `*.supabase.co` directly and that traffic never enters this
+zone. That is what `check_rate_limit` in the edge functions is for
+(`20260825143017`), and it is the layer doing the real work.
+
+Cloudflare already absorbs crude floods in front of a Worker without any rule at
+all. So treat these as tidying rather than as the thing standing between the box
+office and an attacker.
 
 ### 4. Putting the API behind the zone — optional, costs money
 If you ever want WAF rules to cover the Supabase endpoints too, the supported
