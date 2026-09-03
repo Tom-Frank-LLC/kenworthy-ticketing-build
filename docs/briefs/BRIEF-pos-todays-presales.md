@@ -55,9 +55,12 @@ given back — either would overstate the house to the person on the door).
   brief asked for that the drawer did not already do, and it benefits the admin
   Listings drawer that also uses it.
 - The tab strip goes to four columns (five with `CONCESSION_POS_ENABLED`) and
-  one `max-w` step wider. The trigger reads **Presales**, not "Today's
-  Presales": at five columns the longer label ellipsises, and the panel's own
-  heading carries the full name and the date.
+  one `max-w` step wider. The trigger reads **Today** and leads the strip — it
+  is what the counter reads before it sells anything. The panel's own heading
+  carries the full "Today's Presales" and the date. The tab *value* stays
+  `presales`; it is not user-visible. Note the POS still *opens* on Tickets
+  (`defaultValue="tickets"`) — selling is the primary job, so leading the strip
+  did not change the landing tab.
 - RLS was checked rather than assumed. `20260812190000_staff_can_read_and_check_in_tickets.sql`
   adds the `"Staff can view tickets"` SELECT policy and
   `20260814214233_rls_permissions_hardening.sql` carries the matching

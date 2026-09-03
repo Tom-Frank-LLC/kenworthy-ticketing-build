@@ -841,21 +841,27 @@ export default function StaffPOS() {
 
       <Tabs defaultValue="tickets" className="space-y-6">
         {/* max-w widens with the tab count: at max-w-sm a fourth tab squeezes
-            every label to an ellipsis. Presales makes it four or five, hence
-            another step up. The trigger reads "Presales" rather than "Today's
-            Presales" for the same reason — the panel's own heading carries the
-            full name and the date, so the tab does not have to. */}
+            every label to an ellipsis. Today makes it four or five, hence
+            another step up.
+
+            "Today" leads, because it is what the counter reads before it sells
+            anything — who is coming tonight and who has walked in. The label is
+            one word for the same reason the others are short; the panel's own
+            heading carries the full "Today's Presales" and the date.
+
+            The tab *value* stays `presales`. It is not user-visible, and it is
+            what TabsContent below is keyed on. */}
         <TabsList
           className={`grid w-full ${
             CONCESSION_POS_ENABLED ? 'grid-cols-5 max-w-3xl' : 'grid-cols-4 max-w-2xl'
           }`}
         >
+          <TabsTrigger value="presales"><CalendarDays className="h-4 w-4 mr-1" /> Today</TabsTrigger>
           <TabsTrigger value="tickets"><ShoppingCart className="h-4 w-4 mr-1" /> Tickets</TabsTrigger>
           {CONCESSION_POS_ENABLED && (
             <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1" /> Concessions</TabsTrigger>
           )}
           <TabsTrigger value="film-passes"><Ticket className="h-4 w-4 mr-1" /> Film Passes</TabsTrigger>
-          <TabsTrigger value="presales"><CalendarDays className="h-4 w-4 mr-1" /> Presales</TabsTrigger>
           <TabsTrigger value="transactions">
             <History className="h-4 w-4 mr-1" /> Transactions
             {transactions.length > 0 && (
