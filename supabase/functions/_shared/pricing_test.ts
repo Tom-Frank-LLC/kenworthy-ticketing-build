@@ -60,7 +60,22 @@ function fixture(overrides: Partial<Rows> = {}): Rows {
       is_active: true,
       requires_seat_selection: false,
       total_seats: 200,
-      start_time: '2026-09-01T02:00:00Z',
+      // Relative, not absolute. This was '2026-09-01T02:00:00Z', and on
+      // 2026-09-01 it quietly became a date in the past — at which point the
+      // "you cannot buy a ticket to something that already happened" rule
+      // (#102, merged 19 Aug) rejected every order before the test reached
+      // what it was actually checking. Sixteen tests went red at once —
+      // covering tax rounding, tier validation, processing fees and sold-out
+      // handling — and stayed that way, on the money path.
+      //
+      // A test that fails for a reason unrelated to its subject is not testing
+      // its subject. These were not "16 known failures"; they were 16 things
+      // nobody was checking any more.
+      //
+      // The aged fixtures below already did this correctly with Date.now().
+      // This one was the outlier, and absolute dates in fixtures are a time
+      // bomb with the fuse set to whenever the rule that reads them changes.
+      start_time: new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString(),
       movie_id: 'movie-1',
       event_id: null,
       live_performance_id: null,
