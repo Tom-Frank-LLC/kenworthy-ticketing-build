@@ -1,9 +1,15 @@
 /**
  * PosTodayStats — the three things the counter needs at a glance.
  *
- * Pass eligibility, tonight's house, and the day's refunds. Revenue is
- * deliberately not here: it moved to the admin dashboard, because running a
- * till and reviewing the theatre's takings are different jobs.
+ * Pass eligibility, tonight's house, and how much of that house has walked in.
+ * Revenue is deliberately not here: it moved to the admin dashboard, because
+ * running a till and reviewing the theatre's takings are different jobs.
+ *
+ * Sold and checked-in come from one query rather than two. They are the same
+ * rows counted twice — every confirmed ticket for today's showings, and the
+ * subset carrying a `scanned_at` — so splitting them into separate reads would
+ * let the pair drift against each other between round trips and show more
+ * people admitted than were sold.
  *
  * ## Eligibility is the existence of a row, and nothing else
  *
@@ -33,7 +39,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
-import { Ticket, ShoppingCart, RotateCcw } from 'lucide-react';
+import { Ticket, ShoppingCart, UserCheck } from 'lucide-react';
 import { venueDayBounds } from '@/lib/datetime';
 
 interface Stats {
@@ -43,7 +49,8 @@ interface Stats {
   /** Distinct pass names accepted somewhere today. */
   passNames: string[];
   todaysTicketCount: number;
-  refundCount: number;
+  /** Of those, the ones whose QR has been scanned at the door. */
+  checkedInCount: number;
 }
 
 const EMPTY: Stats = {
@@ -51,7 +58,7 @@ const EMPTY: Stats = {
   eligibleShowings: 0,
   passNames: [],
   todaysTicketCount: 0,
-  refundCount: 0,
+  checkedInCount: 0,
 };
 
 export function PosTodayStats() {
@@ -65,25 +72,22 @@ export function PosTodayStats() {
     const from = start.toISOString();
     const to = end.toISOString();
 
-    const [showingsRes, refundsRes] = await Promise.all([
-      supabase.from('showings').select('id').eq('is_active', true)
-        .gte('start_time', from).lt('start_time', to),
-      supabase.from('tickets').select('id').eq('status', 'refunded')
-        .gte('purchased_at', from).lt('purchased_at', to),
-    ]);
+    const showingsRes = await supabase.from('showings').select('id')
+      .eq('is_active', true).gte('start_time', from).lt('start_time', to);
 
     const showingIds = (showingsRes.data ?? []).map(r => r.id);
-    const next: Stats = { ...EMPTY, showingCount: showingIds.length,
-      refundCount: refundsRes.data?.length ?? 0 };
+    const next: Stats = { ...EMPTY, showingCount: showingIds.length };
 
     if (showingIds.length > 0) {
       const [ticketsRes, tagsRes] = await Promise.all([
-        supabase.from('tickets').select('id').in('showing_id', showingIds).eq('status', 'confirmed'),
+        supabase.from('tickets').select('scanned_at').in('showing_id', showingIds).eq('status', 'confirmed'),
         supabase.from('pass_type_showings')
           .select('showing_id, film_pass_types(name)')
           .in('showing_id', showingIds),
       ]);
-      next.todaysTicketCount = ticketsRes.data?.length ?? 0;
+      const soldRows = ticketsRes.data ?? [];
+      next.todaysTicketCount = soldRows.length;
+      next.checkedInCount = soldRows.filter((r: any) => r.scanned_at).length;
 
       const tagged = new Set<string>();
       const names = new Set<string>();
@@ -102,7 +106,7 @@ export function PosTodayStats() {
 
   useEffect(() => { load(); }, [load]);
 
-  const { showingCount, eligibleShowings, passNames, todaysTicketCount, refundCount } = s;
+  const { showingCount, eligibleShowings, passNames, todaysTicketCount, checkedInCount } = s;
 
   // What the first card says, in the counter's terms. The distinction that
   // matters to a staff member holding a pass is accepted / not accepted; the
@@ -147,22 +151,20 @@ export function PosTodayStats() {
             <ShoppingCart className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Tickets for Today</p>
+            <p className="text-xs text-muted-foreground">Tickets for today’s showing</p>
             <p className="text-xl font-bold">{todaysTicketCount}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Sold for today’s showings</p>
           </div>
         </CardContent>
       </Card>
 
       <Card className="glass">
         <CardContent className="pt-5 pb-4 flex items-start gap-3">
-          <div className="rounded-full bg-destructive/10 p-2.5">
-            <RotateCcw className="h-5 w-5 text-destructive" />
+          <div className="rounded-full bg-primary/10 p-2.5">
+            <UserCheck className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Refunds</p>
-            <p className="text-xl font-bold">{refundCount}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Refunded today</p>
+            <p className="text-xs text-muted-foreground">Ticket holders checked in</p>
+            <p className="text-xl font-bold">{checkedInCount}</p>
           </div>
         </CardContent>
       </Card>

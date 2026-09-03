@@ -15,30 +15,24 @@ const tables: Record<string, any[]> = {};
 
 vi.mock('@/integrations/supabase/client', () => {
   const builder = (table: string) => {
-    let usedIn = false;
-    let status: string | null = null;
     const b: any = {};
     for (const m of ['select', 'eq', 'gte', 'lt', 'in']) {
       b[m] = (...args: any[]) => {
-        if (m === 'in') usedIn = true;
-        if (m === 'eq' && args[0] === 'status') status = args[1];
         calls.push([table, m, ...args]);
         return b;
       };
     }
-    b.then = (res: any, rej: any) => {
-      // `tickets` is queried twice: refunds bought today, and confirmed seats
-      // for today's showings. The `.in()` is what tells them apart.
-      const key =
-        table === 'tickets' ? (usedIn ? 'tickets_in' : `tickets_${status}`) : table;
-      return Promise.resolve({ data: tables[key] ?? [], error: null }).then(res, rej);
-    };
+    b.then = (res: any, rej: any) =>
+      Promise.resolve({ data: tables[table] ?? [], error: null }).then(res, rej);
     return b;
   };
   return { supabase: { from: (t: string) => builder(t) } };
 });
 
 const { PosTodayStats } = await import('./PosTodayStats');
+
+const argOf = (table: string, method: string) =>
+  calls.find(c => c[0] === table && c[1] === method)?.slice(2);
 
 describe('PosTodayStats — film pass eligibility', () => {
   beforeEach(() => {
@@ -54,7 +48,7 @@ describe('PosTodayStats — film pass eligibility', () => {
     tables.pass_type_showings = [
       { showing_id: 's1', film_pass_types: { name: '10-Film Pass' } },
     ];
-    tables.tickets_in = [{ id: 't1' }];
+    tables.tickets = [{ scanned_at: null }];
 
     render(<PosTodayStats />);
     expect(await screen.findByText('Yes')).toBeInTheDocument();
@@ -89,16 +83,31 @@ describe('PosTodayStats — film pass eligibility', () => {
     expect(screen.queryByText('No pass is accepted today')).not.toBeInTheDocument();
   });
 
-  it('scopes the day to the venue, and counts the right tickets', async () => {
+  it('counts sold and checked-in from the same rows', async () => {
     tables.showings = [{ id: 's1' }];
-    tables.tickets_in = [{ id: 'a' }, { id: 'b' }];
-    tables.tickets_refunded = [{ id: 'r' }];
+    // Three sold; one has been scanned at the door.
+    tables.tickets = [
+      { scanned_at: '2026-09-02T02:05:00Z' },
+      { scanned_at: null },
+      { scanned_at: null },
+    ];
 
     render(<PosTodayStats />);
-    await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument()); // house
-    expect(screen.getByText('1')).toBeInTheDocument();                      // refunds
+    expect(await screen.findByText('Tickets for today’s showing')).toBeInTheDocument();
+    expect(await screen.findByText('3')).toBeInTheDocument();
+    expect(await screen.findByText('Ticket holders checked in')).toBeInTheDocument();
+    expect(await screen.findByText('1')).toBeInTheDocument();
 
-    const gte = calls.find(c => c[0] === 'showings' && c[1] === 'gte')?.slice(2);
-    expect(gte).toEqual(['start_time', '2026-09-01T07:00:00.000Z']);
+    // One read, counted twice — never two round trips that could disagree and
+    // report more people admitted than were sold.
+    expect(calls.filter(c => c[0] === 'tickets' && c[1] === 'select')).toHaveLength(1);
+    expect(argOf('tickets', 'select')).toEqual(['scanned_at']);
+  });
+
+  it('scopes the day to the venue', async () => {
+    render(<PosTodayStats />);
+    await waitFor(() => expect(argOf('showings', 'gte')).toBeTruthy());
+    expect(argOf('showings', 'gte')).toEqual(['start_time', '2026-09-01T07:00:00.000Z']);
+    expect(argOf('showings', 'lt')).toEqual(['start_time', '2026-09-02T07:00:00.000Z']);
   });
 });
