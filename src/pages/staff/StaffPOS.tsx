@@ -23,6 +23,7 @@ import { TransactionHistory, type SessionTransaction } from '@/components/pos/Tr
 import { PaymentMethodSelector, type PaymentMethod } from '@/components/pos/PaymentMethodSelector';
 import { ConcessionPOS } from '@/components/pos/ConcessionPOS';
 import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
+import { PosTodayStats } from '@/components/pos/PosTodayStats';
 import { TodaysPresales } from '@/components/pos/TodaysPresales';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -808,6 +809,8 @@ export default function StaffPOS() {
       <div className="mb-4">
         <TimeClockWidget />
       </div>
+
+      <PosTodayStats />
 
 
       <Tabs defaultValue="tickets" className="space-y-6">

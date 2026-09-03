@@ -61,7 +61,11 @@ given back — either would overstate the house to the person on the door).
   dashboard under Analytics → Overview, directly above the Square-sourced
   report, labelled "this counter" so the two are not read as disagreeing.
   The Transactions tab **stays** on the POS: it is customer support (refund a
-  sale, re-send a confirmation), not revenue review.
+  sale, re-send a confirmation), not revenue review. The POS keeps a stat row
+  of its own (`PosTodayStats`): **Film Pass Eligible**, Tickets for Today,
+  Refunds — only the revenue box left. Eligibility mirrors `redeem_film_pass`
+  exactly: the existence of a `pass_type_showings` row, with no category test
+  and no default, so `is_default_for_movies` is deliberately not consulted.
   See `FINDINGS-pos-revenue-sources.md` for which streams are readable and why
   rentals are not recoverable from the build.
 - The tab strip goes to four columns (five with `CONCESSION_POS_ENABLED`) and
