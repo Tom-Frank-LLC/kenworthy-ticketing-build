@@ -35,7 +35,7 @@ import { fetchShowingAvailability } from '@/lib/availability';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { COLLECT_PHONE, CONCESSION_POS_ENABLED } from '@/lib/flags';
-import { formatShowtime } from '@/lib/datetime';
+import { formatShowtime, venueDayBounds } from '@/lib/datetime';
 import TicketScanner from './TicketScanner';
 
 interface ShowingOption {
@@ -96,7 +96,14 @@ export default function StaffPOS() {
   const [resendPhone, setResendPhone] = useState('');
   const [resending, setResending] = useState(false);
 
-  const [dailyStats, setDailyStats] = useState({ revenue: 0, ticketCount: 0, refundCount: 0 });
+  const [dailyStats, setDailyStats] = useState({
+    revenue: 0,
+    ticketRevenue: 0,
+    filmPassRevenue: 0,
+    concessionRevenue: 0,
+    refundCount: 0,
+    todaysTicketCount: 0,
+  });
 
   // The door, without leaving the till.
   //
@@ -109,22 +116,101 @@ export default function StaffPOS() {
   // releases the device exactly as navigating away used to.
   const [scannerOpen, setScannerOpen] = useState(false);
 
+  /**
+   * The day's takings at this counter, and tonight's house.
+   *
+   * ## Two different "todays", deliberately
+   *
+   * The revenue lines are scoped by *when the money arrived* — `purchased_at`
+   * / `created_at` within today — because that is what a till total means.
+   * `todaysTicketCount` is scoped by *when the showing is*, because that is
+   * what the door needs. A ticket bought last week for tonight belongs in the
+   * second and not the first, and one bought tonight for next month is the
+   * reverse. Both used to be called "today" on this screen and the two numbers
+   * were read against each other; they are labelled apart now.
+   *
+   * Day bounds come from the shared `venueDayBounds`, not from
+   * `setHours(0,0,0,0)`. The old version built midnight in the *viewer's*
+   * zone, so a laptop set to Mountain started the theatre's day an hour early.
+   *
+   * ## What is counted, and what deliberately is not
+   *
+   * Three streams, all of them money taken at this counter: tickets, film pass
+   * sales, concessions. Each is filtered to its settled state — `confirmed`
+   * tickets, `paid` pass orders — because a pending row is an unfinished
+   * checkout and counting it would overstate the till.
+   *
+   * Not counted: rentals and donations. A rental is invoiced through Square and
+   * the build never learns it was paid — `square_invoice_status` is stamped
+   * once at creation and there is no webhook and no paid-at column anywhere —
+   * so any rental figure here would be "invoiced", not "received". Donations
+   * are readable by admins only, so a staff-only account would silently total
+   * $0 and the same screen would disagree with itself depending on who was
+   * logged in. Both are better answered where the truth actually lives.
+   *
+   * Concessions will read $0.00 for as long as CONCESSION_POS_ENABLED is off.
+   * That is honest rather than broken: the line is the place the number will
+   * appear when the tab starts taking payment.
+   */
   const loadDailyStats = useCallback(async () => {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const { data } = await supabase
-      .from('tickets')
-      .select('total_price, status')
-      .gte('purchased_at', todayStart.toISOString());
-    if (data) {
-      const confirmed = data.filter(t => t.status === 'confirmed');
-      const refunded = data.filter(t => t.status === 'refunded');
-      setDailyStats({
-        revenue: confirmed.reduce((sum, t) => sum + Number(t.total_price), 0),
-        ticketCount: confirmed.length,
-        refundCount: refunded.length,
-      });
+    const { start, end } = venueDayBounds(new Date());
+    const from = start.toISOString();
+    const to = end.toISOString();
+
+    const [ticketsRes, passRes, concessionRes, showingsRes] = await Promise.all([
+      supabase
+        .from('tickets')
+        .select('total_price, status')
+        .gte('purchased_at', from)
+        .lt('purchased_at', to),
+      supabase
+        .from('film_pass_orders')
+        .select('amount_paid, status')
+        .gte('created_at', from)
+        .lt('created_at', to),
+      supabase
+        .from('concession_sales')
+        .select('total')
+        .gte('created_at', from)
+        .lt('created_at', to),
+      // Tonight's house: the showings on today's schedule, whenever their seats
+      // were bought.
+      supabase.from('showings').select('id').eq('is_active', true).gte('start_time', from).lt('start_time', to),
+    ]);
+
+    const tickets = ticketsRes.data ?? [];
+    const confirmed = tickets.filter(t => t.status === 'confirmed');
+    const refunded = tickets.filter(t => t.status === 'refunded');
+
+    // A film-pass admission carries no total_price, so it adds nothing here —
+    // which is right. That money arrived when the pass was sold, and it is
+    // counted on the film pass line on the day it was actually taken.
+    const ticketRevenue = confirmed.reduce((sum, t) => sum + Number(t.total_price ?? 0), 0);
+    const filmPassRevenue = (passRes.data ?? [])
+      .filter(o => o.status === 'paid')
+      .reduce((sum, o) => sum + Number(o.amount_paid ?? 0), 0);
+    const concessionRevenue = (concessionRes.data ?? [])
+      .reduce((sum, c) => sum + Number(c.total ?? 0), 0);
+
+    let todaysTicketCount = 0;
+    const showingIds = (showingsRes.data ?? []).map(r => r.id);
+    if (showingIds.length > 0) {
+      const { data: todays } = await supabase
+        .from('tickets')
+        .select('id')
+        .in('showing_id', showingIds)
+        .eq('status', 'confirmed');
+      todaysTicketCount = todays?.length ?? 0;
     }
+
+    setDailyStats({
+      revenue: ticketRevenue + filmPassRevenue + concessionRevenue,
+      ticketRevenue,
+      filmPassRevenue,
+      concessionRevenue,
+      refundCount: refunded.length,
+      todaysTicketCount,
+    });
   }, []);
 
   useEffect(() => {
@@ -835,7 +921,10 @@ export default function StaffPOS() {
 
       <DailySalesSummary
         revenue={dailyStats.revenue}
-        ticketCount={dailyStats.ticketCount}
+        ticketRevenue={dailyStats.ticketRevenue}
+        filmPassRevenue={dailyStats.filmPassRevenue}
+        concessionRevenue={dailyStats.concessionRevenue}
+        todaysTicketCount={dailyStats.todaysTicketCount}
         refundCount={dailyStats.refundCount}
       />
 
@@ -844,10 +933,12 @@ export default function StaffPOS() {
             every label to an ellipsis. Today makes it four or five, hence
             another step up.
 
-            "Today" leads, because it is what the counter reads before it sells
-            anything — who is coming tonight and who has walked in. The label is
-            one word for the same reason the others are short; the panel's own
-            heading carries the full "Today's Presales" and the date.
+            Presales leads, because it is what the counter reads before it
+            sells anything — who is coming tonight and who has walked in — and
+            Transactions follows it: the two reference tabs sit together, ahead
+            of the selling tabs. The trigger is one word for the same reason the
+            others are short; the panel's own heading carries the full "Today's
+            Presales" and the date.
 
             The tab *value* stays `presales`. It is not user-visible, and it is
             what TabsContent below is keyed on. */}
@@ -856,18 +947,18 @@ export default function StaffPOS() {
             CONCESSION_POS_ENABLED ? 'grid-cols-5 max-w-3xl' : 'grid-cols-4 max-w-2xl'
           }`}
         >
-          <TabsTrigger value="presales"><CalendarDays className="h-4 w-4 mr-1" /> Today</TabsTrigger>
-          <TabsTrigger value="tickets"><ShoppingCart className="h-4 w-4 mr-1" /> Tickets</TabsTrigger>
-          {CONCESSION_POS_ENABLED && (
-            <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1" /> Concessions</TabsTrigger>
-          )}
-          <TabsTrigger value="film-passes"><Ticket className="h-4 w-4 mr-1" /> Film Passes</TabsTrigger>
+          <TabsTrigger value="presales"><CalendarDays className="h-4 w-4 mr-1" /> Presales</TabsTrigger>
           <TabsTrigger value="transactions">
             <History className="h-4 w-4 mr-1" /> Transactions
             {transactions.length > 0 && (
               <Badge variant="secondary" className="ml-1.5">{transactions.length}</Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="tickets"><ShoppingCart className="h-4 w-4 mr-1" /> Tickets</TabsTrigger>
+          {CONCESSION_POS_ENABLED && (
+            <TabsTrigger value="concessions"><UtensilsCrossed className="h-4 w-4 mr-1" /> Concessions</TabsTrigger>
+          )}
+          <TabsTrigger value="film-passes"><Ticket className="h-4 w-4 mr-1" /> Film Passes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tickets">

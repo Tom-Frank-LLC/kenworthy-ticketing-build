@@ -33,13 +33,15 @@
  * Those rows also carry no `total_price`, which is correct: the money arrived
  * when the pass was bought, not when it was spent.
  *
- * ## Why the day boundaries go through venueLocalToInstant
+ * ## Why the day boundaries come from venueDayBounds
  *
  * "Today" is a venue-local calendar day, and `start_time` is a UTC instant. A
  * naive `new Date(); setHours(0,0,0,0)` builds midnight in the *viewer's* zone,
  * so a staff laptop set to Mountain would start the day an hour early and pull
- * in the previous night's 11 PM show. Both bounds are therefore built as venue
- * wall-clock and converted, which also makes the two DST days come out right.
+ * in the previous night's 11 PM show. The shared helper in lib/datetime builds
+ * both bounds as venue wall-clock and converts them, which also makes the two
+ * DST days come out right. StaffPOS's own day figures read the same helper, so
+ * the stat cards and this panel cannot disagree about when today started.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -48,10 +50,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, Loader2, RefreshCw, Users } from 'lucide-react';
-import { addDays, format } from 'date-fns';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import { fetchAllRows } from '@/lib/fetchAllRows';
-import { formatShowtime, venueDayKey, venueLocalToInstant } from '@/lib/datetime';
+import { formatShowtime, venueDayBounds } from '@/lib/datetime';
 
 interface PresaleShowing {
   id: string;
@@ -63,19 +64,6 @@ interface PresaleShowing {
   scanned: number;
   /** Admissions bought with a physical film pass, a subset of `sold`. */
   onPasses: number;
-}
-
-/** The venue-local day containing `now`, as a pair of real instants. */
-function venueDayBounds(now: Date) {
-  const dayKey = venueDayKey(now);
-  const [y, m, d] = dayKey.split('-').map(Number);
-  // Calendar arithmetic on the *components*, then back through the zone —
-  // adding 24h to the start instant would be an hour out on the two DST days.
-  const nextKey = format(addDays(new Date(y, m - 1, d), 1), 'yyyy-MM-dd');
-  return {
-    start: venueLocalToInstant(`${dayKey}T00:00`),
-    end: venueLocalToInstant(`${nextKey}T00:00`),
-  };
 }
 
 export function TodaysPresales() {

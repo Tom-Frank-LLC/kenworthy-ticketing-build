@@ -56,6 +56,29 @@ export function venueDayKey(value: string | Date): string {
 }
 
 /**
+ * The venue-local day containing `at`, as a pair of real instants.
+ *
+ * Use this for any "today" that will be compared against a TIMESTAMPTZ column.
+ * `new Date(); setHours(0,0,0,0)` is the tempting version and it is wrong: it
+ * builds midnight in the *viewer's* zone, so a staff laptop set to Mountain
+ * starts the theatre's day an hour early and sweeps in the previous night's
+ * late show. The venue's day is the only one the box office means.
+ *
+ * The day arithmetic runs on calendar components rather than by adding 24h,
+ * because the two DST days are 23 and 25 hours long.
+ */
+export function venueDayBounds(at: Date = new Date()): { dayKey: string; start: Date; end: Date } {
+  const dayKey = venueDayKey(at);
+  const [y, m, d] = dayKey.split('-').map(Number);
+  const nextKey = format(new Date(y, m - 1, d + 1), 'yyyy-MM-dd');
+  return {
+    dayKey,
+    start: venueLocalToInstant(`${dayKey}T00:00`),
+    end: venueLocalToInstant(`${nextKey}T00:00`),
+  };
+}
+
+/**
  * An instant shifted so that its *viewer-local* fields read as the venue's
  * wall clock.
  *

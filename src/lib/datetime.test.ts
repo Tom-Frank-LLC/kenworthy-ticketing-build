@@ -7,6 +7,7 @@ import {
   formatShowtime,
   instantToVenueLocalInput,
   runtimeLabel,
+  venueDayBounds,
   venueDayKey,
   venueLocalToInstant,
 } from './datetime';
@@ -181,5 +182,31 @@ describe('runtimeLabel', () => {
       expect(runtimeLabel(v)).toBe('');
       expect(formatRuntime(v)).toBe('');
     }
+  });
+});
+
+
+describe('venueDayBounds', () => {
+  it('brackets the venue day, not the UTC one', () => {
+    // 02:00 UTC on 2 Sep is 7 PM Pacific on 1 Sep: the two dates disagree, so
+    // a window built from UTC dates would miss the evening it exists for.
+    const { dayKey, start, end } = venueDayBounds(new Date('2026-09-02T02:00:00Z'));
+    expect(dayKey).toBe('2026-09-01');
+    expect(start.toISOString()).toBe('2026-09-01T07:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-09-02T07:00:00.000Z');
+  });
+
+  it('rolls over month ends', () => {
+    const { dayKey, end } = venueDayBounds(new Date('2026-10-01T05:00:00Z'));
+    expect(dayKey).toBe('2026-09-30');
+    expect(end.toISOString()).toBe('2026-10-01T07:00:00.000Z');
+  });
+
+  it('spans 25 hours on the day Pacific leaves DST', () => {
+    // 1 Nov 2026 is the fall-back day: it is 25 hours long. Adding 24h to the
+    // start instant would end the day an hour early and drop a late show.
+    const { dayKey, start, end } = venueDayBounds(new Date('2026-11-01T12:00:00Z'));
+    expect(dayKey).toBe('2026-11-01');
+    expect((end.getTime() - start.getTime()) / 3_600_000).toBe(25);
   });
 });

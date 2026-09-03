@@ -6,6 +6,7 @@ track: feature
 severity: P2
 date: 2026-09-02
 verified: false
+findings: FINDINGS-pos-revenue-sources.md
 ---
 
 # Staff POS — "Today's Presales" tab, and the Tickets-tab scroll fix
@@ -54,9 +55,16 @@ given back — either would overstate the house to the person on the door).
   and the CSV export gained the matching field. This was the one thing the
   brief asked for that the drawer did not already do, and it benefits the admin
   Listings drawer that also uses it.
+- The stat cards were reworked on 2 Sep: "Today's Revenue" gained a
+  tickets/film-passes/concessions breakdown, and "Tickets Sold" became "Tickets
+  for Today" (seats sold for today's showings, whenever bought). Rentals and
+  donations are deliberately absent — see
+  `FINDINGS-pos-revenue-sources.md`, which records why the rental number is not
+  recoverable from the build at all.
 - The tab strip goes to four columns (five with `CONCESSION_POS_ENABLED`) and
-  one `max-w` step wider. The trigger reads **Today** and leads the strip — it
-  is what the counter reads before it sells anything. The panel's own heading
+  one `max-w` step wider. The trigger reads **Presales** and leads the strip,
+  with Transactions second — the two reference tabs sit ahead of the selling
+  tabs. The panel's own heading
   carries the full "Today's Presales" and the date. The tab *value* stays
   `presales`; it is not user-visible. Note the POS still *opens* on Tickets
   (`defaultValue="tickets"`) — selling is the primary job, so leading the strip
