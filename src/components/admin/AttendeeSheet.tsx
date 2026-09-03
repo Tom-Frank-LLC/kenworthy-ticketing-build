@@ -4,7 +4,13 @@
  * Staff-only drawer listing who is attending a showing (or every showing of a
  * production). Opened by clicking the `sold / capacity` badge in the admin
  * Listings panel, so staff can go from "12 sold" to "which twelve" without
- * leaving the dashboard.
+ * leaving the dashboard, and by the Ticket holders button on the POS Presales
+ * panel.
+ *
+ * The UI says **ticket holders**, not "attendees" — someone who has bought a
+ * seat has not necessarily turned up, and the Checked In column is the thing
+ * that says whether they did. The component and the `showing_attendees` RPC
+ * keep their original names, so search for either.
  *
  * Contact details come from the `showing_attendees` RPC, not from embedding
  * `profiles` in the tickets select. RLS on `profiles` restricts every row to its
@@ -159,7 +165,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
         if (cancelled) return;
         if (ticketsRes.error) {
           console.error('AttendeeSheet tickets:', ticketsRes.error);
-          toast.error('Could not load attendees');
+          toast.error('Could not load ticket holders');
           setRows([]);
           setLoading(false);
           return;
@@ -168,7 +174,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
         // empty drawer: the seats and totals are still worth showing.
         if (contactsRes.error) {
           console.error('AttendeeSheet contacts:', contactsRes.error);
-          toast.error('Could not load attendee contact details');
+          toast.error('Could not load ticket holder contact details');
         }
         // A pass lookup that fails degrades further still, and silently: the
         // Purchase Type column already says "Film pass" from the ticket itself,
@@ -241,7 +247,7 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${title.replace(/[^a-zA-Z0-9]/g, '_')}_attendees.csv`;
+    a.download = `${title.replace(/[^a-zA-Z0-9]/g, '_')}_ticket_holders.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -268,14 +274,14 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
 
         <div className="mt-6">
           {loading ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">Loading attendees…</p>
+            <p className="text-sm text-muted-foreground py-8 text-center">Loading ticket holders…</p>
           ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">No tickets sold yet.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Attendee</TableHead>
+                  <TableHead>Ticket holder</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>Seat</TableHead>
                   {multiShowing && <TableHead>Showing</TableHead>}

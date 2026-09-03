@@ -71,11 +71,11 @@ describe('ProductionShowings', () => {
     expect(onDeleteShowing).toHaveBeenCalledWith('showing-1');
   });
 
-  it('names the production in the attendee sheet it opens', () => {
+  it('names the production in the ticket holder sheet it opens', () => {
     const onOpenAttendees = vi.fn();
     renderShowings([showing()], { onOpenAttendees });
 
-    fireEvent.click(screen.getByRole('button', { name: /View 30 attendees/ }));
+    fireEvent.click(screen.getByRole('button', { name: /View 30 ticket holders/ }));
     const [title, ids, capacity] = onOpenAttendees.mock.calls[0];
     expect(title).toMatch(/^Palouse Jazz Quartet — /);
     expect(ids).toEqual(['showing-1']);
