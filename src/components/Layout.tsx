@@ -174,11 +174,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Two pieces of artwork, one link, swapped by breakpoint rather
                 than by JS so the right one is in the first paint.
 
-                The mark carries no `alt`: the link's `aria-label` is the
-                accessible name either way, and an `alt` here would only be
-                text a screen reader never reaches. Both are `eager` — this is
-                the only identification the page has above the fold, and on a
-                phone it is the only one at all.
+                Neither carries an accessible name of its own. The link's
+                `aria-label` is the accessible name either way, so an `alt`
+                here would only be text a screen reader never reaches — and
+                below `sm` there is no `img` at all: the mark is a span painted
+                through a mask, which is what lets it be the palette's own
+                near-white rather than whatever inverting the artwork happens
+                to produce. See KenworthyMark. Nothing to load eagerly either;
+                the mask is an inlined data URI, so there is no request.
+
+                The lockup stays `eager` — it is the only identification the
+                page has above the fold at `sm` and up.
 
                 The mark has no centenary variant (the "Celebrating 100 Years"
                 line exists only in the lockup), but the bar it sits in is
@@ -190,12 +196,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               aria-label="Kenworthy — home"
             >
               <KenworthyMark
-                glow
+                treatment="white"
                 className={cn(
                   'sm:hidden transition-opacity group-hover:opacity-80',
                   isCentenary() ? 'h-11' : 'h-9',
                 )}
-                loading="eager"
               />
               <KenworthyLogo
                 size="header"

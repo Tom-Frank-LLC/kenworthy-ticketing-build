@@ -1,8 +1,5 @@
 import kenworthyStandardLogo from '@/assets/kenworthy-logo.svg';
 import kenworthyMark from '@/assets/kenworthy-k.svg';
-import kenworthyKLetter from '@/assets/kenworthy-k-letter.svg';
-import kenworthyKArch from '@/assets/kenworthy-k-arch.svg';
-import kenworthyKRays from '@/assets/kenworthy-k-rays.svg';
 import kenworthyCentenaryLogo from '@/assets/KPAC-100-logo-white.svg';
 import { isCentenary } from '@/lib/centenary';
 import { cn } from '@/lib/utils';
@@ -119,101 +116,39 @@ export function KenworthyLogo({
 }
 
 /**
- * How the mark is painted.
+ * How the mark is coloured.
  *
- * `filter` — today's treatment. Inverts the dark artwork so it reads on a dark
- * bar. It is also why the mark looks dusty: #414042 inverted and dimmed lands
- * on #B4B5B4, a neutral grey at 52% the luminance of the warm near-white
- * (#F4F1EB) it sits beside. The colour is *derived* from the artwork rather
- * than chosen, so it cannot match anything.
+ *   filter  the original inversion, still used by the sign-in card
+ *   white   the glyph painted with `--foreground` through a mask — the phone
+ *           header
  *
- * The other three paint the glyph with a token instead, by using the SVG as a
- * mask rather than drawing it. That is the difference that matters: the fill
- * is then exactly `--foreground` or `--accent`, and it follows a re-theme
- * instead of drifting from one.
+ * Five further painted treatments (gold, backlit, marquee, sunburst and
+ * sunburst-gold — silhouettes and lit letterforms built from the artwork split
+ * into rays, housing and letter) were built and compared on staging before
+ * `white` was chosen. They are gone rather than left switched off: each needed
+ * a derived SVG carrying a "regenerate me if the original is redrawn" warning,
+ * and unused artwork with a maintenance obligation is the kind of thing that
+ * rots quietly. They are in this branch's history if the question reopens.
+ */
+export type MarkTreatment = 'filter' | 'white';
+
+/**
+ * `white` paints the glyph instead of deriving its colour from the artwork.
  *
- *   white    the warm near-white the body copy already uses, unlit
- *   gold     the brand gold, with the halo
- *   backlit  the glyph painted in the page's own black so it reads as a
- *            silhouette, with the light spilling round it
- *   marquee  backlit, but with the letter lit rather than cut out — the sign
- *            on Main Street, where the K is the bright thing and the housing
- *            around it is dark
- *   sunburst marquee with the rays lit too, so the housing is the only dark
- *            part of the mark
- *   sunburst-gold
- *            the same, with the rays in the brand gold rather than white, so
- *            the lit letter is the only white in the mark and the gold reads
- *            continuously from the rays out into the halo
+ * The artwork is #414042. Inverting it to read on a dark bar lands on #BEBFBD,
+ * and dimming that to #B4B5B4 — a neutral grey at 52% the relative luminance of
+ * the warm near-white (#F4F1EB) it sits beside. That is why the filtered mark
+ * looks dusty, and why no amount of tuning the filter was going to fix it: the
+ * colour was a by-product of the artwork rather than a choice.
+ *
+ * So use the SVG as a mask and let the token be the ink. The fill is then
+ * exactly `--foreground` — the same near-white as the body copy — and it
+ * follows a re-theme instead of drifting out of one, which is the reason
+ * `.glow-primary` reads `var(--primary)` rather than the magenta it once
+ * hardcoded.
  *
  * `mask` and `WebkitMask` are both set: Safari still wants the prefix.
  */
-export type MarkTreatment =
-  | 'filter' | 'white' | 'gold' | 'backlit' | 'marquee' | 'sunburst'
-  | 'sunburst-gold';
-
-/**
- * Each painted treatment is a stack of masked layers, back to front.
- *
- * Written as data rather than as branches because the mark decomposes into
- * exactly three pieces — rays, arch housing, letter — and every treatment is
- * some choice of which of them is lit. `sunburst` is the one that needs all
- * three; the rest are the same machinery with a shorter list.
- *
- * The arch layer uses the *solid* arch, not the artwork's arch-with-the-letter-
- * knocked-out, so a lit letter can simply sit on top of it. Painting the full
- * mark light and then covering the housing in dark would reach the same picture
- * with one fewer file, and was rejected: the two edges coincide exactly, so
- * antialiasing would blend a light fringe out from under a dark shape, which on
- * a 54px glyph reads as a defect rather than as a design.
- */
-const INK = {
-  lit: 'bg-foreground',
-  gold: 'bg-accent',
-  // Not pure `--background`: against the glass bar (card at 80% over the page)
-  // the two are close enough that the glyph loses its edge and the halo reads
-  // as a smudge. A touch darker than the bar keeps the silhouette.
-  dark: 'bg-[hsl(0_0%_4%)]',
-} as const;
-
-const ART = {
-  whole: kenworthyMark,
-  rays: kenworthyKRays,
-  arch: kenworthyKArch,
-  letter: kenworthyKLetter,
-} as const;
-
-type Layer = { art: keyof typeof ART; ink: keyof typeof INK };
-
-const MASK_LAYERS: Record<Exclude<MarkTreatment, 'filter'>, Layer[]> = {
-  white: [{ art: 'whole', ink: 'lit' }],
-  gold: [{ art: 'whole', ink: 'gold' }],
-  backlit: [{ art: 'whole', ink: 'dark' }],
-  marquee: [
-    { art: 'whole', ink: 'dark' },
-    { art: 'letter', ink: 'lit' },
-  ],
-  sunburst: [
-    { art: 'rays', ink: 'lit' },
-    { art: 'arch', ink: 'dark' },
-    { art: 'letter', ink: 'lit' },
-  ],
-  'sunburst-gold': [
-    { art: 'rays', ink: 'gold' },
-    { art: 'arch', ink: 'dark' },
-    { art: 'letter', ink: 'lit' },
-  ],
-};
-
-const MASK_GLOW: Record<Exclude<MarkTreatment, 'filter'>, string> = {
-  white: '',
-  gold: '[filter:var(--mark-glow)]',
-  backlit: '[filter:var(--mark-backlight)]',
-  marquee: '[filter:var(--mark-backlight)]',
-  sunburst: '[filter:var(--mark-backlight)]',
-  'sunburst-gold': '[filter:var(--mark-backlight)]',
-};
-
 const maskStyle = (src: string) => ({
   maskImage: `url("${src}")`,
   WebkitMaskImage: `url("${src}")`,
@@ -226,33 +161,19 @@ const maskStyle = (src: string) => ({
 });
 
 /**
- * The mark's filter, tone by tone, with and without the halo.
+ * The mark's filter, tone by tone — the `filter` treatment.
  *
- * Eight whole class strings rather than one built from `INVERT` and a glow
- * fragment, because Tailwind cannot see a class name that is assembled at
- * runtime — the same constraint that makes Layout.tsx write out both header
- * heights. Keep the `invert(1) brightness(0.95)` here in step with `INVERT`
- * above; they are the same rule and the compiler cannot tell you when they
- * drift apart.
- *
- * `var(--mark-glow)` is defined in index.css so the halo's colour follows
- * `--accent` through a re-theme. It goes *after* the invert on purpose: put it
- * first and `invert(1)` turns the gold halo blue.
+ * Whole class strings rather than one built from `INVERT`, because Tailwind
+ * cannot see a class name that is assembled at runtime — the same constraint
+ * that makes Layout.tsx write out both header heights. Keep the
+ * `invert(1) brightness(0.95)` here in step with `INVERT` above; they are the
+ * same rule and the compiler cannot tell you when they drift apart.
  */
-const MARK_FILTER: Record<LogoTone, { plain: string; glow: string }> = {
+const MARK_FILTER: Record<LogoTone, string> = {
   // Dark grey artwork: invert it on dark surfaces, leave it alone on light.
-  'on-dark': {
-    plain: '[filter:invert(1)_brightness(0.95)]',
-    glow: '[filter:invert(1)_brightness(0.95)_var(--mark-glow)]',
-  },
-  'on-light': {
-    plain: '',
-    glow: '[filter:var(--mark-glow)]',
-  },
-  auto: {
-    plain: 'dark:[filter:invert(1)_brightness(0.95)]',
-    glow: '[filter:var(--mark-glow)] dark:[filter:invert(1)_brightness(0.95)_var(--mark-glow)]',
-  },
+  'on-dark': '[filter:invert(1)_brightness(0.95)]',
+  'on-light': '',
+  auto: 'dark:[filter:invert(1)_brightness(0.95)]',
 };
 
 /**
@@ -274,51 +195,28 @@ const MARK_FILTER: Record<LogoTone, { plain: string; glow: string }> = {
  * `alt` defaults to empty because every placement so far sits next to the name
  * in text. Pass one where it is the only identification.
  *
- * `glow` lights it with the accent halo — see `--mark-glow` in index.css. Off
- * by default: it is for the phone header, where the mark is the only branding
- * on the bar and carries it alone. The sign-in card sits under a heading that
- * already says the name, and does not need it.
+ * `treatment` picks how it is coloured. `filter` is the original inversion and
+ * is still the default, because the sign-in card uses it. `white` paints the
+ * glyph with `--foreground` through a mask, and is what the phone header uses
+ * — see the note on `maskStyle` for why the two differ.
  */
 export function KenworthyMark({
   tone = 'on-dark',
-  glow = false,
   treatment = 'filter',
   className,
   alt = '',
   ...rest
-}: Omit<KenworthyLogoProps, 'size'> & { glow?: boolean; treatment?: MarkTreatment }) {
-  if (treatment !== 'filter') {
-    const layers = MASK_LAYERS[treatment];
-    // Every layer is a sibling, never nested. A mask clips its descendants too,
-    // so a lit letter placed inside the masked housing would be trimmed to the
-    // very hole it exists to fill and vanish completely. They all share the
-    // wrapper's box and the one viewBox, so they register with no transform.
-    //
-    // The glow lives on the wrapper, which carries no mask of its own. CSS
-    // applies `filter` before `mask`, so a drop-shadow on any masked element is
-    // computed on the un-masked box and then clipped back to the glyph by the
-    // mask it was meant to escape — it does not vanish, it comes out as a
-    // faintly soft edge, which is the kind of wrong that survives review.
-    //
-    // Neither span carries an accessible name: every placement wraps this in a
-    // link that already has one.
+}: Omit<KenworthyLogoProps, 'size'> & { treatment?: MarkTreatment }) {
+  if (treatment === 'white') {
+    // Painted, not drawn: the SVG is the mask and the token is the ink. It
+    // carries no accessible name — every placement wraps it in a link that
+    // already has one.
     return (
       <span
         aria-hidden
-        className={cn('relative inline-flex', MASK_GLOW[treatment], className)}
-      >
-        {layers.map((layer, i) => (
-          <span
-            key={layer.art}
-            className={cn(
-              'block aspect-[212/190]',
-              i === 0 ? 'h-full' : 'absolute inset-0',
-              INK[layer.ink],
-            )}
-            style={maskStyle(ART[layer.art])}
-          />
-        ))}
-      </span>
+        className={cn('block aspect-[212/190] bg-foreground', className)}
+        style={maskStyle(kenworthyMark)}
+      />
     );
   }
 
@@ -332,7 +230,7 @@ export function KenworthyMark({
       decoding="async"
       className={cn(
         'w-auto object-contain',
-        MARK_FILTER[tone][glow ? 'glow' : 'plain'],
+        MARK_FILTER[tone],
         className,
       )}
       {...rest}
