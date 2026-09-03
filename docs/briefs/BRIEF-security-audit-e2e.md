@@ -1,8 +1,25 @@
 # Brief (for Claude Code): End-to-end security audit (everything beyond RLS)
 
-**Status:** ✅ Shipped 2026-08-19 — findings in `FINDINGS-security-audit-e2e.md`.
-3 High and 3 of 4 Medium closed and re-probed; the rest are recorded there as
-residual risk or as steps needing your Cloudflare dashboard.
+**Status:** ✅ Shipped 2026-08-19 · record closed 2026-09-03 — findings in
+`FINDINGS-security-audit-e2e.md`.
+
+**All 3 High and all 4 Medium are closed and re-probed on both environments**,
+along with the rate-limiting residual. M2 closed itself: production ran eleven
+functions absent from the repo when this was written, and runs none now, which
+matters because it was the finding that bounded the report — an audit of a
+repository is only an audit of production if the two agree.
+
+Verified again after the kenworthy.org cutover (28 Aug): the headers, the
+Turnstile gate, the rate limiter and the bucket constraints all came across to
+the live domain. Two public surfaces added since — the `featured-slides` bucket
+and `get_public_availability` — were both built to the patterns this audit
+established, by people who were not part of it.
+
+What is left is not audit work. Three of the five Low findings, the CSP's
+graduation from report-only, the page-layer Cloudflare rules the cutover made
+possible, and one unanswered question from *Decisions for Tom* below: the
+third-party pen test.
+
 **Date:** August 14, 2026
 **Requested by:** Tom — a full platform security audit for risks not yet considered, sequenced after the RLS/permissions sweep.
 
