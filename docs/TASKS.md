@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**92 briefs** — 82 shipped, 6 built, 4 open, 0 needs triage, 0 closed.
+**93 briefs** — 83 shipped, 6 built, 4 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -27,6 +27,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The lockup stops collapsing at 1024, and the phone "K" is the palette's own near-white**<br>`ux` — `#260` — [brief](briefs/BRIEF-header-lockup-collapse-and-white-k.md)
 - **A calendar day draws every showing on it, and the week row grows to suit**<br>`ux` — `#261` — [brief](briefs/BRIEF-calendar-cells-fit-all-showings.md)
 - **The ticketing page shows every upcoming showtime of its production**<br>`ux` — `#263`, `#264` — [brief](briefs/BRIEF-listings-showtimes-on-showing-page.md)
 - **On a phone, list titles get a second line and the curator's band stops padding itself out**<br>`ux` — `#259` — [brief](briefs/BRIEF-mobile-list-titles-curator-space.md)
