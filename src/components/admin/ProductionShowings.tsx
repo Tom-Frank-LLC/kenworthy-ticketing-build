@@ -31,9 +31,9 @@ export function TicketCountBadge({
       onClick={onClick}
       title={
         `${sold} of ${capacity} tickets sold${soldOut ? ' (sold out)' : ''}` +
-        `${scanned > 0 ? `, ${scanned} checked in` : ''} — click to see attendees`
+        `${scanned > 0 ? `, ${scanned} checked in` : ''} — click to see ticket holders`
       }
-      aria-label={`View ${sold} attendees`}
+      aria-label={`View ${sold} ticket holders`}
       className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <Badge

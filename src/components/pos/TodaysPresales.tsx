@@ -267,7 +267,7 @@ export function TodaysPresales() {
                         onClick={() => setOpenShowing(s)}
                       >
                         <Users className="h-4 w-4 mr-1" />
-                        {s.sold === 0 ? 'No presales' : 'Attendees'}
+                        {s.sold === 0 ? 'No presales' : 'Ticket holders'}
                       </Button>
                     </div>
                   </div>
