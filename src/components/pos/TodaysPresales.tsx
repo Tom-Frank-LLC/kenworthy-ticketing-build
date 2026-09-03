@@ -20,6 +20,19 @@
  * dropped every showing as it started — the panel would have looked fine and
  * emptied out over the course of exactly the evening it exists for.
  *
+ * ## A film-pass admission is never a presale
+ *
+ * `redeem_film_pass` inserts its ticket at the door with `scanned_at` and
+ * `purchased_at` both `now()`, and film passes are refused by `ticket-checkout`
+ * outright ("redeemed in person at the door"). So a pass row cannot exist
+ * before the screening — it appears in `sold` and in `checked in` in the same
+ * instant. The "on passes" badge is therefore a reading of door traffic, not of
+ * advance sales, and it stays hidden until the first redemption rather than
+ * sitting at zero on every row all evening.
+ *
+ * Those rows also carry no `total_price`, which is correct: the money arrived
+ * when the pass was bought, not when it was spent.
+ *
  * ## Why the day boundaries go through venueLocalToInstant
  *
  * "Today" is a venue-local calendar day, and `start_time` is a UTC instant. A
@@ -48,6 +61,8 @@ interface PresaleShowing {
   no_ticket_required: boolean;
   sold: number;
   scanned: number;
+  /** Admissions bought with a physical film pass, a subset of `sold`. */
+  onPasses: number;
 }
 
 /** The venue-local day containing `now`, as a pair of real instants. */
@@ -115,17 +130,19 @@ export function TodaysPresales() {
     // Paged, because a sold-out day of several screenings is well within reach
     // of the 1,000-row cap that PostgREST applies without an error.
     const { data: ticketRows, error: ticketErr } = await fetchAllRows<
-      { showing_id: string; scanned_at: string | null },
+      { showing_id: string; scanned_at: string | null; payment_method: string | null },
       any
     >((from, to) =>
       supabase
         .from('tickets')
-        .select('showing_id, scanned_at')
+        .select('showing_id, scanned_at, payment_method')
         .in('showing_id', ids)
         .eq('status', 'confirmed')
         .order('id')
         .range(from, to) as unknown as PromiseLike<{
-        data: { showing_id: string; scanned_at: string | null }[] | null;
+        data:
+          | { showing_id: string; scanned_at: string | null; payment_method: string | null }[]
+          | null;
         error: any;
       }>,
     );
@@ -140,9 +157,13 @@ export function TodaysPresales() {
 
     const sold = new Map<string, number>();
     const scanned = new Map<string, number>();
+    const onPasses = new Map<string, number>();
     for (const t of ticketRows ?? []) {
       sold.set(t.showing_id, (sold.get(t.showing_id) ?? 0) + 1);
       if (t.scanned_at) scanned.set(t.showing_id, (scanned.get(t.showing_id) ?? 0) + 1);
+      if (t.payment_method === 'film_pass') {
+        onPasses.set(t.showing_id, (onPasses.get(t.showing_id) ?? 0) + 1);
+      }
     }
 
     setShowings(
@@ -154,6 +175,7 @@ export function TodaysPresales() {
         no_ticket_required: !!s.no_ticket_required,
         sold: sold.get(s.id) ?? 0,
         scanned: scanned.get(s.id) ?? 0,
+        onPasses: onPasses.get(s.id) ?? 0,
       })),
     );
     setLoading(false);
@@ -199,15 +221,25 @@ export function TodaysPresales() {
             </p>
           ) : (
             <>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary">
-                  {totalSold} {totalSold === 1 ? 'ticket' : 'tickets'} sold today
-                </Badge>
-                <Badge variant="outline">{totalScanned} checked in</Badge>
-                <Badge variant="outline">
-                  {showings.length} {showings.length === 1 ? 'showing' : 'showings'}
-                </Badge>
-              </div>
+              {/* Only when there is more than one showing. On a single-showing
+                  day these totals are arithmetically the row beneath them, and
+                  printing the same two numbers twice invites the reader to hunt
+                  for the difference between them. `AttendeeSheet` hides its
+                  cross-showing furniture the same way. */}
+              {showings.length > 1 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* "for today's showings", never "today": the tile above this
+                      panel says "Tickets Sold" and means tickets *bought* today
+                      for any date, which on a normal evening is a different
+                      number. Two figures on one screen both labelled "today" is
+                      how the wrong one gets reported. */}
+                  <Badge variant="secondary">
+                    {totalSold} sold for today’s showings
+                  </Badge>
+                  <Badge variant="outline">{totalScanned} checked in</Badge>
+                  <Badge variant="outline">{showings.length} showings</Badge>
+                </div>
+              )}
 
               <div className="space-y-3">
                 {showings.map(s => (
@@ -228,7 +260,15 @@ export function TodaysPresales() {
                         {s.sold}
                         {s.capacity > 0 && ` / ${s.capacity}`} sold
                       </Badge>
-                      <Badge variant="outline">{s.scanned} in</Badge>
+                      <Badge variant="outline">{s.scanned} checked in</Badge>
+                      {/* Only once a pass has actually been redeemed. These
+                          rows are written by `redeem_film_pass` at the door
+                          with `scanned_at` already set, so the count sits at
+                          zero all evening until someone walks in — a permanent
+                          "0 on passes" would be noise on every other row. */}
+                      {s.onPasses > 0 && (
+                        <Badge variant="outline">{s.onPasses} on passes</Badge>
+                      )}
                       {/* Disabled at zero rather than hidden: a button that
                           vanishes reads as "this showing is different", when
                           all that has happened is nobody has bought yet. */}

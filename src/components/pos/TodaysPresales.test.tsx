@@ -79,8 +79,8 @@ describe('TodaysPresales', () => {
       },
     ];
     tables.tickets = [
-      { showing_id: 's1', scanned_at: '2026-09-01T21:05:00Z' },
-      { showing_id: 's1', scanned_at: null },
+      { showing_id: 's1', scanned_at: '2026-09-01T21:05:00Z', payment_method: 'cash' },
+      { showing_id: 's1', scanned_at: null, payment_method: 'online' },
     ];
 
     render(<TodaysPresales />);
@@ -89,7 +89,7 @@ describe('TodaysPresales', () => {
     // tearing tickets for must not vanish the moment it begins.
     expect(await screen.findByText('The Gold Rush')).toBeInTheDocument();
     expect(await screen.findByText('2 / 200 sold')).toBeInTheDocument();
-    expect(await screen.findByText('1 in')).toBeInTheDocument();
+    expect(await screen.findByText('1 checked in')).toBeInTheDocument();
   });
 
   it('counts confirmed tickets only', async () => {
@@ -109,6 +109,69 @@ describe('TodaysPresales', () => {
     // nobody; a refunded one has been given back. Either would overstate the
     // house to the person on the door.
     expect(argOf('tickets', 'eq')).toEqual(['status', 'confirmed']);
+  });
+
+  it('does not repeat a lone showing as a day total', async () => {
+    tables.showings = [
+      {
+        id: 's1',
+        start_time: '2026-09-02T02:30:00Z',
+        total_seats: 265,
+        no_ticket_required: false,
+        movies: { title: 'The Crowd' },
+      },
+    ];
+    tables.tickets = [{ showing_id: 's1', scanned_at: null, payment_method: 'online' }];
+
+    render(<TodaysPresales />);
+    expect(await screen.findByText('The Crowd')).toBeInTheDocument();
+
+    // With one showing the aggregate badges are arithmetically the row beneath
+    // them, so they are not drawn at all — printing the same two numbers twice
+    // only invites the reader to hunt for a difference that cannot exist.
+    expect(screen.queryByText(/sold for today’s showings/)).not.toBeInTheDocument();
+    expect(screen.queryByText('1 showings')).not.toBeInTheDocument();
+    // And the row's own wording never says bare "today": the tile above this
+    // panel counts tickets *bought* today for any date, which is a different
+    // number on any normal evening.
+    expect(screen.queryByText(/sold today/)).not.toBeInTheDocument();
+  });
+
+  it('totals the day only when there is more than one showing', async () => {
+    tables.showings = [
+      { id: 's1', start_time: '2026-09-01T21:00:00Z', total_seats: 265,
+        no_ticket_required: false, movies: { title: 'Matinee' } },
+      { id: 's2', start_time: '2026-09-02T02:30:00Z', total_seats: 265,
+        no_ticket_required: false, movies: { title: 'Evening' } },
+    ];
+    tables.tickets = [
+      { showing_id: 's1', scanned_at: '2026-09-01T21:05:00Z', payment_method: 'cash' },
+      { showing_id: 's2', scanned_at: null, payment_method: 'online' },
+      { showing_id: 's2', scanned_at: null, payment_method: 'online' },
+    ];
+
+    render(<TodaysPresales />);
+    expect(await screen.findByText('3 sold for today’s showings')).toBeInTheDocument();
+    expect(await screen.findByText('2 showings')).toBeInTheDocument();
+  });
+
+  it('counts film-pass admissions, and only shows the badge once there are any', async () => {
+    tables.showings = [
+      { id: 's1', start_time: '2026-09-02T02:30:00Z', total_seats: 265,
+        no_ticket_required: false, movies: { title: 'The Crowd' } },
+    ];
+    // redeem_film_pass writes these at the door with scanned_at already set,
+    // so a pass admission is sold and checked in in the same instant — it is
+    // never a presale.
+    tables.tickets = [
+      { showing_id: 's1', scanned_at: '2026-09-02T02:31:00Z', payment_method: 'film_pass' },
+      { showing_id: 's1', scanned_at: null, payment_method: 'online' },
+    ];
+
+    render(<TodaysPresales />);
+    expect(await screen.findByText('1 on passes')).toBeInTheDocument();
+    expect(await screen.findByText('2 / 265 sold')).toBeInTheDocument();
+    expect(await screen.findByText('1 checked in')).toBeInTheDocument();
   });
 
   it('says so when the day is empty', async () => {
