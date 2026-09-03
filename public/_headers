@@ -59,47 +59,56 @@
   Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(self)
 
   # ---------------------------------------------------------------------
-  # Content-Security-Policy — REPORT-ONLY, deliberately
+  # Content-Security-Policy — ENFORCING since 2026-09-03
   # ---------------------------------------------------------------------
   #
-  # Report-only because a CSP that breaks the card form breaks the ability to
-  # take money, and the origins this app needs are not all knowable by reading
-  # it: poster images come from the database and point at TMDB, at
-  # kenworthy.org's WordPress, and at Supabase storage, and trailers embed
-  # YouTube or Vimeo depending on what an admin pasted.
+  # It shipped report-only on 2026-08-19, and that was the right call: driving a
+  # real checkout under the first policy reported seven violations the card form
+  # would have suffered — `card-wrapper.css` blocked by style-src-elem, and six
+  # typefaces from three hosts blocked by font-src, one of them a cloudfront.net
+  # distribution that appears in no documentation and was only discoverable by
+  # watching the SDK ask for it.
   #
-  # So this reports and does not block. Watch the browser console on staging
-  # through a real checkout, a trailer, and the scanner; when it is quiet,
-  # rename this header to Content-Security-Policy and it starts enforcing.
-  # Everything above is already enforcing, including the framing rule — the
-  # clickjacking exposure is closed today, not when the CSP graduates.
+  # ---------------------------------------------------------------------
+  # What had to be settled before enforcing
+  # ---------------------------------------------------------------------
   #
-  # Notes on the specific sources:
-  #   script-src omits 'unsafe-inline' on purpose. Vite emits external
-  #     bundles, so if a report shows an inline script we want to know about
-  #     it rather than have blanket-allowed it in advance.
-  #   style-src needs 'unsafe-inline': React inline styles and Tailwind's
-  #     arbitrary-value classes both emit style attributes.
-  #   connect-src covers Supabase (REST, edge functions, realtime over wss)
-  #     and Square's PCI endpoint, which is where the card iframe posts the
-  #     card to get a single-use token. Sandbox and production hosts differ.
-  #   img-src is deliberately open to https:. Poster URLs are admin-entered
-  #     and arbitrary; narrowing this is a content decision, not a header one.
+  # `index.html` carries an inline <script> — the boot watchdog added in #149,
+  # which recovers the black empty page when the entry chunk 404s behind a stale
+  # service worker. It MUST stay inline: it is the only code that still runs when
+  # the module script fails to load, so an external file would fail in exactly
+  # the case it exists for.
   #
-  # The Square hosts in style-src and font-src are not guesses. A first pass
-  # allowed only the SDK origin, and driving a real checkout on staging with
-  # this header in report-only mode reported seven violations the card form
-  # would have suffered under enforcement:
+  # script-src here has no 'unsafe-inline', so enforcing without provision would
+  # have blocked it — silently disabling the recovery path for the failure it was
+  # written to catch. It is allowed by hash instead, which keeps the policy
+  # strict: a hash permits that exact script and nothing else, where
+  # 'unsafe-inline' would permit any injected one and give up most of what a CSP
+  # is for.
   #
-  #   style-src-elem  sandbox.web.squarecdn.com/1.84.1/card-wrapper.css
-  #   font-src        square-fonts-production-f.squarecdn.com  (Square Sans x2)
-  #   font-src        d1g145x70srn7h.cloudfront.net            (SQ Market x2)
-  #   font-src        cash-f.squarecdn.com                     (Cash Sans x2)
+  # Two things follow, and both are guarded by
+  # src/lib/cspHashes.test.ts rather than by anyone remembering:
   #
-  # The SDK pulls its stylesheet and typefaces from four hosts that are not the
-  # one it is served from, and the cloudfront.net one is not discoverable from
-  # any documentation — only from watching it ask. Enforcing first would have
-  # shipped an unstyled card form in fallback fonts on the page where somebody
-  # is being asked to type a card number.
-  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://web.squarecdn.com https://sandbox.web.squarecdn.com https://*.squarecdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com https://d1g145x70srn7h.cloudfront.net; img-src 'self' data: blob: https:; connect-src 'self' https://challenges.cloudflare.com https://*.supabase.co wss://*.supabase.co https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://connect.squareup.com https://connect.squareupsandbox.com https://*.squarecdn.com; frame-src https://challenges.cloudflare.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  #   * The watchdog hash is stable across environments — it contains no
+  #     %SITE_URL% token, so staging and production build byte-identical.
+  #   * The JSON-LD block does NOT: it embeds the site URL, so it hashes
+  #     differently per environment. Both are listed.
+  #
+  # The JSON-LD hashes are belt-and-braces. A <script type="application/ld+json">
+  # is a data block, never "prepared" as a script, so script-src should not apply
+  # to it at all — but that is a spec argument, and being wrong about it would
+  # cost the structured data. Listing them is two tokens.
+  #
+  # To recompute after editing index.html: npm run build:production, then hash
+  # the bytes between each <script> and </script>:
+  #   node -e 'const c=require("crypto"),f=require("fs");
+  #     [...f.readFileSync("dist/index.html","utf8").matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)]
+  #       .filter(m=>!/\bsrc=/.test(m[1]))
+  #       .forEach(m=>console.log("sha256-"+c.createHash("sha256").update(m[2]).digest("base64")))'
+  #
+  # If a violation ever needs chasing, flip the header name back to
+  # Content-Security-Policy-Report-Only and reproduce it in a browser console —
+  # there is no report-uri, so violations are visible per-visitor and collected
+  # nowhere.
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-xpaI01Q6oUz6D4TVL7O0etHBvDbjrV8O36bKmJAXgrs=' 'sha256-8XoZJHvkL1iU1DBGeTJuQhjk3L96D4sjPMd4KwDkRes=' 'sha256-m8X3SWWViucQFG3j6LLrqGOltJxEgZnL/QZqziA+e64=' https://challenges.cloudflare.com https://web.squarecdn.com https://sandbox.web.squarecdn.com https://*.squarecdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com https://d1g145x70srn7h.cloudfront.net; img-src 'self' data: blob: https:; connect-src 'self' https://challenges.cloudflare.com https://*.supabase.co wss://*.supabase.co https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://connect.squareup.com https://connect.squareupsandbox.com https://*.squarecdn.com; frame-src https://challenges.cloudflare.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 
