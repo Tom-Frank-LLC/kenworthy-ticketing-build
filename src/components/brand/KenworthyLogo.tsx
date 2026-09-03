@@ -195,26 +195,49 @@ const MARK_FILTER: Record<LogoTone, string> = {
  * `alt` defaults to empty because every placement so far sits next to the name
  * in text. Pass one where it is the only identification.
  *
- * `treatment` picks how it is coloured. `filter` is the original inversion and
- * is still the default, because the sign-in card uses it. `white` paints the
- * glyph with `--foreground` through a mask, and is what the phone header uses
- * — see the note on `maskStyle` for why the two differ.
+ * `treatment` picks how it is coloured — see the note on `maskStyle`. `filter`
+ * is the original inversion; `white` paints the glyph with `--foreground`
+ * through a mask.
+ *
+ * The two treatments render different elements — an `img` and a `span` — so
+ * the props are `HTMLAttributes<HTMLElement>`: the intersection both accept,
+ * which is what lets a caller's `onClick` survive the choice. It used to be
+ * `ImgHTMLAttributes`, and `loading`/`decoding`/`srcSet` were never meaningful
+ * on the painted one anyway.
  */
+type KenworthyMarkProps = React.HTMLAttributes<HTMLElement> & {
+  tone?: LogoTone;
+  treatment?: MarkTreatment;
+  /** Only reaches the `filter` treatment; the painted one is `aria-hidden`. */
+  alt?: string;
+};
 export function KenworthyMark({
   tone = 'on-dark',
   treatment = 'filter',
   className,
   alt = '',
   ...rest
-}: Omit<KenworthyLogoProps, 'size'> & { treatment?: MarkTreatment }) {
+}: KenworthyMarkProps) {
   if (treatment === 'white') {
-    // Painted, not drawn: the SVG is the mask and the token is the ink. It
-    // carries no accessible name — every placement wraps it in a link that
-    // already has one.
+    // Painted, not drawn: the SVG is the mask and the token is the ink.
+    //
+    // `aria-hidden` rather than an empty `alt`, and it is not a downgrade: both
+    // placements are decorative. The header wraps it in a link that carries the
+    // accessible name; the sign-in card sits directly above a heading that says
+    // "The Kenworthy". Neither wants a screen reader to announce it twice.
+    //
+    // `rest` is spread, and that matters more than it looks: the sign-in card
+    // hangs the Color Lab's only signed-out entry point off this element's
+    // `onClick`. Drop the spread and that affordance disappears in silence —
+    // the mark still renders, nothing errors, and the door is simply gone.
+    //
+    // `style` comes after the spread so a caller cannot accidentally displace
+    // the mask and blank the glyph.
     return (
       <span
         aria-hidden
         className={cn('block aspect-[212/190] bg-foreground', className)}
+        {...rest}
         style={maskStyle(kenworthyMark)}
       />
     );
