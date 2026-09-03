@@ -44,16 +44,36 @@ export function ConcessionPOS({ onSaleComplete }: ConcessionPOSProps) {
     (async () => {
       const [itemsRes, showingsRes] = await Promise.all([
         supabase.from('concession_items').select('id, name, price, category').eq('is_active', true).order('category').order('name'),
-        supabase.from('showings').select('id, start_time, movies(title), events(title), concerts(title)')
+        // `live_performances`, not `concerts`. There is no `concerts` table —
+        // it was renamed — and an embed PostgREST cannot resolve is not a null
+        // column but a PGRST200 that fails the *entire* select. The showing
+        // picker therefore rendered empty, and because the error was discarded
+        // below it looked like a night with nothing scheduled rather than a
+        // broken query. Every other caller in the app already spells it this
+        // way; this file was the last one left.
+        supabase.from('showings').select('id, start_time, movies(title), events(title), live_performances(title)')
           .eq('is_active', true)
           .gte('start_time', new Date().toISOString())
           .order('start_time'),
       ]);
+
+      // Both errors are surfaced rather than swallowed. `data || []` on its own
+      // renders an empty list identically whether the query returned nothing or
+      // failed, which is exactly how the embed above survived unnoticed.
+      if (itemsRes.error) {
+        console.error('ConcessionPOS items:', itemsRes.error);
+        toast.error('Could not load the concession menu');
+      }
+      if (showingsRes.error) {
+        console.error('ConcessionPOS showings:', showingsRes.error);
+        toast.error('Could not load the showing list');
+      }
+
       setItems((itemsRes.data as ConcessionItem[]) || []);
       setShowings(
         (showingsRes.data || []).map((s: any) => ({
           id: s.id,
-          label: `${s.movies?.title || s.events?.title || s.concerts?.title || 'Unknown'} — ${formatShowtime(s.start_time, 'MMM d, h:mm a')}`,
+          label: `${s.movies?.title || s.events?.title || s.live_performances?.title || 'Unknown'} — ${formatShowtime(s.start_time, 'MMM d, h:mm a')}`,
         }))
       );
     })();
