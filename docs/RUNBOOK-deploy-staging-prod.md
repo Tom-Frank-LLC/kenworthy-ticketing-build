@@ -226,10 +226,31 @@ fewer options on period and action than the docs show for paid plans. The
 dashboard is the authority on what your plan permits; the numbers below are
 written to fit inside one rule for that reason.
 
-I could not apply these myself. The wrangler OAuth token on this machine reads
-zones fine but returns `10000 Authentication error` on
-`/zones/{id}/rulesets` — WAF rules need a scope it does not carry. So this is a
-dashboard job: **Security → WAF → Rate limiting rules**.
+**Deployed 2026-09-03 and verified.** One rule, on `/admin`. Two notes for
+whoever touches this next:
+
+* It lives under **Security → Security rules**, not Security → Settings.
+* **Hostname is not an available field on the Free plan.** It is also not
+  needed: the ruleset is scoped to this zone already, so every request it can
+  see is for this hostname. The rule is one condition —
+  `URI Path starts with /admin` — and dropping the hostname check costs nothing
+  beyond also covering `www`, which 301s to the apex regardless.
+
+Measured against the live rule rather than assumed:
+
+| property | result |
+| --- | --- |
+| fires | 80 requests in a minute → **68 × `429`** |
+| scoped | `/`, `/calendar`, `/rental-request`, `/film-passes` all `200` while `/admin` was throttled |
+| releases | `/admin` back to `200` within the minute — no lasting lockout |
+
+The scoping check is the one worth repeating if the rule is ever widened: a
+site-wide limit on a Free plan with no path matching would challenge a family
+browsing the calendar on shared wifi, and you would never hear about it.
+
+I could not apply it myself. The wrangler OAuth token reads zones fine but
+returns `10000 Authentication error` on `/zones/{id}/rulesets` — WAF needs a
+scope it does not carry.
 
 ### If you get one rule, spend it here
 
