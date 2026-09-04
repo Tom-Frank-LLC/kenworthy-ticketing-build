@@ -448,11 +448,14 @@ because several of these were the brief's explicit re-verifications.
 4. ~~**Reconcile production's deployed functions with `main`** (M2).~~ **Mostly
    done, by ordinary merges rather than by anything this audit did.**
    Re-measured 2026-08-26: zero deployed functions are absent from the repo.
-   Two of the three debug probes are gone from production —
-   **`square-event-probe` is still deployed there.** It is admin-gated like the
-   rest, so this is housekeeping rather than exposure, but a debug endpoint on
-   the production project is still worth a deliberate decision to keep or
-   remove.
+   ~~Two of the three debug probes are gone from production —
+   **`square-event-probe` is still deployed there.**~~ **All three are gone as of
+   2026-09-04**; the last was removed after checking what it did. It was
+   read-only and admin-gated, so this closed no hole — but it had outlived its
+   own documented end by two and a half weeks, and its author had written the
+   delete command in two places expecting someone to run it. The source stays in
+   the repo: three documents cite it as evidence, and deleting the file would
+   strand them. What was removed is the deployment.
 
 5. **Decide whether `/verify/:id` should work** (L1).
 

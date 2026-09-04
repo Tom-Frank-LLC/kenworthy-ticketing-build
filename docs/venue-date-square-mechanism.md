@@ -257,6 +257,25 @@ because prod runs that one from an uncommitted worktree and redeploying it from
 supabase functions delete square-event-probe --project-ref vlmslygnimfbamrtwvyo
 ```
 
+**Done 2026-09-04.** The production deployment is removed; the endpoint answers
+404. It had outlived its own stated end by two and a half weeks — Phase 1 landed
+on 18 August and this note has said "delete it" since.
+
+The **source stays in the repo**, deliberately. Three documents cite this
+function as the evidence for their conclusions —
+`SQUARE-TRANSACTION-CONVENTIONS.md`, `square-catalog-history-recovery.md` and
+`briefs/FINDINGS-analytics-square.md`, the last by line number — and deleting the
+file would strand those citations. What was removed is the *deployment*, not the
+record. If the investigation is ever reopened it is one `functions deploy` away,
+and `scripts/square-inspect-events.mjs` does the same discovery from a laptop
+meanwhile.
+
+Nothing was lost and nothing was exposed while it sat there: it is admin-gated
+and refuses any non-GET except CatalogSearch, both verified in the code rather
+than taken from this comment. It was removed because a debug endpoint that has
+finished its job is the kind of thing still running in a year because nobody
+decided.
+
 `scripts/square-inspect-events.mjs` does the same discovery from a laptop, given
 a `SQUARE_ACCESS_TOKEN`. It was written before the edge-function route worked
 and is kept because it needs no deploy.
