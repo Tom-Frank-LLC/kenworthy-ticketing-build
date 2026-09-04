@@ -1,0 +1,64 @@
+-- The verify link printed on every signed contract has been dead since June.
+--
+-- `sign-contract` stamps `${SITE_URL}/verify/<rental id>` onto the signed PDF
+-- (sign-contract/index.ts:199). That line is the point of the page: a renter
+-- forwards their contract to a co-signer, an insurer or their own board, and
+-- the reader is told they can confirm it is genuine at that URL. The page
+-- recomputes the PDF's SHA-256 in the browser and checks an Ed25519 signature
+-- over it.
+--
+-- Since 2026-06-17 that URL has answered `42501 permission denied` to anybody
+-- not signed in — which is everybody it was built for. Confirmed live on both
+-- projects before writing this.
+--
+-- It is worse than a missing feature. A dead link is one thing; a dead link
+-- printed on a legal document, under a sentence inviting the reader to check
+-- the document's authenticity, undermines the exact confidence it was added to
+-- create.
+--
+-- ---------------------------------------------------------------------------
+-- Why it broke
+-- ---------------------------------------------------------------------------
+--
+-- 20260617053243 did a blanket "tighten EXECUTE on SECURITY DEFINER functions"
+-- sweep. In the same block:
+--
+--   REVOKE EXECUTE ON FUNCTION get_contract_signature(uuid) FROM anon, authenticated;
+--   REVOKE EXECUTE ON FUNCTION get_rental_request_by_token(text) FROM anon;
+--   GRANT  EXECUTE ON FUNCTION get_rental_request_by_token(text) TO anon, authenticated;
+--
+-- The sibling was revoked and immediately re-granted. This one was revoked and
+-- never restored. Every other change in that migration was deliberate and
+-- correct — this reads like the sweep caught a function nobody realised was
+-- load-bearing for a public page, and no test or page-load ever said otherwise.
+--
+-- ---------------------------------------------------------------------------
+-- What this grant exposes, stated plainly
+-- ---------------------------------------------------------------------------
+--
+-- Nine fields: the event title, the licensee's name, who signed and their
+-- title, and the cryptography (`signed_pdf_sha256`, the signature, the public
+-- key, the algorithm).
+--
+-- No private key. The function joins `signing_keys` — a table with all direct
+-- API access revoked in that same June migration, correctly — but projects
+-- `public_key_b64` only, which is public by definition. Verified before
+-- re-granting rather than assumed, because a SECURITY DEFINER function reading
+-- a table nobody may read is exactly where a private key would leak from.
+--
+-- The capability is the id: `gen_random_uuid()`, 122 random bits, not
+-- enumerable. In practice the only people holding one are people holding the
+-- PDF, which prints every one of those names on its face. The page tells a
+-- reader nothing the document in their hands does not already say.
+--
+-- The residual, named honestly: the page fetches and renders those details on
+-- load, before any upload, so a bare UUID reveals who signed without proving
+-- possession of the contract. Closing that means having the function take the
+-- caller's computed SHA-256 and answer only on a match — a better design, and
+-- a bigger change than restoring a feature that is supposed to work today. It
+-- is written up as the option not taken rather than left unsaid.
+
+GRANT EXECUTE ON FUNCTION public.get_contract_signature(uuid) TO anon, authenticated;
+
+COMMENT ON FUNCTION public.get_contract_signature(uuid) IS
+  'Signature metadata for one signed rental contract, for the public /verify/:id page. Deliberately anon-executable: the verify URL is printed on the signed PDF, and the reader confirming a contract has no account. Returns the public key only — never the private one, though it reads signing_keys as SECURITY DEFINER. The unguessable rental id is the capability. Re-granted 2026-09-04 after a blanket EXECUTE sweep in 20260617053243 revoked it and did not restore it, leaving the printed link broken for ~11 weeks.';
