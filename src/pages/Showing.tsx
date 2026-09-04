@@ -254,33 +254,50 @@ function FreeAdmissionPanel({
         </Card>
       </div>
 
+      {/*
+        Not an order summary. Nothing is being ordered, and calling it one made
+        the page say "free" five times over: the header line, the Admission
+        heading, an Admission row, a Total row, and a button-shaped block
+        reading "Free - just show up". Four of those answered a question the
+        first had already settled, and the repetition read as insistence rather
+        than as welcome.
+
+        What this card is actually for on these nights is the ask. A free
+        screening is the one with no other revenue, and the copy at the bottom
+        of it says exactly that. So it keeps the donation prompt and loses the
+        accounting for a transaction that is not happening.
+      */}
       <div id="order-summary" className="scroll-mt-24">
         <Card className="glass lg:sticky lg:top-20">
           <CardHeader>
-            <CardTitle className="font-display text-lg">Order Summary</CardTitle>
+            <CardTitle className="font-display text-lg">
+              {giving ? 'Your gift' : 'Support the Kenworthy'}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span>Admission</span>
-                <span className="text-success font-medium">Free</span>
-              </div>
-              {giving && (
+            {/*
+              Only once there is a number worth showing. "Admission: Free" and
+              "Total: Free" summarise nothing; a donation total is a figure
+              somebody is about to be charged, and they should see it first.
+            */}
+            {giving && (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Admission</span>
+                  <span className="text-success font-medium">Free</span>
+                </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Donation (not taxed)</span>
                   <span>${amount}</span>
                 </div>
-              )}
-            </div>
-
-            <div className="border-t border-border pt-3">
-              <div className="flex justify-between font-bold text-base">
-                <span>Total</span>
-                <span className={giving ? 'text-primary' : 'text-success'}>
-                  {giving ? `$${amount}` : 'Free'}
-                </span>
+                <div className="border-t border-border pt-3">
+                  <div className="flex justify-between font-bold text-base">
+                    <span>Total</span>
+                    <span className="text-primary">${amount}</span>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
 
             {thankedCents !== null && !giving && (
               <p className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm">
@@ -347,13 +364,12 @@ function FreeAdmissionPanel({
               </>
             ) : (
               <>
-                {/* Where the Reserve button would be. Deliberately not a
-                    disabled button: there is no action being withheld, so
-                    something greyed out would read as a step the visitor has
-                    failed to unlock rather than as the answer. */}
-                <div className="w-full rounded-md border border-success/40 bg-success/10 py-3 text-center">
-                  <p className="font-display text-lg text-success">Free — just show up</p>
-                </div>
+                {/* No button and no banner. There is no action to withhold,
+                    and a button-shaped block saying "Free - just show up" was
+                    the fifth time this page said the same word - after a
+                    heading two feet to the left that says it at 24px. Answering
+                    once, clearly, and then talking about something else reads
+                    as welcome; answering five times reads as insistence. */}
                 <p className="text-sm text-muted-foreground text-center">
                   Nights like this one are paid for by people who give. Add a gift above, or{' '}
                   <Link
