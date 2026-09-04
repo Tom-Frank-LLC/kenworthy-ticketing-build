@@ -1,24 +1,45 @@
 # Brief (for Claude Code): End-to-end security audit (everything beyond RLS)
 
-**Status:** ✅ Shipped 2026-08-19 · record closed 2026-09-03 — findings in
+**Status: ✅ SHIPPED AND CLOSED — 2026-09-04.** Findings in
 `FINDINGS-security-audit-e2e.md`.
 
-**All 3 High and all 4 Medium are closed and re-probed on both environments**,
-along with the rate-limiting residual. M2 closed itself: production ran eleven
-functions absent from the repo when this was written, and runs none now, which
-matters because it was the finding that bounded the report — an audit of a
-repository is only an audit of production if the two agree.
+**Every finding is closed.** 3 High, 4 Medium, 5 Low, plus the rate-limiting
+residual — each re-probed on **both** environments, most recently 2026-09-04
+with staging and production returning identical results:
 
-Verified again after the kenworthy.org cutover (28 Aug): the headers, the
-Turnstile gate, the rate limiter and the bucket constraints all came across to
-the live domain. Two public surfaces added since — the `featured-slides` bucket
-and `get_public_availability` — were both built to the patterns this audit
-established, by people who were not part of it.
+```
+H1=401  H2=42501  csp=1  report-only=0  headers=4/4  M1=401
+turnstile=403  svg=rejected  rate-limit=42501  verify=200  probe=404
+```
 
-What is left is not audit work. Three of the five Low findings, the CSP's
-graduation from report-only, the page-layer Cloudflare rules the cutover made
-possible, and one unanswered question from *Decisions for Tom* below: the
-third-party pen test.
+All three *Decisions for Tom* are answered:
+
+1. **Rate limiting / captcha** — Turnstile on the rental form, an app-level
+   limiter on the three public endpoints, and one Cloudflare rule on `/admin`.
+   The Cloudflare half of the original recommendation was wrong and is recorded
+   as such: WAF rules need a zone, and could never have reached the Supabase
+   endpoints anyway.
+2. **CSP strictness** — report-only first, which earned its keep by catching
+   seven violations that would have broken the card form, then **enforcing since
+   2026-09-03** and confirmed by a real card purchase on kenworthy.org.
+3. **Third-party pen test** — scoped, not commissioned. See
+   `docs/BRIEF-third-party-pentest-scope.md`. This is the one thing this brief
+   could not close from inside the project, and it is deliberately left as a
+   decision rather than allowed to lapse.
+
+Four things were found *after* the audit closed, by continuing to look:
+
+* Guest checkout had been failing every returning customer past the 50th account
+  — an unpaged `listUsers()` — which surfaced only when a real purchase died on
+  the last step.
+* Sixteen pricing tests silently stopped testing anything on 1 September, when a
+  hardcoded fixture date went into the past.
+* The verify link printed on every signed contract had been dead for eleven
+  weeks, revoked by a blanket sweep rather than a decision.
+* The Turnstile button told people to wait while the page was waiting on them.
+
+None were in scope. All are fixed. That is the argument for the pen test in
+item 3: the code review held, and the things around it kept not holding.
 
 **Date:** August 14, 2026
 **Requested by:** Tom — a full platform security audit for risks not yet considered, sequenced after the RLS/permissions sweep.
