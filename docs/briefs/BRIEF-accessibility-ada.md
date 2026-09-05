@@ -1,18 +1,23 @@
 ---
 brief: accessibility-ada
 title: Audit and remediate the site against WCAG 2.2 AA, public money-paths first
-status: built
+status: shipped
 track: ux
 severity: P1
 date: 2026-08-18
-verified: false
+shipped_in: ["#289", "#290"]
+shipped_at: 2026-09-04
+verified: true
 findings: ../accessibility-audit.md
 ---
 
 # Brief (for Claude Code): Assess & optimize ADA / accessibility across the site
 
-**Status:** 🟢 Audited 23 Aug, re-baselined and remediated 4 Sep on
-`feat/a11y-wcag22-aa-v2` (branched from `e1cea1c`). Not deployed. See `docs/accessibility-audit.md` for the findings, the numbers, and
+**Status:** ✅ Shipped to production 4 September 2026 — PRs #289 and #290,
+deployed as `3e5b4528-5bf2-464d-8b09-fabd4050d803` (staging
+`724ba6a6-6d2e-438a-b097-b5ef7d440e6b`). Verified against the live origin,
+not the upload log. Rollback target was
+`54782715-abb8-447f-b4bd-d2b21a666be4`. See `docs/accessibility-audit.md` for the findings, the numbers, and
 the three remaining open questions.
 **Date:** August 18, 2026
 **Requested by:** Tom — assess and optimize ADA compliance throughout the site.
@@ -115,6 +120,24 @@ public surface had grown by three routes. See the audit for the detail.
 
 Test suite green (776 tests); `tsc -p tsconfig.app.json --noEmit` clean.
 
+## What the production check caught
+
+Auditing the deployed site rather than trusting the build found two AA failures
+that **only exist with production data** — invisible on staging and locally,
+and fixed in #290:
+
+- A past festival screening's card was `opacity-60`. Container opacity
+  multiplies every descendant, taking the showtime to 2.6:1 and the synopsis to
+  3.47:1. There is no safe value — 90% only reaches 4.54:1 — so the opacity
+  moved to the decorative poster and the words stay at full contrast.
+- The curator's pick and the showing preview both wrapped scrollable copy in
+  `role="region"` named after the production, so a featured pick shipped two
+  identically-named landmarks. They are `role="group"` now.
+
+Staging had neither a past festival screening nor that home-page line-up. This
+is the argument for the runbook's "verify against the live URL" rule, and it
+should stay in the loop for any future a11y work.
+
 ## Still open — decisions for Tom
 
 Written up in full at the end of `docs/accessibility-audit.md`:
@@ -151,6 +174,8 @@ floor and follows federal funding) is written up in the audit.
 - [x] `prefers-reduced-motion` disables non-essential animation
 - [x] `/accessibility` matches reality, and says what is not there yet
 - [x] `npm run build:production` + `npx vitest run` pass
+- [x] Deployed to staging **and** production, and re-audited against both live
+      origins — `kenworthy.org` is at zero on all 20 public routes and all seven
+      money-path states
 - [ ] Screen-reader pass with VoiceOver on a real device — the semantics are
       correct and machine-verified, but nobody has listened to it yet
-- [ ] Deployed

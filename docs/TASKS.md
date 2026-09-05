@@ -5,14 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**95 briefs** — 83 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
+**95 briefs** — 84 shipped, 6 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P0` **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md) · [notes](briefs/confirmed%20from%20production%20logs%2028%20Aug%202026)
-- `P1` **Audit and remediate the site against WCAG 2.2 AA, public money-paths first**<br>`ux` — [brief](briefs/BRIEF-accessibility-ada.md) · [notes](briefs/../accessibility-audit.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
@@ -29,6 +28,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Audit and remediate the site against WCAG 2.2 AA, public money-paths first**<br>`ux` — `#289`, `#290` — [brief](briefs/BRIEF-accessibility-ada.md) · [notes](briefs/../accessibility-audit.md)
 - **The lockup stops collapsing at 1024, and the phone "K" is the palette's own near-white**<br>`ux` — `#260` — [brief](briefs/BRIEF-header-lockup-collapse-and-white-k.md)
 - **A calendar day draws every showing on it, and the week row grows to suit**<br>`ux` — `#261` — [brief](briefs/BRIEF-calendar-cells-fit-all-showings.md)
 - **The ticketing page shows every upcoming showtime of its production**<br>`ux` — `#263`, `#264` — [brief](briefs/BRIEF-listings-showtimes-on-showing-page.md)
