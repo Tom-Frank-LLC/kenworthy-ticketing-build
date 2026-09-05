@@ -114,9 +114,11 @@ export function ShowingPreview({
                 not focus a scroll container on its own, so without it the
                 hidden text is mouse-only. */}
             {!isRichTextEmpty(item.curatorNote) && (
+              // `group`, not `region` — see the note in BoothNote's SlideCopy.
+              // Two identically-named landmarks on one page otherwise.
               <div
                 tabIndex={0}
-                role="region"
+                role="group"
                 aria-label={`About ${item.title}`}
                 className="themed-scroll max-h-[15rem] overflow-y-auto pr-3 mb-5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >

@@ -252,9 +252,15 @@ function SlideImage({ src, alt }: { src: string; alt: string }) {
  */
 function SlideCopy({ label, html }: { label: string; html: string | null | undefined }) {
   return (
+    // `group`, not `region`. A scrollable block of copy is not a page
+    // landmark, and two of these can carry the same production — the
+    // curator's pick and the showing preview both label themselves after the
+    // title, which axe reports as `landmark-unique` and a screen reader reads
+    // as two identically-named landmarks. `group` still takes the name and
+    // still pairs with tabIndex so the panel can be scrolled from a keyboard.
     <div
       tabIndex={0}
-      role="region"
+      role="group"
       aria-label={label}
       className="themed-scroll min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >

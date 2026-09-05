@@ -49,10 +49,19 @@ function item(overrides: Partial<FeedItem> = {}): FeedItem {
 
 const wrap = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
+/**
+ * Queried by `role="group"`, not `region`.
+ *
+ * These scroll panels used to declare themselves page landmarks, and the
+ * curator's pick and the preview pane can carry the same production — so the
+ * home page shipped two landmarks both named "About <title>", which is axe's
+ * `landmark-unique` and reads as a duplicate to a screen reader. `group` still
+ * takes the accessible name these tests query by; it just is not a landmark.
+ */
 describe('a curator note renders as formatted copy, not flattened text', () => {
   it('renders editor markup as elements in the preview pane', () => {
     const { container } = wrap(<ShowingPreview item={item({ curatorNote: RICH_NOTE })} />);
-    const note = screen.getByRole('region', { name: /About The Gold Rush/i });
+    const note = screen.getByRole('group', { name: /About The Gold Rush/i });
 
     // Elements, not a string: `getByText` would pass on the flattened version
     // too, since flattening kept every word.
@@ -68,7 +77,7 @@ describe('a curator note renders as formatted copy, not flattened text', () => {
 
   it('renders editor markup as elements in the curator’s pick', () => {
     wrap(<BoothNote items={[item({ curatorNote: RICH_NOTE, isFeatured: true })]} />);
-    const note = screen.getByRole('region', { name: /About The Gold Rush/i });
+    const note = screen.getByRole('group', { name: /About The Gold Rush/i });
 
     expect(within(note).getByText('restored').tagName).toBe('STRONG');
     expect(note.querySelectorAll('p')).toHaveLength(2);
@@ -114,7 +123,7 @@ describe('a curator note renders as formatted copy, not flattened text', () => {
     // `toRichHtml` normalises them at read time. A row nobody has edited has
     // to keep working.
     wrap(<ShowingPreview item={item({ curatorNote: LEGACY_NOTE })} />);
-    const note = screen.getByRole('region', { name: /About The Gold Rush/i });
+    const note = screen.getByRole('group', { name: /About The Gold Rush/i });
 
     expect(note.querySelectorAll('p')).toHaveLength(2);
     expect(note.textContent).toContain('Introduced by the archivist.');

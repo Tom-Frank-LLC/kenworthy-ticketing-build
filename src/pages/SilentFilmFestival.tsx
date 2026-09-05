@@ -636,7 +636,21 @@ export default function SilentFilmFestival() {
                 const synopsis = stripLeadingShowtime(production?.description);
                 return (
                   <li key={screening.id}>
-                    <Card className={passed ? 'opacity-60' : undefined}>
+                    {/* De-emphasised by the frame and the poster, never by a
+                        container opacity. `opacity-60` on this Card multiplied
+                        every descendant: the showtime fell to 2.6:1 and the
+                        synopsis to 3.47:1, both below AA, on the one card whose
+                        reader most needs to know what they missed. Even 90%
+                        only reaches 4.54:1, so there is no safe setting — the
+                        mechanism is wrong, not the number.
+
+                        Opacity moves to the poster, which is decorative
+                        (alt=""), and the border mutes. The words stay at full
+                        contrast, and the card already says in text that the
+                        screening has passed. Production data only: staging has
+                        no past festival screenings, so this never appeared
+                        until the live check. */}
+                    <Card className={passed ? 'border-border/60' : undefined}>
                       <CardContent className="p-4 md:p-5 flex flex-col sm:flex-row gap-4 md:gap-5">
                         {production?.poster_url && (
                           <img
@@ -644,7 +658,10 @@ export default function SilentFilmFestival() {
                             alt=""
                             loading="lazy"
                             decoding="async"
-                            className="w-full sm:w-24 h-40 sm:h-36 object-cover rounded border border-border shrink-0"
+                            className={cn(
+                              'w-full sm:w-24 h-40 sm:h-36 object-cover rounded border border-border shrink-0',
+                              passed && 'opacity-60',
+                            )}
                           />
                         )}
                         <div className="flex-1 min-w-0">
