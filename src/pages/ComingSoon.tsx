@@ -40,10 +40,12 @@ export function ComingSoon({
   );
 }
 
-export const AccessibilityPage = () => (
-  <ComingSoon
-    title="Accessibility"
-    path="/accessibility"
-    blurb="A full accessibility guide is in progress. KPAC facilities include one ADA restroom, wheelchair seating, stairless entry and access throughout the entire auditorium, stage lift, assistive listening devices, and open caption screening options. Reach out with any questions."
-  />
-);
+/*
+ * `AccessibilityPage` used to live here and is gone: /accessibility is a real
+ * statement now, at `src/pages/Accessibility.tsx`. KPAC's facility list — the
+ * copy added to this stub's blurb in #237 — moved there verbatim and is the
+ * authority for those facts.
+ *
+ * `ComingSoon` itself is kept: it is the shape a placeholder page should take
+ * if one is ever needed again.
+ */

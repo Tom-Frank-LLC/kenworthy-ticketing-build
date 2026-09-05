@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { FormErrorSummary } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
 import { Check, User, Mail, Phone, CreditCard, Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -72,6 +73,17 @@ export function GuestCheckoutForm({
   const [tokenizing, setTokenizing] = useState(false);
   const [cardReady, setCardReady] = useState(false);
   const cardRef = useRef<SquareCardFormHandle>(null);
+  // Where focus goes when a submit is refused. Without this the button
+  // simply does nothing from the keyboard's point of view: no
+  // announcement, no move, no clue which field is at fault.
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
+  const [errorSeq, setErrorSeq] = useState(0);
+
+  useEffect(() => {
+    if (errorSeq > 0 && Object.keys(errors).length > 0) {
+      errorSummaryRef.current?.focus();
+    }
+  }, [errorSeq, errors]);
 
   // A gift on the order makes email mandatory whatever the delivery flags say.
   // Tickets can go by text; a donation cannot. Its value to the theatre beyond
@@ -131,7 +143,13 @@ export function GuestCheckoutForm({
   const smsOptIn = COLLECT_PHONE && smsConsent && contactPhone.length > 0;
 
   const handleSubmit = async () => {
-    if (!validate()) return;
+    if (!validate()) {
+      // Bumped even when the same field fails twice, so a repeat submit
+      // still moves focus to the summary rather than silently doing
+      // nothing.
+      setErrorSeq(n => n + 1);
+      return;
+    }
     // Free ($0) showing — no card step. The server skips Square for $0 orders,
     // so there is no token to collect; hand back an empty source.
     if (isFree) {
@@ -166,7 +184,18 @@ export function GuestCheckoutForm({
   const busy = purchasing || tokenizing;
 
   return (
-    <div className="space-y-3">
+    // A real <form>, so Enter submits from any field. It used to be a
+    // <div> with an onClick button, which meant the only way to buy a
+    // ticket from the keyboard was to tab all the way to the button.
+    <form
+      className="space-y-3"
+      noValidate
+      onSubmit={e => {
+        e.preventDefault();
+        handleSubmit();
+      }}
+    >
+      <FormErrorSummary ref={errorSummaryRef} errors={errors} title="Check these before paying" />
       <div className="border-t border-border pt-3">
         <p className="text-sm font-medium mb-3 flex items-center gap-1">
           <User className="h-4 w-4" /> Your Info
@@ -180,8 +209,12 @@ export function GuestCheckoutForm({
               value={name}
               onChange={e => setName(e.target.value)}
               maxLength={100}
+              aria-describedby={errors.name ? 'guest-name-error' : undefined}
+              aria-invalid={errors.name ? true : undefined}
             />
-            {errors.name && <p className="text-sm text-destructive mt-1">{errors.name}</p>}
+            {errors.name && (
+              <p id="guest-name-error" className="text-sm text-destructive mt-1">{errors.name}</p>
+            )}
           </div>
           <div>
             <Label htmlFor="guest-email" className="text-sm flex items-center gap-1">
@@ -194,8 +227,18 @@ export function GuestCheckoutForm({
               value={email}
               onChange={e => setEmail(e.target.value)}
               maxLength={255}
+              autoComplete="email"
+              aria-required={emailRequired ? true : undefined}
+              aria-describedby={
+                [errors.email ? 'guest-email-error' : null, 'guest-contact-hint']
+                  .filter(Boolean)
+                  .join(' ')
+              }
+              aria-invalid={errors.email ? true : undefined}
             />
-            {errors.email && <p className="text-sm text-destructive mt-1">{errors.email}</p>}
+            {errors.email && (
+              <p id="guest-email-error" className="text-sm text-destructive mt-1">{errors.email}</p>
+            )}
           </div>
           {/* The phone field and its consent box are the opt-in an A2P 10DLC
               campaign is reviewed on, which is why they are live before the
@@ -223,25 +266,36 @@ export function GuestCheckoutForm({
                   rates apply, and how to stop. Unchecked by default and
                   optional — the buyer can complete this purchase without it,
                   which is the third thing the review checks for. */}
-              <label className="flex items-start gap-2 mt-2 text-sm text-muted-foreground cursor-pointer">
+              {/* htmlFor, not a wrapping <label>. Radix renders the checkbox
+                  as <button role="checkbox">, and a wrapper is not a reliable
+                  way to name one. */}
+              <div className="flex items-start gap-2 mt-2">
                 <Checkbox
                   id="guest-sms-consent"
                   checked={smsConsent}
                   onCheckedChange={v => setSmsConsent(v === true)}
                   className="mt-0.5"
                 />
-                <span>
+                <Label
+                  htmlFor="guest-sms-consent"
+                  className="text-sm font-normal leading-relaxed text-muted-foreground cursor-pointer"
+                >
                   Text me my tickets. I agree to receive ticket confirmations and updates about
                   this order by text message from Kenworthy Performing Arts Centre at the
                   number above. Message frequency varies &mdash; usually one message per order.
                   Msg &amp; data rates may apply. Reply STOP to cancel, HELP for help. Optional
                   &mdash; your tickets come by email either way.
-                </span>
-              </label>
+                </Label>
+              </div>
             </div>
           )}
-          {errors.contact && <p className="text-sm text-destructive mt-1">{errors.contact}</p>}
-          <p className="text-sm text-muted-foreground">
+          {errors.contact && (
+            <p id="guest-contact-error" className="text-sm text-destructive mt-1">{errors.contact}</p>
+          )}
+          {/* Referenced by aria-describedby on both contact fields, so the
+              rule is read out on arrival rather than sitting below as text
+              nobody navigating by field ever reaches. */}
+          <p id="guest-contact-hint" className="text-sm text-muted-foreground">
             {donationAttached
               ? 'Enter your email so we can send your tickets and the receipt for your gift.'
               : SMS_DELIVERY_LIVE
@@ -253,14 +307,20 @@ export function GuestCheckoutForm({
               no signup form now, so the ask lives on the form everyone fills
               in. Ticked by default, and it only ever means "yes" because they
               left it ticked — never because they bought something. */}
-          <label className="flex items-start gap-2 pt-1 text-sm text-muted-foreground cursor-pointer">
+          <div className="flex items-start gap-2 pt-1">
             <Checkbox
+              id="guest-newsletter"
               checked={newsletter}
               onCheckedChange={v => setNewsletter(v === true)}
               className="mt-0.5"
             />
-            <span>Email me about upcoming films, performances, and Kenworthy news.</span>
-          </label>
+            <Label
+              htmlFor="guest-newsletter"
+              className="text-sm font-normal leading-relaxed text-muted-foreground cursor-pointer"
+            >
+              Email me about upcoming films, performances, and Kenworthy news.
+            </Label>
+          </div>
         </div>
       </div>
 
@@ -275,9 +335,9 @@ export function GuestCheckoutForm({
       )}
 
       <Button
+        type="submit"
         className="w-full"
         size="lg"
-        onClick={handleSubmit}
         disabled={busy || (!isFree && !cardReady)}
       >
         {busy ? (
@@ -293,6 +353,6 @@ export function GuestCheckoutForm({
           Payments are processed securely by Square. Your card details never reach our servers.
         </p>
       )}
-    </div>
+    </form>
   );
 }

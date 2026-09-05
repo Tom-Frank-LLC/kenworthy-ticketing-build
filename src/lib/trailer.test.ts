@@ -47,4 +47,25 @@ describe('resolveTrailer', () => {
     expect(vimeo.src).toContain('controls=1');
     expect(vimeo.src).toContain('background=0');
   });
+
+  /**
+   * Every trailer on this site is a YouTube or Vimeo embed — 788 of them in
+   * production, and not one self-hosted file. We cannot caption a
+   * distributor's video, so asking the player to switch on whatever track it
+   * already has is the entire lever we hold on WCAG 1.2.2.
+   *
+   * Tied to `controls`, which is the flag that distinguishes the real player
+   * from the muted ambient marquee. A silent background clip has no audio to
+   * caption.
+   */
+  it('asks for captions on the real player, and not on the silent marquee', () => {
+    const yt = resolveTrailer('https://youtu.be/dQw4w9WgXcQ', { controls: true })!;
+    expect(yt.src).toContain('cc_load_policy=1');
+
+    const vimeo = resolveTrailer('https://vimeo.com/123456789', { controls: true })!;
+    expect(vimeo.src).toContain('texttrack=en');
+
+    expect(resolveTrailer('https://youtu.be/dQw4w9WgXcQ')!.src).not.toContain('cc_load_policy');
+    expect(resolveTrailer('https://vimeo.com/123456789')!.src).not.toContain('texttrack');
+  });
 });

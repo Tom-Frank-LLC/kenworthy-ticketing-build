@@ -147,9 +147,26 @@ recorded it as unrecoverable. See `docs/SQUARE-TRANSACTION-CONVENTIONS.md` and
   this scales the whole UI, not just text.
 - **Never size text in `px`.** It blocks browser zoom and OS large-text. There
   are currently zero px font sizes in the app; keep it that way.
-- **`text-muted-foreground/60` and below fails WCAG AA** on this background
-  (3.61:1). The solid token is fine at 8.12:1. Do not use the faded variants for
-  text.
+- **Never fade `muted-foreground` for text.** The old rule here said "`/60` and
+  below fails" — `/70` fails too, at 4.50:1 by calculation and 4.45:1 as axe
+  measures it, and it shipped in the footer of every page on the strength of
+  that sentence. Computed against `#0f0f0f`: `/50` 2.88, `/60` 3.62, `/70`
+  4.50, `/75` 5.02. The solid token is 8.13:1. Use the solid token.
+- **The palette's one trap is red.** `--destructive` used to be a deep
+  `0 72% 51%`, which failed AA in both directions at once — 3.74:1 as text on a
+  card, 4.44:1 for the cream that sat on it as a fill — so every error message
+  in the app was the hardest thing on the page to read. It is a light fill with
+  off-black text now, like `--primary`, `--accent` and `--success`. If you
+  darken it again, check both directions.
+- **Everything animated must respect `prefers-reduced-motion`.** There is a
+  global block in `src/index.css`; do not animate around it. `animate-spin` is
+  the one deliberate exception, slowed rather than frozen, because a frozen
+  spinner reads as a hung payment.
+- **Public pages are audited and stay at zero.** `scripts/a11y-audit.mjs` and
+  `scripts/a11y-flows.mjs` reproduce it; `docs/accessibility-audit.md` carries
+  the numbers. Contrast is checked by calculation, not by eye. **Restart the
+  dev server before a before/after run** — it serves stale JSX modules to a
+  fresh browser and will report applied fixes as broken.
 - Brand fonts: Anton for display headings, Fraunces for body.
 
 ## Documentation

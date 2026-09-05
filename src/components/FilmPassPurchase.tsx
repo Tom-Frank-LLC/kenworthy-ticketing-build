@@ -184,7 +184,17 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
 
         {/* How it reaches them */}
         <div className="space-y-3">
-          <h2 className="font-display text-lg font-bold">How would you like it?</h2>
+          {/* A fieldset around real radio inputs, not a row of role="button"
+              cards. The cards were reachable by Tab, but nothing told anyone
+              which delivery method was chosen — no aria-pressed, no
+              aria-checked — and ui/card.tsx has no focus style, so the focus
+              ring was invisible too. A single-select group is a radio group;
+              saying so gets the state, the arrow keys and the grouping for
+              free. The input is sr-only and the card looks exactly as it did. */}
+          <fieldset>
+            <legend className="mb-3">
+              <h2 className="font-display text-lg font-bold">How would you like it?</h2>
+            </legend>
           <div className="grid gap-3 sm:grid-cols-2">
             {([
               { key: 'pickup', icon: Store, title: 'Collect at the box office',
@@ -194,25 +204,27 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
             ] as const).map(opt => {
               const Icon = opt.icon;
               return (
-                <Card
-                  key={opt.key}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setFulfillment(opt.key)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === ' ') setFulfillment(opt.key);
-                  }}
-                  className={`glass cursor-pointer transition-shadow ${
-                    fulfillment === opt.key ? 'ring-2 ring-primary' : 'hover:glow-primary'
-                  }`}
-                >
-                  <CardContent className="p-4">
-                    <p className="font-medium flex items-center gap-2">
-                      <Icon className="h-4 w-4 text-primary" /> {opt.title}
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">{opt.blurb}</p>
-                  </CardContent>
-                </Card>
+                <label key={opt.key} className="block cursor-pointer">
+                  <input
+                    type="radio"
+                    name="film-pass-fulfillment"
+                    className="peer sr-only"
+                    checked={fulfillment === opt.key}
+                    onChange={() => setFulfillment(opt.key)}
+                  />
+                  <Card
+                    className={`glass h-full transition-shadow peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background ${
+                      fulfillment === opt.key ? 'ring-2 ring-primary' : 'hover:glow-primary'
+                    }`}
+                  >
+                    <CardContent className="p-4">
+                      <p className="font-medium flex items-center gap-2">
+                        <Icon className="h-4 w-4 text-primary" aria-hidden /> {opt.title}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">{opt.blurb}</p>
+                    </CardContent>
+                  </Card>
+                </label>
               );
             })}
           </div>
@@ -273,6 +285,7 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
               </div>
             </div>
           )}
+          </fieldset>
         </div>
 
         {/* Who they are */}

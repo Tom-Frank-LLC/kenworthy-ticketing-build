@@ -63,6 +63,10 @@ function SeatButton({
       )}
       style={tinted ? { backgroundColor: tierMeta!.color } : undefined}
       title={`Row ${seat.seat_row} · Seat ${seat.seat_number}${tierMeta ? ` · ${tierMeta.tierName} ($${tierMeta.price.toFixed(2)})` : ''}`}
+      // The seat's name was already good; its *state* was not. Selection
+      // was conveyed only by the fill turning amethyst, so someone picking
+      // seats by ear had no way to tell which ones they had picked.
+      aria-pressed={taken ? undefined : selected}
       aria-label={`Row ${seat.seat_row} seat ${seat.seat_number}${tierMeta ? `, ${tierMeta.tierName}, $${tierMeta.price.toFixed(2)}` : ''}${taken ? ' (taken)' : ''}`}
     >
       {seat.seat_number}

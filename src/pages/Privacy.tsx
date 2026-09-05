@@ -30,7 +30,7 @@ export default function Privacy() {
       <P>
         We’ve written this to describe what the site <B>actually does</B> — including several things
         it deliberately <B>does not</B> do. Your use of the site is also governed by our{' '}
-        <Link to="/terms" className="text-primary hover:underline">
+        <Link to="/terms" className="text-primary underline underline-offset-4">
           Terms of Use
         </Link>
         .

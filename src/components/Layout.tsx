@@ -107,6 +107,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
         '--header-height': `calc(env(safe-area-inset-top, 0px) + ${isCentenary() ? '84px' : '68px'})`,
       } as CSSProperties}
     >
+      {/* WCAG 2.4.1. The header is eight to fourteen tab stops — logo,
+          Calendar, Rentals, two dropdowns, Donate, Tickets, Film Pass, and
+          more once someone is signed in — and it repeats on every route. Off
+          screen until focused, then it lands above the sticky header. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:font-display focus:uppercase focus:tracking-wide focus:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+      >
+        Skip to content
+      </a>
       <header className="sticky top-0 z-50 glass border-b border-accent/20 pt-[env(safe-area-inset-top)]">
         {/* The bar grows for the centenary lockup, which is a taller piece of
             artwork — see KenworthyLogo. Written as two whole class strings
@@ -389,7 +399,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
       </header>
-      <main className="flex-1">{children}</main>
+      <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
+        {children}
+      </main>
 
       <footer className="mt-auto border-t border-accent/20 bg-card/40">
         <div className="container py-10 grid gap-8 md:grid-cols-4 text-sm">
@@ -414,11 +426,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link to="/privacy" className="hover:text-primary transition-colors">
                 Privacy Policy
               </Link>
-              <span aria-hidden className="mx-1.5 text-muted-foreground/50">·</span>
+              <span aria-hidden className="mx-1.5 text-muted-foreground">·</span>
               <Link to="/terms" className="hover:text-primary transition-colors">
                 Terms of Use
               </Link>
-              <span aria-hidden className="mx-1.5 text-muted-foreground/50">·</span>
+              <span aria-hidden className="mx-1.5 text-muted-foreground">·</span>
               {/* A plain <a>, not a <Link> — /sms is a static file in public/,
                   not a route in this app, and the router would swallow it into
                   the SPA shell. That page exists precisely because the shell is
@@ -433,7 +445,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 for the same reason. */}
             {!MEMBER_ACCOUNTS_ENABLED && !user && (
               <p className="mt-2 text-sm">
-                <Link to={authHref} className="text-muted-foreground/70 hover:text-primary transition-colors">
+                <Link to={authHref} className="text-muted-foreground hover:text-primary transition-colors">
                   Staff login
                 </Link>
               </p>
@@ -449,7 +461,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={colorLab.open}
-                  className="text-muted-foreground/70 hover:text-primary transition-colors"
+                  className="text-muted-foreground hover:text-primary transition-colors"
                 >
                   Color Lab
                 </button>

@@ -70,10 +70,10 @@ const SponsorshipForm = lazyWithRecovery(() => import("./pages/admin/Sponsorship
 const AuditLog = lazyWithRecovery(() => import("./pages/admin/AuditLog"));
 const Superadmin = lazyWithRecovery(() => import("./pages/admin/Superadmin"));
 
-// ComingSoon is a named export rather than a default, so the import has to be
-// unwrapped by hand.
-const AccessibilityPage = lazyWithRecovery(() =>
-  import("./pages/ComingSoon").then(m => ({ default: m.AccessibilityPage })));
+// /accessibility was a ComingSoon stub carrying KPAC's facility list in its
+// blurb — the right content in a page that could not hold it. It is a real
+// statement now; see the note at the top of pages/Accessibility.tsx.
+const AccessibilityPage = lazyWithRecovery(() => import("./pages/Accessibility"));
 
 const queryClient = new QueryClient();
 

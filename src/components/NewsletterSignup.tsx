@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { subscribeToMailchimp } from '@/lib/mailchimp';
@@ -34,9 +35,18 @@ export function NewsletterSignup({ className = '' }: { className?: string }) {
         Upcoming Films, Performances, and KPAC News
       </p>
       <div className="flex gap-2">
+        {/* A visible label would repeat "Join our Newsletter" above it, so the
+            name is sr-only — but it has to exist. A placeholder is not a
+            label: it is announced inconsistently and it vanishes the moment
+            anyone types. This field is in the footer of every page. */}
+        <Label htmlFor="newsletter-email" className="sr-only">
+          Email address for the Kenworthy newsletter
+        </Label>
         <Input
+          id="newsletter-email"
           type="email"
           required
+          autoComplete="email"
           placeholder="you@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}

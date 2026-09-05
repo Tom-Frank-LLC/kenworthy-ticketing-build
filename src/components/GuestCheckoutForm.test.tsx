@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { GuestCheckoutForm } from './GuestCheckoutForm';
 import { COLLECT_PHONE, SMS_DELIVERY_LIVE } from '@/lib/flags';
 
@@ -124,7 +124,13 @@ describe('GuestCheckoutForm', () => {
     fillContactDetails();
     fireEvent.click(payButton);
 
-    expect(await screen.findByText(/Card expiration date is invalid/)).toBeInTheDocument();
+    // Twice on purpose: once beside the card field for whoever is looking
+    // at it, and once in the role="alert" summary at the top of the form,
+    // which is the only copy a screen reader is told about. Assert the
+    // announced one — that is the half that used to be missing entirely.
+    const declineSummary = await screen.findByRole('alert');
+    expect(within(declineSummary).getByText(/Card expiration date is invalid/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Card expiration date is invalid/)).toHaveLength(2);
     expect(onPurchase).not.toHaveBeenCalled();
   });
 
@@ -142,7 +148,12 @@ describe('GuestCheckoutForm', () => {
     // A contact is the only hard requirement. Which contact counts depends on
     // SMS_DELIVERY_LIVE, so match either message rather than pinning this test
     // to whichever side of the flag we happen to be on.
-    expect(await screen.findByText(/is required/)).toBeInTheDocument();
+    // Announced, not merely rendered: the message goes in the role="alert"
+    // summary as well as beside the field, and the summary takes focus so a
+    // refused submit is not silence.
+    const contactSummary = await screen.findByRole('alert');
+    expect(within(contactSummary).getByText(/is required/)).toBeInTheDocument();
+    expect(contactSummary).toHaveFocus();
     expect(tokenizeCard).not.toHaveBeenCalled();
     expect(onPurchase).not.toHaveBeenCalled();
   });
@@ -206,7 +217,15 @@ describe('GuestCheckoutForm', () => {
       // first submission was rejected for missing frequency and HELP, so these
       // are assertions rather than a comment asking someone to remember.
       const consent = screen.getByRole('checkbox', { name: /Text me my tickets/i });
-      const disclosure = consent.closest('label')!;
+      // Asserted against the checkbox's *accessible name* rather than a
+      // wrapping <label> element. The disclosure sits in a sibling <Label
+      // htmlFor> now, because Radix renders the checkbox as a <button> and a
+      // wrapper is not a reliable way to name one. Reading the accname is also
+      // the stronger assertion: it is what a screen reader is told, which is
+      // what A2P review is really about.
+      const disclosure = consent.getAttribute('aria-labelledby')
+        ? document.getElementById(consent.getAttribute('aria-labelledby')!)
+        : document.querySelector(`label[for="${consent.id}"]`);
       expect(disclosure).toHaveTextContent(/ticket confirmations and updates/i);
       expect(disclosure).toHaveTextContent(/Message frequency varies/i);
       expect(disclosure).toHaveTextContent(/Msg & data rates may apply/i);
@@ -362,7 +381,8 @@ describe('GuestCheckoutForm', () => {
       fireEvent.click(payButton);
 
       // A phone number and SMS consent buy a ticket. They do not buy a gift.
-      expect(await screen.findByText(/required to add a donation/i)).toBeInTheDocument();
+      const donationSummary = await screen.findByRole('alert');
+      expect(within(donationSummary).getByText(/required to add a donation/i)).toBeInTheDocument();
       expect(tokenizeCard).not.toHaveBeenCalled();
       expect(onPurchase).not.toHaveBeenCalled();
     });
