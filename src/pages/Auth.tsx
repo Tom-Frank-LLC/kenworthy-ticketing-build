@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -157,7 +157,11 @@ export default function Auth() {
               onClick={COLOR_LAB_ENABLED ? colorLab.open : undefined}
             />
           </div>
-          <CardTitle as="h2" className="font-display text-2xl">The Kenworthy</CardTitle>
+          {/* No wordmark under the logo. The lockup above already says
+              "Kenworthy", the line below says what the page is for, and the
+              page's own <h1> (sr-only, at the top) carries the name for
+              anything reading rather than looking. A heading repeating the
+              logo was a third statement of the same thing. */}
           <CardDescription>
             {MEMBER_ACCOUNTS_ENABLED ? "Moscow, Idaho's Historic Theatre" : 'Staff sign in'}
           </CardDescription>
