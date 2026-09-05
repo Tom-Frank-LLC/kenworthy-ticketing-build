@@ -231,7 +231,7 @@ function FreeAdmissionPanel({
       <div className="lg:col-span-2 space-y-6 min-w-0">
         <Card className="glass">
           <CardHeader>
-            <CardTitle className="font-display text-lg">Admission</CardTitle>
+            <CardTitle as="h2" className="font-display text-lg">Admission</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="font-display text-2xl text-success">Free — no ticket needed</p>
@@ -270,7 +270,7 @@ function FreeAdmissionPanel({
       <div id="order-summary" className="scroll-mt-24">
         <Card className="glass lg:sticky lg:top-20">
           <CardHeader>
-            <CardTitle className="font-display text-lg">
+            <CardTitle as="h2" className="font-display text-lg">
               {giving ? 'Your gift' : 'Support the Kenworthy'}
             </CardTitle>
           </CardHeader>
@@ -1081,6 +1081,7 @@ export default function Showing() {
           gone, these are not". A production that plays once renders nothing
           at all; ShowtimeChips returns null when there is no *other* date. */}
       <ShowtimeChips
+        headingLevel="h2"
         showings={siblingShowings}
         currentShowingId={showing.id}
         currentMode="mark"
@@ -1117,7 +1118,7 @@ export default function Showing() {
               {hasTiers && (
                 <Card className="glass">
                   <CardHeader>
-                    <CardTitle className="font-display text-lg">Seating Tiers</CardTitle>
+                    <CardTitle as="h2" className="font-display text-lg">Seating Tiers</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-3 text-sm">
@@ -1141,7 +1142,7 @@ export default function Showing() {
               )}
               <Card className="glass">
                 <CardHeader>
-                  <CardTitle className="font-display text-lg">Select Your Seats</CardTitle>
+                  <CardTitle as="h2" className="font-display text-lg">Select Your Seats</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {soldOut && (
@@ -1181,7 +1182,7 @@ export default function Showing() {
           ) : (
             <Card className="glass">
               <CardHeader>
-                <CardTitle className="font-display text-lg">General Admission</CardTitle>
+                <CardTitle as="h2" className="font-display text-lg">General Admission</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">
@@ -1201,12 +1202,39 @@ export default function Showing() {
                           <p className="font-medium">{tier.tier_name}</p>
                           <p className="text-sm text-muted-foreground">${tier.price.toFixed(2)}</p>
                         </div>
+                        {/* Named, because the icons are not. These were two
+                            unlabelled buttons — a screen reader read "button,
+                            button" — and on a general-admission showing they
+                            are the only way to add a ticket, so the whole
+                            purchase path was unusable. The count between them
+                            is a live region for the same reason: pressing +
+                            otherwise changes a number nobody is told about. */}
                         <div className="flex items-center gap-3">
-                          <Button variant="outline" size="icon" onClick={() => updateTierQty(tier.id, -1)} disabled={(tierQuantities[tier.id] || 0) === 0}>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            aria-label={`One fewer ${tier.tier_name} ticket`}
+                            onClick={() => updateTierQty(tier.id, -1)}
+                            disabled={(tierQuantities[tier.id] || 0) === 0}
+                          >
                             <Minus className="h-4 w-4" />
                           </Button>
-                          <span className="text-xl font-bold w-8 text-center">{tierQuantities[tier.id] || 0}</span>
-                          <Button variant="outline" size="icon" onClick={() => updateTierQty(tier.id, 1)} disabled={ticketCount >= gaAvailable}>
+                          <span
+                            role="status"
+                            aria-live="polite"
+                            aria-atomic="true"
+                            className="text-xl font-bold w-8 text-center"
+                          >
+                            <span className="sr-only">{tier.tier_name}: </span>
+                            {tierQuantities[tier.id] || 0}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            aria-label={`One more ${tier.tier_name} ticket`}
+                            onClick={() => updateTierQty(tier.id, 1)}
+                            disabled={ticketCount >= gaAvailable}
+                          >
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>
@@ -1224,12 +1252,34 @@ export default function Showing() {
                       {/* Remaining count hidden — see the note in the tiered
                           branch above. */}
                     </div>
+                    {/* See the note on the tiered stepper above — same fix,
+                        same reason. */}
                     <div className="flex items-center gap-3">
-                      <Button variant="outline" size="icon" onClick={() => setGaQuantity(q => Math.max(0, q - 1))} disabled={gaQuantity === 0}>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label="One fewer ticket"
+                        onClick={() => setGaQuantity(q => Math.max(0, q - 1))}
+                        disabled={gaQuantity === 0}
+                      >
                         <Minus className="h-4 w-4" />
                       </Button>
-                      <span className="text-xl font-bold w-8 text-center">{gaQuantity}</span>
-                      <Button variant="outline" size="icon" onClick={() => setGaQuantity(q => Math.min(gaAvailable, q + 1))} disabled={gaQuantity >= gaAvailable}>
+                      <span
+                        role="status"
+                        aria-live="polite"
+                        aria-atomic="true"
+                        className="text-xl font-bold w-8 text-center"
+                      >
+                        {gaQuantity}
+                        <span className="sr-only"> {gaQuantity === 1 ? 'ticket' : 'tickets'}</span>
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label="One more ticket"
+                        onClick={() => setGaQuantity(q => Math.min(gaAvailable, q + 1))}
+                        disabled={gaQuantity >= gaAvailable}
+                      >
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1244,7 +1294,7 @@ export default function Showing() {
         <div id="order-summary" className="scroll-mt-24">
           <Card className="glass lg:sticky lg:top-20">
             <CardHeader>
-              <CardTitle className="font-display text-lg">Order Summary</CardTitle>
+              <CardTitle as="h2" className="font-display text-lg">Order Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {soldOut ? (

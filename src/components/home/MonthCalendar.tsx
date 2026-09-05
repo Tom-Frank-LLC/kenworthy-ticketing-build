@@ -217,7 +217,7 @@ export function MonthCalendar({
   const panelRef = useRef<HTMLDivElement | null>(null);
   // The day cells are the disclosure controls, so closing has to hand focus
   // back to the one that opened the panel.
-  const cellRefs = useRef(new Map<string, HTMLDivElement>());
+  const cellRefs = useRef(new Map<string, HTMLButtonElement>());
 
   // Announce the panel when it opens. On `lg` the panel is `display: none`, so
   // this is a no-op there and desktop focus stays where the reader put it.
@@ -354,37 +354,29 @@ export function MonthCalendar({
                           .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
                         return (
+                          // The disclosure moved off this div and onto the
+                          // day-number button below. It was role="button"
+                          // tabIndex={0} with focusable event buttons inside
+                          // it, which is axe's `nested-interactive`: a control
+                          // inside a control has no defined behaviour, and it
+                          // put forty-odd cells in the tab order ahead of
+                          // anything worth reaching.
+                          //
+                          // The click stays here so the whole cell is still a
+                          // mouse target. Everything the keyboard and a screen
+                          // reader need is on the button, which is where the
+                          // name and aria-expanded belong anyway.
                           <div
                             key={key}
-                            ref={(el) => {
-                              if (el) cellRefs.current.set(key, el);
-                              else cellRefs.current.delete(key);
-                            }}
-                            role="button"
-                            tabIndex={0}
-                            // Without this the cell's accessible name is its own
-                            // contents — a bare day number on a phone, and the
-                            // number plus two film titles from `md`. Naming it
-                            // outright means a screen reader says which day is
-                            // being expanded, which is the whole point of the
-                            // disclosure.
-                            aria-label={
-                              hasItems
-                                ? `${format(day, 'EEEE, MMMM d')}, ${dayItems.length} ${dayItems.length === 1 ? 'showing' : 'showings'}`
-                                : `${format(day, 'EEEE, MMMM d')}, nothing on`
-                            }
-                            aria-expanded={dayExpanded}
-                            aria-controls={dayExpanded ? panelId : undefined}
+                            // A stable hook for the tests, which need to assert
+                            // on the cell box (its height floor, the showings
+                            // it draws) separately from the disclosure button
+                            // inside it.
+                            data-day-cell={key}
                             onClick={() => toggleDay(day)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                toggleDay(day);
-                              }
-                            }}
                             className={cn(
                               'relative min-h-[6.25rem] md:min-h-[9.375rem] rounded-md border text-left p-1 md:p-2 transition-colors flex flex-col overflow-hidden cursor-pointer',
-                              'hover:border-primary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                              'hover:border-primary/60',
                               'border-accent/20',
                               shaded ? 'bg-muted' : 'bg-card',
                               selected && 'border-primary bg-primary/10 ring-1 ring-primary',
@@ -392,12 +384,34 @@ export function MonthCalendar({
                             )}
                           >
                             <div className="flex items-center justify-between shrink-0">
-                              <span className={cn(
-                                'font-display text-sm md:text-base',
-                                today && 'text-accent',
-                              )}>
+                              <button
+                                type="button"
+                                ref={(el) => {
+                                  if (el) cellRefs.current.set(key, el);
+                                  else cellRefs.current.delete(key);
+                                }}
+                                // Named outright: the accessible name of a bare
+                                // day number is "4", which tells a screen-reader
+                                // user nothing about what they are opening.
+                                aria-label={
+                                  hasItems
+                                    ? `${format(day, 'EEEE, MMMM d')}, ${dayItems.length} ${dayItems.length === 1 ? 'showing' : 'showings'}`
+                                    : `${format(day, 'EEEE, MMMM d')}, nothing on`
+                                }
+                                aria-expanded={dayExpanded}
+                                aria-controls={dayExpanded ? panelId : undefined}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleDay(day);
+                                }}
+                                className={cn(
+                                  'font-display text-sm md:text-base min-h-6 min-w-6 -m-0.5 rounded p-0.5 text-left',
+                                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                                  today && 'text-accent',
+                                )}
+                              >
                                 {format(day, 'd')}
-                              </span>
+                              </button>
                               {hasItems && (
                                 <span className="hidden md:inline-block text-xs font-semibold px-1.5 rounded-full bg-primary text-primary-foreground">
                                   {dayItems.length}
@@ -444,7 +458,10 @@ export function MonthCalendar({
                                       onSelect?.(it);
                                     }}
                                     className={cn(
-                                      'text-left pl-1.5 border-l-2 group/ev',
+                                      // min-h-6 is WCAG 2.5.8: these measured
+                                      // under 20px tall with 4px between them.
+                                      'text-left pl-1.5 border-l-2 group/ev min-h-6 rounded-sm',
+                                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                                       it.type === 'movie' && 'border-primary',
                                       it.type === 'event' && 'border-accent',
                                       it.type === 'concert' && 'border-foreground',
@@ -551,9 +568,9 @@ export function MonthCalendar({
             <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
               {isToday(selectedDay) ? 'Tonight' : format(selectedDay, 'EEEE')}
             </p>
-            <h3 className="font-display text-2xl uppercase tracking-wide mb-4">
+            <h2 className="font-display text-2xl uppercase tracking-wide mb-4">
               {format(selectedDay, 'MMMM d')}
-            </h3>
+            </h2>
             <DayShowings items={selectedItems} onSelect={onSelect} />
           </div>
         </div>

@@ -180,18 +180,28 @@ export default function Donate() {
             <p className="font-serif text-sm text-muted-foreground">One-time gift</p>
           </div>
 
-          {/* Amount */}
-          <div>
-            <Label className="font-display uppercase text-xs tracking-[0.2em] text-accent mb-3 block">
+          {/* Amount.
+
+              The <Label> here pointed at nothing — it was a group heading in a
+              control's clothing, which puts a label in the accessibility tree
+              with no control attached to it. A fieldset/legend is what that
+              actually is. The tier buttons carry aria-pressed for the same
+              reason DonationPrompt's already do: without it the chosen amount
+              is only ever conveyed by colour. And the custom-amount input had
+              nothing but a placeholder, which disappears the moment anyone
+              types into it. */}
+          <fieldset>
+            <legend className="font-display uppercase text-xs tracking-[0.2em] text-accent mb-3 block">
               Amount
-            </Label>
+            </legend>
             <div className="grid grid-cols-4 gap-2 mb-3">
               {TIERS.map((t) => (
                 <button
                   key={t}
                   type="button"
+                  aria-pressed={selectedTier === t}
                   onClick={() => { setSelectedTier(t); setCustomAmount(''); }}
-                  className={`h-12 border font-display uppercase tracking-wide transition-colors ${
+                  className={`h-12 border font-display uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                     selectedTier === t
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-accent/30 text-foreground hover:border-accent'
@@ -202,8 +212,12 @@ export default function Donate() {
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-serif text-muted-foreground">$</span>
+              <Label htmlFor="d-custom-amount" className="font-serif text-muted-foreground">
+                <span aria-hidden>$</span>
+                <span className="sr-only">Custom amount in US dollars</span>
+              </Label>
               <Input
+                id="d-custom-amount"
                 type="number"
                 min={1}
                 max={100000}
@@ -212,13 +226,14 @@ export default function Donate() {
                 value={customAmount}
                 onChange={(e) => { setCustomAmount(e.target.value); setSelectedTier(null); }}
                 className="bg-background"
+                aria-describedby="d-amount-hint"
               />
-              <span className="font-serif text-sm text-muted-foreground">USD</span>
+              <span aria-hidden className="font-serif text-sm text-muted-foreground">USD</span>
             </div>
-            <p className="text-sm text-muted-foreground mt-2 font-serif italic">
+            <p id="d-amount-hint" className="text-sm text-muted-foreground mt-2 font-serif italic">
               Please enter an amount between $1 and $100,000.
             </p>
-          </div>
+          </fieldset>
 
           {/* Donor info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -237,13 +252,11 @@ export default function Donate() {
           </div>
 
           {/* Dedication */}
-          <div className="border-t border-accent/20 pt-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Heart className="h-4 w-4 text-accent" />
-              <Label className="font-display uppercase text-xs tracking-[0.2em] text-accent">
-                Dedicate this gift (optional)
-              </Label>
-            </div>
+          <fieldset className="border-t border-accent/20 pt-5">
+            <legend className="flex items-center gap-2 mb-3 font-display uppercase text-xs tracking-[0.2em] text-accent">
+              <Heart className="h-4 w-4 text-accent" aria-hidden />
+              Dedicate this gift (optional)
+            </legend>
             <div className="grid grid-cols-3 gap-2 mb-3">
               {[
                 { v: '', l: 'No' },
@@ -253,8 +266,9 @@ export default function Donate() {
                 <button
                   key={opt.v}
                   type="button"
+                  aria-pressed={dedicationType === opt.v}
                   onClick={() => setDedicationType(opt.v as typeof dedicationType)}
-                  className={`h-10 text-sm border font-display uppercase tracking-wide transition-colors ${
+                  className={`h-10 text-sm border font-display uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                     dedicationType === opt.v
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-accent/30 text-foreground hover:border-accent'
@@ -286,13 +300,15 @@ export default function Donate() {
                 </div>
               </div>
             )}
-          </div>
+          </fieldset>
 
-          {/* Card */}
+          {/* Card. A <p>, not a <Label>: Square's card fields live inside
+              its own iframe and no label of ours can ever point at them, so a
+              <label> here was one more orphan in the accessibility tree. */}
           <div className="border-t border-accent/20 pt-5">
-            <Label className="font-display uppercase text-xs tracking-[0.2em] text-accent mb-3 block">
+            <p className="font-display uppercase text-xs tracking-[0.2em] text-accent mb-3 block">
               Payment Card
-            </Label>
+            </p>
             <SquareCardForm ref={cardRef} source="square-donation" onReadyChange={setCardReady} />
           </div>
 

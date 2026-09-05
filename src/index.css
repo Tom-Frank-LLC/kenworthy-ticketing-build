@@ -36,8 +36,22 @@
     --paper: 38 30% 92%;
     --paper-foreground: 0 0% 10%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 38 30% 96%;
+    /* Red — errors, destructive actions.
+
+       Light fill, off-black text, exactly like --primary, --accent and
+       --success below. It used to be a deep 0 72% 51% (#dc2828) with cream on
+       top, and that failed AA in both directions at once: 4.00:1 as text on
+       the page, 3.74:1 as text on a card, and 4.44:1 for the cream sitting on
+       the fill. Error text is the one string a patron most needs to read, and
+       it was the only colour in the palette that failed.
+
+       This is the same lesson --success already carries. #e56c6c reads 6.11:1
+       on the background, 5.71:1 on a card, 4.95:1 on --secondary, and takes
+       off-black at 6.11:1. Every bg-destructive/5..15 tint with
+       text-destructive on it clears 4.67:1. Measured, not eyeballed — see
+       docs/accessibility-audit.md. */
+    --destructive: 0 70% 66%;
+    --destructive-foreground: 0 0% 6%;
 
     --border: 0 0% 16%;
     --input: 0 0% 16%;
@@ -105,6 +119,44 @@
     font-family: 'Anton', 'Bebas Neue', Impact, sans-serif;
     letter-spacing: 0.01em;
     text-transform: uppercase;
+  }
+
+  /* Reduced motion, site-wide.
+
+     Before this, exactly two things honoured the preference: TrailerFeed
+     (which checks the media query in JS and swaps the trailer for a poster)
+     and .snap-feed's scroll snapping. Everything else — the Radix
+     animate-in/animate-out overlays, the accordion, animate-fade-in, every
+     transition-colors — ran regardless.
+
+     0.01ms rather than `none` on purpose: Radix's Presence unmounts a closed
+     dialog on `animationend`, and an animation that never runs never fires
+     it, which would leave overlays mounted forever. A near-zero duration
+     still fires the event on the next frame. Verified with Chrome's
+     prefers-reduced-motion emulation: three open/close cycles of the mobile
+     nav leave zero dialogs in the DOM.
+
+     animate-spin is the deliberate exception. It is not decoration — it is
+     the only signal that a payment is being taken — so it is slowed to a
+     calm rotation rather than frozen. A frozen spinner reads as a hung app,
+     which is a worse outcome than a little movement. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+
+    .animate-spin {
+      animation-duration: 1.6s !important;
+      animation-iteration-count: infinite !important;
+      animation-timing-function: linear !important;
+    }
   }
 }
 

@@ -158,7 +158,7 @@ export default function Terms() {
         <B>transactional</B> messages necessary to complete and confirm your purchase (tickets,
         receipts, event updates). Marketing emails are sent only if you sign up or opt in, and you may
         unsubscribe at any time. For how we handle your information, see our{' '}
-        <Link to="/privacy" className="text-primary hover:underline">
+        <Link to="/privacy" className="text-primary underline underline-offset-4">
           Privacy Policy
         </Link>
         .
@@ -226,7 +226,7 @@ export default function Terms() {
       <H2>17. Privacy</H2>
       <P>
         Your use of the Services is also governed by our{' '}
-        <Link to="/privacy" className="text-primary hover:underline">
+        <Link to="/privacy" className="text-primary underline underline-offset-4">
           Privacy Policy
         </Link>
         , which explains what information we collect and how we use it.

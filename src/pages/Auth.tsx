@@ -157,7 +157,7 @@ export default function Auth() {
               onClick={COLOR_LAB_ENABLED ? colorLab.open : undefined}
             />
           </div>
-          <CardTitle className="font-display text-2xl">The Kenworthy</CardTitle>
+          <CardTitle as="h2" className="font-display text-2xl">The Kenworthy</CardTitle>
           <CardDescription>
             {MEMBER_ACCOUNTS_ENABLED ? "Moscow, Idaho's Historic Theatre" : 'Staff sign in'}
           </CardDescription>

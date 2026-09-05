@@ -26,6 +26,7 @@ export function ShowtimeChips({
   currentVenueName,
   headingId,
   heading = 'Also playing',
+  headingLevel: Heading = 'h3',
   className,
 }: {
   showings: UpcomingShowing[] | undefined;
@@ -55,6 +56,15 @@ export function ShowtimeChips({
   currentVenueName?: string | null;
   headingId: string;
   heading?: string;
+  /**
+   * The heading level this block sits at.
+   *
+   * It was a hardcoded <h4>, which skipped a level under BoothNote's <h2>
+   * and two under the showing page's <h1> — axe's `heading-order`, and a
+   * screen-reader user hearing a section that is not there. The default
+   * suits the two card callers; the showing page passes h2.
+   */
+  headingLevel?: 'h2' | 'h3' | 'h4';
   className?: string;
 }) {
   // duration_minutes is passed through so a long programme still in progress
@@ -75,12 +85,12 @@ export function ShowtimeChips({
 
   return (
     <div className={cn('mt-5', className)}>
-      <h4
+      <Heading
         id={headingId}
         className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2"
       >
         {heading}
-      </h4>
+      </Heading>
       {/* A list, so a screen reader announces how many dates there are before
           reading them. */}
       <ul aria-labelledby={headingId} className="flex flex-wrap gap-2">

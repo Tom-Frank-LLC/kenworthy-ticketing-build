@@ -47,8 +47,24 @@ const renderCalendar = (items: FeedItem[]) =>
     </MemoryRouter>,
   );
 
+/**
+ * The day's disclosure trigger.
+ *
+ * This is the day-number button, not the cell box. The two used to be the same
+ * element — the cell was `role="button" tabIndex={0}` — but a control with
+ * focusable controls inside it is axe's `nested-interactive`, and it put every
+ * cell in the tab order ahead of the showings. The name and aria-expanded live
+ * on the button now; the box is `cellBoxFor` below.
+ */
 const cellFor = (d: Date) =>
   screen.getByRole('button', { name: new RegExp(`^${dayName(d)}`) });
+
+/** The cell box around that trigger — what the grid sizes and fills. */
+const cellBoxFor = (d: Date) => {
+  const box = cellFor(d).closest('[data-day-cell]');
+  expect(box).not.toBeNull();
+  return box as HTMLElement;
+};
 
 const panelFor = (cell: HTMLElement) => {
   const id = cell.getAttribute('aria-controls');
@@ -128,12 +144,23 @@ describe('MonthCalendar mobile day accordion', () => {
     expect(panelFor(cell)).toHaveTextContent('Nothing on the marquee this day.');
   });
 
-  it('keyboard activation toggles the panel', () => {
+  /**
+   * The trigger is a native `<button>` now, so Enter and Space are the
+   * browser's job rather than ours — the hand-rolled onKeyDown that used to
+   * sit on the cell div is gone with it.
+   *
+   * jsdom does not synthesise the click a real keydown produces on a button,
+   * so firing `keyDown` here would test nothing. Asserting on `click` is
+   * asserting on exactly what a keyboard produces in a browser; what keeps
+   * that honest is the element being a real button, which the query above
+   * enforces by role.
+   */
+  it('activation toggles the panel', () => {
     renderCalendar([item()]);
     const cell = cellFor(TARGET);
-    fireEvent.keyDown(cell, { key: 'Enter' });
+    fireEvent.click(cell);
     expect(cell).toHaveAttribute('aria-expanded', 'true');
-    fireEvent.keyDown(cell, { key: 'Enter' });
+    fireEvent.click(cell);
     expect(cell).toHaveAttribute('aria-expanded', 'false');
   });
 });
@@ -164,22 +191,24 @@ describe('a day cell draws every showing on that day', () => {
 
   it('renders all four titles, not two and a "+2 more"', () => {
     renderCalendar(fourOnOneDay);
-    const cell = cellFor(TARGET);
+    const cell = cellBoxFor(TARGET);
 
     for (const title of ['The Gold Rush', 'Punch-Drunk Love', 'Tony n’ Tina’s Wedding', 'The Odyssey']) {
       // getAllBy: the selected-day panel prints the same titles beside the grid.
       expect(screen.getAllByText(title).length).toBeGreaterThan(0);
     }
 
-    // The cell itself, not the page — the panel would satisfy a page-wide check.
-    const drawn = cell.querySelectorAll('button');
+    // The cell itself, not the page — the panel would satisfy a page-wide
+    // check. `[data-day-cell] > * button` would also catch the day-number
+    // disclosure trigger, so the showings are counted by their own marker.
+    const drawn = cell.querySelectorAll('button.group\\/ev');
     expect(drawn).toHaveLength(4);
     expect(cell.textContent).not.toMatch(/\+\d+ more/);
   });
 
   it('sizes the cell with a floor, not a fixed height', () => {
     renderCalendar(fourOnOneDay);
-    const cls = cellFor(TARGET).className;
+    const cls = cellBoxFor(TARGET).className;
 
     // A fixed height is what forced the truncation; a minimum is what lets the
     // row grow. `h-[...]` coming back here means the cap is back.

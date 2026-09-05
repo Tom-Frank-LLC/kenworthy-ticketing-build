@@ -481,7 +481,7 @@ export default function AdminDashboard() {
       </div>
       <div className="flex flex-wrap gap-2 items-center">
         <Select value={statusFilter} onValueChange={v => setStatusFilter(v as any)}>
-          <SelectTrigger className="w-[130px]">
+          <SelectTrigger aria-label="Filter by status" className="w-[130px]">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -494,7 +494,7 @@ export default function AdminDashboard() {
         {activeScheduleTab === 'movies' && (
           <>
             <Select value={ratingFilter} onValueChange={setRatingFilter}>
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger aria-label="Filter by rating" className="w-[120px]">
                 <SelectValue placeholder="Rating" />
               </SelectTrigger>
               <SelectContent>
@@ -505,7 +505,7 @@ export default function AdminDashboard() {
               </SelectContent>
             </Select>
             <Select value={genreFilter} onValueChange={setGenreFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger aria-label="Filter by genre" className="w-[140px]">
                 <SelectValue placeholder="Genre" />
               </SelectTrigger>
               <SelectContent>
@@ -521,7 +521,7 @@ export default function AdminDashboard() {
         {activeScheduleTab === 'live-events' && (
           <>
             <Select value={liveEventKindFilter} onValueChange={v => setLiveEventKindFilter(v as any)}>
-              <SelectTrigger className="w-[130px]">
+              <SelectTrigger aria-label="Filter by kind" className="w-[130px]">
                 <SelectValue placeholder="Kind" />
               </SelectTrigger>
               <SelectContent>
@@ -553,7 +553,7 @@ export default function AdminDashboard() {
               </SelectContent>
             </Select>
             <Select value={genreFilter} onValueChange={setGenreFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger aria-label="Filter by genre" className="w-[140px]">
                 <SelectValue placeholder="Genre" />
               </SelectTrigger>
               <SelectContent>
@@ -567,7 +567,7 @@ export default function AdminDashboard() {
         )}
 
         <Select value={sortOrder} onValueChange={v => setSortOrder(v as SortOrder)}>
-          <SelectTrigger className="w-[190px]">
+          <SelectTrigger aria-label="Sort order" className="w-[190px]">
             <SelectValue placeholder="Sort by" />
           </SelectTrigger>
           <SelectContent>
@@ -1019,18 +1019,41 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                         </div>
+                        {/* Named after the row they act on, not "Edit". There
+                            are around a thousand of these on this page and
+                            every one of them announced as an unlabelled link
+                            or button. A title attribute is a tooltip, not an
+                            accessible name. */}
                         <div className="flex gap-1">
                           <Button variant="ghost" size="sm" title="Add showing" asChild>
-                            <Link to={`/admin/showings/new?kind=movie&movie=${movie.id}`}><Calendar className="h-4 w-4" /></Link>
+                            <Link
+                              to={`/admin/showings/new?kind=movie&movie=${movie.id}`}
+                              aria-label={`Add a showing of ${movie.title}`}
+                            >
+                              <Calendar className="h-4 w-4" aria-hidden />
+                            </Link>
                           </Button>
-                          <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(movie, 'movie')}>
-                            <Eye className="h-4 w-4" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Preview ${movie.title} as the public sees it`}
+                            title="Preview as public"
+                            onClick={() => openPreview(movie, 'movie')}
+                          >
+                            <Eye className="h-4 w-4" aria-hidden />
                           </Button>
                           <Button variant="ghost" size="sm" asChild>
-                            <Link to={`/admin/movies/${movie.id}`}><Edit className="h-4 w-4" /></Link>
+                            <Link to={`/admin/movies/${movie.id}`} aria-label={`Edit ${movie.title}`}>
+                              <Edit className="h-4 w-4" aria-hidden />
+                            </Link>
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => deleteItem('movies', movie.id, 'Movie')}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Delete ${movie.title}`}
+                            onClick={() => deleteItem('movies', movie.id, 'Movie')}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" aria-hidden />
                           </Button>
                         </div>
                       </div>
@@ -1150,21 +1173,34 @@ export default function AdminDashboard() {
                               <Link to={`/admin/showings/new?${showingScope}`}><Calendar className="h-4 w-4" /></Link>
                             </Button>
                           )}
-                          <Button variant="ghost" size="sm" title="Preview as public" onClick={() => openPreview(item, item.kind)}>
-                            <Eye className="h-4 w-4" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Preview ${item.title} as the public sees it`}
+                            title="Preview as public"
+                            onClick={() => openPreview(item, item.kind)}
+                          >
+                            <Eye className="h-4 w-4" aria-hidden />
                           </Button>
-                          <Button variant="ghost" size="sm" title="Export contacts" onClick={async () => {
+                          <Button variant="ghost" size="sm" aria-label={`Export contacts for ${item.title}`} title="Export contacts" onClick={async () => {
                             const count = await exportContactsCsv(item.kind, item.id, item.title);
                             if (count === null) toast.info('No attendees found');
                             else toast.success(`Exported ${count} contacts`);
                           }}>
-                            <Download className="h-4 w-4" />
+                            <Download className="h-4 w-4" aria-hidden />
                           </Button>
                           <Button variant="ghost" size="sm" asChild>
-                            <Link to={`/admin/${item.kind}s/${item.id}`}><Edit className="h-4 w-4" /></Link>
+                            <Link to={`/admin/${item.kind}s/${item.id}`} aria-label={`Edit ${item.title}`}>
+                              <Edit className="h-4 w-4" aria-hidden />
+                            </Link>
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => deleteItem(item.kind === 'event' ? 'events' : 'live_performances', item.id, item.kind === 'event' ? 'Event' : 'Live Performance')}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Delete ${item.title}`}
+                            onClick={() => deleteItem(item.kind === 'event' ? 'events' : 'live_performances', item.id, item.kind === 'event' ? 'Event' : 'Live Performance')}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" aria-hidden />
                           </Button>
                         </div>
                       </div>
@@ -1241,10 +1277,17 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/admin/venues/${venue.id}`}><Edit className="h-4 w-4" /></Link>
+                          <Link to={`/admin/venues/${venue.id}`} aria-label={`Edit ${venue.name}`}>
+                            <Edit className="h-4 w-4" aria-hidden />
+                          </Link>
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => deleteVenue(venue, seatCount, showingCount)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Delete ${venue.name}`}
+                          onClick={() => deleteVenue(venue, seatCount, showingCount)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" aria-hidden />
                         </Button>
                       </div>
                     </CardContent>

@@ -476,9 +476,9 @@ export default function SilentFilmFestival() {
                 <Ticket className="h-8 w-8 text-success shrink-0" aria-hidden="true" />
               )}
               <div className="flex-1 min-w-0">
-                <h3 className="font-display uppercase text-xl tracking-[0.1em]">
+                <h2 className="font-display uppercase text-xl tracking-[0.1em]">
                   {pass.name}
-                </h3>
+                </h2>
                 <p className="font-serif text-muted-foreground mt-1">
                   ${Number(pass.price).toFixed(2)} — good at every screening below.
                 </p>

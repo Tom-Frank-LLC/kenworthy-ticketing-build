@@ -422,7 +422,7 @@ function ItemCard({
         >
           <span>{milestone.category}</span>
         </div>
-        <h3 className="font-display text-2xl mt-2 leading-tight">{milestone.title}</h3>
+        <h2 className="font-display text-2xl mt-2 leading-tight">{milestone.title}</h2>
         {milestone.description && (
           <p className="font-serif text-muted-foreground mt-3 leading-relaxed">
             {milestone.description}

@@ -95,12 +95,12 @@ export function ContactBlock() {
       508 S Main St, Moscow, ID 83843
       <br />
       Phone:{' '}
-      <a href="tel:+12088824127" className="text-primary hover:underline">
+      <a href="tel:+12088824127" className="text-primary underline underline-offset-4">
         208-882-4127
       </a>
       <br />
       Email:{' '}
-      <a href="mailto:events@kenworthy.org" className="text-primary hover:underline">
+      <a href="mailto:events@kenworthy.org" className="text-primary underline underline-offset-4">
         events@kenworthy.org
       </a>
     </address>
