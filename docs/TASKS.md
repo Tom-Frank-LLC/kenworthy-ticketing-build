@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**96 briefs** — 84 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
+**96 briefs** — 85 shipped, 6 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -17,7 +17,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
-- `P3` **The Backstage masthead is a full house, laid out like the calendar hero**<br>`ux` — [brief](briefs/BRIEF-backstage-hero-full-house.md)
 
 ## Open
 
@@ -29,6 +28,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The Backstage masthead is a full house, laid out like the calendar hero**<br>`ux` — `#293` — [brief](briefs/BRIEF-backstage-hero-full-house.md)
 - **Audit and remediate the site against WCAG 2.2 AA, public money-paths first**<br>`ux` — `#289`, `#290` — [brief](briefs/BRIEF-accessibility-ada.md) · [notes](briefs/../accessibility-audit.md)
 - **The lockup stops collapsing at 1024, and the phone "K" is the palette's own near-white**<br>`ux` — `#260` — [brief](briefs/BRIEF-header-lockup-collapse-and-white-k.md)
 - **A calendar day draws every showing on it, and the week row grows to suit**<br>`ux` — `#261` — [brief](briefs/BRIEF-calendar-cells-fit-all-showings.md)
