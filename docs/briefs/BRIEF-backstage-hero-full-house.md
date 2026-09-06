@@ -1,11 +1,13 @@
 ---
 brief: backstage-hero-full-house
 title: The Backstage masthead is a full house, laid out like the calendar hero
-status: built
+status: shipped
 track: ux
-severity: P3
 date: 2026-09-05
-verified: false
+shipped_in: ["#293"]
+shipped_at: 2026-09-05
+verified: true
+evidence: production version 137e170f-e69e-497b-b2b6-6c57b60f3f48 serves the Backstage chunk with the 50/56vh band and 'center 75%'; rollback is version 802ec83c
 ---
 
 # Brief: swap the Backstage hero photograph and lay it out like the calendar hero
@@ -26,7 +28,7 @@ an upload plus a one-column update, per environment:
 | env | old `hero_path` (left in the bucket for rollback) | new `hero_path` |
 |---|---|---|
 | staging | `hero/1787342625926_backstage.jpg` | `hero/1788666703000_backstage-burlesque.jpg` — **done 2026-09-05** |
-| production | `hero/1787300649684_backstage.jpg` | not yet — do it with the deploy, see below |
+| production | `hero/1787300649684_backstage.jpg` | **still pending as of 2026-09-05 evening.** The layout deployed (version 137e170f) but the browser extension was down and the prod service key is classifier-blocked, so production is showing the *old* neon-sign photo in the *new* band until someone uploads the burlesque shot via Admin → Pages → Backstage → Hero image (the PNG in `src/assets/` is fine; the tab accepts it) |
 
 The source file is `src/assets/Backstage Burlesque.png` (1912×1284, 5.3 MB).
 It is **not** imported anywhere and should not be committed; what went to the
@@ -44,8 +46,9 @@ applied inside `src/pages/Backstage.tsx`:
   Supabase render endpoint (`resize: 'contain'`, q70). Verified with real
   viewports: a phone requests the 768 copy, a laptop 1280, a 1536-wide screen
   1920, all delivered as `image/webp` without a `<picture>` element.
-- `objectPosition: 'center 62%'`, derived: the sign and the performer sit in
-  the lower half and the top third is ceiling.
+- `objectPosition: 'center 75%'`, tuned by eye with Tom (62% showed rafters,
+  78% lost the drape fringe): the sign and the performer sit in the lower half
+  and the top third is ceiling.
 - the band also renders (empty, at final height) while the row is loading, so
   the page no longer flashes the drawn sign and then jumps to the photo.
 
@@ -56,16 +59,15 @@ Screenshots at 390, 768, 1280 and 1536 wide against the staging database,
 frame at every width. `tsc -p tsconfig.app.json` clean; `backstage.test.ts`
 passes.
 
-## To ship
+## Shipped 2026-09-05
 
-1. Merge, then follow `CLAUDE.md` → Deploying.
-2. Right before or after the deploy, do the production swap the same way as
-   staging (storage POST of the JPEG to `hero/<ts>_backstage-burlesque.jpg`,
-   then `PATCH backstage_page_content?id=eq.true {hero_path}`), or upload it
-   through **Admin → Pages → Backstage → Hero image**, which does the same
-   thing and also removes the old object.
-3. Set `status: shipped`, `shipped_in`, `shipped_at`, `verified: true`; re-run
-   `node scripts/generate-tasks.mjs`.
+Merged as #293 and deployed as production version 137e170f. Before deploying,
+a build of main at 7efbf01 (pre-merge) reproduced the live entry hash
+`index-CmOLbnl0.js` exactly, so production was not ahead of main; the
+post-merge build moved almost every chunk hash, and four unrelated chunks
+were byte-identical once hashes were normalised — the cascade, not a change.
+
+**Left to do:** the production photo upload in the table above.
 
 ## Follow-up worth a brief of its own
 
