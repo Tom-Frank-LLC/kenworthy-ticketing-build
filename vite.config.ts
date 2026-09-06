@@ -28,8 +28,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       // Resolve the %SITE_URL% token to the origin above so the static shell
-      // crawlers read (index.html OG/JSON-LD, robots.txt, sitemap.xml) is
-      // correct per-env. App code reads the same value via
+      // crawlers read (index.html OG/JSON-LD, robots.txt) is correct per-env.
+      // (sitemap.xml is no longer a file: worker/sitemap.ts renders it from
+      // live rows, and the Worker's SITE_URL var carries the same origin.) App code reads the same value via
       // import.meta.env.VITE_SITE_URL (src/lib/site.ts). One source of truth;
       // the domain cutover is a single env change.
       {
@@ -40,7 +41,7 @@ export default defineConfig(({ mode }) => {
         closeBundle() {
           // public/ files are copied verbatim, so token-replace them on disk
           // after the build writes them out.
-          for (const file of ['robots.txt', 'sitemap.xml']) {
+          for (const file of ['robots.txt']) {
             const p = path.resolve(__dirname, 'dist', file);
             try {
               const txt = fs.readFileSync(p, 'utf8');

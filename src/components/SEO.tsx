@@ -7,7 +7,7 @@ interface SEOProps {
   description: string;
   /** Path override. Defaults to the current location. */
   path?: string;
-  /** OG image URL. Defaults to the favicon. */
+  /** OG image URL. Defaults to the branded 1200×630 card in public/. */
   image?: string;
   /** Optional JSON-LD blob to attach. */
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
@@ -30,7 +30,7 @@ export function SEO({ title, description, path, image, jsonLd, ogType = "website
   const url = `${SITE_URL}${path ?? location.pathname}`;
   const trimmedTitle = title.length > 60 ? title.slice(0, 57) + "…" : title;
   const trimmedDesc = description.length > 160 ? description.slice(0, 157) + "…" : description;
-  const ogImage = image ?? `${SITE_URL}/favicon.svg`;
+  const ogImage = image ?? `${SITE_URL}/og-default.jpg`;
   const ldArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
   return (

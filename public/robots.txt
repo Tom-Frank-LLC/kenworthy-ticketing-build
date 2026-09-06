@@ -10,7 +10,13 @@ Allow: /
 User-agent: facebookexternalhit
 Allow: /
 
+# Cloudflare's "managed robots.txt" (zone setting, not this repo) prepends
+# its own `User-agent: *` group with a Content-Signal line and a list of AI
+# crawler disallows. Google merges same-agent groups; some crawlers honour only
+# the first, so the signal is repeated here to survive either way. If the
+# managed block is ever switched off in the dashboard, nothing is lost.
 User-agent: *
+Content-Signal: search=yes,ai-train=no,use=reference
 Allow: /
 Disallow: /admin
 Disallow: /staff

@@ -1,4 +1,12 @@
 import DOMPurify from 'dompurify';
+import { htmlToPlainText, toMetaDescription } from './plainText';
+
+/**
+ * The plain-text helpers live in `plainText.ts` so the Cloudflare Worker can
+ * share them without pulling DOMPurify into its bundle. Re-exported here so
+ * every existing import site keeps working.
+ */
+export { htmlToPlainText, toMetaDescription };
 
 /**
  * The description fields hold HTML now, written by the admin rich-text editor.
@@ -42,31 +50,6 @@ const ALLOWED_URI = /^(?:https?:|mailto:|tel:|\/|#)/i;
 
 /** Does this value already carry markup we recognise? */
 const HAS_MARKUP = new RegExp(`</?(?:${ALLOWED_TAGS.join('|')})\\b[^>]*>`, 'i');
-
-/**
- * Tags that end a line of prose. Turned into newlines before the rest of the
- * markup is dropped, so `<p>One</p><p>Two</p>` becomes `One Two` rather than
- * `OneTwo` — which would otherwise corrupt every meta description and search
- * haystack in the app.
- */
-const BLOCK_BOUNDARY = /<\/?(?:p|br|div|h[1-6]|li|ul|ol|blockquote|hr|tr|td)\b[^>]*>/gi;
-
-const ANY_TAG = /<[^>]*>/g;
-
-/**
- * `&amp;` is decoded last on purpose. Decoding it first would turn the
- * literal text `&amp;lt;` into `<`, re-creating markup out of something the
- * author escaped deliberately.
- */
-const ENTITIES: ReadonlyArray<readonly [RegExp, string]> = [
-  [/&nbsp;/gi, ' '],
-  [/&lt;/gi, '<'],
-  [/&gt;/gi, '>'],
-  [/&quot;/gi, '"'],
-  [/&#0*39;|&apos;/gi, "'"],
-  [/&#x27;/gi, "'"],
-  [/&amp;/gi, '&'],
-];
 
 function escapeHtml(text: string): string {
   return text
@@ -155,22 +138,6 @@ export function toRichHtml(value: string | null | undefined): string {
 }
 
 /**
- * Flatten to a single line of readable text.
- *
- * For meta descriptions, JSON-LD, search haystacks, PDFs and email — anywhere
- * markup would be printed literally or matched against by accident. Legacy
- * plain text passes through unchanged apart from whitespace collapsing.
- */
-export function htmlToPlainText(value: string | null | undefined): string {
-  if (!value) return '';
-  let text = value.replace(BLOCK_BOUNDARY, '\n').replace(ANY_TAG, '');
-  for (const [pattern, replacement] of ENTITIES) {
-    text = text.replace(pattern, replacement);
-  }
-  return text.replace(/\s+/g, ' ').trim();
-}
-
-/**
  * Whether a value carries any actual copy.
  *
  * TipTap represents an emptied editor as `<p></p>`, which is truthy and would
@@ -180,22 +147,4 @@ export function htmlToPlainText(value: string | null | undefined): string {
  */
 export function isRichTextEmpty(value: string | null | undefined): boolean {
   return htmlToPlainText(value).length === 0 && !/<hr\b/i.test(value ?? '');
-}
-
-/**
- * Trim to a length limit on a word boundary, for meta tags.
- *
- * Slicing mid-word is what the old `description.slice(0, 160)` did; since every
- * meta description now goes through this file anyway, it may as well stop
- * somewhere sensible.
- */
-export function toMetaDescription(
-  value: string | null | undefined,
-  limit = 160,
-): string {
-  const text = htmlToPlainText(value);
-  if (text.length <= limit) return text;
-  const cut = text.slice(0, limit - 1);
-  const lastSpace = cut.lastIndexOf(' ');
-  return `${(lastSpace > limit * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
