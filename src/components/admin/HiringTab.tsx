@@ -189,7 +189,7 @@ export default function HiringTab() {
               <p className="text-xs font-serif text-muted-foreground mt-1">
                 {enabled
                   ? 'The Hiring link appears in the header and mobile menu, and /hiring shows the active postings below.'
-                  : 'The Hiring link is hidden and /hiring redirects to the Volunteer page, which keeps Natalia’s contact details in front of anyone who follows an old link.'}
+                  : 'The Hiring link is hidden and /hiring redirects to the Volunteer page, which keeps Jordan’s contact details in front of anyone who follows an old link.'}
               </p>
             </div>
           </div>

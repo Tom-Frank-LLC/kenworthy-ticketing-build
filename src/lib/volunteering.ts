@@ -13,7 +13,7 @@ export const VOLUNTEER_DUTIES = [
 ] as const;
 
 export const VOLUNTEER_COORDINATOR = {
-  name: 'Natalia Valencia',
+  name: 'Jordan Goins',
   title: 'Volunteer Coordinator',
   email: 'hiring@kenworthy.org',
   phone: '(208) 882-4127',
