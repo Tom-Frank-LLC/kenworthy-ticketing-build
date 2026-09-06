@@ -7,7 +7,7 @@ date: 2026-09-05
 shipped_in: ["#293"]
 shipped_at: 2026-09-05
 verified: true
-evidence: production version 137e170f-e69e-497b-b2b6-6c57b60f3f48 serves the Backstage chunk with the 50/56vh band and 'center 75%'; rollback is version 802ec83c
+evidence: production version 137e170f-e69e-497b-b2b6-6c57b60f3f48 serves the Backstage chunk with the 50/56vh band and 'center 75%'; backstage_page_content.hero_path in production is hero/1788672222933_Backstage_Burlesque.png; rollback is version 802ec83c
 ---
 
 # Brief: swap the Backstage hero photograph and lay it out like the calendar hero
@@ -28,7 +28,7 @@ an upload plus a one-column update, per environment:
 | env | old `hero_path` (left in the bucket for rollback) | new `hero_path` |
 |---|---|---|
 | staging | `hero/1787342625926_backstage.jpg` | `hero/1788666703000_backstage-burlesque.jpg` — **done 2026-09-05** |
-| production | `hero/1787300649684_backstage.jpg` | **still pending as of 2026-09-05 evening.** The layout deployed (version 137e170f) but the browser extension was down and the prod service key is classifier-blocked, so production is showing the *old* neon-sign photo in the *new* band until someone uploads the burlesque shot via Admin → Pages → Backstage → Hero image (the PNG in `src/assets/` is fine; the tab accepts it) |
+| production | `hero/1787300649684_backstage.jpg` (removed by the admin tab) | `hero/1788672222933_Backstage_Burlesque.png` — **done 2026-09-05** by Tom through Admin → Pages → Backstage → Hero image, after the layout deployed (version 137e170f). The PNG source is fine: with a browser `Accept` header the render endpoint answers webp at 46/107/228 KB for 768/1280/1920; without one it answers PNG, so never judge its output from a bare curl |
 
 The source file is `src/assets/Backstage Burlesque.png` (1912×1284, 5.3 MB).
 It is **not** imported anywhere and should not be committed; what went to the
@@ -67,7 +67,7 @@ a build of main at 7efbf01 (pre-merge) reproduced the live entry hash
 post-merge build moved almost every chunk hash, and four unrelated chunks
 were byte-identical once hashes were normalised — the cascade, not a change.
 
-**Left to do:** the production photo upload in the table above.
+Production photo uploaded the same evening; nothing left open on this brief except the alt-text follow-up below.
 
 ## Follow-up worth a brief of its own
 
