@@ -17,6 +17,9 @@ import {
 import { RichText } from '@/components/RichText';
 import { isRichTextEmpty } from '@/lib/richText';
 
+/** Widths the site's other heroes are cut at; see heroSrcSet below. */
+const HERO_WIDTHS = [768, 1280, 1920] as const;
+
 /**
  * Backstage — the room behind the room.
  *
@@ -96,6 +99,19 @@ export default function Backstage() {
       transform: { width, resize: 'contain', quality: 70 },
     }).data.publicUrl;
 
+  /**
+   * The hero at the same three widths the home, rentals and calendar heroes
+   * ship, so a phone pulls a 768px copy rather than the 1800px one this page
+   * used to send to everything. Those three cut their variants at build time
+   * from a file in src/assets/; this photograph lives in the bucket so an
+   * admin can replace it without a deploy, so the widths are cut on request
+   * by the render endpoint instead. There is no <picture> with a webp source
+   * because none is needed: the endpoint already answers in webp to any
+   * browser that accepts it (verified against the live URL).
+   */
+  const heroSrcSet = (path: string) =>
+    HERO_WIDTHS.map(w => `${thumbUrl(path, w)} ${w}w`).join(', ');
+
   const step = useCallback((delta: number) => {
     setLightbox(current => {
       if (current === null || photos.length === 0) return current;
@@ -127,12 +143,19 @@ export default function Backstage() {
           smaller line is doing work rather than decorating. Kept a <p>: the
           global heading rule would uppercase an <h*> anyway, but this is not a
           heading and putting it in the outline would give the page two. */}
-      <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mb-3">
+      <p className="font-display uppercase tracking-[0.3em] text-xs sm:text-sm text-accent drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
         Welcome to
       </p>
-      <h1 className="font-display text-3xl md:text-5xl text-foreground">
+      {/* Sizes, leading and shadows are CalendarHero's, so the two mastheads
+          read as the same family — the drop-shadows are what keep the line
+          legible over whatever photograph an admin uploads next, and they cost
+          nothing over the drawn sign's plain background. */}
+      <h1 className="mt-2 font-display uppercase tracking-wide text-[1.75rem] sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
         The room <span className="text-primary">behind the room</span>
       </h1>
+      <p className="mt-3 font-serif italic text-foreground/90 text-sm sm:text-base max-w-lg drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+        Kenworthy's after-hours room for private events, live music and late nights.
+      </p>
     </>
   );
 
@@ -146,42 +169,72 @@ export default function Backstage() {
       />
 
       {/* ----------------------------------------------------- The sign */}
-      {heroPath ? (
-        /* The room, with the page's line laid over the foot of it — the same
-           treatment as the festival page, and for the same reasons.
+      {heroPath || loading ? (
+        /* The room, full of people, with the page's line laid over the foot of
+           it. Built the way CalendarHero is built — same band heights, same
+           object-cover fill, same bottom-weighted scrim, same gold hairline,
+           same bottom-aligned copy — because three heroes built three
+           different ways drift apart the first time any one of them is
+           touched, and this one had already drifted: container width, rounded
+           corners, a shorter band, its own scrim.
 
-           It runs flush to the header: there is no top padding above it,
-           because a band of empty page above a photograph that is meant to be
-           the first thing there reads as a mistake. Full-bleed on a phone,
-           container width from md up, and only the bottom corners rounded —
-           the top edge has nothing left to be rounded against.
-
-           The scrim is not decoration. The bottom of the neon photograph is
-           dark but not uniformly so, and a title set straight onto it would be
-           legible in this image and illegible in whichever one replaces it. */
-        <section className="container max-w-5xl px-4">
-          {/* No bottom margin: the section below brings its own top padding,
-              and stacking the two left a band of empty page under the
-              photograph almost as tall as the copy it was separating. */}
-          <div className="relative -mx-4 md:mx-0 md:rounded-b-lg overflow-hidden">
-            <img
-              src={thumbUrl(heroPath, 1800)}
-              /* Described rather than decorative: unlike the festival's shot of
-                 the auditorium, this photograph is of the sign itself, and the
-                 heading laid over it does not say the room's name. Without this
-                 alt the name "Backstage" appears nowhere in the page's content. */
-              alt="The Backstage neon sign, lit, above the bar"
-              /* The hero is the content, not something below the fold. Every
-                 other image on this page is lazy for exactly the opposite
-                 reason. */
-              loading="eager"
-              fetchPriority="high"
-              decoding="async"
-              className="w-full h-[46vh] md:h-[56vh] object-cover"
+           It also renders while the row is still loading. The old layout
+           showed the drawn sign until the fetch returned and then swapped in
+           the photograph at a different height, which jolted the whole page
+           on every visit. An empty band at the final height, that the
+           photograph then fills, does not. The drawn sign is now only for the
+           case it was meant for: a row with no photograph in it. */
+        <section
+          aria-label="Backstage at the Kenworthy"
+          className="relative overflow-hidden border-b border-accent/25 bg-background min-h-[50vh] lg:min-h-[56vh] flex"
+        >
+          <div className="absolute inset-0">
+            {heroPath && (
+              <img
+                src={thumbUrl(heroPath, 1280)}
+                srcSet={heroSrcSet(heroPath)}
+                sizes="100vw"
+                /* Describes the photograph in the bucket today. The column has
+                   no alt of its own (see the hero_path migration), so this line
+                   is coupled to the upload and has to change with it. */
+                alt="A full house in Backstage: the audience under the neon sign, a performer lit in red and blue on the small stage"
+                /* The hero is the content, not something below the fold. Every
+                   other image on this page is lazy for exactly the opposite
+                   reason. */
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
+                className="h-full w-full object-cover"
+                // Derived, as in CalendarHero. object-cover scales the picture
+                // to the band's width, so on a laptop roughly a third of its
+                // height has to be trimmed. The two things worth keeping — the
+                // neon sign, just above the middle, and the performer, low on
+                // the right — both sit in the lower half, and the top third is
+                // ceiling. Weighting the anchor below centre takes the trim
+                // mostly off the ceiling and keeps the performer's feet.
+                style={{ objectPosition: 'center 62%' }}
+              />
+            )}
+            {/* Bottom-weighted, like the calendar and home heroes: the crowd
+                fills the bottom of the frame, which is where the copy sits,
+                and the sign and the stage lights are up top, which stays
+                nearly clear. */}
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{
+                background:
+                  'linear-gradient(180deg, hsl(var(--background) / 0.3) 0%, hsl(var(--background) / 0.08) 28%, hsl(var(--background) / 0.4) 62%, hsl(var(--background) / 0.82) 85%, hsl(var(--background) / 0.95) 100%)',
+              }}
             />
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/85 to-transparent pt-20 pb-8 md:pb-12 px-4 md:px-8">
-              {titleBlock}
-            </div>
+          </div>
+
+          {/* gold hairline at the very top, like a marquee filament */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
+
+          {/* Bottom-aligned: `mt-auto` on the copy pushes it into the crowd. */}
+          <div className="container relative w-full flex flex-col py-8 sm:py-10 md:py-12">
+            <div className="mt-auto max-w-2xl">{titleBlock}</div>
           </div>
         </section>
       ) : (
