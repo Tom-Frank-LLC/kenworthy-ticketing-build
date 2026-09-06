@@ -210,13 +210,13 @@ export default function Backstage() {
                 // height has to be trimmed. The two things worth keeping — the
                 // neon sign, just above the middle, and the performer, low on
                 // the right — both sit in the lower half, and the top third is
-                // ceiling. Anchoring well below centre takes nearly all of the
-                // trim off the ceiling: at 1280 the band shows roughly the
-                // 37%–89% slice of the frame, which keeps the sign, the
-                // performer's feet, and the crowd the copy sits over. (62% was
-                // tried first and still showed a band of rafters; Tom asked for
-                // less ceiling and more crowd.)
-                style={{ objectPosition: 'center 78%' }}
+                // ceiling. Anchoring well below centre takes most of the trim
+                // off the ceiling: at 1280 the band shows roughly the 36%–88%
+                // slice of the frame, which keeps the sign, the performer's
+                // feet, and the crowd the copy sits over. Tuned by eye with
+                // Tom: 62% still showed a band of rafters, 78% lost the
+                // fringe of the drapes; 75% keeps a sliver of ceiling.
+                style={{ objectPosition: 'center 75%' }}
               />
             )}
             {/* Bottom-weighted, like the calendar and home heroes: the crowd
