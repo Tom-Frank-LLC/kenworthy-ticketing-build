@@ -16,7 +16,7 @@
     "tasks": "node scripts/generate-tasks.mjs",
     "tasks:check": "node scripts/generate-tasks.mjs --check",
     "check:app": "tsc -p tsconfig.app.json --noEmit",
-    "check:worker": "wrangler types --include-runtime=false --check && tsc -p tsconfig.worker.json --noEmit"
+    "check:worker": "npx wrangler types --include-runtime=false --check && tsc -p tsconfig.worker.json --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
