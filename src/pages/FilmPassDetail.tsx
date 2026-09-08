@@ -243,17 +243,6 @@ export default function FilmPassDetail() {
                 Valid {pass.expiration_days} days from activation
               </Badge>
             )}
-            <p className="text-sm text-muted-foreground">
-              A film pass is a physical card you hand to our staff at the door. Collect it at
-              the box office, or have it posted to you.
-            </p>
-            {isFestivalPass && (
-              <p className="text-sm">
-                <Link to="/silent-film-festival" className="text-primary underline">
-                  See the full festival programme
-                </Link>
-              </p>
-            )}
           </div>
         </div>
 
