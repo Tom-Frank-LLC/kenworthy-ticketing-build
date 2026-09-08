@@ -99,6 +99,12 @@
   # to it at all — but that is a spec argument, and being wrong about it would
   # cost the structured data. Listing them is two tokens.
   #
+  # Since the head-rewriting Worker (worker/index.ts) shipped, that spec
+  # argument is also load-bearing: the Worker replaces this block with a
+  # per-route one (an Event per showing, a Product per pass) whose bytes cannot
+  # be known ahead of time, so those are NOT hashed. Verified in Chrome after
+  # deploy: no CSP violation is reported for an unhashed ld+json block.
+  #
   # To recompute after editing index.html: npm run build:production, then hash
   # the bytes between each <script> and </script>:
   #   node -e 'const c=require("crypto"),f=require("fs");
@@ -110,5 +116,5 @@
   # Content-Security-Policy-Report-Only and reproduce it in a browser console —
   # there is no report-uri, so violations are visible per-visitor and collected
   # nowhere.
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-xpaI01Q6oUz6D4TVL7O0etHBvDbjrV8O36bKmJAXgrs=' 'sha256-8XoZJHvkL1iU1DBGeTJuQhjk3L96D4sjPMd4KwDkRes=' 'sha256-m8X3SWWViucQFG3j6LLrqGOltJxEgZnL/QZqziA+e64=' https://challenges.cloudflare.com https://web.squarecdn.com https://sandbox.web.squarecdn.com https://*.squarecdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com https://d1g145x70srn7h.cloudfront.net; img-src 'self' data: blob: https:; connect-src 'self' https://challenges.cloudflare.com https://*.supabase.co wss://*.supabase.co https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://connect.squareup.com https://connect.squareupsandbox.com https://*.squarecdn.com; frame-src https://challenges.cloudflare.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-xpaI01Q6oUz6D4TVL7O0etHBvDbjrV8O36bKmJAXgrs=' 'sha256-U2HOXjcGSExNGzvGPl1O4CR5wTi73jrdRWcn8gHhF84=' 'sha256-Iq0of0bX1sfF2N7vbbDg9NjpdeojB+LrTIWy3KwqOro=' https://challenges.cloudflare.com https://web.squarecdn.com https://sandbox.web.squarecdn.com https://*.squarecdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com https://d1g145x70srn7h.cloudfront.net; img-src 'self' data: blob: https:; connect-src 'self' https://challenges.cloudflare.com https://*.supabase.co wss://*.supabase.co https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://connect.squareup.com https://connect.squareupsandbox.com https://*.squarecdn.com; frame-src https://challenges.cloudflare.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
 

@@ -14,7 +14,9 @@
     "build:staging": "vite build --mode staging",
     "build:production": "vite build --mode production",
     "tasks": "node scripts/generate-tasks.mjs",
-    "tasks:check": "node scripts/generate-tasks.mjs --check"
+    "tasks:check": "node scripts/generate-tasks.mjs --check",
+    "check:app": "tsc -p tsconfig.app.json --noEmit",
+    "check:worker": "npx wrangler types --include-runtime=false --check && tsc -p tsconfig.worker.json --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -84,6 +86,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260906.1",
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.16",
     "@testing-library/dom": "^10.4.1",

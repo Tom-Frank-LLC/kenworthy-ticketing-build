@@ -55,7 +55,8 @@ with an empty Supabase URL and fail at runtime rather than at build time.
 
 ```bash
 npx tsc -p tsconfig.app.json --noEmit   # NOT bare `tsc --noEmit`
-npx vitest run                          # 23 test files
+npm run check:worker                    # the Cloudflare Worker in worker/ (no DOM)
+npx vitest run                          # src/ and worker/ tests
 deno check supabase/functions/**/*.ts    # build/vitest never touch these
 deno test --allow-env supabase/functions
 ```
@@ -72,6 +73,11 @@ compiled by either, so a broken function ships green.
 **Merging to main does not deploy.** Cloudflare Workers Builds runs on every
 PR and reports pass, but it does not ship. Only `npx wrangler deploy` puts code
 in front of patrons. A merged PR is not a shipped PR.
+
+`wrangler deploy` ships the Worker script in `worker/` together with the
+assets. That Worker rewrites `<head>` per route for crawlers and share
+previews and serves `/sitemap.xml`; `run_worker_first` in `wrangler.jsonc` is
+what lets it see documents at all. See `docs/briefs/BRIEF-seo-crawlability.md`.
 
 Before deploying, in this order:
 

@@ -59,3 +59,6 @@ supabase/.temp/
 # repo before: a stale bun.lock took the Cloudflare build off npm and made the
 # PR checks fail on every PR (c7ac00b).
 deno.lock
+
+# wrangler dev state
+.wrangler

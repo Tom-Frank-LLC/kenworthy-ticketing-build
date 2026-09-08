@@ -73,6 +73,9 @@ npm run build:staging
 
 # 2. VERIFY before deploying — this is the step that was missing
 grep -rl "rpqzrpboyhshdrfdwayk" dist/assets >/dev/null && echo "OK: staging URL baked in" || echo "FAIL: env not baked — DO NOT DEPLOY"
+# The Worker (worker/) reads its own SUPABASE_URL/SITE_URL from `vars` in
+# wrangler.jsonc per env — not from .env.*. A no-JS curl of a showing page
+# after deploy proves both halves: `curl -s <origin>/showing/<id> | grep og:url`
 grep -rl "lovable" dist >/dev/null && echo "BAD: lovable domain present — DO NOT DEPLOY" || echo "OK: no lovable"
 grep -rl "lbgkfdqjcvjkteecatas" dist >/dev/null && echo "BAD: retired lbgk URL present — DO NOT DEPLOY" || echo "OK: no lbgk"
 grep -o 'assets/index-[^"]*\.js' dist/index.html   # note this hash — the deployed page must load it

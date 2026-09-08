@@ -30,6 +30,7 @@ import {
   needsNoTicket,
   soldOutMessage,
 } from '@/lib/purchasable';
+import { showingTitle } from '@/lib/showingTitle';
 import { fetchSiblingShowings } from '@/lib/showtimes';
 import { ShowtimeChips } from '@/components/home/ShowtimeChips';
 import type { UpcomingShowing } from '@/components/home/TrailerFeed';
@@ -962,7 +963,7 @@ export default function Showing() {
     // Extra bottom padding on mobile clears the sticky order bar below.
     <div className="container py-8 px-4 max-w-5xl pb-28 lg:pb-8">
       <SEO
-        title={`${production?.title ?? 'Showing'} — ${formatShowtime(showing.start_time, 'MMM d, yyyy')} at Kenworthy`}
+        title={showingTitle(production?.title ?? 'Showing', formatShowtime(showing.start_time, 'MMM d, yyyy'))}
         description={
           // Must be plain text. A meta description containing <p> is a bug —
           // it is what a search result and a shared link preview print.
