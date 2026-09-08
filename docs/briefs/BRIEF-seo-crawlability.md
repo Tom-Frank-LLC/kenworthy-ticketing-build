@@ -107,6 +107,21 @@ no-Worker fallback.
   `document.title` matches the served one), zero console errors, zero
   `securitypolicyviolation` events.
 
+## Search Console baseline (Tom, 2026-09-08, before the production deploy)
+
+| view | reading |
+|---|---|
+| Performance, 28 days (data exists for 9/5–9/6 only: the property is new) | 316 clicks · 2.09K impressions · CTR 15.1% · avg position 5.1 |
+| Sitemaps | none submitted |
+| Pages | not indexing (reasons to be recorded from the report) |
+| Enhancements → Events | 85 valid items with warnings, crawled 6/9–8/31: missing organizer.name, organizer.url, image, performer, location.address, location.name, offers.price; 1 invalid price format |
+
+The 85 Event items are the old WordPress site's (Modern Events Calendar)
+markup — the client-side Event in Showing.tsx has an organizer, location and
+image, so none of those warnings can be ours. The Worker's Event carries every
+field on that list. After the deploy, use *Validate fix* on each row; the old
+items retire as their URLs 301 to `/calendar`.
+
 ## Not done here — Tom's ops (Phase 0 and Phase 4)
 
 1. **Production deploy.** `npx wrangler deploy` from a checkout of the merged
