@@ -1,18 +1,20 @@
 ---
 brief: seo-crawlability
 title: Crawlers and share previews see each page's own title, card and JSON-LD
-status: built
+status: shipped
 track: feature
-severity: P1
 date: 2026-09-05
+shipped_in: ["#294"]
+shipped_at: 2026-09-08
 verified: true
 ---
 
 # Brief (for Claude Code): SEO — phased plan (crawlability, old-site cleanup, structured data)
 
-**Status:** 🟡 Built and verified on staging (`kenworthy-ticketing-staging`,
-version `0a91d8d7`). **Not yet deployed to production.** Phases 1–3 are code
-in this branch; Phase 0 and parts of Phase 4 are Tom's ops, listed at the end.
+**Status:** 🟢 Shipped. Merged as #294 and deployed to production on
+2026-09-08 (Worker version `f5011572`; rollback point `123df6fc`, which was
+byte-identical to main). Phases 1–3 are live; Phase 0 is under way (property
+verified, sitemap submitted); the Phase 4 leftovers are listed at the end.
 **Date:** September 5, 2026
 
 ## The problem (confirmed with a raw fetch)
@@ -122,14 +124,38 @@ image, so none of those warnings can be ours. The Worker's Event carries every
 field on that list. After the deploy, use *Validate fix* on each row; the old
 items retire as their URLs 301 to `/calendar`.
 
-## Not done here — Tom's ops (Phase 0 and Phase 4)
+## Verified in production (2026-09-08, kenworthy.org)
 
-1. **Production deploy.** `npx wrangler deploy` from a checkout of the merged
-   PR (RUNBOOK-deploy-staging-prod.md). Record the current version first.
-   The deploy now ships a Worker script as well as assets.
-2. **Search Console + Bing Webmaster** on `kenworthy.org`. Submit
-   `https://kenworthy.org/sitemap.xml`. Record Coverage before, so the effect
-   is measurable. Use *Removals* on old WordPress results once the 301s are live.
+- No-JS fetch of `/showing/c0787cef…` with a scraper user agent: film title,
+  poster `og:image`, showing `og:url` and canonical, one `ScreeningEvent`.
+  `/`: venue JSON-LD. `/admin`: noindex. `/no-such-page`: 404.
+- `/contact-us/` → 301 `/about`, `/support/` → 301 `/donate`,
+  `/events/foo/` → 301 `/calendar`, `/calendar/` → 301 `/calendar`,
+  `/wp-content/x.jpg` → 410, `www.kenworthy.org/calendar` → 301 apex.
+- `/sitemap.xml`: 91 URLs, `application/xml`, no workers.dev or token.
+- Hashed JS `text/javascript`, `/og-default.jpg` 204 KB `image/jpeg`, `/sms`
+  passes through; the boot-watchdog hash in served HTML is unchanged.
+- `cf-cache-status: HIT` appears on every document — that is the asset
+  layer's label, and each route's body carried its own head, so it is not a
+  stale zone cache.
+- Headless Chrome: showing, home, calendar hydrate with one `<title>`,
+  matching `document.title`, and no error from our code.
+- **Pre-existing, not from this change:** Chrome reports a CSP violation on
+  every page for `https://static.cloudflareinsights.com/beacon.min.js`.
+  That is Cloudflare Web Analytics, injected at the zone level, and blocked
+  by the `script-src` that #280 enforced on 2026-09-03. Staging shows no
+  violation because workers.dev has no zone injection. Fix is either to add
+  `https://static.cloudflareinsights.com` to `script-src` (and
+  `https://cloudflareinsights.com` to `connect-src`) or to switch Web
+  Analytics off for the zone.
+
+## Remaining — Tom's ops (Phase 0 and Phase 4)
+
+1. ~~Production deploy~~ done 2026-09-08.
+2. **Search Console**: verified, sitemap submitted 2026-09-08. Still to do:
+   *Validate fix* on the eight Event rows, record the Pages reasons once the
+   report finishes processing, Bing import, and *Removals* on old WordPress
+   results after a week.
 3. **Google Business Profile**: Kenworthy Performing Arts Centre · 508 S Main
    St · Moscow, ID 83843 · website `https://kenworthy.org`.
 4. **Rich Results Test** on a live showing and the home page after the prod
