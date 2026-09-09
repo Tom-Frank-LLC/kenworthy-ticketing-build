@@ -106,7 +106,17 @@ On staging, after the push:
   redirect; missing row renders the not-found state; readable showing with a
   hidden title renders not-found. All three fail against the previous page.
 
-## To make it live
+## Shipped to production (2026-09-09)
+
+Both steps below were run the same day. Migration applied to
+`vlmslygnimfbamrtwvyo`; the anon key then read 1,790 past showings where it
+had read 41, and 0 future inactive ones. Worker version `08ec6697` deployed
+from main `c7cdf54` after confirming the previous version (`753cfa4d`) was a
+byte-identical build of the prior main, so nothing unmerged was reverted.
+Verified on kenworthy.org: the new index bundle served as `text/javascript`,
+a hidden past film at 200 with its title, a bogus id at 404 with `noindex`.
+
+## To make it live (as it was written before the deploy)
 
 1. Apply the migration to production. `supabase db push` against
    `vlmslygnimfbamrtwvyo` (this session could not: privileged prod SQL is
