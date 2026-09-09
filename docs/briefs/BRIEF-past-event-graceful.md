@@ -1,12 +1,13 @@
 ---
 brief: past-event-graceful
 title: Links to past showings land on a real page instead of a 404 or a silent bounce
-status: built
+status: shipped
 track: bug
-severity: P1
 date: 2026-09-05
 shipped_in: ["#299"]
-verified: false
+shipped_at: 2026-09-09
+verified: true
+evidence: migration 20260909180838 applied to vlmslygnimfbamrtwvyo 2026-09-09; Worker version 08ec6697 deployed; kenworthy.org/showing/3c828bac-… (hidden, past) answers 200, a bogus id 404 + noindex
 findings: FINDINGS-past-event-visibility.md
 ---
 
