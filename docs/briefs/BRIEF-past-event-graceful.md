@@ -5,6 +5,7 @@ status: built
 track: bug
 severity: P1
 date: 2026-09-05
+shipped_in: ["#299"]
 verified: false
 findings: FINDINGS-past-event-visibility.md
 ---
