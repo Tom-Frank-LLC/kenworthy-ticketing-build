@@ -37,6 +37,7 @@ import type { UpcomingShowing } from '@/components/home/TrailerFeed';
 import { SITE_URL } from '@/lib/site';
 import { htmlToPlainText, toMetaDescription } from '@/lib/richText';
 import { RichText } from '@/components/RichText';
+import { ShowingUnavailable } from '@/components/ShowingUnavailable';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -125,9 +126,18 @@ function PassedNotice({ startTime }: { startTime: string }) {
         It played on {formatShowtime(startTime, "EEEE, MMMM d, yyyy 'at' h:mm a")}. Tickets are no
         longer available.
       </p>
-      <Button variant="outline" className="mt-4" asChild>
-        <Link to="/">See what&rsquo;s playing now</Link>
-      </Button>
+      {/* Two ways forward rather than one. A reader who followed a link to a
+          film that has already played is looking for either what is on
+          tonight or a date that suits them; the run's own remaining dates,
+          when there are any, sit directly beneath this notice. */}
+      <div className="mt-4 flex flex-wrap justify-center gap-3">
+        <Button variant="outline" asChild>
+          <Link to="/">See what&rsquo;s playing now</Link>
+        </Button>
+        <Button variant="ghost" asChild>
+          <Link to="/calendar">Browse the calendar</Link>
+        </Button>
+      </div>
     </div>
   );
 }
@@ -408,6 +418,12 @@ export default function Showing() {
   const [gaQuantity, setGaQuantity] = useState(0);
   const [ticketsSold, setTicketsSold] = useState(0);
   const [loading, setLoading] = useState(true);
+  // The showing, or the title it belongs to, could not be read: a deleted or
+  // mistyped id, or a production the theatre has taken down. Rendered as a
+  // page of its own (ShowingUnavailable) rather than a redirect — see the
+  // comment on that component. A showing that has merely *passed* is not
+  // this: it loads, and renders in its passed state.
+  const [unavailable, setUnavailable] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   // Optional gift added to this purchase. Zero unless the buyer says otherwise;
   // it rides on the same card charge and is never taxed.
@@ -468,6 +484,7 @@ export default function Showing() {
     // assigned seating, so without an explicit reset a seat picked for
     // Saturday follows the reader to a Sunday that never offered it.
     setLoading(true);
+    setUnavailable(false);
     setShowing(null);
     setProduction(null);
     setVenue(null);
@@ -498,7 +515,16 @@ export default function Showing() {
       if (cancelled) return;
 
       const s = showingRes.data;
-      if (!s) { navigate('/'); return; }
+      if (!s) {
+        // Not `navigate('/')`. That was a silent redirect: a patron on a
+        // shared link landed on the home page with no sentence to say why,
+        // and a crawler read it as a soft 404. The read policy on showings
+        // lets a past one load (migration 20260909180838), so reaching here
+        // means the row is gone or was never public.
+        setUnavailable(true);
+        setLoading(false);
+        return;
+      }
       setShowing(s);
 
       const tiers: PriceTier[] = (tiersRes.data || []).map((t: any) => ({
@@ -558,6 +584,7 @@ export default function Showing() {
           siblingsPromise,
         ]);
         if (cancelled) return;
+        if (!prod) { setUnavailable(true); setLoading(false); return; }
         setProduction(prod);
         setVenue(venueRes.data);
         setSiblingShowings(siblings);
@@ -609,6 +636,10 @@ export default function Showing() {
           siblingsPromise,
         ]);
         if (cancelled) return;
+        // The showing is readable but its title is not — a movie or event an
+        // admin has hidden. Nothing on this page makes sense without a name,
+        // and "hidden" is the theatre's decision, so it is the not-found page.
+        if (!prod) { setUnavailable(true); setLoading(false); return; }
         setProduction(prod);
         setVenue(venueRes.data);
         setSiblingShowings(siblings);
@@ -927,6 +958,10 @@ export default function Showing() {
 
   if (loading) {
     return <div className="container py-16 text-center text-muted-foreground">Loading...</div>;
+  }
+
+  if (unavailable || !showing) {
+    return <ShowingUnavailable />;
   }
 
   const meta = getProductionMeta(productionType);
