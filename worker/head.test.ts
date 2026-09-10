@@ -1,7 +1,7 @@
 import { clamp, escapeAttr, ldJson, renderHead } from './head';
 import { renderSitemap } from './sitemap';
 import { showingJsonLd, lowestPrice } from './jsonld';
-import type { ShowingRow } from './data';
+import { hasVisibleProduction, type ShowingRow } from './data';
 
 describe('renderHead', () => {
   const head = {
@@ -46,7 +46,7 @@ describe('renderHead', () => {
 describe('renderSitemap', () => {
   it('lists static pages, showings and passes with absolute URLs', () => {
     const xml = renderSitemap('https://kenworthy.org', ['/', '/calendar'], {
-      showings: [{ id: 's1', updated_at: '2026-09-01T10:00:00Z' }],
+      showings: [{ id: 's1', updated_at: '2026-09-01T10:00:00Z', movies: { id: 'm' }, events: null, live_performances: null }],
       passes: [{ id: 'p1', updated_at: null }],
     });
     expect(xml).toContain('<loc>https://kenworthy.org/</loc>');
@@ -56,6 +56,15 @@ describe('renderSitemap', () => {
     expect(xml).toContain('<loc>https://kenworthy.org/film-pass/p1</loc>');
     expect(xml).toContain('<loc>https://kenworthy.org/sms</loc>');
     expect(xml).not.toContain('%SITE_URL%');
+  });
+});
+
+describe('hasVisibleProduction', () => {
+  it('drops a showing whose production RLS has hidden', () => {
+    const base = { id: 's', updated_at: null, movies: null, events: null, live_performances: null };
+    expect(hasVisibleProduction(base)).toBe(false);
+    expect(hasVisibleProduction({ ...base, events: { id: 'e' } })).toBe(true);
+    expect(hasVisibleProduction({ ...base, movies: { id: 'm' } })).toBe(true);
   });
 });
 

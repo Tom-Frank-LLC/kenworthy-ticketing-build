@@ -99,9 +99,28 @@ export async function fetchPass(env: Env, id: string): Promise<PassRow | null> {
   return rows?.[0] ?? null;
 }
 
+export interface SitemapShowing {
+  id: string;
+  updated_at: string | null;
+  movies: { id: string } | null;
+  events: { id: string } | null;
+  live_performances: { id: string } | null;
+}
+
 export interface SitemapRows {
-  showings: Array<{ id: string; updated_at: string | null }>;
+  showings: SitemapShowing[];
   passes: Array<{ id: string; updated_at: string | null }>;
+}
+
+/**
+ * An active showing whose production the public cannot see (an event row
+ * deactivated after its showings were created) renders as a page with no
+ * title and is answered 404 by resolveHead. RLS nulls the embed rather than
+ * hiding the showing, so the sitemap has to drop it here — two such rows
+ * were live on 2026-09-10 and listed 404s to Google.
+ */
+export function hasVisibleProduction(row: SitemapShowing): boolean {
+  return !!(row.movies || row.events || row.live_performances);
 }
 
 /**
@@ -116,12 +135,12 @@ export async function fetchSitemapRows(env: Env, now: number = Date.now()): Prom
   const [showings, passes] = await Promise.all([
     restGet<SitemapRows['showings']>(
       env,
-      `showings?select=id,updated_at&is_active=eq.true&start_time=gte.${encodeURIComponent(since)}&order=start_time.asc&limit=1000`,
+      `showings?select=id,updated_at,movies(id),events(id),live_performances(id)&is_active=eq.true&start_time=gte.${encodeURIComponent(since)}&order=start_time.asc&limit=1000`,
       600,
     ),
     restGet<SitemapRows['passes']>(env, 'film_pass_types?select=id,updated_at&is_active=eq.true&order=name.asc', 600),
   ]);
-  return { showings: showings ?? [], passes: passes ?? [] };
+  return { showings: (showings ?? []).filter(hasVisibleProduction), passes: passes ?? [] };
 }
 
 /** Same render endpoint `src/lib/passImage.ts` uses, at share-card width. */
