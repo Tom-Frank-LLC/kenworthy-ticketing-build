@@ -149,23 +149,34 @@ items retire as their URLs 301 to `/calendar`.
   `https://cloudflareinsights.com` to `connect-src`) or to switch Web
   Analytics off for the zone.
 
-## Remaining — Tom's ops (Phase 0 and Phase 4)
+## Follow-ups (state as of 2026-09-10)
 
-1. ~~Production deploy~~ done 2026-09-08.
-2. **Search Console**: verified, sitemap submitted 2026-09-08. Still to do:
-   *Validate fix* on the eight Event rows, record the Pages reasons once the
-   report finishes processing, Bing import, and *Removals* on old WordPress
-   results after a week.
-3. **Google Business Profile**: Kenworthy Performing Arts Centre · 508 S Main
-   St · Moscow, ID 83843 · website `https://kenworthy.org`.
-4. **Rich Results Test** on a live showing and the home page after the prod
-   deploy (the tool needs a public URL).
-5. **robots.txt**: the two `User-agent: *` groups are Cloudflare's managed
-   robots.txt (zone setting) prepended to ours. Either leave it (Google
-   merges same-agent groups; our file now repeats the Content-Signal) or turn
-   the managed block off in the dashboard.
-6. Phase 4 polish — per-page H1/alt audit, internal linking, Core Web Vitals
-   from field data — is untouched by this brief.
+Done:
+- Production deploy (2026-09-08, `f5011572`); CSP fix for the zone-injected
+  Web Analytics beacon and the sitemap orphan filter (#302, #303, deployed
+  2026-09-10 as `22dac98e`).
+- Search Console: Domain property verified, sitemap submitted, *Validate fix*
+  run on the Event warnings — seven of eight closed. The eighth, "Invalid
+  price format", is one old WordPress item still recrawling; every live
+  showing serves a two-decimal numeric price (68/68 checked), so it closes
+  when Google sees the 301. Pages report: no reason left that is ours.
+- Bing Webmaster: imported from Search Console.
+
+Waiting on time, not on work:
+- One-week comparison against the baseline table above (from 2026-09-15).
+- *Removals* for any old WordPress result still listed after that.
+- Core Web Vitals needs 28 days of field data on the new domain.
+
+Still open, off-site:
+- Google Business Profile: claim/confirm NAP and website `https://kenworthy.org`.
+- Rich Results Test on a live showing and the home page (needs a browser;
+  the markup is the same the headless check read, but the tool's warnings
+  are the thing to record).
+- Decide whether to keep Cloudflare's managed robots.txt block (harmless either way).
+
+Not part of this brief — Phase 4 polish (one H1 per page, poster/hero alt
+text, related-title links, home→calendar links crawlable without JS) is a
+separate unit of work and wants its own brief when it is picked up.
 
 ## Known duplication
 
