@@ -347,6 +347,24 @@ Deno.test('buildEmailText stands alone without the HTML part', () => {
   assertEquals(text.includes('<'), false);
 });
 
+// The wording is repeated by hand in src/components/SalesFinalNote.tsx and in
+// Terms §6 (src/pages/Terms.tsx). This pins the receipt so a change there that
+// forgets the receipt fails here rather than shipping two policies.
+Deno.test('the receipt states the sales-final line the pay button stated, with the cancellation exception', () => {
+  const line =
+    'Tickets are non-refundable. All sales are final. If the Kenworthy cancels a performance, you will be refunded in full.';
+  const html = buildEmailHtml(order(), {
+    ticketUrl: 'https://example.com/t/tok',
+    qrUrlFor: (id) => id,
+  });
+  assertEquals(html.includes(line), true);
+  assertEquals(html.includes('/terms#refunds'), true);
+
+  const text = buildEmailText(order(), { ticketUrl: 'https://example.com/t/tok' });
+  assertEquals(text.includes(line), true);
+  assertEquals(text.includes('/terms#refunds'), true);
+});
+
 Deno.test('buildSubject pluralizes on ticket count', () => {
   const base = {
     order_token: 'tok',

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Check, CreditCard, Loader2, Mail, Minus, Plus, Store } from 'lucide-react';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 import { RichText } from '@/components/RichText';
+import { SalesFinalNote } from '@/components/SalesFinalNote';
 import { invokeFunction } from '@/lib/functions';
 import { COLLECT_PHONE } from '@/lib/flags';
 import {
@@ -388,6 +389,7 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
             Payments are processed securely by Square. Your card details never reach our
             servers.
           </p>
+          <SalesFinalNote kind="pass" />
 
           {/* The rules people otherwise discover at the door.
               The first is true of every pass, so it is written here. The second

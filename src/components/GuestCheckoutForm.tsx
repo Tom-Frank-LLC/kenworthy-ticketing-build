@@ -7,6 +7,7 @@ import { Check, User, Mail, Phone, CreditCard, Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 import { COLLECT_PHONE, SMS_DELIVERY_LIVE } from '@/lib/flags';
+import { SalesFinalNote } from '@/components/SalesFinalNote';
 
 interface GuestCheckoutFormProps {
   ticketCount: number;
@@ -349,9 +350,12 @@ export function GuestCheckoutForm({
         )}
       </Button>
       {!isFree && (
-        <p className="text-sm text-muted-foreground text-center">
-          Payments are processed securely by Square. Your card details never reach our servers.
-        </p>
+        <>
+          <p className="text-sm text-muted-foreground text-center">
+            Payments are processed securely by Square. Your card details never reach our servers.
+          </p>
+          <SalesFinalNote />
+        </>
       )}
     </form>
   );

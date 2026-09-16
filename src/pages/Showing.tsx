@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Film, Calendar, Clock, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard } from 'lucide-react';
 import { SeatMap } from '@/components/SeatMap';
+import { SalesFinalNote } from '@/components/SalesFinalNote';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
 import { DonationPrompt } from '@/components/DonationPrompt';
 import { type Seat, type PriceTier, computeSeatTotals, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
@@ -1468,6 +1469,9 @@ export default function Showing() {
                       <p className="text-sm text-muted-foreground text-center">
                         Payments are processed securely by Square. Your card details never reach our servers.
                       </p>
+                      {/* A free reservation has nothing to refund, so the
+                          line would only be noise there. */}
+                      {!isFree && <SalesFinalNote />}
                     </>
                   ) : (
                     <GuestCheckoutForm

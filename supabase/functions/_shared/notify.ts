@@ -9,7 +9,7 @@ import {
   formatMoney,
   type Order,
 } from './tickets.ts';
-import { brand, serif, sans, mono } from './brand.ts';
+import { brand, serif, sans, mono, SITE_URL } from './brand.ts';
 import {
   emailLayout,
   esc,
@@ -62,6 +62,19 @@ export function toE164(raw: string, defaultCountryCode = '1'): string | null {
 
   return null;
 }
+
+/**
+ * The refund stance, as printed beneath every Pay button. Repeated here by
+ * hand because an edge function cannot import from src/ — the source of truth
+ * is src/components/SalesFinalNote.tsx, and Terms §6 leads with the same two
+ * sentences. Change all three together; tickets_test.ts pins this side.
+ *
+ * On the receipt and not the SMS: the text is billed per 160-character
+ * segment and is already two, and the receipt is what a buyer keeps.
+ */
+export const SALES_FINAL_NOTE =
+  'Tickets are non-refundable. All sales are final. If the Kenworthy cancels a performance, you will be refunded in full.';
+export const SALES_FINAL_POLICY_URL = `${SITE_URL}/terms#refunds`;
 
 /** Subject line: what it is, and when. */
 export function buildSubject(order: Order): string {
@@ -198,6 +211,7 @@ export function buildEmailHtml(
       order.tickets.length === 1 ? ' is' : 's are'
     } inside.`,
     contentHtml: content,
+    footerNote: `${esc(SALES_FINAL_NOTE)} <a href="${esc(SALES_FINAL_POLICY_URL)}" style="color:${brand.primary};text-decoration:none;">Full ticket policy</a>.`,
   });
 }
 
@@ -238,7 +252,7 @@ export function buildEmailText(
     lines.push(opts.calendarUrl);
   }
   lines.push('');
-  lines.push(...textFooter());
+  lines.push(...textFooter(`${SALES_FINAL_NOTE} Full ticket policy: ${SALES_FINAL_POLICY_URL}`));
   return lines.join('\n');
 }
 
