@@ -1,11 +1,13 @@
 ---
 brief: staff-notifications
 title: Staff are emailed about every marquee and rental request, and admins choose who
-status: built
+status: shipped
 track: feature
-severity: P1
 date: 2026-09-16
-verified: false
+shipped_in: ["#307"]
+shipped_at: 2026-09-16
+verified: true
+evidence: "prod: migration 20260916200042 applied, rental-request deployed, Worker version 88c4aedc (rollback 795d52f7); staging admin_audit_log email.sent to d***@resend.dev, subject 'New marquee request — QA Marquee 202609162009'"
 ---
 
 # Brief (for Claude Code): Manageable staff notifications (starting with rental/marquee requests)
@@ -92,6 +94,16 @@ like.
 **Adding a notification type:** one entry in `STAFF_NOTIFICATION_TYPES` in
 *both* registries, then one `notifyStaff(admin, kind, message, { replyTo })`
 call at the hook that knows the event happened.
+
+**Production (2026-09-16, ~20:15 UTC):** migration pushed, `rental-request`
+deployed, PR #307 squash-merged as 98d6e39, `wrangler deploy` from that commit
+→ Worker version `88c4aedc-70ff-4a75-b6e8-0601865344c9` (previous, for
+rollback: `795d52f7-bfd5-4291-baf3-69bd9de73f7c`). Verified against the live
+origin: entry chunk matches the build, the AdminDashboard chunk is served as
+text/javascript at the built size and carries the Notifications screen. Before
+deploying, production was proven equal to origin/main by content: every chunk
+whose hash differed was byte-for-byte the same size, and the entry chunk
+differed only in chunk-hash references.
 
 **Staging note:** the seeded staging row was pointed at Resend's
 `delivered@resend.dev` sink for verification, so staging test submissions do
