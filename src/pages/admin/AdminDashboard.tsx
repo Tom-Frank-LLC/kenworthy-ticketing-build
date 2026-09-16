@@ -622,9 +622,14 @@ export default function AdminDashboard() {
               heading. */}
           <div className="flex flex-wrap gap-2">
             {isAdmin && (
-              <Button size="sm" variant="outline" asChild>
-                <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
-              </Button>
+              <>
+                <Button size="sm" variant="outline" asChild>
+                  <Link to="/admin/accounts"><Users className="h-4 w-4 mr-1" /> Accounts &amp; Roles</Link>
+                </Button>
+                <Button size="sm" variant="outline" asChild>
+                  <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
+                </Button>
+              </>
             )}
           </div>
         </div>

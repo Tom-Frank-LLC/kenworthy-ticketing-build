@@ -9,14 +9,23 @@
 // Authorisation is the whole point of this function, so it is spelled out
 // twice: `verify_jwt` is left at its default (true) by keeping this function
 // OUT of the `verify_jwt = false` list in config.toml, and the handler then
-// checks `has_role(caller, 'superadmin')` itself. The client route guard on
-// /superadmin is not a boundary — hiding the button stops nobody from calling
-// `functions.invoke` directly.
+// asks `has_role()` who the caller is. The client route guards on /superadmin
+// and /admin/accounts are not a boundary — hiding a dropdown entry stops
+// nobody from calling `functions.invoke` directly.
+//
+// Since 2026-09-16 the gate is tiered rather than superadmin-only, to match
+// the RLS on `user_roles` (migration 20260916080513):
+//   superadmin  -> any invitable role, for anyone;
+//   admin       -> staff or host only, and never onto an account that already
+//                  holds admin or superadmin (a "protected user");
+//   anyone else -> 403.
 //
 // The privileged work runs as service_role, which bypasses RLS on `user_roles`.
-// That is deliberate and safe *only* because of the superadmin gate above:
-// `user_roles` is the privilege-escalation table, and its RLS write policies are
-// superadmin-only (verified on both projects, 2026-08-14).
+// That is deliberate and safe *only* because this handler applies the same rule
+// the RLS policies apply, before the write, from `_shared/role_management.ts`.
+// `user_roles` is the privilege-escalation table; the target check after the
+// lookup is what stops an admin from using "invite" as a side door onto a
+// superadmin's account.
 //
 // Email delivery is Supabase's own `inviteUserByEmail`. That is not the
 // unbranded path it would have been a month ago: the Send Email Hook
@@ -27,6 +36,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { EMAIL_RE, findUserIdByEmail } from '../_shared/buyers.ts';
 import { SITE_URL } from '../_shared/brand.ts';
+import { logAudit } from '../_shared/audit.ts';
+import {
+  type CallerTier,
+  INVITABLE_ROLES,
+  type InvitableRole,
+  inviteRefusal,
+  isInvitableRole,
+} from '../_shared/role_management.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -35,17 +52,6 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-/**
- * Roles this function will grant.
- *
- * `regular_user` is excluded on purpose — it is the default the
- * `on_auth_user_created` trigger already stamps, so asking for it here means
- * "invite a staff member who is not staff", which is a mistake worth rejecting
- * rather than honouring.
- */
-const INVITABLE_ROLES = ['staff', 'admin', 'host', 'superadmin'] as const;
-type InvitableRole = typeof INVITABLE_ROLES[number];
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -70,12 +76,15 @@ Deno.serve(async (req: Request) => {
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
-    // --- Authorise: superadmin only ----------------------------------------
-    const { data: isSuper } = await userClient.rpc('has_role', {
-      _user_id: user.id,
-      _role: 'superadmin',
-    });
-    if (!isSuper) return json({ error: 'Superadmin access required' }, 403);
+    // --- Authorise: which tier is calling? ---------------------------------
+    // has_role is hierarchical, so a superadmin answers true to 'admin' as
+    // well; ask for the higher tier first and let it win.
+    const [{ data: isSuper }, { data: isAdmin }] = await Promise.all([
+      userClient.rpc('has_role', { _user_id: user.id, _role: 'superadmin' }),
+      userClient.rpc('has_role', { _user_id: user.id, _role: 'admin' }),
+    ]);
+    const tier: CallerTier = isSuper ? 'superadmin' : isAdmin ? 'admin' : null;
+    if (!tier) return json({ error: 'Admin access required' }, 403);
 
     // --- Validate the request ----------------------------------------------
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
@@ -84,10 +93,15 @@ Deno.serve(async (req: Request) => {
     if (!email) return json({ error: 'An email address is required' }, 400);
     if (!EMAIL_RE.test(email)) return json({ error: 'That is not a valid email address' }, 400);
 
-    const role = String(body.role ?? 'staff').trim() as InvitableRole;
-    if (!INVITABLE_ROLES.includes(role)) {
+    const requested = String(body.role ?? 'staff').trim();
+    if (!isInvitableRole(requested)) {
       return json({ error: `Role must be one of: ${INVITABLE_ROLES.join(', ')}` }, 400);
     }
+    const role: InvitableRole = requested;
+
+    // The role check needs no target, so refuse a bad one before any lookup.
+    const early = inviteRefusal(tier, role, null);
+    if (early) return json({ error: early.error }, early.status);
 
     const displayName = String(body.display_name ?? '').trim() || null;
 
@@ -103,6 +117,24 @@ Deno.serve(async (req: Request) => {
     // to *that* account, not fail and not fork their history into a second one.
     let userId = await findUserIdByEmail(admin, email);
     let created = false;
+
+    if (userId) {
+      // An existing account may be a protected one. This is the check RLS
+      // would have made for a client-side grant; service_role has to make it
+      // itself. Read with the service client — the caller's own SELECT policy
+      // already lets admins see every role, but the boundary must not depend
+      // on that staying true.
+      const { data: held, error: heldError } = await admin
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
+      if (heldError) {
+        console.error('[invite-staff] target role lookup failed:', heldError.message);
+        return json({ error: 'Could not check that account' }, 500);
+      }
+      const refusal = inviteRefusal(tier, role, (held ?? []).map((r: { role: string }) => r.role));
+      if (refusal) return json({ error: refusal.error }, refusal.status);
+    }
 
     if (!userId) {
       const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(
@@ -146,7 +178,19 @@ Deno.serve(async (req: Request) => {
     }
 
     // Deliberately no email address in this log line — see the security brief.
-    console.log(`[invite-staff] ${created ? 'created' : 'reused'} user, granted ${role}`);
+    console.log(`[invite-staff] ${created ? 'created' : 'reused'} user, granted ${role} (by ${tier})`);
+
+    // The audit trigger on user_roles saw a service_role write with no
+    // auth.uid(), so it recorded nobody. This row is the one that names the
+    // admin who did it, alongside their grants and revokes from the page.
+    await logAudit({
+      action: 'user_roles.invite',
+      entityType: 'user_roles',
+      entityId: userId,
+      details: { role, created, invited_email: email, caller_tier: tier },
+      actorId: user.id,
+      actorEmail: user.email ?? null,
+    });
 
     return json({ ok: true, created, userId, email, role });
   } catch (e) {

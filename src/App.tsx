@@ -68,7 +68,7 @@ const ShowingForm = lazyWithRecovery(() => import("./pages/admin/ShowingForm"));
 const HostDashboard = lazyWithRecovery(() => import("./pages/admin/HostDashboard"));
 const SponsorshipForm = lazyWithRecovery(() => import("./pages/admin/SponsorshipForm"));
 const AuditLog = lazyWithRecovery(() => import("./pages/admin/AuditLog"));
-const Superadmin = lazyWithRecovery(() => import("./pages/admin/Superadmin"));
+const AccountsRoles = lazyWithRecovery(() => import("./pages/admin/AccountsRoles"));
 
 // /accessibility was a ComingSoon stub carrying KPAC's facility list in its
 // blurb — the right content in a page that could not hold it. It is a real
@@ -133,6 +133,7 @@ const App = () => (
                   <Route path="/admin/sponsorships/new" element={<AdminOnly><SponsorshipForm /></AdminOnly>} />
                   <Route path="/admin/sponsorships/:id" element={<AdminOnly><SponsorshipForm /></AdminOnly>} />
                   <Route path="/admin/audit-log" element={<AdminOnly><AuditLog /></AdminOnly>} />
+                  <Route path="/admin/accounts" element={<AdminOnly><AccountsRoles /></AdminOnly>} />
                   {/* Where the counter tools used to live. Kept as redirects
                       because these two are bookmarked on the box-office iPad
                       and written down in half a dozen briefs — a hard move
@@ -171,7 +172,9 @@ const App = () => (
                   <Route path="/volunteer" element={<VolunteerPage />} />
                   <Route path="/privacy" element={<Privacy />} />
                   <Route path="/terms" element={<Terms />} />
-                  <Route path="/superadmin" element={<Superadmin />} />
+                  {/* Same page as /admin/accounts. Kept so a superadmin's header link and
+                      any bookmark still land; the page decides what to show by role. */}
+                  <Route path="/superadmin" element={<AdminOnly><AccountsRoles /></AdminOnly>} />
                   <Route path="/contract/:token" element={<RentalContract />} />
                   <Route path="/verify/:id" element={<VerifyContract />} />
                   <Route path="*" element={<NotFound />} />
