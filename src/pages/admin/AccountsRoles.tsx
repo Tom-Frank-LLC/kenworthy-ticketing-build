@@ -12,12 +12,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Shield, ShieldCheck, X, Plus, Image as ImageIcon, UserPlus } from 'lucide-react';
+import { Shield, ShieldCheck, X, Plus, Image as ImageIcon, UserPlus, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { SEO } from '@/components/SEO';
 
+/**
+ * Accounts & roles — one page, two shapes.
+ *
+ * A superadmin sees every control: any role on anyone, plus the poster
+ * re-fetch utility. An admin sees the same list, but may only grant and revoke
+ * the lower roles, and only on accounts that hold neither admin nor superadmin
+ * (a "protected user"); those rows render locked.
+ *
+ * None of that is a boundary. The buttons this page hides are refused by RLS on
+ * `user_roles` (migration 20260916080513) and by `invite-staff`, so a crafted
+ * request gets exactly what the server allows. What the page adds is not
+ * showing an admin a button that would fail.
+ */
+
 const ROLES = ['superadmin', 'admin', 'staff', 'host', 'regular_user'] as const;
 type Role = typeof ROLES[number];
+
+/** Holding either makes an account off-limits to admins. Mirrors is_protected_user(). */
+const PROTECTED_ROLES: readonly Role[] = ['admin', 'superadmin'];
+
+/** What an admin may grant or revoke. Mirrors the "Admins ... lower roles" policies. */
+const ADMIN_GRANTABLE_ROLES: readonly Role[] = ['staff', 'host', 'regular_user'];
 
 /**
  * Roles the invite flow will assign. `regular_user` is missing on purpose — the
@@ -27,6 +47,9 @@ type Role = typeof ROLES[number];
  */
 const INVITABLE_ROLES = ['staff', 'admin', 'host', 'superadmin'] as const;
 type InvitableRole = typeof INVITABLE_ROLES[number];
+
+/** The subset an admin may invite. Mirrors ADMIN_INVITABLE_ROLES in the function. */
+const ADMIN_INVITABLE_ROLES: readonly InvitableRole[] = ['staff', 'host'];
 
 const ROLE_COLOR: Record<Role, string> = {
   superadmin: 'bg-primary text-primary-foreground',
@@ -38,8 +61,12 @@ const ROLE_COLOR: Record<Role, string> = {
 
 type Row = { id: string; email: string | null; display_name: string | null; roles: Role[] };
 
-export default function Superadmin() {
-  const { user, isSuperadmin, loading: authLoading } = useAuth();
+function isProtected(row: Row): boolean {
+  return row.roles.some(role => PROTECTED_ROLES.includes(role));
+}
+
+export default function AccountsRoles() {
+  const { user, isAdmin, isSuperadmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,11 +80,16 @@ export default function Superadmin() {
   const [inviteRole, setInviteRole] = useState<InvitableRole>('staff');
   const [inviting, setInviting] = useState(false);
 
+  // Admin includes superadmin (see lib/auth.tsx). The route is wrapped in
+  // AdminOnly as well; this is the in-page copy of the same signage.
   useEffect(() => {
     if (authLoading) return;
-    if (!isSuperadmin) { navigate('/'); return; }
+    if (!isAdmin) { navigate('/'); return; }
     load();
-  }, [authLoading, isSuperadmin, navigate]);
+  }, [authLoading, isAdmin, navigate]);
+
+  const grantable: readonly Role[] = isSuperadmin ? ROLES : ADMIN_GRANTABLE_ROLES;
+  const invitable: readonly InvitableRole[] = isSuperadmin ? INVITABLE_ROLES : ADMIN_INVITABLE_ROLES;
 
   async function load() {
     setLoading(true);
@@ -151,19 +183,26 @@ export default function Superadmin() {
     }
   }
 
-  if (authLoading || !isSuperadmin) return null;
+  if (authLoading || !isAdmin) return null;
 
   return (
     <>
-      <SEO title="Superadmin — User Roles" description="Manage user roles for the Kenworthy platform." />
+      <SEO
+        title={`${isSuperadmin ? 'Superadmin' : 'Admin'} — Accounts & Roles`}
+        description="Manage staff accounts and roles for the Kenworthy platform."
+      />
       <div className="container mx-auto px-4 py-10 max-w-5xl space-y-6">
         <header className="space-y-1">
           <p className="font-display uppercase tracking-[0.3em] text-xs text-primary flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4" /> Superadmin
+            {isSuperadmin
+              ? <><ShieldCheck className="h-4 w-4" /> Superadmin</>
+              : <><Shield className="h-4 w-4" /> Admin</>}
           </p>
-          <h1 className="font-display uppercase text-4xl">User roles</h1>
+          <h1 className="font-display uppercase text-4xl">Accounts &amp; roles</h1>
           <p className="font-serif text-muted-foreground">
-            Grant or revoke roles. Superadmin inherits admin and staff access.
+            {isSuperadmin
+              ? 'Grant or revoke roles. Superadmin inherits admin and staff access.'
+              : 'Grant or revoke staff and host access. Accounts that hold admin or superadmin are managed by a superadmin and show as locked here.'}
           </p>
         </header>
 
@@ -219,7 +258,7 @@ export default function Superadmin() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {INVITABLE_ROLES.map(role => (
+                      {invitable.map(role => (
                         <SelectItem key={role} value={role}>{role}</SelectItem>
                       ))}
                     </SelectContent>
@@ -239,6 +278,7 @@ export default function Superadmin() {
           </DialogContent>
         </Dialog>
 
+        {isSuperadmin && (
         <Card className="glass">
           <CardContent className="p-4 space-y-2">
             <p className="font-display uppercase tracking-wider text-sm flex items-center gap-2">
@@ -273,13 +313,18 @@ export default function Superadmin() {
             )}
           </CardContent>
         </Card>
+        )}
 
         {loading ? (
           <p className="text-muted-foreground font-serif">Loading…</p>
         ) : (
           <div className="space-y-2">
             {filtered.map(r => {
-              const missing = ROLES.filter(role => !r.roles.includes(role));
+              // A superadmin edits anyone. An admin edits only unprotected
+              // accounts — which is also why their own row is locked: they
+              // hold admin, so they are protected from themselves.
+              const editable = isSuperadmin || !isProtected(r);
+              const missing = editable ? grantable.filter(role => !r.roles.includes(role)) : [];
               return (
                 <Card key={r.id} className="glass">
                   <CardContent className="p-3 grid gap-2 md:grid-cols-[1fr_auto] items-center">
@@ -292,21 +337,31 @@ export default function Superadmin() {
                       <div className="flex flex-wrap gap-1 mt-2">
                         {r.roles.length === 0 && <span className="text-xs text-muted-foreground italic">no roles</span>}
                         {r.roles.map(role => (
-                          <Badge key={role} className={`text-xs ${ROLE_COLOR[role]} pl-2 pr-1 gap-1`}>
+                          <Badge
+                            key={role}
+                            className={`text-xs ${editable ? ROLE_COLOR[role] : 'bg-muted text-muted-foreground'} pl-2 ${editable ? 'pr-1' : 'pr-2'} gap-1`}
+                          >
                             {role === 'superadmin' && <Shield className="h-3 w-3" />}
                             {role}
-                            <button
-                              onClick={() => revoke(r.id, role)}
-                              className="ml-0.5 hover:bg-foreground/10 rounded p-0.5"
-                              aria-label={`Remove ${role}`}
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
+                            {editable && (
+                              <button
+                                onClick={() => revoke(r.id, role)}
+                                className="ml-0.5 hover:bg-foreground/10 rounded p-0.5"
+                                aria-label={`Remove ${role}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
                           </Badge>
                         ))}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-1 justify-end">
+                      {!editable && (
+                        <span className="text-xs font-serif text-muted-foreground flex items-center gap-1">
+                          <Lock className="h-3 w-3" aria-hidden="true" /> Managed by a superadmin
+                        </span>
+                      )}
                       {missing.map(role => (
                         <Button
                           key={role}
