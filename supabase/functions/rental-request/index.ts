@@ -22,7 +22,8 @@
 //     silently submittable from the public form the day it is created.
 //   * Free text is bounded. `event_description` had no length limit at all.
 //   * There is a single place to add anything else this endpoint ever needs —
-//     a notification, a duplicate check, a per-address limit.
+//     a notification, a duplicate check, a per-address limit. The notification
+//     exists now: see "Telling staff" below.
 //
 // Turnstile is Cloudflare's bot check: the page renders a widget that is
 // invisible for almost everybody, and hands over a single-use token that this
@@ -48,6 +49,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/http.ts';
+import { notifyStaffOfRentalRequest } from '../_shared/staff_notifications.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -255,6 +257,24 @@ Deno.serve(async (req: Request) => {
     // in an error body tells a prober about the schema.
     console.error('[rental-request] insert failed', error);
     return json({ error: 'We could not save that request. Please try again.' }, 500);
+  }
+
+  // ---- Telling staff -------------------------------------------------------
+  //
+  // The row is saved; from here the submitter's part is done and nothing may
+  // change that. The email to events@ (or whoever the admin Notifications
+  // screen names) is best effort: it runs after the response is on its way,
+  // logs its own failures, and cannot fail this request. Who it goes to comes
+  // from app_config alone — `row` supplies the *content* and the Reply-To,
+  // never a recipient, so the public form is not a way to make us mail an
+  // arbitrary address from a verified @kenworthy.org sender.
+  const notify = notifyStaffOfRentalRequest(admin, { id: data.id, ...(row as any) }).catch((err) => {
+    console.error('[rental-request] staff notification threw', err);
+  });
+  // @ts-ignore — EdgeRuntime exists only in the Supabase edge runtime.
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) {
+    // @ts-ignore
+    EdgeRuntime.waitUntil(notify);
   }
 
   return json({ ok: true, id: data.id });
