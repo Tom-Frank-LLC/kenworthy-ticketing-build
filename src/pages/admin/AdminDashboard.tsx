@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { MarqueeFrame } from '@/components/MarqueeFrame';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star, Bell
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
@@ -46,6 +46,7 @@ import SponsorsTab from '@/components/admin/SponsorsTab';
 import DvdLibraryTab from '@/components/admin/DvdLibraryTab';
 import MailchimpTab from '@/components/admin/MailchimpTab';
 import LglTab from '@/components/admin/LglTab';
+import NotificationsTab from '@/components/admin/NotificationsTab';
 import HiringTab from '@/components/admin/HiringTab';
 import PressTab from '@/components/admin/PressTab';
 import BackstageTab from '@/components/admin/BackstageTab';
@@ -733,6 +734,10 @@ export default function AdminDashboard() {
               label: 'Site',
               tabs: [
                 { value: 'pages', label: 'Pages', icon: Globe, show: isAdmin },
+                /* Who inside the building is emailed about what. Under Site
+                   rather than Operations because it is configuration of the
+                   site's behaviour, not a queue anyone works through. */
+                { value: 'notifications', label: 'Notifications', icon: Bell, show: isAdmin },
               ],
             },
           ]
@@ -1461,6 +1466,12 @@ export default function AdminDashboard() {
         {isAdmin && (
           <TabsContent value="lgl" className="space-y-6">
             <LglTab />
+          </TabsContent>
+        )}
+
+        {isAdmin && (
+          <TabsContent value="notifications" className="space-y-6">
+            <NotificationsTab />
           </TabsContent>
         )}
       </Tabs>

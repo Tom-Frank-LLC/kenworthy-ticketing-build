@@ -82,6 +82,15 @@ export async function sendTransactionalEmail(
   subject: string,
   html: string,
   text: string,
+  opts: {
+    /**
+     * Override the Reply-To. Staff notifications set this to the person who
+     * submitted a form so a reply goes to them rather than back to events@.
+     * It is a header on a message whose recipients were chosen elsewhere —
+     * it never widens who receives the message.
+     */
+    replyTo?: string;
+  } = {},
 ): Promise<SendResult> {
   if (!RESEND_API_KEY) return { ok: false, error: 'RESEND_API_KEY is not configured' };
   const res = await fetch('https://api.resend.com/emails', {
@@ -90,7 +99,7 @@ export async function sendTransactionalEmail(
     body: JSON.stringify({
       from: TICKET_FROM_EMAIL,
       to: [to],
-      reply_to: TICKET_REPLY_TO,
+      reply_to: opts.replyTo || TICKET_REPLY_TO,
       subject,
       html,
       text,
