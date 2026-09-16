@@ -1,17 +1,19 @@
 ---
 brief: nonrefundable-microcopy-scan
 title: Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-09-16
-verified: false
+shipped_in: ["#309"]
+shipped_at: 2026-09-16
+verified: true
+evidence: "prod worker version 06288528-2805-4a79-a5b7-12f7722f6550 (rollback 88c4aedc-70ff-4a75-b6e8-0601865344c9); staging 48935959-e4e8-4041-b3d5-a6b61be68c0b (rollback 0a91d8d7-2883-4fe5-9b97-a9865bb8731c); ticket-checkout, send-ticket-confirmation, film-pass-checkout deployed to both projects and probed"
 findings: ../FINDINGS-nonrefundable-contradiction-scan.md
 ---
 
 # Brief: "Tickets are non-refundable. All sales are final." microcopy + a contradiction scan
 
-**Status:** built, not yet deployed. See `docs/FINDINGS-nonrefundable-contradiction-scan.md`
+**Status:** shipped to staging and production 2026-09-16 (PR #309). See `docs/FINDINGS-nonrefundable-contradiction-scan.md`
 for the scan, the four decisions and how each was taken.
 **Date:** September 16, 2026
 **Requested by:** Tom — add **"Tickets are non-refundable. All sales are final."** beneath the Pay button everywhere it appears and on the film-ticket receipt; and scan all platform language so nothing contradicts it.
@@ -70,3 +72,21 @@ table. Corrections to the brief as written, found during the scan:
 - The donation receipt does **not** frame gifts as non-refundable; Terms §8 does.
 - `kenworthy.org/ticket-info-policies` now 301s to `/terms` in this app, so the
   "update the WordPress page" action item is moot. Terms §6 is the policy page.
+
+## Shipped (2026-09-16)
+
+Deployed from `main` at `47bcd09` after confirming neither worker was ahead
+of main (production's entry chunk was byte-identical in size and route table
+to the pre-merge build; staging was behind by one route).
+
+| target | version | rollback |
+|---|---|---|
+| `kenworthy-ticketing-build` (prod) | `06288528-2805-4a79-a5b7-12f7722f6550` | `88c4aedc-70ff-4a75-b6e8-0601865344c9` |
+| `kenworthy-ticketing-staging` | `48935959-e4e8-4041-b3d5-a6b61be68c0b` | `0a91d8d7-2883-4fe5-9b97-a9865bb8731c` |
+
+Edge functions carrying the receipt template (`ticket-checkout`,
+`send-ticket-confirmation`, `film-pass-checkout`) deployed to both projects;
+each answers an anon-key POST with its own validation error, not a boot error.
+Verified at the origin, not the upload log: the new entry chunk is what `/`
+serves on both hosts, and the `SalesFinalNote-*` chunk returns as
+`text/javascript` with the wording in it.
