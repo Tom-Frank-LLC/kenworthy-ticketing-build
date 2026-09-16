@@ -1,11 +1,13 @@
 ---
 brief: admin-account-role-management
 title: Admins manage staff and host accounts; only a superadmin touches admins and superadmins
-status: built
+status: shipped
 track: security
 severity: P1
 date: 2026-09-15
-verified: false
+shipped_in: ["#305"]
+shipped_at: 2026-09-16
+verified: true
 evidence: supabase/migrations/20260916080513_admin_scoped_role_management.sql, supabase/tests/roles/, supabase/functions/_shared/role_management.ts
 ---
 
@@ -33,6 +35,10 @@ admin would succeed and a re-assignment would fail. It cannot rewrite a row
 upward (WITH CHECK guards the new row) — pinned by RLS cases 32–35.
 
 ## What shipped
+
+Deployed to production 2026-09-16 (migration pushed, `invite-staff` deployed, worker
+version `795d52f7-bfd5-4291-baf3-69bd9de73f7c`; rollback is `22dac98e-767d-4271-85c9-ee1017a71740`).
+All three admin policies confirmed live on production with `pg_policies`.
 
 - **RLS** — `20260916080513_admin_scoped_role_management.sql`: `is_protected_user(uuid)`
   plus "Admins insert/delete/update lower roles" policies. Superadmin policies untouched.
