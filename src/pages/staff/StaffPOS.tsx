@@ -37,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { COLLECT_PHONE, CONCESSION_POS_ENABLED } from '@/lib/flags';
 import { formatShowtime } from '@/lib/datetime';
 import TicketScanner from './TicketScanner';
+import { SalesFinalNote } from '@/components/SalesFinalNote';
 
 interface ShowingOption {
   id: string;
@@ -1168,6 +1169,10 @@ export default function StaffPOS() {
                       </>
                     )}
                   </Button>
+                  {/* Staff know the policy; this is here so the screen the
+                      patron is looking at across the counter says what the
+                      website says. */}
+                  <SalesFinalNote />
                 </>
               )}
             </CardContent>

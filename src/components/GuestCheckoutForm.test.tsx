@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import type { ReactElement } from 'react';
 import { GuestCheckoutForm } from './GuestCheckoutForm';
 import { COLLECT_PHONE, SMS_DELIVERY_LIVE } from '@/lib/flags';
 
@@ -19,6 +21,10 @@ import { COLLECT_PHONE, SMS_DELIVERY_LIVE } from '@/lib/flags';
  */
 
 const tokenizeCard = vi.fn();
+
+// The form links to the ticket policy (SalesFinalNote), and a <Link> needs a
+// router above it.
+const render = (ui: ReactElement) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 
 vi.mock('@/lib/square', () => ({
   fetchSquareConfig: vi.fn().mockResolvedValue({

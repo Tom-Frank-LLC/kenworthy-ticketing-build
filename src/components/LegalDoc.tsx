@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { SEO } from '@/components/SEO';
 
 // Shared shell for the two legal documents, /privacy and /terms.
@@ -30,6 +31,15 @@ export function LegalDoc({
   lastUpdated: string;
   children: ReactNode;
 }) {
+  // React Router does not scroll to a hash on its own, and on a hard load the
+  // route chunk arrives after the browser has already given up looking for
+  // the anchor. Both cases land here once the document has rendered.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!hash) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' });
+  }, [hash]);
+
   return (
     <div className="min-h-screen bg-background">
       <SEO title={seoTitle} description={description} path={path} />
@@ -55,10 +65,19 @@ export function LegalDoc({
   );
 }
 
-/** A section heading. Numbered in the Terms, unnumbered in the Privacy Policy. */
-export function H2({ children }: { children: ReactNode }) {
+/**
+ * A section heading. Numbered in the Terms, unnumbered in the Privacy Policy.
+ *
+ * `id` makes a section linkable — the sales-final note under every Pay button
+ * points at /terms#refunds — and scroll-mt clears the sticky header so the
+ * heading lands below it rather than under it.
+ */
+export function H2({ id, children }: { id?: string; children: ReactNode }) {
   return (
-    <h2 className="font-display uppercase text-2xl md:text-3xl text-foreground mt-12 mb-4">
+    <h2
+      id={id}
+      className="font-display uppercase text-2xl md:text-3xl text-foreground mt-12 mb-4 scroll-mt-24"
+    >
       {children}
     </h2>
   );

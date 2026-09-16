@@ -6,11 +6,16 @@ import { LegalDoc, H2, P, B, Bullets, ContactBlock } from '@/components/LegalDoc
 // Several sections here are policy, not description, and they were set
 // deliberately against what the Kenworthy already publishes elsewhere:
 //
-//   §6  refunds/exchanges — matches kenworthy.org/ticket-info-policies
-//       verbatim in substance: full refund on a cancelled performance, no
-//       other refunds, exchanges up to 24 hours prior. Do not loosen the
-//       exchange window here without changing it there too; patrons have
-//       been promised it since at least 2025.
+//   §6  refunds/exchanges — this is now the policy page: the old
+//       kenworthy.org/ticket-info-policies URL 301s here (worker/redirects.ts),
+//       so there is no second copy to keep in step. Its substance is
+//       unchanged since at least 2025: full refund on a cancelled
+//       performance, no other refunds, exchanges up to 24 hours prior. Its
+//       first two sentences are repeated verbatim beneath every Pay button
+//       (src/components/SalesFinalNote.tsx) and on the ticket receipt
+//       (supabase/functions/_shared/notify.ts). A pay button that says
+//       "final" over a policy that says "refund" is a contradiction, so if
+//       the stance changes, change all three together.
 //   §8  the 501(c)(3) language and Tax ID mirror the donation receipt in
 //       supabase/functions/_shared/donations.ts. If one moves, move both —
 //       the receipt is what a donor uses to substantiate a deduction.
@@ -28,7 +33,7 @@ export default function Terms() {
       seoTitle="Terms of Use — Kenworthy"
       description="The terms governing ticket and film pass purchases, donations, and theatre rental requests made through the Kenworthy Performing Arts Centre website."
       path="/terms"
-      lastUpdated="August 15, 2026"
+      lastUpdated="September 16, 2026"
     >
       <P>
         These Terms of Use (“Terms”) govern your use of the Kenworthy Performing Arts Centre website
@@ -94,11 +99,11 @@ export default function Terms() {
         §6.
       </P>
 
-      <H2>6. Refunds and exchanges</H2>
+      <H2 id="refunds">6. Refunds and exchanges</H2>
       <P>
-        <B>Refunds.</B> If the Kenworthy cancels a performance, refunds will be made in full. Except
-        where required by law, no other refunds will be made. Refunds, where granted, are issued to
-        the original payment method.
+        <B>Tickets are non-refundable. All sales are final.</B> If the Kenworthy cancels a
+        performance, you will be refunded in full. Except where required by law, no other refunds
+        will be made. Refunds, where granted, are issued to the original payment method.
       </P>
       <P>
         <B>Exchanges.</B> Tickets may be exchanged up to 24 hours prior to the performance, subject to
@@ -109,10 +114,10 @@ export default function Terms() {
         date. If you cannot attend the new date, contact the box office.
       </P>
       <P>
-        Film passes are non-refundable except as required by law; see §7.
+        Film passes are non-refundable and all sales are final, except as required by law; see §7.
       </P>
 
-      <H2>7. Film passes</H2>
+      <H2 id="passes">7. Film passes</H2>
       <P>
         Film passes may be purchased online and picked up at the box office or mailed to the address
         you provide. A pass is valid for <B>eligible showings</B> (generally standard-admission films)
@@ -123,7 +128,8 @@ export default function Terms() {
       <P>
         Passes are <B>transferable</B> — a pass may be given as a gift and used by whoever presents
         it — but a lost or stolen pass <B>cannot be replaced</B>, so please treat a pass like cash.
-        Passes have no cash value and are non-refundable except as required by law. Commercial resale
+        Passes have no cash value and are non-refundable except as required by law; all sales are
+        final. Commercial resale
         of passes is prohibited; see §11.
       </P>
 
