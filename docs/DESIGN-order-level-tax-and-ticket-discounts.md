@@ -337,6 +337,7 @@ a tier is added covers the new tier. A showing with no tiers shows no boxes.
 
 Verified: harness 90/90; Deno 487; vitest 927 (+ the same 9 pre-existing `MonthCalendar`
 failures). Staging, real sandbox sale: 2 Adult @ $9 + 2 Students @ $7 under an Adult-only 25%
-rule → off 2.25 + 2.25 + 0 + 0, rows 2915, no abandoned-order line in the checkout log. Test
-showing, tiers, rule, tickets and buyer removed afterwards.
+rule → off 2.25 + 2.25 + 0 + 0, rows 2915; Square payment 2915 COMPLETED, order **kept** at 2915
+(tax 165) with the discount on the Adult line alone, read back through the probe. Test showing,
+tiers, rule, tickets and buyer removed afterwards; the probe deleted again.
 
