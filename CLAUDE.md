@@ -105,9 +105,14 @@ main.
 
 - Work in your own `git worktree`, branched from `origin/main` after a fetch.
 - Never `git add -A`. Stage the files you touched, by name.
-- Worktrees do not get the gitignored env files. Copy `.env.staging`,
-  `.env.production` and `supabase/.temp/` in, or your build silently loses the
-  Supabase URL.
+- A new worktree needs `supabase/.temp/` copied in (it is gitignored, and the CLI
+  is unlinked without it). **Do not copy `.env.staging` / `.env.production`** —
+  they are tracked, so the worktree already has the current ones, and the main
+  checkout's copies are usually older. Copying them over once silently dropped the
+  Turnstile site key from a branch.
+- A worktree has no `node_modules`. Run `npm ci`; then pass
+  `--node-modules-dir=none` to `deno check` / `deno test`, or Deno tries to resolve
+  `npm:` imports from that folder and fails.
 - Never commit a `bun.lock`, `pnpm-lock.yaml` or `yarn.lock`. A stale `bun.lock`
   once took the Cloudflare build off npm and made the PR checks fail on every
   PR, which made a red check stop meaning anything.
@@ -137,6 +142,17 @@ main.
 deletes every field we did not send. This wiped catalog descriptions and images
 on 14 Aug 2026, and the damage was invisible in both UIs — timestamps were the
 only evidence. Read-modify-write only, and prefer create-only.
+
+**Square taxes the order, not the line, and rounds half-to-even.** Tax is 6% of
+the summed taxable lines, once; line shape changes nothing. Our arithmetic lives in
+`_shared/order_math.ts` (byte-identical twin `src/lib/orderMath.ts`), the database
+holds every order's rows to it (`enforce_ticket_order_tax`, PT422), and
+`_shared/pricing_vectors.json` pins all three to totals Square's sandbox returned.
+Never compute tax as `Math.round(price * 0.06)` per item: it agrees with Square
+only at multiples of 50¢, and a Square order that disagrees with the charge by a
+cent is abandoned to a bare payment. An order-scoped Square discount also
+discounts donations — scope discounts to ticket lines. See
+`docs/FINDINGS-square-order-arithmetic.md`.
 
 A 2xx is not proof of a write. Verify against the Square dashboard or a
 re-read, not against the response code.

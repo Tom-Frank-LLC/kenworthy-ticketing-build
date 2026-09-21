@@ -1,0 +1,1124 @@
+{
+  "environment": "sandbox",
+  "api_version": "2024-01-18",
+  "results": [
+    {
+      "label": "F0 shared fixed 333 over [(1075, '4'), (825, '1'), (333, '1')] + donation",
+      "total": 5933,
+      "tax_total": 308,
+      "discount_total": 333,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "4",
+          "base": 1075,
+          "gross": 4300,
+          "discount": 262,
+          "tax": 243,
+          "total": 4281,
+          "applied_discounts": [
+            262
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "1",
+          "base": 825,
+          "gross": 825,
+          "discount": 51,
+          "tax": 46,
+          "total": 820,
+          "applied_discounts": [
+            51
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "1",
+          "base": 333,
+          "gross": 333,
+          "discount": 20,
+          "tax": 19,
+          "total": 332,
+          "applied_discounts": [
+            20
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F1 shared fixed 250 over [(825, '5'), (900, '1'), (675, '4'), (2500, '1')] + donation",
+      "total": 11073,
+      "tax_total": 598,
+      "discount_total": 250,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "5",
+          "base": 825,
+          "gross": 4125,
+          "discount": 101,
+          "tax": 241,
+          "total": 4265,
+          "applied_discounts": [
+            101
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "1",
+          "base": 900,
+          "gross": 900,
+          "discount": 22,
+          "tax": 53,
+          "total": 931,
+          "applied_discounts": [
+            22
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "4",
+          "base": 675,
+          "gross": 2700,
+          "discount": 66,
+          "tax": 158,
+          "total": 2792,
+          "applied_discounts": [
+            66
+          ]
+        },
+        {
+          "uid": "l3",
+          "qty": "1",
+          "base": 2500,
+          "gross": 2500,
+          "discount": 61,
+          "tax": 146,
+          "total": 2585,
+          "applied_discounts": [
+            61
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F2 shared fixed 100 over [(333, '4'), (825, '5')] + donation",
+      "total": 6178,
+      "tax_total": 321,
+      "discount_total": 100,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "4",
+          "base": 333,
+          "gross": 1332,
+          "discount": 24,
+          "tax": 78,
+          "total": 1386,
+          "applied_discounts": [
+            24
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "5",
+          "base": 825,
+          "gross": 4125,
+          "discount": 76,
+          "tax": 243,
+          "total": 4292,
+          "applied_discounts": [
+            76
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F3 shared fixed 250 over [(825, '5'), (2500, '1')] + donation",
+      "total": 7257,
+      "tax_total": 382,
+      "discount_total": 250,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "5",
+          "base": 825,
+          "gross": 4125,
+          "discount": 156,
+          "tax": 238,
+          "total": 4207,
+          "applied_discounts": [
+            156
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "1",
+          "base": 2500,
+          "gross": 2500,
+          "discount": 94,
+          "tax": 144,
+          "total": 2550,
+          "applied_discounts": [
+            94
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F4 shared fixed 250 over [(333, '2'), (1450, '4')] + donation",
+      "total": 7089,
+      "tax_total": 373,
+      "discount_total": 250,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "2",
+          "base": 333,
+          "gross": 666,
+          "discount": 26,
+          "tax": 38,
+          "total": 678,
+          "applied_discounts": [
+            26
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "4",
+          "base": 1450,
+          "gross": 5800,
+          "discount": 224,
+          "tax": 335,
+          "total": 5911,
+          "applied_discounts": [
+            224
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F5 shared fixed 100 over [(675, '5'), (1450, '5'), (1075, '1'), (900, '3')] + donation",
+      "total": 15658,
+      "tax_total": 858,
+      "discount_total": 100,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "5",
+          "base": 675,
+          "gross": 3375,
+          "discount": 23,
+          "tax": 201,
+          "total": 3553,
+          "applied_discounts": [
+            23
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "5",
+          "base": 1450,
+          "gross": 7250,
+          "discount": 51,
+          "tax": 432,
+          "total": 7631,
+          "applied_discounts": [
+            51
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "1",
+          "base": 1075,
+          "gross": 1075,
+          "discount": 7,
+          "tax": 64,
+          "total": 1132,
+          "applied_discounts": [
+            7
+          ]
+        },
+        {
+          "uid": "l3",
+          "qty": "3",
+          "base": 900,
+          "gross": 2700,
+          "discount": 19,
+          "tax": 161,
+          "total": 2842,
+          "applied_discounts": [
+            19
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F6 shared fixed 333 over [(675, '5'), (825, '5'), (900, '4'), (333, '4')] + donation",
+      "total": 13325,
+      "tax_total": 726,
+      "discount_total": 333,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "5",
+          "base": 675,
+          "gross": 3375,
+          "discount": 90,
+          "tax": 197,
+          "total": 3482,
+          "applied_discounts": [
+            90
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "5",
+          "base": 825,
+          "gross": 4125,
+          "discount": 111,
+          "tax": 241,
+          "total": 4255,
+          "applied_discounts": [
+            111
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "4",
+          "base": 900,
+          "gross": 3600,
+          "discount": 96,
+          "tax": 210,
+          "total": 3714,
+          "applied_discounts": [
+            96
+          ]
+        },
+        {
+          "uid": "l3",
+          "qty": "4",
+          "base": 333,
+          "gross": 1332,
+          "discount": 36,
+          "tax": 78,
+          "total": 1374,
+          "applied_discounts": [
+            36
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F7 shared fixed 100 over [(1999, '3'), (1450, '2'), (1075, '2')] + donation",
+      "total": 12104,
+      "tax_total": 657,
+      "discount_total": 100,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "3",
+          "base": 1999,
+          "gross": 5997,
+          "discount": 54,
+          "tax": 357,
+          "total": 6300,
+          "applied_discounts": [
+            54
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "2",
+          "base": 1450,
+          "gross": 2900,
+          "discount": 26,
+          "tax": 172,
+          "total": 3046,
+          "applied_discounts": [
+            26
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "2",
+          "base": 1075,
+          "gross": 2150,
+          "discount": 20,
+          "tax": 128,
+          "total": 2258,
+          "applied_discounts": [
+            20
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F8 shared fixed 777 over [(1450, '5'), (1999, '3'), (1999, '3'), (675, '1')] + donation",
+      "total": 20791,
+      "tax_total": 1149,
+      "discount_total": 777,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "5",
+          "base": 1450,
+          "gross": 7250,
+          "discount": 283,
+          "tax": 418,
+          "total": 7385,
+          "applied_discounts": [
+            283
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "3",
+          "base": 1999,
+          "gross": 5997,
+          "discount": 234,
+          "tax": 346,
+          "total": 6109,
+          "applied_discounts": [
+            234
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "3",
+          "base": 1999,
+          "gross": 5997,
+          "discount": 234,
+          "tax": 346,
+          "total": 6109,
+          "applied_discounts": [
+            234
+          ]
+        },
+        {
+          "uid": "l3",
+          "qty": "1",
+          "base": 675,
+          "gross": 675,
+          "discount": 26,
+          "tax": 39,
+          "total": 688,
+          "applied_discounts": [
+            26
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F9 shared fixed 1000 over [(1075, '3'), (1075, '4'), (2500, '1')] + donation",
+      "total": 10067,
+      "tax_total": 542,
+      "discount_total": 1000,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "3",
+          "base": 1075,
+          "gross": 3225,
+          "discount": 322,
+          "tax": 174,
+          "total": 3077,
+          "applied_discounts": [
+            322
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "4",
+          "base": 1075,
+          "gross": 4300,
+          "discount": 429,
+          "tax": 233,
+          "total": 4104,
+          "applied_discounts": [
+            429
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "1",
+          "base": 2500,
+          "gross": 2500,
+          "discount": 249,
+          "tax": 135,
+          "total": 2386,
+          "applied_discounts": [
+            249
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F10 shared fixed 1000 over [(333, '5'), (802, '3')] + donation",
+      "total": 3755,
+      "tax_total": 184,
+      "discount_total": 1000,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "5",
+          "base": 333,
+          "gross": 1665,
+          "discount": 409,
+          "tax": 75,
+          "total": 1331,
+          "applied_discounts": [
+            409
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "3",
+          "base": 802,
+          "gross": 2406,
+          "discount": 591,
+          "tax": 109,
+          "total": 1924,
+          "applied_discounts": [
+            591
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F11 shared fixed 500 over [(1999, '5'), (1999, '1'), (675, '3')] + donation",
+      "total": 14830,
+      "tax_total": 811,
+      "discount_total": 500,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "5",
+          "base": 1999,
+          "gross": 9995,
+          "discount": 356,
+          "tax": 578,
+          "total": 10217,
+          "applied_discounts": [
+            356
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "1",
+          "base": 1999,
+          "gross": 1999,
+          "discount": 72,
+          "tax": 116,
+          "total": 2043,
+          "applied_discounts": [
+            72
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "3",
+          "base": 675,
+          "gross": 2025,
+          "discount": 72,
+          "tax": 117,
+          "total": 2070,
+          "applied_discounts": [
+            72
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F12 shared fixed 100 over [(675, '1'), (1450, '5'), (1999, '3'), (2500, '3')] + donation",
+      "total": 23101,
+      "tax_total": 1279,
+      "discount_total": 100,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "1",
+          "base": 675,
+          "gross": 675,
+          "discount": 3,
+          "tax": 40,
+          "total": 712,
+          "applied_discounts": [
+            3
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "5",
+          "base": 1450,
+          "gross": 7250,
+          "discount": 34,
+          "tax": 433,
+          "total": 7649,
+          "applied_discounts": [
+            34
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "3",
+          "base": 1999,
+          "gross": 5997,
+          "discount": 28,
+          "tax": 358,
+          "total": 6327,
+          "applied_discounts": [
+            28
+          ]
+        },
+        {
+          "uid": "l3",
+          "qty": "3",
+          "base": 2500,
+          "gross": 7500,
+          "discount": 35,
+          "tax": 448,
+          "total": 7913,
+          "applied_discounts": [
+            35
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "F13 shared fixed 333 over [(802, '2'), (675, '4'), (825, '2')] + donation",
+      "total": 6458,
+      "tax_total": 337,
+      "discount_total": 333,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "2",
+          "base": 802,
+          "gross": 1604,
+          "discount": 90,
+          "tax": 91,
+          "total": 1605,
+          "applied_discounts": [
+            90
+          ]
+        },
+        {
+          "uid": "l1",
+          "qty": "4",
+          "base": 675,
+          "gross": 2700,
+          "discount": 151,
+          "tax": 153,
+          "total": 2702,
+          "applied_discounts": [
+            151
+          ]
+        },
+        {
+          "uid": "l2",
+          "qty": "2",
+          "base": 825,
+          "gross": 1650,
+          "discount": 92,
+          "tax": 93,
+          "total": 1651,
+          "applied_discounts": [
+            92
+          ]
+        },
+        {
+          "uid": "don",
+          "qty": "1",
+          "base": 500,
+          "gross": 500,
+          "discount": 0,
+          "tax": 0,
+          "total": 500,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G0 no discount [(900, '4'), (2500, '7')]",
+      "total": 22366,
+      "tax_total": 1266,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "4",
+          "base": 900,
+          "gross": 3600,
+          "discount": 0,
+          "tax": 216,
+          "total": 3816,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l1",
+          "qty": "7",
+          "base": 2500,
+          "gross": 17500,
+          "discount": 0,
+          "tax": 1050,
+          "total": 18550,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G1 no discount [(675, '2'), (1999, '4'), (333, '3'), (1075, '7')]",
+      "total": 18942,
+      "tax_total": 1072,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "2",
+          "base": 675,
+          "gross": 1350,
+          "discount": 0,
+          "tax": 81,
+          "total": 1431,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l1",
+          "qty": "4",
+          "base": 1999,
+          "gross": 7996,
+          "discount": 0,
+          "tax": 480,
+          "total": 8476,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l2",
+          "qty": "3",
+          "base": 333,
+          "gross": 999,
+          "discount": 0,
+          "tax": 60,
+          "total": 1059,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l3",
+          "qty": "7",
+          "base": 1075,
+          "gross": 7525,
+          "discount": 0,
+          "tax": 451,
+          "total": 7976,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G2 no discount [(333, '3'), (2500, '3'), (2500, '2'), (1075, '1')]",
+      "total": 15448,
+      "tax_total": 874,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "3",
+          "base": 333,
+          "gross": 999,
+          "discount": 0,
+          "tax": 60,
+          "total": 1059,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l1",
+          "qty": "3",
+          "base": 2500,
+          "gross": 7500,
+          "discount": 0,
+          "tax": 450,
+          "total": 7950,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l2",
+          "qty": "2",
+          "base": 2500,
+          "gross": 5000,
+          "discount": 0,
+          "tax": 300,
+          "total": 5300,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l3",
+          "qty": "1",
+          "base": 1075,
+          "gross": 1075,
+          "discount": 0,
+          "tax": 64,
+          "total": 1139,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G3 no discount [(1075, '2'), (900, '1')]",
+      "total": 3233,
+      "tax_total": 183,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "2",
+          "base": 1075,
+          "gross": 2150,
+          "discount": 0,
+          "tax": 129,
+          "total": 2279,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l1",
+          "qty": "1",
+          "base": 900,
+          "gross": 900,
+          "discount": 0,
+          "tax": 54,
+          "total": 954,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G4 no discount [(1075, '3'), (1450, '1'), (1075, '4'), (333, '3')]",
+      "total": 10572,
+      "tax_total": 598,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "3",
+          "base": 1075,
+          "gross": 3225,
+          "discount": 0,
+          "tax": 193,
+          "total": 3418,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l1",
+          "qty": "1",
+          "base": 1450,
+          "gross": 1450,
+          "discount": 0,
+          "tax": 87,
+          "total": 1537,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l2",
+          "qty": "4",
+          "base": 1075,
+          "gross": 4300,
+          "discount": 0,
+          "tax": 258,
+          "total": 4558,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l3",
+          "qty": "3",
+          "base": 333,
+          "gross": 999,
+          "discount": 0,
+          "tax": 60,
+          "total": 1059,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G5 no discount [(1075, '6'), (333, '5'), (825, '4')]",
+      "total": 12100,
+      "tax_total": 685,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "6",
+          "base": 1075,
+          "gross": 6450,
+          "discount": 0,
+          "tax": 387,
+          "total": 6837,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l1",
+          "qty": "5",
+          "base": 333,
+          "gross": 1665,
+          "discount": 0,
+          "tax": 100,
+          "total": 1765,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l2",
+          "qty": "4",
+          "base": 825,
+          "gross": 3300,
+          "discount": 0,
+          "tax": 198,
+          "total": 3498,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G6 no discount [(2500, '4'), (2500, '1'), (1999, '6'), (2500, '1')]",
+      "total": 28614,
+      "tax_total": 1620,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "4",
+          "base": 2500,
+          "gross": 10000,
+          "discount": 0,
+          "tax": 600,
+          "total": 10600,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l1",
+          "qty": "1",
+          "base": 2500,
+          "gross": 2500,
+          "discount": 0,
+          "tax": 150,
+          "total": 2650,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l2",
+          "qty": "6",
+          "base": 1999,
+          "gross": 11994,
+          "discount": 0,
+          "tax": 720,
+          "total": 12714,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l3",
+          "qty": "1",
+          "base": 2500,
+          "gross": 2500,
+          "discount": 0,
+          "tax": 150,
+          "total": 2650,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G7 no discount [(675, '2'), (1999, '2')]",
+      "total": 5669,
+      "tax_total": 321,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "2",
+          "base": 675,
+          "gross": 1350,
+          "discount": 0,
+          "tax": 81,
+          "total": 1431,
+          "applied_discounts": []
+        },
+        {
+          "uid": "l1",
+          "qty": "2",
+          "base": 1999,
+          "gross": 3998,
+          "discount": 0,
+          "tax": 240,
+          "total": 4238,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G8 no discount [(802, '5')]",
+      "total": 4251,
+      "tax_total": 241,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "5",
+          "base": 802,
+          "gross": 4010,
+          "discount": 0,
+          "tax": 241,
+          "total": 4251,
+          "applied_discounts": []
+        }
+      ]
+    },
+    {
+      "label": "G9 no discount [(675, '1')]",
+      "total": 715,
+      "tax_total": 40,
+      "discount_total": 0,
+      "lines": [
+        {
+          "uid": "l0",
+          "qty": "1",
+          "base": 675,
+          "gross": 675,
+          "discount": 0,
+          "tax": 40,
+          "total": 715,
+          "applied_discounts": []
+        }
+      ]
+    }
+  ]
+}

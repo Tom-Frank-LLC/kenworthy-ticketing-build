@@ -182,7 +182,6 @@ Deno.serve(async (req) => {
         displayName: "Donation",
         variationId,
         unitPriceCents: amountCents,
-        unitTaxCents: 0,
         count: 1,
         taxable: false, // the DONATION item is is_taxable false, and a gift is not a sale
       }]);

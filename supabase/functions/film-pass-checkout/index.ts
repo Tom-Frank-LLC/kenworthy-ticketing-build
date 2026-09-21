@@ -878,7 +878,6 @@ Deno.serve(async (req: Request) => {
       displayName: passType.name,
       variationId: (passType as any).square_variation_id ?? null,
       unitPriceCents,
-      unitTaxCents,
       count: quantity,
       // Taxed at the sale. The redemption that spends this pass records $0.
     }]);

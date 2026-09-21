@@ -330,6 +330,15 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'This showing just sold out. Your card was not charged.' }, 409);
     }
 
+    // PT422 — enforce_ticket_order_tax: the rows we apportioned do not sum to
+    // Square's tax on the order. That is this function's arithmetic and the
+    // database's having drifted apart, never anything the buyer did, so it is
+    // logged loudly and they are told only what matters to them.
+    if (code === 'PT422') {
+      console.error('[ticket-checkout] ORDER TAX MISMATCH — pricing.ts and the database disagree', insertErr);
+      return json({ error: 'We could not price this order. Your card was not charged.' }, 500);
+    }
+
     // 23505 — UNIQUE(showing_id, seat_id): someone confirmed one of these seats
     // in the last few milliseconds. This is the case that previously reached the
     // buyer as an opaque 500.
@@ -347,6 +356,26 @@ Deno.serve(async (req: Request) => {
       .update({ status: 'failed', payment_error: reason.slice(0, 500) })
       .in('id', ticketIds);
   };
+
+  // The rows are the charge: refunds, cash recording and reconciliation all
+  // re-read SUM(total_price), and the database — not this function — has the
+  // last word on what each row holds. So before any money moves, the rows as
+  // stored must add up to the amount about to be charged. Nothing should ever
+  // trip this; it exists because the day the two copies of the pricing rules
+  // drift, the alternative is a customer charged a number our own records
+  // cannot account for.
+  const storedCents = created.reduce(
+    (sum: number, t: any) => sum + Math.round(Number(t.total_price) * 100),
+    0,
+  );
+  const pricedTicketCents = Math.round(order.total * 100);
+  if (storedCents !== pricedTicketCents) {
+    console.error(
+      `[ticket-checkout] stored rows total ${storedCents} but the order was priced at ${pricedTicketCents}; refusing to charge`,
+    );
+    await failOrder('Stored ticket totals did not match the priced order');
+    return json({ error: 'We could not price this order. Your card was not charged.' }, 500);
+  }
 
   // -------------------------------------------------------------------------
   // Take the money

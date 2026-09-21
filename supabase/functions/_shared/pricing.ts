@@ -6,13 +6,19 @@
 // if the two disagree, the server's number is what Square charges and what the
 // ticket rows record.
 //
-// This mirrors the `enforce_ticket_pricing` DB trigger deliberately and
-// exactly, including its rounding: the trigger rounds tax *per ticket row*, so
-// the order total is the sum of per-ticket totals, not tax computed once on the
-// subtotal. Those differ by a cent on some quantities. Matching the trigger
-// means the charged amount always equals SUM(tickets.total_price) for the
-// order, which is what the refund path re-reads. Anything else would refund a
-// different number than it charged.
+// Tax is the ORDER's tax, computed the way Square computes it — once, on the sum
+// of the tickets, rounded half-to-even — and then apportioned to the ticket
+// rows (`_shared/order_math.ts`). It used to be rounded per ticket, half-up, to
+// mirror the `enforce_ticket_pricing` trigger. That agreed with Square only
+// while every price was a multiple of 50 cents; at $8.25 the two differ by a
+// cent on two tickets, and a Square order that disagrees with the charge is
+// abandoned to a bare payment (docs/FINDINGS-square-order-arithmetic.md).
+//
+// What has not changed is the invariant: the charged amount always equals
+// SUM(tickets.total_price) for the order, which is what the refund path
+// re-reads. The database now holds the rows to the same order-level figure
+// (`enforce_ticket_order_tax`), so a copy of this arithmetic that drifts is
+// refused at the insert — before any card is charged — rather than recorded.
 //
 // The trigger also zeroes price and tax for `comp` AND `film_pass` (migration
 // 20260819040000): a pass admission was paid for, with tax, when the pass was
@@ -28,6 +34,7 @@ import {
   needsNoTicket,
   soldOutMessage,
 } from './purchasable.ts';
+import { apportionOrderTax } from './order_math.ts';
 
 export const TAX_RATE = 0.06;
 
@@ -284,10 +291,8 @@ export async function priceTicketOrder(
     }
   }
 
-  // Carries the integer-cent working values; they are stripped from the result.
-  type WorkingTicket = PricedTicket & { priceCents: number; taxCents: number };
-
-  const tickets: WorkingTicket[] = descriptors.map((d) => {
+  // Pass one: what each ticket costs before tax.
+  const resolved = descriptors.map((d) => {
     const seatId = d.seat_id || null;
 
     // A seat's own tier mapping wins over whatever tier the client asked for.
@@ -311,26 +316,24 @@ export async function priceTicketOrder(
     }
 
     // Integer cents, not floating-point dollars. In doubles,
-    // `8.25 + 8.25 * 0.06` lands just under 8.745 and rounds down to 8.74,
-    // while Postgres computes the same expression in exact numeric and stores
-    // 8.75. Charging the float total would have taken a cent per ticket less
-    // than the ticket rows say — a charge that fails to reconcile against its
-    // own order, and against the refund that later re-reads those rows.
-    const priceCents = Math.round(price * 100);
-    const taxCents = Math.round(priceCents * TAX_RATE);
-    return {
-      seat_id: seatId,
-      tier_id: tierId,
-      price,
-      tax_amount: taxCents / 100,
-      total_price: (priceCents + taxCents) / 100,
-      priceCents,
-      taxCents,
-    };
+    // `8.25 + 8.25 * 0.06` lands just under 8.745, while Postgres computes the
+    // same expression in exact numeric. Every sum below is over integers so
+    // that no total here can differ from the database's by float error.
+    return { seatId, tierId, price, priceCents: Math.round(price * 100) };
   });
 
-  const subtotalCents = tickets.reduce((s, t) => s + t.priceCents, 0);
-  const taxTotalCents = tickets.reduce((s, t) => s + t.taxCents, 0);
+  // Pass two: the order's tax, shared out across those tickets in row order.
+  const { taxCents: taxTotalCents, perTicket } = apportionOrderTax(resolved.map((r) => r.priceCents));
+
+  const tickets: PricedTicket[] = resolved.map((r, i) => ({
+    seat_id: r.seatId,
+    tier_id: r.tierId,
+    price: r.price,
+    tax_amount: perTicket[i] / 100,
+    total_price: (r.priceCents + perTicket[i]) / 100,
+  }));
+
+  const subtotalCents = resolved.reduce((s, r) => s + r.priceCents, 0);
   const totalCents = subtotalCents + taxTotalCents;
 
   const subtotal = subtotalCents / 100;
@@ -347,7 +350,7 @@ export async function priceTicketOrder(
   const grandTotalCents = totalCents + feeCents;
 
   return {
-    tickets: tickets.map(({ priceCents: _p, taxCents: _t, ...ticket }) => ticket),
+    tickets,
     subtotal,
     tax,
     total,

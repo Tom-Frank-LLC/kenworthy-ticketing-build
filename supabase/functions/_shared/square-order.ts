@@ -5,22 +5,29 @@
 // invisible to item-sales, category and tax reporting
 // (docs/SQUARE-TRANSACTION-CONVENTIONS.md).
 //
-// Two rules govern the arithmetic, and they are in tension:
+// ## The arithmetic is Square's
 //
-//   1. Square's convention is ONE LINE PER TIER — "Adult ×2", not two Adult
-//      lines. That is what the theatre's own orders look like.
-//   2. Our totals must stay authoritative. `_shared/pricing.ts` rounds tax PER
-//      TICKET ROW to mirror the enforce_ticket_pricing trigger, and
-//      square-refund refunds SUM(total_price). If Square's total differs by even
-//      a cent, the charge stops matching our own rows and a "full" refund
-//      refunds the wrong number.
+// Square totals an order ONE way, whatever shape its lines take: it sums the
+// taxed lines, takes 6% of that sum once, and rounds half-to-even. Measured —
+// docs/FINDINGS-square-order-arithmetic.md, 49 sandbox orders.
 //
-// Those disagree exactly when a tier's price makes per-unit tax round
-// differently from per-line tax: at $8.25, 825 × 6% = 49.5, so two tickets are
-// 2 × 50 = 100 our way and round(1650 × 6%) = 99 Square's way. So: aggregate by
-// tier normally, and split a tier into single-quantity lines only when
-// aggregating would change the number. Convention where it is free, correctness
-// where it is not.
+// This file used to believe otherwise. `_shared/pricing.ts` rounded tax per
+// ticket, and a tier whose per-unit tax rounded differently from its line's
+// ($8.25: 2 × 50 = 100 vs round(1650 × 6%) = 99) was split into single-quantity
+// lines on the premise that Square would then round each line separately. It
+// does not. Two separate $8.25 lines total 1749, exactly as one 2× line does,
+// so the split bought nothing and the order was abandoned either way. The
+// original probe could not see this because it tested only $8.25 × 1, where
+// 49.5 rounds to 50 under both half-up and half-even.
+//
+// So: always ONE LINE PER TIER — "Adult ×2", which is Square's own convention
+// and what the theatre's other orders look like — and `expectedTotalCents` is
+// computed with Square's formula (`_shared/order_math.ts`), which makes the
+// caller's pre-flight check a model of what Square will return rather than a
+// restatement of our own sum. `pricing.ts` prices with the same function, so
+// the two agree by construction; the check exists for the day they do not.
+
+import { taxOnCents } from './order_math.ts';
 
 export const TAX_RATE = 0.06;
 export const SALES_TAX_UID = 'kenworthy-sales-tax';
@@ -36,8 +43,6 @@ export interface TicketGroup {
   /** The Square ITEM_VARIATION to bill against, or null to go ad hoc. */
   variationId: string | null;
   unitPriceCents: number;
-  /** OUR per-ticket tax, already rounded the way the DB trigger rounds it. */
-  unitTaxCents: number;
   count: number;
   /**
    * False for lines that must never be taxed — a bundled donation, a card
@@ -54,20 +59,6 @@ export interface BuiltOrder {
   expectedTotalCents: number;
   /** Groups billed without a catalog link — a degraded sale, worth logging. */
   adHocGroups: number;
-  /** Groups split into single lines to keep the rounding honest. */
-  splitGroups: number;
-}
-
-/**
- * Would aggregating this tier onto one line change the tax we charge?
- *
- * Square taxes a line on its extended total; we tax each ticket. Equal for
- * whole-dollar prices, not equal at prices like $8.25.
- */
-export function aggregationChangesTax(g: TicketGroup): boolean {
-  const ours = g.unitTaxCents * g.count;
-  const squares = Math.round(g.unitPriceCents * g.count * TAX_RATE);
-  return ours !== squares;
 }
 
 /**
@@ -90,17 +81,14 @@ export function aggregationChangesTax(g: TicketGroup): boolean {
  */
 export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
   const lineItems: Record<string, unknown>[] = [];
-  let expectedTotalCents = 0;
+  let grossCents = 0;
+  let taxableCents = 0;
   let adHocGroups = 0;
-  let splitGroups = 0;
 
   groups.forEach((g, gi) => {
     if (g.count <= 0) return;
     const adHoc = !g.variationId;
     if (adHoc) adHocGroups++;
-
-    const split = aggregationChangesTax(g);
-    if (split) splitGroups++;
 
     const emit = (qty: number, uid: string) => {
       const line: Record<string, unknown> = {
@@ -119,13 +107,10 @@ export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
       lineItems.push(line);
     };
 
-    if (split) {
-      for (let i = 0; i < g.count; i++) emit(1, `g${gi}-${i}`);
-    } else {
-      emit(g.count, `g${gi}`);
-    }
+    emit(g.count, `g${gi}`);
 
-    expectedTotalCents += (g.unitPriceCents + g.unitTaxCents) * g.count;
+    grossCents += g.unitPriceCents * g.count;
+    if (g.taxable !== false) taxableCents += g.unitPriceCents * g.count;
   });
 
   return {
@@ -141,9 +126,9 @@ export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
         type: 'ADDITIVE',
       }]
       : [],
-    expectedTotalCents,
+    // Square's own sum: every line, plus one tax on everything taxable.
+    expectedTotalCents: grossCents + taxOnCents(taxableCents),
     adHocGroups,
-    splitGroups,
   };
 }
 
@@ -256,7 +241,7 @@ export async function loadTicketGroups(
   admin: any,
   showingId: string,
   priced: {
-    tickets: Array<{ tier_id: string | null; price: number; tax_amount: number }>;
+    tickets: Array<{ tier_id: string | null; price: number }>;
     showing: { start_time: string };
     productionTitle: string;
   },
@@ -284,7 +269,6 @@ export async function loadTicketGroups(
     const rawTier = t.tier_id ? tierNameById.get(t.tier_id) ?? null : null;
     const tierKey = helpers.canonicalTier(rawTier);
     const unitPriceCents = Math.round(Number(t.price) * 100);
-    const unitTaxCents = Math.round(Number(t.tax_amount) * 100);
     const key = `${tierKey}|${unitPriceCents}`;
 
     const existing = byKey.get(key);
@@ -295,7 +279,6 @@ export async function loadTicketGroups(
       displayName: helpers.variationName(tierKey, priced.showing.start_time, helpers.timeZone),
       variationId: variationByTier.get(tierKey) ?? null,
       unitPriceCents,
-      unitTaxCents,
       count: 1,
     });
   }
@@ -310,7 +293,6 @@ export function donationGroup(cents: number): TicketGroup {
     displayName: 'Donation',
     variationId: null,
     unitPriceCents: cents,
-    unitTaxCents: 0,
     count: 1,
     taxable: false,
   };
@@ -323,7 +305,6 @@ export function processingFeeGroup(cents: number): TicketGroup {
     displayName: 'Card processing fee',
     variationId: null,
     unitPriceCents: cents,
-    unitTaxCents: 0,
     count: 1,
     taxable: false,
   };
