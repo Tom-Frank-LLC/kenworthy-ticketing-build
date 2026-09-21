@@ -124,6 +124,19 @@ describe('DiscountRulesEditor', () => {
   });
 });
 
+describe('the add form does not look filled in when it is empty', () => {
+  it('has no placeholder text in any box, and the labels say what they are', async () => {
+    render(<DiscountRulesEditor scope={{ showing_id: 's-1' }} audience="this showing" />);
+    await screen.findByText('No discounts yet.');
+
+    expect(screen.getByLabelText('Percent')).not.toHaveAttribute('placeholder');
+    expect(screen.getByLabelText('Displayed text')).not.toHaveAttribute('placeholder');
+    expect(screen.getByLabelText('Displayed text')).toHaveValue('');
+    // The one real default, shown as a value because it IS one.
+    expect(screen.getByLabelText('Ticket minimum')).toHaveValue(4);
+  });
+});
+
 describe('suggestLabel', () => {
   it('names each kind of rule the way a buyer would say it', () => {
     expect(suggestLabel('percent', '25', '4')).toBe('25% off when you buy 4+');

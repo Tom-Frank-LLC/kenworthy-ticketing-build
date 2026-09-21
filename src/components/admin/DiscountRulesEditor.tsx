@@ -106,7 +106,7 @@ export default function DiscountRulesEditor({ scope, audience }: {
     if (!Number.isFinite(v) || v <= 0) return toast.error('Enter an amount greater than zero.');
     if (type === 'percent' && v > 100) return toast.error('A percent discount cannot be more than 100.');
     if (!Number.isInteger(min) || min < 1) return toast.error('Minimum tickets must be 1 or more.');
-    if (!shownLabel.trim()) return toast.error('Give the discount a name — buyers see it on their receipt.');
+    if (!shownLabel.trim()) return toast.error('Enter the displayed text — buyers see it on the showing page and their receipt.');
     if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
       return toast.error('The offer has to end after it starts.');
     }
@@ -207,7 +207,10 @@ export default function DiscountRulesEditor({ scope, audience }: {
 
       <fieldset className="space-y-3 rounded-md border border-border p-3" disabled={busy}>
         <legend className="px-1 text-sm font-medium">Add a discount</legend>
-        <div className="grid gap-3 sm:grid-cols-3">
+        {/* items-end: the inputs share a baseline even if a label wraps onto two
+            lines at a narrow width or a larger text size. No placeholders in this
+            form — greyed example text read as a setting already made. */}
+        <div className="grid gap-3 sm:grid-cols-3 items-end">
           <div className="space-y-1">
             <Label htmlFor="discount-type">Kind</Label>
             <Select value={type} onValueChange={(v) => setType(v as DiscountType)}>
@@ -225,11 +228,10 @@ export default function DiscountRulesEditor({ scope, audience }: {
               id="discount-value" type="number" inputMode="decimal" min="0" step="0.01"
               max={type === 'percent' ? 100 : undefined}
               value={value} onChange={(e) => setValue(e.target.value)}
-              placeholder={type === 'percent' ? '25' : '2.00'}
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="discount-min">When buying at least</Label>
+            <Label htmlFor="discount-min">Ticket minimum</Label>
             <Input
               id="discount-min" type="number" inputMode="numeric" min="1" step="1"
               value={minQuantity} onChange={(e) => setMinQuantity(e.target.value)}
@@ -237,11 +239,10 @@ export default function DiscountRulesEditor({ scope, audience }: {
           </div>
         </div>
         <div className="space-y-1">
-          <Label htmlFor="discount-label">Name buyers see</Label>
+          <Label htmlFor="discount-label">Displayed text</Label>
           <Input
             id="discount-label" value={shownLabel}
             onChange={(e) => { setLabel(e.target.value); setLabelTouched(true); }}
-            placeholder="25% off when you buy 4+"
           />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
