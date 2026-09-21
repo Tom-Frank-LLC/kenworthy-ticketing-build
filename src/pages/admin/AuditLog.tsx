@@ -54,6 +54,7 @@ const ENTITY_LABEL: Record<string, string> = {
   venues: 'Venue',
   venue_seats: 'Venue seat',
   showing_price_tiers: 'Price tier',
+  ticket_discounts: 'Ticket discount',
   // Events with no table behind them, written by explicit logAudit calls.
   auth: 'Sign-in',
   notification: 'Message sent',

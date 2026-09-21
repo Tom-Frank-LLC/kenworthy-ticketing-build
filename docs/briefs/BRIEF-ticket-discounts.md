@@ -1,7 +1,7 @@
 ---
 brief: ticket-discounts
 title: Staff can add ticket discounts (percent, $ per ticket, $ per order) that reconcile with Square to the cent
-status: in-progress
+status: built
 track: feature
 severity: P1
 date: 2026-09-21
@@ -23,8 +23,10 @@ findings: FINDINGS-square-order-arithmetic.md
 >    sale goes through is the intended follow-up, not part of this brief.
 > 4. Two ships. **Ship 1 — order-level tax — is built** (branch
 >    `feat/ticket-discounts`; verified on staging with a real sandbox sale of
->    2 x $8.25 = $17.49, Square order kept). **Ship 2 — discounts — not started.**
-> 5. Open: what a partial refund of a quantity-discounted order should do.
+>    2 x $8.25 = $17.49, Square order kept) **and in production: PR #311,
+>    21 Sep 2026.** **Ship 2 — discounts — is built and verified on staging; not yet in production.**
+> 5. A partial refund of a quantity-discounted order is allowed, with a warning
+>    on the staff refund screen. No claw-back.
 >
 > The working design is `docs/DESIGN-order-level-tax-and-ticket-discounts.md`.
 

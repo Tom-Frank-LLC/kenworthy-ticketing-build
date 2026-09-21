@@ -71,8 +71,8 @@ describe('order totals', () => {
   });
 
   it('handles an empty selection', () => {
-    expect(computeOrderTotals(0, 12)).toEqual({ subtotal: 0, tax: 0, total: 0 });
-    expect(computeSeatTotals([])).toEqual({ subtotal: 0, tax: 0, total: 0 });
+    expect(computeOrderTotals(0, 12)).toEqual({ subtotal: 0, discount: null, tax: 0, total: 0 });
+    expect(computeSeatTotals([])).toEqual({ subtotal: 0, discount: null, tax: 0, total: 0 });
   });
 });
 

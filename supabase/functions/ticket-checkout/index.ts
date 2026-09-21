@@ -48,6 +48,7 @@ import {
   type TicketDescriptor,
 } from '../_shared/pricing.ts';
 import { deliverConfirmation } from '../_shared/deliver.ts';
+import { MAX_TICKETS_PER_REQUEST, ticketLimitError } from '../_shared/ticket_limit.ts';
 import { settleDonation } from '../_shared/donations.ts';
 import {
   EMAIL_RE,
@@ -65,7 +66,6 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-const MAX_TICKETS_PER_SHOWING = 4;
 
 /**
  * How long a pending order holds its seats.
@@ -141,8 +141,11 @@ Deno.serve(async (req: Request) => {
 
   if (!showingId) return json({ error: 'Showing is required' }, 400);
   if (descriptors.length === 0) return json({ error: 'Select at least one ticket' }, 400);
-  if (descriptors.length > MAX_TICKETS_PER_SHOWING) {
-    return json({ error: `Maximum ${MAX_TICKETS_PER_SHOWING} tickets per purchase` }, 400);
+  // Only a sanity bound here. The real limit is the showing's own setting
+  // (max_tickets_per_buyer, possibly "no cap"), and it cannot be known until the
+  // showing has been read — it is applied below, next to the availability checks.
+  if (descriptors.length > MAX_TICKETS_PER_REQUEST) {
+    return json({ error: 'That is more tickets than one order can carry. Please call the box office.' }, 400);
   }
   // A card source is required only once we know there is money to charge. A
   // free ($0) showing has no card step at all, so it is validated after pricing
@@ -271,14 +274,12 @@ Deno.serve(async (req: Request) => {
     .in('status', HELD_STATUSES);
 
   const alreadyHeld = (ownRows || []).filter(isHeld).length;
-  if (alreadyHeld + order.tickets.length > MAX_TICKETS_PER_SHOWING) {
-    return json(
-      {
-        error: `Ticket limit reached. You already have ${alreadyHeld} ticket(s) for this showing.`,
-      },
-      400,
-    );
-  }
+  const limitError = ticketLimitError(
+    order.showing.max_tickets_per_buyer,
+    alreadyHeld,
+    order.tickets.length,
+  );
+  if (limitError) return json({ error: limitError }, 400);
 
   // -------------------------------------------------------------------------
   // Write the order as pending
@@ -293,6 +294,13 @@ Deno.serve(async (req: Request) => {
     tax_rate: 0.06,
     tax_amount: t.tax_amount,
     total_price: t.total_price,
+    // This ticket's share of the order's discount, and the rule it came from.
+    // The database re-checks the rule against the whole order as written —
+    // active, in its window, in scope, minimum met, amount exact — so these are
+    // a claim it can refuse, not a number it takes on trust.
+    discount_id: t.discount_id,
+    discount_amount: t.discount_amount,
+    discount_label: t.discount_label,
     // The surcharge belongs to the order, not to a seat; it rides on the first
     // row so refunds can recover it without an orders table.
     processing_fee: i === 0 ? order.processingFee : 0,
@@ -330,12 +338,19 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'This showing just sold out. Your card was not charged.' }, 409);
     }
 
-    // PT422 — enforce_ticket_order_tax: the rows we apportioned do not sum to
-    // Square's tax on the order. That is this function's arithmetic and the
+    // PT422 — enforce_ticket_order_totals: the rows we wrote do not sum to
+    // Square's tax on the order, or to what the order's discount rule allows. That is this function's arithmetic and the
     // database's having drifted apart, never anything the buyer did, so it is
     // logged loudly and they are told only what matters to them.
     if (code === 'PT422') {
-      console.error('[ticket-checkout] ORDER TAX MISMATCH — pricing.ts and the database disagree', insertErr);
+      // The one way a buyer can reach this honestly: a discount's window closed,
+      // or an admin switched it off, between pricing and this insert. The
+      // database says so in plain words; anything else is our arithmetic.
+      const message = String((insertErr as any)?.message ?? '');
+      if (/^That discount/.test(message)) {
+        return json({ error: `${message} Please review your order and try again. Your card was not charged.` }, 409);
+      }
+      console.error('[ticket-checkout] ORDER TOTALS MISMATCH — pricing.ts and the database disagree', insertErr);
       return json({ error: 'We could not price this order. Your card was not charged.' }, 500);
     }
 
@@ -706,14 +721,12 @@ function syncMailchimp(
         order: {
           id: `tickets:${tickets[0].id}`,
           total: tickets.reduce((s: number, t: any) => s + Number(t.total_price || 0), 0),
-          lines: tickets.map((t: any) => ({
-            id: t.id,
-            product_id: showingId,
-            product_title: order.productionTitle,
-            quantity: 1,
-            price: Number(t.total_price || 0),
-            category: order.productionCategory,
-          })),
+          // One line per price, not per ticket. mailchimp-ecommerce makes a
+          // round trip per line and refuses more than 50 of them, which was
+          // harmless while an order could hold four tickets and would have
+          // silently dropped a group order of sixty. Apportioned cents mean a
+          // handful of distinct prices at most.
+          lines: mailchimpLines(tickets, showingId, order),
         },
       }),
     }).catch(() => {});
@@ -721,3 +734,26 @@ function syncMailchimp(
     console.warn('[ticket-checkout] mailchimp sync threw', e);
   }
 }
+
+function mailchimpLines(
+  tickets: any[],
+  showingId: string,
+  order: { productionTitle: string; productionCategory: string },
+) {
+  const byPrice = new Map<number, { id: string; quantity: number }>();
+  for (const t of tickets) {
+    const cents = Math.round(Number(t.total_price || 0) * 100);
+    const line = byPrice.get(cents);
+    if (line) line.quantity++;
+    else byPrice.set(cents, { id: t.id, quantity: 1 });
+  }
+  return [...byPrice].map(([cents, line]) => ({
+    id: line.id,
+    product_id: showingId,
+    product_title: order.productionTitle,
+    quantity: line.quantity,
+    price: cents / 100,
+    category: order.productionCategory,
+  }));
+}
+

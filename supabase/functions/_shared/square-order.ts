@@ -45,6 +45,15 @@ export interface TicketGroup {
   unitPriceCents: number;
   count: number;
   /**
+   * What the order's discount takes off THIS line in total, in cents — the sum
+   * of its tickets' shares. `unitPriceCents` stays the list price: Square is
+   * sent the full price and the discount separately, so its receipt and its
+   * reports show both, the way its own POS would.
+   */
+  discountCents?: number;
+  /** The rule's label. Becomes the discount's name on Square's receipt. */
+  discountName?: string;
+  /**
    * False for lines that must never be taxed — a bundled donation, a card
    * processing surcharge. `pricing.ts` deliberately keeps a gift out of the tax
    * base, and an order that taxed it would charge more than the site quoted.
@@ -55,6 +64,8 @@ export interface TicketGroup {
 export interface BuiltOrder {
   lineItems: Record<string, unknown>[];
   taxes: Record<string, unknown>[];
+  /** One per discounted line. Empty when the order has no discount. */
+  discounts: Record<string, unknown>[];
   /** What we expect Square to total. Verify against this before charging. */
   expectedTotalCents: number;
   /** Groups billed without a catalog link — a degraded sale, worth logging. */
@@ -81,7 +92,10 @@ export interface BuiltOrder {
  */
 export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
   const lineItems: Record<string, unknown>[] = [];
+  const discounts: Record<string, unknown>[] = [];
   let grossCents = 0;
+  let discountCents = 0;
+  let taxableDiscountCents = 0;
   let taxableCents = 0;
   let adHocGroups = 0;
 
@@ -104,6 +118,27 @@ export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
         line.name = g.displayName.slice(0, 512);
       }
       if (g.taxable !== false) line.applied_taxes = [{ tax_uid: SALES_TAX_UID }];
+
+      // The discount, as a FIXED amount scoped to THIS line.
+      //
+      // Both halves of that are measured (FINDINGS, batch 4). Scoped to the
+      // ORDER, Square spreads a discount over every line — it took 25% off a
+      // bundled donation. And sent as a percentage, the rounding of it is
+      // Square's to do; sent as the amount we already computed, there is nothing
+      // left for Square to round except the tax, which order_math.ts matches.
+      const off = Math.min(g.discountCents ?? 0, g.unitPriceCents * g.count);
+      if (off > 0) {
+        const discountUid = `${uid}-discount`;
+        line.applied_discounts = [{ discount_uid: discountUid }];
+        discounts.push({
+          uid: discountUid,
+          name: (g.discountName || 'Discount').slice(0, 255),
+          amount_money: { amount: off, currency: 'USD' },
+          scope: 'LINE_ITEM',
+        });
+        discountCents += off;
+        if (g.taxable !== false) taxableDiscountCents += off;
+      }
       lineItems.push(line);
     };
 
@@ -126,8 +161,10 @@ export function buildTicketOrder(groups: TicketGroup[]): BuiltOrder {
         type: 'ADDITIVE',
       }]
       : [],
-    // Square's own sum: every line, plus one tax on everything taxable.
-    expectedTotalCents: grossCents + taxOnCents(taxableCents),
+    discounts,
+    // Square's own sum: every line, less the discounts, plus one tax on what is
+    // left of everything taxable.
+    expectedTotalCents: grossCents - discountCents + taxOnCents(taxableCents - taxableDiscountCents),
     adHocGroups,
   };
 }
@@ -204,6 +241,7 @@ export function orderRequestBody(params: {
       source: { name: 'Kenworthy Website' },
       line_items: params.built.lineItems,
       ...(params.built.taxes.length ? { taxes: params.built.taxes } : {}),
+      ...(params.built.discounts.length ? { discounts: params.built.discounts } : {}),
       ...(wantsPickup
         ? {
           fulfillments: [{
@@ -241,7 +279,13 @@ export async function loadTicketGroups(
   admin: any,
   showingId: string,
   priced: {
-    tickets: Array<{ tier_id: string | null; price: number }>;
+    tickets: Array<{
+      tier_id: string | null;
+      price: number;
+      list_price?: number | null;
+      discount_amount?: number | null;
+      discount_label?: string | null;
+    }>;
     showing: { start_time: string };
     productionTitle: string;
   },
@@ -268,11 +312,21 @@ export async function loadTicketGroups(
   for (const t of priced.tickets) {
     const rawTier = t.tier_id ? tierNameById.get(t.tier_id) ?? null : null;
     const tierKey = helpers.canonicalTier(rawTier);
-    const unitPriceCents = Math.round(Number(t.price) * 100);
+    // Grouped on the LIST price. Two tickets of one tier can carry discount
+    // shares a cent apart, and they still belong on one "Adult x2" line.
+    // `list_price` is absent on rows written before discounts existed, where it
+    // is simply the price.
+    const unitPriceCents = Math.round(Number(t.list_price ?? t.price) * 100);
+    const offCents = Math.round(Number(t.discount_amount ?? 0) * 100);
     const key = `${tierKey}|${unitPriceCents}`;
 
     const existing = byKey.get(key);
-    if (existing) { existing.count++; continue; }
+    if (existing) {
+      existing.count++;
+      existing.discountCents = (existing.discountCents ?? 0) + offCents;
+      existing.discountName ??= t.discount_label ?? undefined;
+      continue;
+    }
 
     byKey.set(key, {
       tierKey,
@@ -280,6 +334,8 @@ export async function loadTicketGroups(
       variationId: variationByTier.get(tierKey) ?? null,
       unitPriceCents,
       count: 1,
+      discountCents: offCents,
+      discountName: t.discount_label ?? undefined,
     });
   }
 

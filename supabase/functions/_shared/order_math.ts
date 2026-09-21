@@ -68,3 +68,128 @@ export function apportionOrderTax(netCents: number[]): { taxCents: number; perTi
   }
   return { taxCents: runningTax, perTicket };
 }
+
+// ---------------------------------------------------------------------------
+// Discounts
+// ---------------------------------------------------------------------------
+//
+// One rule per order, never stacked. A rule produces ONE number for the order —
+// D, in cents — which is then shared out across the tickets, and tax is taken
+// on what is left. That is the shape Square uses (FINDINGS: a percentage is
+// rounded once on the order-wide sum, half-to-even), and it is what lets all
+// three rule types share everything downstream of D.
+//
+// "Eligible" means a ticket with a price. A free ticket is never discounted and
+// never counts towards a rule's minimum quantity.
+
+export type DiscountType = 'percent' | 'fixed_per_ticket' | 'fixed_per_order';
+
+export interface DiscountRule {
+  id: string;
+  type: DiscountType;
+  /** Percent (25 = 25%) for `percent`; dollars for the two fixed types. */
+  value: number;
+  min_quantity: number;
+  label: string;
+  /** ISO timestamp. The tie-break, so every copy of this picks the same rule. */
+  created_at: string;
+}
+
+export interface AppliedDiscount {
+  rule: DiscountRule;
+  discountCents: number;
+  /** Cents off each ticket, in ticket order. Sums to discountCents. */
+  perTicket: number[];
+}
+
+/** What this rule takes off these tickets, or null if it does not apply. */
+export function applyDiscount(rule: DiscountRule, listCents: number[]): AppliedDiscount | null {
+  const eligible = listCents.filter((c) => c > 0);
+  if (eligible.length === 0 || eligible.length < Math.max(1, rule.min_quantity)) return null;
+  const eligibleTotal = eligible.reduce((s, c) => s + c, 0);
+
+  let perTicket: number[];
+  if (rule.type === 'fixed_per_ticket') {
+    // Not a share of anything: each ticket loses the same amount, capped at its
+    // own price so a $2 coupon cannot make a $1 ticket cost -$1.
+    const off = Math.round(rule.value * 100);
+    perTicket = listCents.map((c) => Math.min(off, c));
+  } else {
+    const orderCents = rule.type === 'percent'
+      // Basis points, so 12.5% is exact. Rounded once, on the order.
+      ? halfEvenDiv(Math.round(rule.value * 100) * eligibleTotal, 10000)
+      : Math.min(Math.round(rule.value * 100), eligibleTotal);
+    // Shared out in proportion to price, cumulatively — the same construction as
+    // the tax shares, for the same reason: the parts sum to the whole exactly.
+    perTicket = [];
+    let runningList = 0;
+    let runningOff = 0;
+    for (const c of listCents) {
+      runningList += c;
+      const offSoFar = halfEvenDiv(orderCents * runningList, eligibleTotal);
+      perTicket.push(offSoFar - runningOff);
+      runningOff = offSoFar;
+    }
+  }
+
+  const discountCents = perTicket.reduce((s, c) => s + c, 0);
+  if (discountCents <= 0) return null;
+  return { rule, discountCents, perTicket };
+}
+
+/**
+ * The single best rule for these tickets: the one that takes the most off.
+ * Ties go to the older rule, then the lower id — arbitrary, but the same
+ * arbitrary everywhere, so the page, the server and the box office agree.
+ */
+export function bestDiscount(rules: DiscountRule[], listCents: number[]): AppliedDiscount | null {
+  let best: AppliedDiscount | null = null;
+  for (const rule of rules) {
+    const applied = applyDiscount(rule, listCents);
+    if (!applied) continue;
+    if (
+      !best ||
+      applied.discountCents > best.discountCents ||
+      (applied.discountCents === best.discountCents &&
+        (rule.created_at < best.rule.created_at ||
+          (rule.created_at === best.rule.created_at && rule.id < best.rule.id)))
+    ) {
+      best = applied;
+    }
+  }
+  return best;
+}
+
+/** A `ticket_discounts` row as PostgREST returns it. */
+export interface DiscountRuleRow {
+  id: string;
+  type: DiscountType;
+  value: number | string;
+  min_quantity: number;
+  label: string;
+  created_at: string;
+  is_active?: boolean | null;
+  code?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+}
+
+/**
+ * The rules that may apply automatically at this instant: active, inside their
+ * window, and carrying no promo code. The database applies the same three tests
+ * when the order is written (enforce_ticket_order_totals), against its own clock.
+ */
+export function usableRules(rows: DiscountRuleRow[], nowMs: number): DiscountRule[] {
+  return rows
+    .filter((r) => r.is_active !== false && !r.code)
+    .filter((r) => !r.starts_at || Date.parse(r.starts_at) <= nowMs)
+    .filter((r) => !r.ends_at || nowMs < Date.parse(r.ends_at))
+    .map((r) => ({
+      id: r.id,
+      type: r.type,
+      value: Number(r.value),
+      min_quantity: r.min_quantity,
+      label: r.label,
+      created_at: r.created_at,
+    }));
+}

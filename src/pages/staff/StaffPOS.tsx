@@ -29,6 +29,8 @@ import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
 import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, computeProcessingFee, newOrderToken, TAX_RATE } from '@/lib/booking';
+import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
+import type { DiscountRule } from '@/lib/orderMath';
 import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
@@ -69,6 +71,9 @@ export default function StaffPOS() {
 
   // Tiered pricing state
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
+  // The same rules the website applies, so a group at the counter pays what
+  // the same group would have paid online.
+  const [discountRules, setDiscountRules] = useState<DiscountRule[]>([]);
   const [tierQuantities, setTierQuantities] = useState<Record<string, number>>({});
   const [selectedTierId, setSelectedTierId] = useState(''); // for assigned seating
 
@@ -157,7 +162,19 @@ export default function StaffPOS() {
 
     const currentShowing = showings.find(s => s.id === selectedShowingId);
 
+    setDiscountRules([]);
+
     async function loadData() {
+      // Discount rules hang off the showing or its production, and the showing
+      // list above does not carry the production ids.
+      void supabase
+        .from('showings')
+        .select('id, movie_id, event_id, live_performance_id')
+        .eq('id', selectedShowingId)
+        .maybeSingle()
+        .then(({ data }) => (data ? fetchDiscountRules(data) : []))
+        .then(setDiscountRules);
+
       // Load price tiers
       const { data: tiersData } = await supabase
         .from('showing_price_tiers')
@@ -270,9 +287,9 @@ export default function StaffPOS() {
 
   const gaAvailable = (selectedShowing?.total_seats || 200) - gaTicketsSold;
 
-  const { subtotal, tax, total } = hasTiers
-    ? computeLineItemTotals(lineItems)
-    : computeOrderTotals(ticketCount, selectedShowing?.ticket_price || 0);
+  const { subtotal, discount, tax, total } = hasTiers
+    ? computeLineItemTotals(lineItems, discountRules)
+    : computeOrderTotals(ticketCount, selectedShowing?.ticket_price || 0, discountRules);
 
   // Standard sales carry no processing fee; the theatre absorbs Square's cut.
   // Only a rental production whose agreement says otherwise sets
@@ -309,6 +326,9 @@ export default function StaffPOS() {
 
     const ticketRows = buildTicketRows({
       orderToken,
+      // The rows carry the discount and the database verifies it against the
+      // rule — an expired or switched-off offer is refused, not honoured.
+      discountRules,
       lineItems: hasTiers ? lineItems : undefined,
       selectedSeats: !hasTiers ? selectedSeats : undefined,
       quantity: !hasTiers && !isAssignedSeating ? gaQuantity : undefined,
@@ -324,8 +344,16 @@ export default function StaffPOS() {
 
     const { data, error } = await supabase.from('tickets').insert(ticketRows).select('id');
     if (error) throw error;
-    return { ticketIds: (data || []).map(t => t.id), orderToken };
-  }, [selectedSeats, gaQuantity, isAssignedSeating, selectedShowingId, selectedShowing, hasTiers, lineItems, processingFee]);
+    // A blocked write returns no error and no rows. Fewer rows than were sent
+    // is a sale that did not happen the way the screen says it did.
+    if (!data || data.length !== ticketRows.length) {
+      throw new Error(`Only ${data?.length ?? 0} of ${ticketRows.length} tickets were recorded. Check Today's sales before retrying.`);
+    }
+    return { ticketIds: data.map(t => t.id), orderToken };
+    // discountRules is a dependency on purpose: without it this callback keeps
+    // the rules from an earlier render, and the rows disagree with the total on
+    // screen — which the database would then refuse, after a card was charged.
+  }, [selectedSeats, gaQuantity, isAssignedSeating, selectedShowingId, selectedShowing, hasTiers, lineItems, processingFee, discountRules]);
 
   /**
    * File the counter donation, once the sale it rode in on has gone through.
@@ -1089,6 +1117,17 @@ export default function StaffPOS() {
                       <span className="text-muted-foreground">Subtotal</span>
                       <span>${subtotal.toFixed(2)}</span>
                     </div>
+                    {discount && (
+                      <div className="flex justify-between text-primary font-medium">
+                        <span>{discount.label}</span>
+                        <span>−${discount.amount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {!discount && discountRules.length > 0 && (
+                      <p className="text-muted-foreground">
+                        Offer on this showing: {discountRules.map(describeOffer).join(' · ')}
+                      </p>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Tax (6%)</span>
                       <span>${tax.toFixed(2)}</span>

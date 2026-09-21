@@ -575,3 +575,134 @@ Deno.test('a negative or zero gift never triggers the rule', () => {
   assertEquals(bundledDonationEmailError(null, -1), null);
   assertEquals(bundledDonationEmailError(null, 0), null);
 });
+
+// ---------------------------------------------------------------------------
+// Discounts
+// ---------------------------------------------------------------------------
+
+const discountRow = (over: Record<string, unknown> = {}) => ({
+  id: 'rule-25',
+  showing_id: SHOWING_ID,
+  type: 'percent',
+  value: 25,
+  min_quantity: 4,
+  label: '25% off 4+ tickets',
+  is_active: true,
+  code: null,
+  starts_at: null,
+  ends_at: null,
+  created_at: '2026-09-01T00:00:00Z',
+  ...over,
+});
+
+/** A showing at a flat price, no tiers, with the given rules. */
+function discountFixture(price: number, rules: Record<string, unknown>[]) {
+  const rows = fixture();
+  rows.showings[0].ticket_price = price;
+  rows.showing_price_tiers = [];
+  rows.ticket_discounts = rules;
+  return rows;
+}
+const ga = (n: number) => Array.from({ length: n }, () => ({}));
+const c = (n: number) => Math.round(n * 100);
+
+Deno.test('three tickets pay full price; the fourth earns the discount', async () => {
+  const rows = discountFixture(9, [discountRow()]);
+  const three = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, ga(3));
+  assertEquals(three.discount, null);
+  assertEquals(three.amountCents, 2700 + 162);
+
+  const four = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, ga(4));
+  assertEquals(four.discount, { id: 'rule-25', label: '25% off 4+ tickets', cents: 900 });
+  assertEquals(four.listSubtotal, 36);
+  assertEquals(four.subtotal, 27);
+  // Square's own total for this order — pricing_vectors.json, "25% off 4 x $9".
+  assertEquals(four.amountCents, 2862);
+});
+
+Deno.test('a discounted order still charges exactly the sum of its rows', async () => {
+  const order = await priceTicketOrder(stubAdmin(discountFixture(9, [discountRow()])), SHOWING_ID, ga(7));
+  assertEquals(order.tickets.reduce((s, t) => s + c(t.total_price), 0), order.amountCents);
+  assertEquals(order.tickets.reduce((s, t) => s + c(t.discount_amount), 0), order.discount!.cents);
+  for (const t of order.tickets) {
+    assertEquals(c(t.list_price) - c(t.discount_amount), c(t.price));
+    assertEquals(c(t.price) + c(t.tax_amount), c(t.total_price));
+    assertEquals(t.discount_id, 'rule-25');
+  }
+  assertEquals(order.amountCents, 5009); // Square: "25% off 7 x $9"
+});
+
+Deno.test('a rule on the production covers every showing of it', async () => {
+  const rows = discountFixture(9, [discountRow({ showing_id: null, movie_id: 'movie-1' })]);
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, ga(4));
+  assertEquals(order.discount?.cents, 900);
+});
+
+Deno.test('a rule on another production, or another showing, does not', async () => {
+  const rows = discountFixture(9, [
+    discountRow({ id: 'other-film', showing_id: null, movie_id: 'some-other-movie' }),
+    discountRow({ id: 'other-showing', showing_id: 'some-other-showing' }),
+  ]);
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, ga(4));
+  assertEquals(order.discount, null);
+});
+
+Deno.test('inactive, not-yet-open, expired and promo-code rules are all ignored', async () => {
+  const past = new Date(Date.now() - 86_400_000).toISOString();
+  const future = new Date(Date.now() + 86_400_000).toISOString();
+  const rows = discountFixture(9, [
+    discountRow({ id: 'off', is_active: false }),
+    discountRow({ id: 'early', starts_at: future }),
+    discountRow({ id: 'late', ends_at: past }),
+    discountRow({ id: 'coded', code: 'FRIENDS' }),
+  ]);
+  assertEquals((await priceTicketOrder(stubAdmin(rows), SHOWING_ID, ga(4))).discount, null);
+
+  rows.ticket_discounts.push(discountRow({ id: 'open', starts_at: past, ends_at: future }));
+  assertEquals((await priceTicketOrder(stubAdmin(rows), SHOWING_ID, ga(4))).discount?.id, 'open');
+});
+
+Deno.test('one rule applies — the best one — never two', async () => {
+  const rows = discountFixture(9, [
+    discountRow({ id: 'pct' }),                                                 // 900
+    discountRow({ id: 'each', type: 'fixed_per_ticket', value: 2 }),             // 800
+    discountRow({ id: 'order', type: 'fixed_per_order', value: 10 }),            // 1000
+  ]);
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, ga(4));
+  assertEquals(order.discount, { id: 'order', label: '25% off 4+ tickets', cents: 1000 });
+  assertEquals(order.amountCents, 2756); // Square: "$10 off an order of 4 x $9"
+});
+
+Deno.test('a free showing is never discounted', async () => {
+  const order = await priceTicketOrder(
+    stubAdmin(discountFixture(0, [discountRow({ min_quantity: 1 })])), SHOWING_ID, ga(4));
+  assertEquals(order.discount, null);
+  assertEquals(order.amountCents, 0);
+});
+
+Deno.test('the buyer-paid processing fee is worked out on the DISCOUNTED total', async () => {
+  const rows = discountFixture(9, [discountRow()]);
+  rows.movies[0].pass_processing_fee = true;
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, ga(4));
+  assertEquals(order.total, 28.62);
+  assertEquals(order.processingFee, computeProcessingFee(28.62, 'online').fee);
+  assert(order.processingFee < computeProcessingFee(38.16, 'online').fee);
+});
+
+Deno.test('the client cannot ask for a discount: descriptors carry no such thing', async () => {
+  // Whatever extra fields a forged request adds to a descriptor are never read.
+  const forged = ga(3).map(() => ({ discount_id: 'rule-25', discount_amount: 9, price: 0.01 }));
+  const order = await priceTicketOrder(stubAdmin(discountFixture(9, [discountRow()])), SHOWING_ID, forged as never);
+  assertEquals(order.discount, null);
+  assertEquals(order.amountCents, 2862);
+});
+
+Deno.test("the showing's per-buyer limit rides along with the priced order", async () => {
+  const rows = fixture();
+  rows.showings[0].max_tickets_per_buyer = 12;
+  assertEquals((await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}])).showing.max_tickets_per_buyer, 12);
+
+  // NULL on the row is "no cap", and must arrive as null — not as a default.
+  rows.showings[0].max_tickets_per_buyer = null;
+  assertEquals((await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}])).showing.max_tickets_per_buyer, null);
+});

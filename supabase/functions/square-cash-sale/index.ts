@@ -28,7 +28,7 @@ import {
   buildTicketOrder,
   donationGroup,
   orderRequestBody,
-  type TicketGroup,
+  loadTicketGroups,
 } from '../_shared/square-order.ts';
 import { canonicalTier, variationName } from '../_shared/square-catalog.ts';
 
@@ -71,7 +71,7 @@ Deno.serve(async (req: Request) => {
   // ---- what was actually sold, from our own rows --------------------------
   const { data: tickets, error: ticketErr } = await admin
     .from('tickets')
-    .select('id, showing_id, tier_id, price, tax_amount, total_price, processing_fee, payment_method, status, square_payment_id')
+    .select('id, showing_id, tier_id, price, list_price, discount_amount, discount_label, tax_amount, total_price, processing_fee, payment_method, status, square_payment_id')
     .eq('order_token', orderToken);
 
   if (ticketErr) return json({ error: 'Could not read the sale' }, 500);
@@ -99,40 +99,24 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
   if (!showing) return json({ error: 'Showing not found' }, 404);
 
-  const [{ data: tierRows }, { data: mapRows }] = await Promise.all([
-    admin.from('showing_price_tiers').select('id, tier_name').eq('showing_id', showingId),
-    admin.from('showing_square_variations')
-      .select('tier_name, square_variation_id').eq('showing_id', showingId),
-  ]);
-  const tierNameById = new Map<string, string>((tierRows ?? []).map((t: any) => [t.id, t.tier_name]));
-  const variationByTier = new Map<string, string>(
-    (mapRows ?? []).map((m: any) => [m.tier_name, m.square_variation_id]),
+  // The same grouping ticket-checkout uses, from the rows as stored — list price
+  // per line, the order's discount carried on the lines it came off. This used
+  // to be a second, hand-kept copy of loadTicketGroups; a copy that did not know
+  // about discounts would have billed Square the net price as if it were the
+  // ticket price, and recorded no discount at all.
+  const groups = await loadTicketGroups(
+    admin,
+    showingId,
+    { tickets: cash, showing: { start_time: showing.start_time }, productionTitle: '' },
+    { canonicalTier, variationName, timeZone: Deno.env.get('VENUE_TIME_ZONE') || undefined },
   );
-
-  const tz = Deno.env.get('VENUE_TIME_ZONE') || undefined;
-  const byKey = new Map<string, TicketGroup>();
   let expectedCents = 0;
   let feeCents = 0;
-
   for (const t of cash) {
-    const tierKey = canonicalTier(t.tier_id ? tierNameById.get(t.tier_id) ?? null : null);
-    const unitPriceCents = Math.round(Number(t.price) * 100);
     feeCents += Math.round(Number(t.processing_fee ?? 0) * 100);
     expectedCents += Math.round(Number(t.total_price) * 100);
-
-    const key = `${tierKey}|${unitPriceCents}`;
-    const existing = byKey.get(key);
-    if (existing) { existing.count++; continue; }
-    byKey.set(key, {
-      tierKey,
-      displayName: variationName(tierKey, showing.start_time, tz),
-      variationId: variationByTier.get(tierKey) ?? null,
-      unitPriceCents,
-      count: 1,
-    });
   }
 
-  const groups = [...byKey.values()];
   if (donationCents > 0) groups.push(donationGroup(donationCents));
   const chargeCents = expectedCents + feeCents + donationCents;
 

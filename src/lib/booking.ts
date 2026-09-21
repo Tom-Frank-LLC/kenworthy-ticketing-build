@@ -1,4 +1,4 @@
-import { apportionOrderTax } from './orderMath';
+import { apportionOrderTax, bestDiscount, type DiscountRule } from './orderMath';
 
 export interface Seat {
   id: string;
@@ -49,6 +49,7 @@ export function buildTicketRows({
   processingFee = 0,
   orderToken,
   squarePaymentId,
+  discountRules = [],
 }: {
   lineItems?: TicketLineItem[];
   userId: string;
@@ -68,6 +69,10 @@ export function buildTicketRows({
   // Square payment behind a box-office card sale. Without it a refund can only
   // flip a status column — the customer's card is never credited.
   squarePaymentId?: string | null;
+  // The usable rules for this showing (see lib/discounts.ts). The best one is
+  // applied across the rows exactly as the server would; the database then
+  // verifies the rule and the amounts, and refuses the insert if either is off.
+  discountRules?: DiscountRule[];
 }) {
   const fee = Math.max(0, Math.round((processingFee || 0) * 100) / 100);
   const token = orderToken || newOrderToken();
@@ -76,9 +81,16 @@ export function buildTicketRows({
     // and shared out across the rows in the order they are written (see
     // orderMath.ts). The database holds the rows to that sum and refuses the
     // insert otherwise, so this is not advisory the way the on-screen totals are.
-    const priceCents = rows.map((row) => Math.round(Number(row.price) * 100));
+    const listCents = rows.map((row) => Math.round(Number(row.price) * 100));
+    const applied = bestDiscount(discountRules, listCents);
+    const priceCents = listCents.map((cents, i) => cents - (applied?.perTicket[i] ?? 0));
     const { perTicket } = apportionOrderTax(priceCents);
     rows.forEach((row, i) => {
+      const off = applied?.perTicket[i] ?? 0;
+      row.price = priceCents[i] / 100;
+      row.discount_amount = off / 100;
+      row.discount_id = off > 0 ? applied!.rule.id : null;
+      row.discount_label = off > 0 ? applied!.rule.label : null;
       row.tax_amount = perTicket[i] / 100;
       row.total_price = (priceCents[i] + perTicket[i]) / 100;
     });
@@ -187,33 +199,48 @@ export function buildTicketRows({
  *     to 25; in exact arithmetic it is 25.5 and rounds to 26. A cent of
  *     disagreement here is a customer charged more than the page quoted.
  */
-function totalsFor(prices: number[]) {
-  const priceCents = prices.map((price) => Math.round(price * 100));
-  const subtotalCents = priceCents.reduce((sum, cents) => sum + cents, 0);
-  const { taxCents } = apportionOrderTax(priceCents);
+function totalsFor(prices: number[], rules: DiscountRule[] = []) {
+  const listCents = prices.map((price) => Math.round(price * 100));
+  const listSubtotalCents = listCents.reduce((sum, cents) => sum + cents, 0);
+
+  // The one discount this selection earns, if any — the same function, fed the
+  // same rules, that the server uses to set the charge. This is a preview: the
+  // server re-reads the rules and the database re-checks the result.
+  const applied = bestDiscount(rules, listCents);
+  const netCents = listCents.map((cents, i) => cents - (applied?.perTicket[i] ?? 0));
+  const netSubtotalCents = netCents.reduce((sum, cents) => sum + cents, 0);
+  const { taxCents } = apportionOrderTax(netCents);
+
   return {
-    subtotal: subtotalCents / 100,
+    // The LIST subtotal, so the summary reads top to bottom:
+    // subtotal − discount + tax = total.
+    subtotal: listSubtotalCents / 100,
+    discount: applied
+      ? { id: applied.rule.id, label: applied.rule.label, amount: applied.discountCents / 100 }
+      : null,
     tax: taxCents / 100,
-    total: (subtotalCents + taxCents) / 100,
+    total: (netSubtotalCents + taxCents) / 100,
   };
 }
 
-export function computeOrderTotals(ticketCount: number, ticketPrice: number) {
-  return totalsFor(Array.from({ length: Math.max(0, ticketCount) }, () => Number(ticketPrice)));
+export type OrderDiscount = ReturnType<typeof totalsFor>['discount'];
+
+export function computeOrderTotals(ticketCount: number, ticketPrice: number, rules: DiscountRule[] = []) {
+  return totalsFor(Array.from({ length: Math.max(0, ticketCount) }, () => Number(ticketPrice)), rules);
 }
 
-export function computeLineItemTotals(lineItems: TicketLineItem[]) {
+export function computeLineItemTotals(lineItems: TicketLineItem[], rules: DiscountRule[] = []) {
   const prices: number[] = [];
   for (const item of lineItems) {
     const qty = item.seatIds ? item.seatIds.length : item.quantity;
     for (let i = 0; i < qty; i++) prices.push(Number(item.price));
   }
-  return { ...totalsFor(prices), totalCount: prices.length };
+  return { ...totalsFor(prices, rules), totalCount: prices.length };
 }
 
 /** Assigned seating where each seat carries its own tier price. */
-export function computeSeatTotals(seatPrices: number[]) {
-  return totalsFor(seatPrices.map(Number));
+export function computeSeatTotals(seatPrices: number[], rules: DiscountRule[] = []) {
+  return totalsFor(seatPrices.map(Number), rules);
 }
 
 // Square processing fee rates (sandbox-aligned with production pricing).

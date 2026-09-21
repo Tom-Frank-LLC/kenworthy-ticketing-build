@@ -1,3 +1,4 @@
+import DiscountRulesEditor from '@/components/admin/DiscountRulesEditor';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -183,6 +184,9 @@ export default function ShowingForm() {
   // arithmetic that hides the buy button when the seats really do run out is
   // unrelated and still runs. See src/lib/purchasable.ts.
   const [manuallySoldOut, setManuallySoldOut] = useState(false);
+  // Most tickets one buyer may hold online. '' while "no limit" is ticked.
+  const [buyerLimit, setBuyerLimit] = useState('20');
+  const [noBuyerLimit, setNoBuyerLimit] = useState(false);
   // Optional replacement for the standard notice. Kept when the showing is
   // reopened, so a run that sells out every Saturday keeps its sentence.
   const [soldOutMessageText, setSoldOutMessageText] = useState('');
@@ -301,6 +305,9 @@ export default function ShowingForm() {
           setRequiresSeatSelection(data.requires_seat_selection ?? false);
           setNoTicketRequired(data.no_ticket_required ?? false);
           setManuallySoldOut(data.manually_sold_out ?? false);
+          // NULL on the row means no cap — a deliberate setting, not a missing one.
+          setNoBuyerLimit(data.max_tickets_per_buyer === null);
+          setBuyerLimit(data.max_tickets_per_buyer == null ? '20' : String(data.max_tickets_per_buyer));
           setSoldOutMessageText(data.sold_out_message ?? '');
           setIsFeatured(data.is_featured ?? false);
         }
@@ -593,6 +600,10 @@ export default function ShowingForm() {
     // anyone can attend. The readers guard against it too — this is the half
     // that stops the contradiction being written down.
     manually_sold_out: !noTicket && manuallySoldOut,
+    // NULL is "no cap" (capacity still applies). A blank or nonsense number falls
+    // back to the house default rather than to unlimited: removing the limit has
+    // to be the box somebody ticked, never the result of a typo.
+    max_tickets_per_buyer: noBuyerLimit ? null : Math.max(1, Math.floor(Number(buyerLimit)) || 20),
     // Blank clears it rather than storing an empty string, so the page falls
     // back to the standard notice instead of rendering a sentence with nothing
     // in it. Written whatever the flag says: the text outlives a reopening.
@@ -1415,6 +1426,41 @@ export default function ShowingForm() {
               </div>
             )}
 
+            {/* How many tickets one buyer may hold online. Hidden on a walk-in night:
+                there is nothing to buy. Not applied at the box office, which sells
+                whatever the house will hold. */}
+            {!noTicket && (
+              <div className="space-y-2 border-t border-border pt-4">
+                <Label htmlFor="buyer-limit" className="font-semibold">Online ticket limit per buyer</Label>
+                <div className="flex flex-wrap items-center gap-4">
+                  <Input
+                    id="buyer-limit"
+                    type="number" inputMode="numeric" min="1" step="1"
+                    className="w-28"
+                    value={noBuyerLimit ? '' : buyerLimit}
+                    disabled={noBuyerLimit}
+                    aria-describedby="buyer-limit-help"
+                    onChange={e => setBuyerLimit(e.target.value)}
+                  />
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={noBuyerLimit}
+                      onChange={e => setNoBuyerLimit(e.target.checked)}
+                      className="rounded"
+                    />
+                    No limit — welcome large groups
+                  </label>
+                </div>
+                <p id="buyer-limit-help" className="text-xs text-muted-foreground">
+                  The most tickets one person can buy online for this showing; 20 unless you change
+                  it. Lower it for a night you expect to sell out. With no limit, a buyer can take
+                  as many seats as are left. The box office is never limited. A group discount
+                  whose minimum is above this number can only be reached at the box office.
+                </p>
+              </div>
+            )}
+
             {/* Pass eligibility. Shown for every category now: the trigger that
                 forced events and live performances ineligible is gone, because
                 a festival pass covering a performance inside its run is the
@@ -1589,6 +1635,16 @@ export default function ShowingForm() {
               venueId={venueId || undefined}
               seedFromProduction={seedProd}
             />
+          </CardContent>
+        </Card>
+      )}
+      {savedShowingId && !noTicket && (
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display">Discounts — This Showing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DiscountRulesEditor scope={{ showing_id: savedShowingId }} audience="this showing only. For an offer across every showing, add it on the film or event instead" />
           </CardContent>
         </Card>
       )}

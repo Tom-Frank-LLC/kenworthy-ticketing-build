@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { apportionOrderTax } from './orderMath';
-import { buildTicketRows, computeSeatTotals } from './booking';
+import { applyDiscount, apportionOrderTax, type DiscountRule } from './orderMath';
+import { buildTicketRows, computeOrderTotals, computeSeatTotals } from './booking';
 import vectors from '../../supabase/functions/_shared/pricing_vectors.json';
 import here from './orderMath.ts?raw';
 import there from '../../supabase/functions/_shared/order_math.ts?raw';
@@ -29,6 +29,20 @@ describe('orderMath', () => {
       // What the page shows is the same number.
       const shown = computeSeatTotals(v.ticket_net_cents.map((c) => c / 100));
       expect(Math.round(shown.total * 100)).toBe(v.square_total_cents);
+    });
+  }
+});
+
+describe('discounts', () => {
+  for (const v of vectors.discounted) {
+    it(`agrees with Square — ${v.label}`, () => {
+      const rule = { id: 'r', label: 'x', created_at: '2026-01-01T00:00:00Z', ...v.rule } as DiscountRule;
+      const applied = applyDiscount(rule, v.ticket_list_cents)!;
+      const net = v.ticket_list_cents.map((c, i) => c - applied.perTicket[i]);
+      const { taxCents } = apportionOrderTax(net);
+      expect(applied.discountCents).toBe(v.square_discount_cents);
+      expect(taxCents).toBe(v.square_tax_cents);
+      expect(net.reduce((s, c) => s + c, 0) + taxCents).toBe(v.square_total_cents);
     });
   }
 });
@@ -69,5 +83,48 @@ describe('buildTicketRows', () => {
     expect(rows.map((r) => [r.price, r.tax_amount, r.total_price])).toEqual([
       [8, 0.48, 8.48], [8, 0.48, 8.48], [8, 0.48, 8.48],
     ]);
+  });
+});
+
+describe('discount preview and box-office rows', () => {
+  const cents = (n: number) => Math.round(Number(n) * 100);
+  const rule: DiscountRule = {
+    id: 'rule-25', type: 'percent', value: 25, min_quantity: 4, label: '25% off 4+ tickets',
+    created_at: '2026-01-01T00:00:00Z',
+  };
+
+  it('quotes full price at three tickets and the discount at four', () => {
+    expect(computeOrderTotals(3, 9, [rule])).toEqual({ subtotal: 27, discount: null, tax: 1.62, total: 28.62 });
+    expect(computeOrderTotals(4, 9, [rule])).toEqual({
+      subtotal: 36,
+      discount: { id: 'rule-25', label: '25% off 4+ tickets', amount: 9 },
+      tax: 1.62,
+      total: 28.62, // Square's own total for this order
+    });
+  });
+
+  it('the summary adds up on screen: subtotal − discount + tax = total', () => {
+    const t = computeOrderTotals(7, 9, [rule]);
+    expect(cents(t.subtotal) - cents(t.discount!.amount) + cents(t.tax)).toBe(cents(t.total));
+    expect(cents(t.total)).toBe(5009);
+  });
+
+  it('box-office rows carry the rule, their share, the NET price, and sum to Square\'s total', () => {
+    const rows = buildTicketRows({
+      userId: 'staff', showingId: 's', paymentMethod: 'cash', quantity: 5, ticketPrice: 9,
+      discountRules: [rule],
+    });
+    expect(rows.every((r) => r.discount_id === 'rule-25' && r.discount_label === '25% off 4+ tickets')).toBe(true);
+    expect(rows.reduce((s, r) => s + cents(r.discount_amount), 0)).toBe(1125);
+    for (const r of rows) expect(900 - cents(r.discount_amount)).toBe(cents(r.price));
+    expect(rows.reduce((s, r) => s + cents(r.total_price), 0)).toBe(3577); // vector: 25% off 5 x $9
+  });
+
+  it('writes no discount fields worth the name when no rule applies', () => {
+    const rows = buildTicketRows({
+      userId: 'staff', showingId: 's', paymentMethod: 'cash', quantity: 3, ticketPrice: 9,
+      discountRules: [rule],
+    });
+    expect(rows.map((r) => [r.discount_id, r.discount_amount, r.price])).toEqual([[null, 0, 9], [null, 0, 9], [null, 0, 9]]);
   });
 });

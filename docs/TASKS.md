@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**102 briefs** — 89 shipped, 7 built, 6 open, 0 needs triage, 0 closed.
+**102 briefs** — 89 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -13,6 +13,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P0` **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md) · [notes](briefs/confirmed%20from%20production%20logs%2028%20Aug%202026)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
+- `P1` **Staff can add ticket discounts (percent, $ per ticket, $ per order) that reconcile with Square to the cent**<br>`feature` — [brief](briefs/BRIEF-ticket-discounts.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
@@ -22,7 +23,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Open
 
 - `P0` **Cut the live domain over to kenworthy.org**<br>`ops` — [brief](briefs/BRIEF-golive-domain-cutover.md) · [notes](briefs/../RUNBOOK-golive-kenworthy-org.md)
-- `P1` **Staff can add ticket discounts (percent, $ per ticket, $ per order) that reconcile with Square to the cent**<br>`feature` — [brief](briefs/BRIEF-ticket-discounts.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - `P2` **Comp tickets are issued but never delivered to the person receiving them**<br>`bug` — [brief](briefs/BRIEF-comp-ticket-delivery.md)
 - `P2` **The Mailchimp campaign has never been able to send, because it queries a column that does not exist**<br>`bug` — [brief](briefs/BRIEF-mailchimp-campaign-dead-column.md)
 - `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)

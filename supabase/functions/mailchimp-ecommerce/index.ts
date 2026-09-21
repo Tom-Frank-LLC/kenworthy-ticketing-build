@@ -108,8 +108,8 @@ Deno.serve(async (req) => {
   // Each line costs a Mailchimp GET and possibly a POST, sequentially. Without
   // a bound one request turns into arbitrarily many outbound calls against a
   // rate-limited third-party API on a shared key — a lever worth removing even
-  // now that the caller has to be trusted to get this far. Four tickets is the
-  // online maximum (MAX_TICKETS_PER_SHOWING) and a donation is one line; 50 is
+  // now that the caller has to be trusted to get this far. ticket-checkout sends
+  // one line per distinct price (not per ticket) and a donation is one line; 50 is
   // far above anything the real callers send.
   if (order.lines.length > 50) {
     return json({ error: "Too many order lines" }, 400);
