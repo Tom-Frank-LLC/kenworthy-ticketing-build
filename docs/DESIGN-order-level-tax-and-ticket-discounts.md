@@ -1,6 +1,6 @@
 # DESIGN: adopting Square's order arithmetic, and ticket discounts on top of it
 
-**Status:** decisions taken (§8); **Ship 1 is in production** (§9, PR #311); **Ship 2 is built and verified on staging** (§10), not yet in production.
+**Status: shipped.** Ship 1 (§9, PR #311) and Ship 2 with the ticket-limit setting (§10–§12, PR #312) are both in production as of 21 Sep 2026.
 **Date:** 21 Sep 2026 · **Brief:** `BRIEF-ticket-discounts.md` · **Evidence:** `FINDINGS-square-order-arithmetic.md`
 **Deadline that shapes this:** the Oct 3 event, 12 days out. The offer has to be live for presales.
 
@@ -316,4 +316,36 @@ zero, no separate default to look up. Not applied at the box office, as before.
 **Verified on staging, real sandbox sales:** 6 tickets at the default → 25% off, rows and Square
 both 3935; limit set to 2 → 3 tickets refused with "This showing allows up to 2 tickets per buyer
 online…"; limit NULL → 21 tickets, rows and Square both 13774.
+
+## 12. Ship 2 in production (21 Sep 2026, PR #312, `ff4c62e`)
+
+Tom checked staging by eye and approved. Order: migrations → functions → site, because
+`ticket-checkout` selects the new `showings` column.
+
+- **Not ahead of main:** live production compared by content with a build of `fdbf347` — 20 of 20
+  entry bundles identical.
+- **Database:** `20260921203017` and `20260921205605` applied, none pending. Confirmed with the
+  public key only: `ticket_discounts` readable (200), showings carry `max_tickets_per_buyer = 20`,
+  `ticket_discount_cents('percent', 25, 4, {900×4})` = 900, and an anonymous INSERT into
+  `ticket_discounts` is refused (401).
+- **Functions:** `ticket-checkout` v51→52, `square-cash-sale` v5→6, `square-refund` v25→26,
+  `send-ticket-confirmation` v42→43, `ticket-access` v34→35 (still `verify_jwt false`),
+  `mailchimp-ecommerce` v6→7. An empty purchase request is refused with 400, not a 5xx.
+- **Site:** Worker `233ae153-f6ee-4eb9-9045-16a3201712e3` → `120678b3-34a6-478e-99cd-59e6b859750c`
+  (the former is the rollback). `kenworthy.org` serves the new index, and the five chunks carrying
+  the discount and ticket-limit code are byte-identical to the build.
+- **Not done, deliberately:** no purchase in production. Checkout creates the buyer record before
+  it prices, so even an unpaid probe would write a real account. The first real discounted sale is
+  the remaining confirmation; check that its Square order shows the discount line.
+- **Staging cleaned:** 44 test tickets, the test rule, the $8.25 test showing, six fictional
+  208-555 buyers, and the `square-discount-probe` function. To regenerate `pricing_vectors.json`,
+  redeploy that function to **staging** first (`--no-verify-jwt`; it refuses production).
+
+**Left for the theatre:** add the Oct 3 rule on the event — Percent off, 25, when buying at
+least 4.
+
+**Follow-ups, each its own brief:** one SQL pricing function every sale goes through ("option C");
+box-office card sales should insert pending → charge → confirm, and get a Square Order, so their
+discounts show in Square too; film-pass checkout and concessions still compute 6% per item and
+share the half-even exposure at odd prices; regenerate `types.ts` from a clean database.
 
