@@ -57,6 +57,12 @@ export interface Order {
   duration_minutes: number | null;
   tickets: OrderTicket[];
   total: number;
+  /**
+   * What the order's discount took off, before tax, and what it was called when
+   * it was sold — read from the ticket rows, so it survives the rule being
+   * renamed or deleted. Null when the order had none.
+   */
+  discount?: { label: string; amount: number } | null;
 }
 
 /** Render a showtime in the venue's local zone, e.g. "Fri, Aug 14, 2026 at 7:30 PM". */
@@ -109,7 +115,7 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
   const { data: rows, error } = await admin
     .from('tickets')
     .select(`
-      id, qr_code, status, scanned_at, total_price, purchased_at, order_token, user_id,
+      id, qr_code, status, scanned_at, total_price, discount_amount, discount_label, purchased_at, order_token, user_id,
       confirmation_sent_at, sms_consent,
       seats(seat_row, seat_number),
       showing_price_tiers(tier_name),
@@ -168,8 +174,18 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
     venue: showing?.venues?.name ?? null,
     duration_minutes: showing?.movies?.duration_minutes ?? null,
     tickets,
-    total: tickets.reduce((sum, t) => sum + t.total_price, 0),
+    // In cents: 6.56 + 6.56 + 6.55 + 6.56 is 26.229999999999997 in doubles.
+    total: tickets.reduce((sum, t) => sum + Math.round(t.total_price * 100), 0) / 100,
+    discount: orderDiscount(rows),
   };
+}
+
+/** Summed in cents: four shares of $2.06 must not come out as $8.239999. */
+function orderDiscount(rows: any[]): Order['discount'] {
+  const cents = rows.reduce((sum, t) => sum + Math.round(Number(t.discount_amount || 0) * 100), 0);
+  if (cents <= 0) return null;
+  const label = rows.find((t) => t.discount_label)?.discount_label || 'Discount';
+  return { label, amount: cents / 100 };
 }
 
 // --- Minimal PNG encoder ----------------------------------------------------

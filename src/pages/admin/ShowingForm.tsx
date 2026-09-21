@@ -1,3 +1,4 @@
+import DiscountRulesEditor from '@/components/admin/DiscountRulesEditor';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -1589,6 +1590,16 @@ export default function ShowingForm() {
               venueId={venueId || undefined}
               seedFromProduction={seedProd}
             />
+          </CardContent>
+        </Card>
+      )}
+      {savedShowingId && !noTicket && (
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display">Discounts — This Showing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DiscountRulesEditor scope={{ showing_id: savedShowingId }} audience="this showing only. For an offer across every showing, add it on the film or event instead" />
           </CardContent>
         </Card>
       )}

@@ -69,7 +69,7 @@ Deno.serve(async (req: Request) => {
 
   let query = admin
     .from('tickets')
-    .select('id, status, total_price, processing_fee, payment_method, square_payment_id');
+    .select('id, status, total_price, processing_fee, payment_method, square_payment_id, order_token, discount_id, discount_label');
   query = orderToken ? query.eq('order_token', orderToken) : query.in('id', ticketIds);
 
   const { data: tickets, error: readErr } = await query;
@@ -84,6 +84,14 @@ Deno.serve(async (req: Request) => {
   }
 
   const warnings: string[] = [];
+
+  // A quantity discount was earned by the ORDER. Refunding part of one leaves
+  // the rest of it holding a price that was only on offer for more tickets than
+  // now remain. That is allowed — tickets are non-refundable, so every refund is
+  // already a staff judgement (decided 21 Sep 2026; no claw-back, no block) —
+  // but it should be a decision somebody knows they made, not a side effect.
+  // The refund itself is untouched: each ticket returns exactly what it paid.
+  for (const note of await partialDiscountNotes(admin, tickets ?? [])) warnings.push(note);
   const squareRefunds: { payment_id: string; refund_id: string; amount_cents: number }[] = [];
   const refundedIds: string[] = [];
   let refundedTotal = 0;
@@ -241,3 +249,34 @@ async function refundKey(paymentId: string, ticketIds: string[]): Promise<string
     .join('')
     .slice(0, 40);
 }
+
+/**
+ * One sentence per discounted order that this refund only partly covers.
+ *
+ * Counts what is left of the order in the database rather than trusting the
+ * request, so it is right whether the caller sent ticket ids or an order token.
+ */
+async function partialDiscountNotes(admin: any, refunding: any[]): Promise<string[]> {
+  const discounted = refunding.filter((t) => t.discount_id && t.order_token && t.status !== 'refunded');
+  const tokens = [...new Set(discounted.map((t) => t.order_token as string))];
+  if (tokens.length === 0) return [];
+
+  const { data: siblings } = await admin
+    .from('tickets')
+    .select('id, order_token, status')
+    .in('order_token', tokens)
+    .in('status', ['confirmed', 'pending']);
+
+  const refundingIds = new Set(refunding.map((t) => t.id));
+  return tokens.flatMap((token) => {
+    const staying = (siblings ?? []).filter((t: any) => t.order_token === token && !refundingIds.has(t.id)).length;
+    if (staying === 0) return [];
+    const mine = discounted.filter((t) => t.order_token === token);
+    const label = mine.find((t) => t.discount_label)?.discount_label || 'a group discount';
+    return [
+      `${mine.length} ticket(s) refunded from an order sold with "${label}". ` +
+        `${staying} ticket(s) from that order remain and keep the discounted price.`,
+    ];
+  });
+}
+

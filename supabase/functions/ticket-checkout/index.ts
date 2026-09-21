@@ -293,6 +293,13 @@ Deno.serve(async (req: Request) => {
     tax_rate: 0.06,
     tax_amount: t.tax_amount,
     total_price: t.total_price,
+    // This ticket's share of the order's discount, and the rule it came from.
+    // The database re-checks the rule against the whole order as written —
+    // active, in its window, in scope, minimum met, amount exact — so these are
+    // a claim it can refuse, not a number it takes on trust.
+    discount_id: t.discount_id,
+    discount_amount: t.discount_amount,
+    discount_label: t.discount_label,
     // The surcharge belongs to the order, not to a seat; it rides on the first
     // row so refunds can recover it without an orders table.
     processing_fee: i === 0 ? order.processingFee : 0,
@@ -330,12 +337,19 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'This showing just sold out. Your card was not charged.' }, 409);
     }
 
-    // PT422 — enforce_ticket_order_tax: the rows we apportioned do not sum to
-    // Square's tax on the order. That is this function's arithmetic and the
+    // PT422 — enforce_ticket_order_totals: the rows we wrote do not sum to
+    // Square's tax on the order, or to what the order's discount rule allows. That is this function's arithmetic and the
     // database's having drifted apart, never anything the buyer did, so it is
     // logged loudly and they are told only what matters to them.
     if (code === 'PT422') {
-      console.error('[ticket-checkout] ORDER TAX MISMATCH — pricing.ts and the database disagree', insertErr);
+      // The one way a buyer can reach this honestly: a discount's window closed,
+      // or an admin switched it off, between pricing and this insert. The
+      // database says so in plain words; anything else is our arithmetic.
+      const message = String((insertErr as any)?.message ?? '');
+      if (/^That discount/.test(message)) {
+        return json({ error: `${message} Please review your order and try again. Your card was not charged.` }, 409);
+      }
+      console.error('[ticket-checkout] ORDER TOTALS MISMATCH — pricing.ts and the database disagree', insertErr);
       return json({ error: 'We could not price this order. Your card was not charged.' }, 500);
     }
 

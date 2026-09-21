@@ -34,7 +34,7 @@ import {
   needsNoTicket,
   soldOutMessage,
 } from './purchasable.ts';
-import { apportionOrderTax } from './order_math.ts';
+import { apportionOrderTax, bestDiscount, type DiscountRuleRow, usableRules } from './order_math.ts';
 
 export const TAX_RATE = 0.06;
 
@@ -71,14 +71,25 @@ export interface PricedTicket {
   seat_id: string | null;
   /** Resolved tier — a seat's own tier mapping overrides whatever was asked for. */
   tier_id: string | null;
+  /** NET pre-tax price: list_price less this ticket's share of the discount. */
   price: number;
   tax_amount: number;
   total_price: number;
+  /** The tier/showing price before any discount. */
+  list_price: number;
+  discount_amount: number;
+  discount_id: string | null;
+  discount_label: string | null;
 }
 
 export interface PricedOrder {
   tickets: PricedTicket[];
+  /** Net of any discount: what tax is charged on. */
   subtotal: number;
+  /** Before the discount. Equals `subtotal` when there is none. */
+  listSubtotal: number;
+  /** The one rule applied to this order, or null. Never more than one. */
+  discount: { id: string; label: string; cents: number } | null;
   tax: number;
   /** subtotal + tax, i.e. SUM(tickets.total_price). */
   total: number;
@@ -322,18 +333,37 @@ export async function priceTicketOrder(
     return { seatId, tierId, price, priceCents: Math.round(price * 100) };
   });
 
-  // Pass two: the order's tax, shared out across those tickets in row order.
-  const { taxCents: taxTotalCents, perTicket } = apportionOrderTax(resolved.map((r) => r.priceCents));
+  // Pass two: the one discount this order earns, if any.
+  //
+  // Rules attach to this showing or to its whole production; every usable one
+  // competes and the largest wins — no stacking. Resolved here, on the server,
+  // from the database: the browser previews the same rule with the same function
+  // but nothing it sends can create, enlarge or extend a discount. The database
+  // then re-checks the chosen rule against the rows as written.
+  const listCents = resolved.map((r) => r.priceCents);
+  const applied = bestDiscount(await loadDiscountRules(admin, showing), listCents);
+  const netCents = listCents.map((c, i) => c - (applied?.perTicket[i] ?? 0));
 
-  const tickets: PricedTicket[] = resolved.map((r, i) => ({
-    seat_id: r.seatId,
-    tier_id: r.tierId,
-    price: r.price,
-    tax_amount: perTicket[i] / 100,
-    total_price: (r.priceCents + perTicket[i]) / 100,
-  }));
+  // Pass three: the order's tax — on what is left — shared out in row order.
+  const { taxCents: taxTotalCents, perTicket } = apportionOrderTax(netCents);
 
-  const subtotalCents = resolved.reduce((s, r) => s + r.priceCents, 0);
+  const tickets: PricedTicket[] = resolved.map((r, i) => {
+    const off = applied?.perTicket[i] ?? 0;
+    return {
+      seat_id: r.seatId,
+      tier_id: r.tierId,
+      price: netCents[i] / 100,
+      tax_amount: perTicket[i] / 100,
+      total_price: (netCents[i] + perTicket[i]) / 100,
+      list_price: r.price,
+      discount_amount: off / 100,
+      discount_id: off > 0 ? applied!.rule.id : null,
+      discount_label: off > 0 ? applied!.rule.label : null,
+    };
+  });
+
+  const listSubtotalCents = listCents.reduce((s, c) => s + c, 0);
+  const subtotalCents = netCents.reduce((s, c) => s + c, 0);
   const totalCents = subtotalCents + taxTotalCents;
 
   const subtotal = subtotalCents / 100;
@@ -352,6 +382,10 @@ export async function priceTicketOrder(
   return {
     tickets,
     subtotal,
+    listSubtotal: listSubtotalCents / 100,
+    discount: applied
+      ? { id: applied.rule.id, label: applied.rule.label, cents: applied.discountCents }
+      : null,
     tax,
     total,
     processingFee,
@@ -366,6 +400,30 @@ export async function priceTicketOrder(
       start_time: showing.start_time,
     },
   };
+}
+
+/**
+ * Every rule that could apply to this showing right now: its own, and its
+ * production's. Two reads rather than one `.or()`, so the scope columns are
+ * matched by equality and a showing with no event can never match an
+ * event-scoped rule through NULL.
+ */
+async function loadDiscountRules(admin: any, showing: any) {
+  const columns = 'id, type, value, min_quantity, label, created_at, is_active, code, starts_at, ends_at';
+  const production: [string, string | null] = showing.event_id
+    ? ['event_id', showing.event_id]
+    : showing.live_performance_id
+    ? ['live_performance_id', showing.live_performance_id]
+    : ['movie_id', showing.movie_id ?? null];
+
+  const [own, shared] = await Promise.all([
+    admin.from('ticket_discounts').select(columns).eq('showing_id', showing.id),
+    production[1]
+      ? admin.from('ticket_discounts').select(columns).eq(production[0], production[1])
+      : Promise.resolve({ data: [] }),
+  ]);
+  const rows: DiscountRuleRow[] = [...(own.data ?? []), ...(shared.data ?? [])];
+  return usableRules(rows, Date.now());
 }
 
 function seatKey(row: string, section: string | null, number: number) {

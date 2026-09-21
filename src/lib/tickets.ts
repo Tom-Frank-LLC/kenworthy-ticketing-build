@@ -31,6 +31,8 @@ export interface PublicOrder {
   duration_minutes: number | null;
   tickets: PublicOrderTicket[];
   total: number;
+  /** What the order's discount took off, as sold. Absent on older responses. */
+  discount?: { label: string; amount: number } | null;
 }
 
 /** Public URL of the order's .ics calendar file, served by ticket-access. */

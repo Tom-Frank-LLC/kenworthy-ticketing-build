@@ -181,6 +181,12 @@ export function buildEmailHtml(
               <tr>
                 <td style="padding:16px 0;border-top:1px solid ${brand.rule};">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    ${order.discount ? `<tr>
+                      <td style="font:400 14px/1.5 ${sans};color:${brand.ink};padding-bottom:4px;">${esc(order.discount.label)}</td>
+                      <td align="right" style="font:400 14px/1.5 ${sans};color:${brand.ink};padding-bottom:4px;">
+                        You saved ${esc(formatMoney(order.discount.amount))}
+                      </td>
+                    </tr>` : ''}
                     <tr>
                       <td style="font:600 15px/1.5 ${sans};color:${brand.ink};">Total paid</td>
                       <td align="right" style="font:600 15px/1.5 ${sans};color:${brand.ink};">
@@ -242,6 +248,7 @@ export function buildEmailText(
     lines.push(`  Code: ${t.qr_code}`);
   });
   lines.push('');
+  if (order.discount) lines.push(`${order.discount.label}: you saved ${formatMoney(order.discount.amount)}`);
   lines.push(`Total paid: ${formatMoney(order.total)}`);
   lines.push('');
   lines.push(`Show your QR code at the door. Open your tickets here:`);

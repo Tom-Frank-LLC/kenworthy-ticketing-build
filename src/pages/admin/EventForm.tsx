@@ -1,3 +1,4 @@
+import DiscountRulesEditor from '@/components/admin/DiscountRulesEditor';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -250,6 +251,16 @@ export default function EventForm() {
               productionType={isLegacyPerformance ? 'concert' : 'event'}
               productionId={id}
             />
+          </CardContent>
+        </Card>
+      )}
+      {isEdit && id && (
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display">Discounts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DiscountRulesEditor scope={isLegacyPerformance ? { live_performance_id: id } : { event_id: id }} audience="every showing of this event" />
           </CardContent>
         </Card>
       )}

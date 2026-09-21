@@ -1,5 +1,5 @@
 {
- "_comment": "Expected values are what Square's SANDBOX returned from POST /v2/orders/calculate on 2026-09-21 (API 2024-01-18) \u2014 not our own arithmetic. Regenerate with supabase/functions/square-discount-probe. See docs/FINDINGS-square-order-arithmetic.md.",
+ "_comment": "Expected values are what Square's SANDBOX returned from POST /v2/orders/calculate on 2026-09-21 (API 2024-01-18) — not our own arithmetic. Regenerate with supabase/functions/square-discount-probe. See docs/FINDINGS-square-order-arithmetic.md.",
  "tax_only": [
   {
    "label": "1 x $8.00",
@@ -271,6 +271,372 @@
    ],
    "square_tax_cents": 99,
    "square_total_cents": 1749
+  }
+ ],
+ "discounted": [
+  {
+   "label": "25% off 4 x $9 (the Oct 3 shape at an awkward price)",
+   "ticket_list_cents": [
+    900,
+    900,
+    900,
+    900
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 25,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 900,
+   "square_tax_cents": 162,
+   "square_total_cents": 2862,
+   "square_native_percent": {
+    "discount_cents": 900,
+    "total_cents": 2862
+   }
+  },
+  {
+   "label": "25% off 5 x $9",
+   "ticket_list_cents": [
+    900,
+    900,
+    900,
+    900,
+    900
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 25,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 1125,
+   "square_tax_cents": 202,
+   "square_total_cents": 3577,
+   "square_native_percent": {
+    "discount_cents": 1125,
+    "total_cents": 3577
+   }
+  },
+  {
+   "label": "25% off 7 x $9",
+   "ticket_list_cents": [
+    900,
+    900,
+    900,
+    900,
+    900,
+    900,
+    900
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 25,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 1575,
+   "square_tax_cents": 284,
+   "square_total_cents": 5009,
+   "square_native_percent": {
+    "discount_cents": 1575,
+    "total_cents": 5009
+   }
+  },
+  {
+   "label": "25% off 4 x $10 (lands on 50 cents)",
+   "ticket_list_cents": [
+    1000,
+    1000,
+    1000,
+    1000
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 25,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 1000,
+   "square_tax_cents": 180,
+   "square_total_cents": 3180,
+   "square_native_percent": {
+    "discount_cents": 1000,
+    "total_cents": 3180
+   }
+  },
+  {
+   "label": "25% off 4 x $8.25",
+   "ticket_list_cents": [
+    825,
+    825,
+    825,
+    825
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 25,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 825,
+   "square_tax_cents": 148,
+   "square_total_cents": 2623,
+   "square_native_percent": {
+    "discount_cents": 825,
+    "total_cents": 2623
+   }
+  },
+  {
+   "label": "25% off 3 x $8.50 (D is a tie: 637.5)",
+   "ticket_list_cents": [
+    850,
+    850,
+    850
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 25,
+    "min_quantity": 1
+   },
+   "square_discount_cents": 638,
+   "square_tax_cents": 115,
+   "square_total_cents": 2027,
+   "square_native_percent": {
+    "discount_cents": 638,
+    "total_cents": 2027
+   }
+  },
+  {
+   "label": "15% off 7 x $19.99",
+   "ticket_list_cents": [
+    1999,
+    1999,
+    1999,
+    1999,
+    1999,
+    1999,
+    1999
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 15,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 2099,
+   "square_tax_cents": 714,
+   "square_total_cents": 12608,
+   "square_native_percent": {
+    "discount_cents": 2099,
+    "total_cents": 12608
+   }
+  },
+  {
+   "label": "12.5% off 5 x $15",
+   "ticket_list_cents": [
+    1500,
+    1500,
+    1500,
+    1500,
+    1500
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 12.5,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 938,
+   "square_tax_cents": 394,
+   "square_total_cents": 6956,
+   "square_native_percent": {
+    "discount_cents": 938,
+    "total_cents": 6956
+   }
+  },
+  {
+   "label": "25% off mixed tiers: 2 x $20 + 3 x $8.25",
+   "ticket_list_cents": [
+    2000,
+    2000,
+    825,
+    825,
+    825
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 25,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 1619,
+   "square_tax_cents": 291,
+   "square_total_cents": 5147,
+   "square_native_percent": {
+    "discount_cents": 1619,
+    "total_cents": 5147
+   }
+  },
+  {
+   "label": "25% off with a free ticket in the order: $0 + 4 x $9",
+   "ticket_list_cents": [
+    0,
+    900,
+    900,
+    900,
+    900
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 25,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 900,
+   "square_tax_cents": 162,
+   "square_total_cents": 2862,
+   "square_native_percent": {
+    "discount_cents": 900,
+    "total_cents": 2862
+   }
+  },
+  {
+   "label": "100% off 2 x $8.25",
+   "ticket_list_cents": [
+    825,
+    825
+   ],
+   "rule": {
+    "type": "percent",
+    "value": 100,
+    "min_quantity": 1
+   },
+   "square_discount_cents": 1650,
+   "square_tax_cents": 0,
+   "square_total_cents": 0,
+   "square_native_percent": {
+    "discount_cents": 1650,
+    "total_cents": 0
+   }
+  },
+  {
+   "label": "$2 off each of 4 x $9",
+   "ticket_list_cents": [
+    900,
+    900,
+    900,
+    900
+   ],
+   "rule": {
+    "type": "fixed_per_ticket",
+    "value": 2,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 800,
+   "square_tax_cents": 168,
+   "square_total_cents": 2968
+  },
+  {
+   "label": "$2.25 off each of 5 x $9",
+   "ticket_list_cents": [
+    900,
+    900,
+    900,
+    900,
+    900
+   ],
+   "rule": {
+    "type": "fixed_per_ticket",
+    "value": 2.25,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 1125,
+   "square_tax_cents": 202,
+   "square_total_cents": 3577
+  },
+  {
+   "label": "$5 off each, capped by a $3.33 ticket: $3.33 + 3 x $19.99",
+   "ticket_list_cents": [
+    333,
+    1999,
+    1999,
+    1999
+   ],
+   "rule": {
+    "type": "fixed_per_ticket",
+    "value": 5,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 1833,
+   "square_tax_cents": 270,
+   "square_total_cents": 4767
+  },
+  {
+   "label": "$10 off an order of 4 x $9",
+   "ticket_list_cents": [
+    900,
+    900,
+    900,
+    900
+   ],
+   "rule": {
+    "type": "fixed_per_order",
+    "value": 10,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 1000,
+   "square_tax_cents": 156,
+   "square_total_cents": 2756
+  },
+  {
+   "label": "$10 off an order of 7 x $8.25",
+   "ticket_list_cents": [
+    825,
+    825,
+    825,
+    825,
+    825,
+    825,
+    825
+   ],
+   "rule": {
+    "type": "fixed_per_order",
+    "value": 10,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 1000,
+   "square_tax_cents": 286,
+   "square_total_cents": 5061
+  },
+  {
+   "label": "$7.77 off mixed tiers: $19.99 + 2 x $3.33 + 4 x $6.75",
+   "ticket_list_cents": [
+    1999,
+    333,
+    333,
+    675,
+    675,
+    675,
+    675
+   ],
+   "rule": {
+    "type": "fixed_per_order",
+    "value": 7.77,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 777,
+   "square_tax_cents": 275,
+   "square_total_cents": 4863
+  },
+  {
+   "label": "$100 off an order worth $36 (capped at the order)",
+   "ticket_list_cents": [
+    900,
+    900,
+    900,
+    900
+   ],
+   "rule": {
+    "type": "fixed_per_order",
+    "value": 100,
+    "min_quantity": 4
+   },
+   "square_discount_cents": 3600,
+   "square_tax_cents": 0,
+   "square_total_cents": 0
   }
  ]
 }

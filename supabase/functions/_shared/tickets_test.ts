@@ -385,3 +385,30 @@ Deno.test('buildSubject pluralizes on ticket count', () => {
     'Your 2 tickets for Casablanca',
   );
 });
+
+Deno.test('a discounted order says what was saved, in both parts of the email', () => {
+  const discounted = { ...order(), discount: { label: '25% off 4+ tickets', amount: 8.25 } };
+  const opts = { ticketUrl: 'https://example.com/t/tok', name: 'Tom Frank', qrUrlFor: (id: string) => `https://example.com/qr/${id}` };
+
+  const text = buildEmailText(discounted, opts);
+  assertEquals(text.includes('25% off 4+ tickets: you saved $8.25'), true);
+  // The saving sits with the total, above it — not lost among the tickets.
+  assertEquals(text.indexOf('you saved') < text.indexOf('Total paid'), true);
+
+  const html = buildEmailHtml(discounted, opts);
+  assertEquals(html.includes('25% off 4+ tickets'), true);
+  assertEquals(html.includes('You saved $8.25'), true);
+});
+
+Deno.test('an order with no discount says nothing about one', () => {
+  const opts = { ticketUrl: 'https://example.com/t/tok', name: 'Tom Frank', qrUrlFor: (id: string) => `https://example.com/qr/${id}` };
+  assertEquals(buildEmailText(order(), opts).includes('saved'), false);
+  assertEquals(buildEmailHtml(order(), opts).includes('You saved'), false);
+});
+
+Deno.test('a discount label is escaped like everything else a person typed', () => {
+  const nasty = { ...order(), discount: { label: '<b>Friends</b> & family', amount: 5 } };
+  const html = buildEmailHtml(nasty, { ticketUrl: 'https://example.com/t/tok', name: 'Tom', qrUrlFor: (id: string) => `https://example.com/qr/${id}` });
+  assertEquals(html.includes('<b>Friends</b>'), false);
+  assertEquals(html.includes('&lt;b&gt;Friends&lt;/b&gt; &amp; family'), true);
+});

@@ -180,6 +180,12 @@ export default function PublicTicket() {
 
       <Card className="glass mt-6">
         <CardContent className="p-5">
+          {order.discount && (
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-muted-foreground">{order.discount.label}</span>
+              <span>You saved ${Number(order.discount.amount).toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Total paid</span>
             <span className="font-semibold">${Number(order.total).toFixed(2)}</span>

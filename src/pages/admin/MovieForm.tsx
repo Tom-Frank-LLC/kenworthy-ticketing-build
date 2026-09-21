@@ -1,3 +1,4 @@
+import DiscountRulesEditor from '@/components/admin/DiscountRulesEditor';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -219,6 +220,16 @@ export default function MovieForm() {
           </CardHeader>
           <CardContent>
             <SeatTierEditor mode="production" productionType="movie" productionId={id} />
+          </CardContent>
+        </Card>
+      )}
+      {isEdit && id && (
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="font-display">Discounts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DiscountRulesEditor scope={{ movie_id: id }} audience="every showing of this film" />
           </CardContent>
         </Card>
       )}

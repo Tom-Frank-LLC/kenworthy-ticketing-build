@@ -16,7 +16,9 @@ import { SeatMap } from '@/components/SeatMap';
 import { SalesFinalNote } from '@/components/SalesFinalNote';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
 import { DonationPrompt } from '@/components/DonationPrompt';
-import { type Seat, type PriceTier, computeSeatTotals, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem } from '@/lib/booking';
+import { type Seat, type PriceTier, computeSeatTotals, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem, type OrderDiscount } from '@/lib/booking';
+import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
+import type { DiscountRule } from '@/lib/orderMath';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
@@ -436,6 +438,9 @@ export default function Showing() {
   const [cardReady, setCardReady] = useState(false);
 
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
+  // Discount rules on this showing or its production. A preview only: the
+  // server reads the same table itself and its answer is what is charged.
+  const [discountRules, setDiscountRules] = useState<DiscountRule[]>([]);
   const [tierQuantities, setTierQuantities] = useState<Record<string, number>>({});
   const [selectedTierId, setSelectedTierId] = useState<string>('');
 
@@ -491,6 +496,7 @@ export default function Showing() {
     setVenue(null);
     setSiblingShowings([]);
     setPriceTiers([]);
+    setDiscountRules([]);
     setTierQuantities({});
     setSelectedTierId('');
     setSeats([]);
@@ -527,6 +533,8 @@ export default function Showing() {
         return;
       }
       setShowing(s);
+      // Not awaited: an offer arriving a beat late is fine, a page held up by it is not.
+      void fetchDiscountRules(s).then(setDiscountRules);
 
       const tiers: PriceTier[] = (tiersRes.data || []).map((t: any) => ({
         id: t.id,
@@ -675,6 +683,7 @@ export default function Showing() {
   let subtotal = 0;
   let tax = 0;
   let total = 0;
+  let discount: OrderDiscount = null;
 
   if (hasTiers) {
     if (isAssignedSeating) {
@@ -686,7 +695,8 @@ export default function Showing() {
       const seatPrices = Array.from(selectedSeats).map(
         seatId => seatTierMap[seatId]?.price ?? fallback.price,
       );
-      const result = computeSeatTotals(seatPrices);
+      const result = computeSeatTotals(seatPrices, discountRules);
+      discount = result.discount;
       subtotal = result.subtotal;
       tax = result.tax;
       total = result.total;
@@ -695,7 +705,8 @@ export default function Showing() {
       const items: TicketLineItem[] = priceTiers
         .filter(t => (tierQuantities[t.id] || 0) > 0)
         .map(t => ({ tierId: t.id, tierName: t.tier_name, price: t.price, quantity: tierQuantities[t.id] }));
-      const result = computeLineItemTotals(items);
+      const result = computeLineItemTotals(items, discountRules);
+      discount = result.discount;
       ticketCount = result.totalCount;
       subtotal = result.subtotal;
       tax = result.tax;
@@ -704,7 +715,8 @@ export default function Showing() {
   } else {
     // No tiers — legacy single price
     ticketCount = isAssignedSeating ? selectedSeats.size : gaQuantity;
-    const result = computeOrderTotals(ticketCount, showing?.ticket_price || 0);
+    const result = computeOrderTotals(ticketCount, showing?.ticket_price || 0, discountRules);
+    discount = result.discount;
     subtotal = result.subtotal;
     tax = result.tax;
     total = result.total;
@@ -1102,6 +1114,20 @@ export default function Showing() {
                 </span>
               )}
             </div>
+            {/* The offer, said once where the price is. Hidden on a walk-in night:
+                there is nothing to buy, so nothing to save on. */}
+            {!noTicket && discountRules.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {discountRules.map((rule) => (
+                  <span
+                    key={rule.id}
+                    className="text-sm bg-secondary text-secondary-foreground px-3 py-1 rounded-full font-medium"
+                  >
+                    {describeOffer(rule)}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1411,6 +1437,12 @@ export default function Showing() {
                       <span className="text-muted-foreground">Subtotal</span>
                       <span>${subtotal.toFixed(2)}</span>
                     </div>
+                    {discount && (
+                      <div className="flex justify-between text-primary font-medium">
+                        <span>{discount.label}</span>
+                        <span>−${discount.amount.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Idaho sales tax (6%)</span>
                       <span>${tax.toFixed(2)}</span>
