@@ -48,6 +48,7 @@ import {
   type TicketDescriptor,
 } from '../_shared/pricing.ts';
 import { deliverConfirmation } from '../_shared/deliver.ts';
+import { MAX_TICKETS_PER_REQUEST, ticketLimitError } from '../_shared/ticket_limit.ts';
 import { settleDonation } from '../_shared/donations.ts';
 import {
   EMAIL_RE,
@@ -65,7 +66,6 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-const MAX_TICKETS_PER_SHOWING = 4;
 
 /**
  * How long a pending order holds its seats.
@@ -141,8 +141,11 @@ Deno.serve(async (req: Request) => {
 
   if (!showingId) return json({ error: 'Showing is required' }, 400);
   if (descriptors.length === 0) return json({ error: 'Select at least one ticket' }, 400);
-  if (descriptors.length > MAX_TICKETS_PER_SHOWING) {
-    return json({ error: `Maximum ${MAX_TICKETS_PER_SHOWING} tickets per purchase` }, 400);
+  // Only a sanity bound here. The real limit is the showing's own setting
+  // (max_tickets_per_buyer, possibly "no cap"), and it cannot be known until the
+  // showing has been read — it is applied below, next to the availability checks.
+  if (descriptors.length > MAX_TICKETS_PER_REQUEST) {
+    return json({ error: 'That is more tickets than one order can carry. Please call the box office.' }, 400);
   }
   // A card source is required only once we know there is money to charge. A
   // free ($0) showing has no card step at all, so it is validated after pricing
@@ -271,14 +274,12 @@ Deno.serve(async (req: Request) => {
     .in('status', HELD_STATUSES);
 
   const alreadyHeld = (ownRows || []).filter(isHeld).length;
-  if (alreadyHeld + order.tickets.length > MAX_TICKETS_PER_SHOWING) {
-    return json(
-      {
-        error: `Ticket limit reached. You already have ${alreadyHeld} ticket(s) for this showing.`,
-      },
-      400,
-    );
-  }
+  const limitError = ticketLimitError(
+    order.showing.max_tickets_per_buyer,
+    alreadyHeld,
+    order.tickets.length,
+  );
+  if (limitError) return json({ error: limitError }, 400);
 
   // -------------------------------------------------------------------------
   // Write the order as pending
@@ -720,14 +721,12 @@ function syncMailchimp(
         order: {
           id: `tickets:${tickets[0].id}`,
           total: tickets.reduce((s: number, t: any) => s + Number(t.total_price || 0), 0),
-          lines: tickets.map((t: any) => ({
-            id: t.id,
-            product_id: showingId,
-            product_title: order.productionTitle,
-            quantity: 1,
-            price: Number(t.total_price || 0),
-            category: order.productionCategory,
-          })),
+          // One line per price, not per ticket. mailchimp-ecommerce makes a
+          // round trip per line and refuses more than 50 of them, which was
+          // harmless while an order could hold four tickets and would have
+          // silently dropped a group order of sixty. Apportioned cents mean a
+          // handful of distinct prices at most.
+          lines: mailchimpLines(tickets, showingId, order),
         },
       }),
     }).catch(() => {});
@@ -735,3 +734,26 @@ function syncMailchimp(
     console.warn('[ticket-checkout] mailchimp sync threw', e);
   }
 }
+
+function mailchimpLines(
+  tickets: any[],
+  showingId: string,
+  order: { productionTitle: string; productionCategory: string },
+) {
+  const byPrice = new Map<number, { id: string; quantity: number }>();
+  for (const t of tickets) {
+    const cents = Math.round(Number(t.total_price || 0) * 100);
+    const line = byPrice.get(cents);
+    if (line) line.quantity++;
+    else byPrice.set(cents, { id: t.id, quantity: 1 });
+  }
+  return [...byPrice].map(([cents, line]) => ({
+    id: line.id,
+    product_id: showingId,
+    product_title: order.productionTitle,
+    quantity: line.quantity,
+    price: cents / 100,
+    category: order.productionCategory,
+  }));
+}
+

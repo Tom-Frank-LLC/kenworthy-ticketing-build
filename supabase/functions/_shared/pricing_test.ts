@@ -696,3 +696,13 @@ Deno.test('the client cannot ask for a discount: descriptors carry no such thing
   assertEquals(order.discount, null);
   assertEquals(order.amountCents, 2862);
 });
+
+Deno.test("the showing's per-buyer limit rides along with the priced order", async () => {
+  const rows = fixture();
+  rows.showings[0].max_tickets_per_buyer = 12;
+  assertEquals((await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}])).showing.max_tickets_per_buyer, 12);
+
+  // NULL on the row is "no cap", and must arrive as null — not as a default.
+  rows.showings[0].max_tickets_per_buyer = null;
+  assertEquals((await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}])).showing.max_tickets_per_buyer, null);
+});

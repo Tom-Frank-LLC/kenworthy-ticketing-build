@@ -163,8 +163,8 @@ export default function DiscountRulesEditor({ scope, audience }: {
         Applies automatically to {audience}, online and at the box office. If more than one
         discount fits an order, the buyer gets the single largest — they never stack. Free
         tickets, comps and film-pass admissions are never discounted and do not count towards
-        a minimum. Online orders are limited to 4 tickets, so a "5 or more" offer can only be
-        reached at the box office.
+        a minimum. A minimum higher than the showing's online ticket limit (set on each
+        showing; 20 unless changed) can only be reached at the box office.
       </p>
 
       {loading ? (

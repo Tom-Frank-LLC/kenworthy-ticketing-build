@@ -260,8 +260,8 @@ ends with option C; but do not set an odd price on a live showing in the same ho
 | admin | `DiscountRulesEditor` on the showing, event and film forms; writes immediately, and treats a write that returns no rows as a failure |
 
 **Found on the way**
-- Online checkout caps a buyer at **4 tickets per showing**. A "4+" offer is therefore exactly 4 online;
-  5 or more only happens at the box office. The editor says so.
+- Online checkout capped a buyer at **4 tickets per showing**, which made a "4+" offer exactly 4
+  online. Nobody had chosen that number — see §11, which replaces it.
 - `StaffPOS.createTickets` is a `useCallback`; without `discountRules` in its dependency list it would
   have written rows from a stale rule set while the screen showed the discounted total.
 - `src/integrations/supabase/types.ts` was **not** regenerated: staging carries other sessions'
@@ -285,4 +285,35 @@ ends with option C; but do not set an odd price on a live showing in the same ho
   render it did catch showed "We couldn't find that showing" for the test showing — while the
   page's own two reads both return 200 for the anonymous key. Most likely a stale session in that
   browser profile, but it is unconfirmed. Someone should open the staging showing and the POS.
+
+## 11. The online ticket limit becomes a setting (Tom, 21 Sep 2026)
+
+`MAX_TICKETS_PER_SHOWING = 4` was a constant in `ticket-checkout`. `git log -S` traces it to an
+app-builder commit of 17 Jun 2026 titled "Fixed auth/security issues" — no comment, no brief —
+carried through the August payments rewrite as a number. As a bot defence it is weak ("buyer" is
+whatever contact is typed; Turnstile and the rate limiter are the real defences). What it did do
+was refuse a family of six **after** they had filled in the form, because the page never enforced
+it, and make any group discount above 4 unreachable online.
+
+**Now:** `showings.max_tickets_per_buyer` — default **20**, stamped on every existing showing;
+staff can lower it for a hot night; **NULL = no cap**, for a showing that welcomes a large group
+(capacity still applies, enforced by the database). The value on the row is the truth: no magic
+zero, no separate default to look up. Not applied at the box office, as before.
+
+- `_shared/ticket_limit.ts` — the rule, on what a buyer *holds* across orders, with sentences that
+  say the number and send larger groups to the box office. A 1000-ticket sanity bound stops an
+  uncapped showing turning one POST into unbounded work.
+- `Showing.tsx` — all three pickers (quantity, per-tier, seats) stop at the limit and the summary
+  says why. The tier picker previously capped each tier separately; the ceiling is now on the order.
+- `ShowingForm.tsx` — "Online ticket limit per buyer" with a "No limit" box. Blank or nonsense
+  saves 20, never unlimited: removing the limit must be a box somebody ticked.
+- **Knock-on fixed:** checkout sent Mailchimp one line per ticket and `mailchimp-ecommerce` refuses
+  more than 50 lines, so a 60-ticket order would silently never have synced. Lines are now one per
+  distinct price.
+- **Deploy order matters here, unlike the pricing ships:** the migration must land before
+  `ticket-checkout`, which now selects the column.
+
+**Verified on staging, real sandbox sales:** 6 tickets at the default → 25% off, rows and Square
+both 3935; limit set to 2 → 3 tickets refused with "This showing allows up to 2 tickets per buyer
+online…"; limit NULL → 21 tickets, rows and Square both 13774.
 

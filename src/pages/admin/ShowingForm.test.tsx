@@ -610,3 +610,37 @@ describe('ShowingForm — closing returns to the listing you came from', () => {
     expect(screen.getByText(/tab=live-events/)).toBeInTheDocument();
   });
 });
+
+describe('ShowingForm — online ticket limit per buyer', () => {
+  async function createWith(setup: () => void) {
+    renderForm();
+    await chooseMovie();
+    fireEvent.change(screen.getByLabelText('Base Ticket Price ($)'), { target: { value: '10' } });
+    fillShowtimes(['2026-08-14T19:30']);
+    setup();
+    submit();
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    return state.showingInserts[0];
+  }
+
+  it('defaults to 20', async () => {
+    expect((await createWith(() => {})).max_tickets_per_buyer).toBe(20);
+  });
+
+  it('can be tightened for one showing', async () => {
+    const row = await createWith(() =>
+      fireEvent.change(screen.getByLabelText('Online ticket limit per buyer'), { target: { value: '6' } }));
+    expect(row.max_tickets_per_buyer).toBe(6);
+  });
+
+  it('is removed — saved as NULL — only by ticking "No limit"', async () => {
+    const row = await createWith(() => fireEvent.click(screen.getByLabelText(/No limit/)));
+    expect(row.max_tickets_per_buyer).toBeNull();
+  });
+
+  it('a blank or nonsense number falls back to 20, never to unlimited', async () => {
+    const row = await createWith(() =>
+      fireEvent.change(screen.getByLabelText('Online ticket limit per buyer'), { target: { value: '' } }));
+    expect(row.max_tickets_per_buyer).toBe(20);
+  });
+});

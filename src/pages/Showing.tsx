@@ -451,6 +451,13 @@ export default function Showing() {
   const isAssignedSeating = showing?.requires_seat_selection;
   const totalSeats = showing?.total_seats || 200;
   const gaAvailable = Math.max(0, totalSeats - ticketsSold);
+  // The most one buyer may hold online for this showing: a number staff can set,
+  // or null for no cap (showings.max_tickets_per_buyer). Enforced here so nobody
+  // fills in the whole form and meets the limit at the pay button — which is what
+  // the old hard-coded limit of 4 did. The server applies the same setting, and
+  // also counts tickets this buyer already holds, which the page cannot know.
+  const buyerLimit: number = (showing as { max_tickets_per_buyer?: number | null } | null)?.max_tickets_per_buyer ?? Infinity;
+  const pickCeiling = Math.min(gaAvailable, buyerLimit);
 
   // Sold out is a different question for each seating model: general admission
   // runs out of capacity, assigned seating runs out of unclaimed seats. Guard on
@@ -665,7 +672,8 @@ export default function Showing() {
     setSelectedSeats(prev => {
       const next = new Set(prev);
       if (next.has(seatId)) next.delete(seatId);
-      else next.add(seatId);
+      // Taking a seat off is always allowed; adding one past the limit is not.
+      else if (prev.size < buyerLimit) next.add(seatId);
       return next;
     });
   };
@@ -673,8 +681,11 @@ export default function Showing() {
   const updateTierQty = (tierId: string, delta: number) => {
     setTierQuantities(prev => {
       const current = prev[tierId] || 0;
-      const next = Math.max(0, Math.min(gaAvailable, current + delta));
-      return { ...prev, [tierId]: next };
+      // The ceiling is on the ORDER, not on each tier: four Adults and four
+      // Students is eight tickets.
+      const others = Object.entries(prev).reduce((sum, [id, qty]) => sum + (id === tierId ? 0 : qty), 0);
+      const next = Math.max(0, Math.min(pickCeiling - others, current + delta));
+      return { ...prev, [tierId]: Math.max(0, next) };
     });
   };
 
@@ -1296,7 +1307,7 @@ export default function Showing() {
                             size="icon"
                             aria-label={`One more ${tier.tier_name} ticket`}
                             onClick={() => updateTierQty(tier.id, 1)}
-                            disabled={ticketCount >= gaAvailable}
+                            disabled={ticketCount >= pickCeiling}
                           >
                             <Plus className="h-4 w-4" />
                           </Button>
@@ -1340,8 +1351,8 @@ export default function Showing() {
                         variant="outline"
                         size="icon"
                         aria-label="One more ticket"
-                        onClick={() => setGaQuantity(q => Math.min(gaAvailable, q + 1))}
-                        disabled={gaQuantity >= gaAvailable}
+                        onClick={() => setGaQuantity(q => Math.min(pickCeiling, q + 1))}
+                        disabled={gaQuantity >= pickCeiling}
                       >
                         <Plus className="h-4 w-4" />
                       </Button>
@@ -1432,6 +1443,12 @@ export default function Showing() {
                       )
                     )}
                   </div>
+                  {ticketCount >= buyerLimit && (
+                    <p className="text-sm text-muted-foreground" role="status">
+                      {buyerLimit} is the most tickets one buyer can purchase online for this showing.
+                      For a larger group, please call the box office.
+                    </p>
+                  )}
                   <div className="border-t border-border pt-3 space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Subtotal</span>

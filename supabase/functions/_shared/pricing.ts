@@ -108,6 +108,8 @@ export interface PricedOrder {
     total_seats: number;
     requires_seat_selection: boolean;
     start_time: string;
+    /** Most tickets one buyer may hold online; null = no cap. See _shared/ticket_limit.ts. */
+    max_tickets_per_buyer: number | null;
   };
 }
 
@@ -201,7 +203,7 @@ export async function priceTicketOrder(
   const { data: showing, error: showingErr } = await admin
     .from('showings')
     .select(
-      'id, ticket_price, is_active, requires_seat_selection, total_seats, start_time, duration_minutes, movie_id, event_id, live_performance_id, no_ticket_required, manually_sold_out, sold_out_message',
+      'id, ticket_price, is_active, requires_seat_selection, total_seats, start_time, duration_minutes, movie_id, event_id, live_performance_id, no_ticket_required, manually_sold_out, sold_out_message, max_tickets_per_buyer',
     )
     .eq('id', showingId)
     .maybeSingle();
@@ -398,6 +400,7 @@ export async function priceTicketOrder(
       total_seats: showing.total_seats ?? 200,
       requires_seat_selection: !!showing.requires_seat_selection,
       start_time: showing.start_time,
+      max_tickets_per_buyer: showing.max_tickets_per_buyer ?? null,
     },
   };
 }
