@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { describeOffer } from '@/lib/discounts';
-import type { DiscountType } from '@/lib/orderMath';
+import { describeEligibility, describeOffer } from '@/lib/discounts';
+import { canonicalTierName, type DiscountType } from '@/lib/orderMath';
 
 /**
  * Ticket discount rules for one showing, or for every showing of a production.
@@ -44,6 +44,7 @@ interface RuleRow {
   starts_at: string | null;
   ends_at: string | null;
   created_at: string;
+  eligible_tiers: string[] | null;
 }
 
 const TYPE_LABELS: Record<DiscountType, string> = {
@@ -52,7 +53,7 @@ const TYPE_LABELS: Record<DiscountType, string> = {
   fixed_per_order: 'Dollars off the whole order',
 };
 
-const COLUMNS = 'id, type, value, min_quantity, label, is_active, starts_at, ends_at, created_at';
+const COLUMNS = 'id, type, value, min_quantity, label, is_active, starts_at, ends_at, created_at, eligible_tiers';
 
 /** `<input type="datetime-local">` speaks local wall-clock time with no zone. */
 const toIso = (local: string) => (local ? new Date(local).toISOString() : null);
@@ -86,6 +87,11 @@ export default function DiscountRulesEditor({ scope, audience }: {
   const [labelTouched, setLabelTouched] = useState(false);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
+  // The ticket types sold here, canonical, and the ones the new rule reduces.
+  // Every type starts ticked: "all types" is the common case and is stored as
+  // NULL, so a rule made before a tier is added still covers the new tier.
+  const [tierNames, setTierNames] = useState<string[]>([]);
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
 
   const table = () => (supabase as any).from('ticket_discounts');
 
@@ -97,6 +103,27 @@ export default function DiscountRulesEditor({ scope, audience }: {
   }, [scopeColumn, scopeId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Which ticket types exist here. For one showing, its tiers; for a production,
+  // every tier on any of its showings. Names are canonicalised and de-duplicated
+  // so "Students" and "Student" are one box. A showing with no tiers has no
+  // boxes to show — every rule applies to its one price.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let showingIds: string[] = [];
+      if (scopeColumn === 'showing_id') showingIds = [scopeId];
+      else {
+        const { data } = await supabase.from('showings').select('id').eq(scopeColumn as 'movie_id', scopeId);
+        showingIds = (data ?? []).map((s) => s.id);
+      }
+      if (showingIds.length === 0) { if (!cancelled) setTierNames([]); return; }
+      const { data } = await supabase.from('showing_price_tiers').select('tier_name').in('showing_id', showingIds);
+      const names = [...new Set((data ?? []).map((t) => canonicalTierName(t.tier_name)).filter(Boolean))].sort();
+      if (!cancelled) setTierNames(names);
+    })();
+    return () => { cancelled = true; };
+  }, [scopeColumn, scopeId]);
 
   const shownLabel = labelTouched ? label : suggestLabel(type, value, minQuantity);
 
@@ -110,6 +137,10 @@ export default function DiscountRulesEditor({ scope, audience }: {
     if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
       return toast.error('The offer has to end after it starts.');
     }
+    const eligible = tierNames.filter((n) => !excluded.has(n));
+    if (tierNames.length > 0 && eligible.length === 0) {
+      return toast.error('Tick at least one ticket type the discount applies to.');
+    }
 
     setBusy(true);
     const { data, error } = await table()
@@ -122,6 +153,8 @@ export default function DiscountRulesEditor({ scope, audience }: {
         starts_at: toIso(startsAt),
         ends_at: toIso(endsAt),
         is_active: true,
+        // NULL = every type. Only a rule that leaves some type out stores a list.
+        eligible_tiers: excluded.size > 0 ? eligible : null,
       })
       .select(COLUMNS);
     setBusy(false);
@@ -131,7 +164,7 @@ export default function DiscountRulesEditor({ scope, audience }: {
       return toast.error('The discount was not saved. You may not have permission to add one.');
     }
     toast.success('Discount added — it applies to sales from now on.');
-    setValue(''); setLabel(''); setLabelTouched(false); setStartsAt(''); setEndsAt('');
+    setValue(''); setLabel(''); setLabelTouched(false); setStartsAt(''); setEndsAt(''); setExcluded(new Set());
     void load();
   }
 
@@ -179,6 +212,7 @@ export default function DiscountRulesEditor({ scope, audience }: {
                 <p className="font-medium">{rule.label}</p>
                 <p className="text-sm text-muted-foreground">
                   {describeOffer(rule)}
+                  {rule.eligible_tiers && ` · ${describeEligibility(rule)} only`}
                   {rule.starts_at && ` · from ${formatWindow(rule.starts_at)}`}
                   {rule.ends_at && ` · until ${formatWindow(rule.ends_at)}`}
                 </p>
@@ -245,6 +279,32 @@ export default function DiscountRulesEditor({ scope, audience }: {
             onChange={(e) => { setLabel(e.target.value); setLabelTouched(true); }}
           />
         </div>
+        {tierNames.length > 0 && (
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Applies to</legend>
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {tierNames.map((name) => (
+                <label key={name} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded"
+                    checked={!excluded.has(name)}
+                    onChange={(e) => setExcluded((prev) => {
+                      const next = new Set(prev);
+                      if (e.target.checked) next.delete(name); else next.add(name);
+                      return next;
+                    })}
+                  />
+                  {name}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Untick a type to leave it at its own price — a student or senior ticket, say, that is
+              already reduced. Every ticket in the order still counts towards the minimum.
+            </p>
+          </fieldset>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="discount-starts">Starts (optional)</Label>

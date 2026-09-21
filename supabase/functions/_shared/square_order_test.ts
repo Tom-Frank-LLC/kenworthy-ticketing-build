@@ -301,3 +301,18 @@ Deno.test('a discount can never exceed the line it sits on', () => {
   assertEquals((built.discounts[0] as any).amount_money.amount, 1000);
   assertEquals(built.expectedTotalCents, 0);
 });
+
+Deno.test('an order where only some tickets are discounted: the discount sits on those lines alone', () => {
+  // 2 Adult @ $9 + 2 Student @ $7, 25% off Adults only: D = 450 on the Adult
+  // line, Student line untouched. Square: 3200 − 450 = 2750, tax 165 → 2915.
+  const rule = { id: 'r', type: 'percent', value: 25, min_quantity: 4, label: 'Adults 25% off',
+    created_at: '2026-01-01T00:00:00Z', eligible_tiers: ['Adult'] } as DiscountRule;
+  const applied = applyDiscount(rule, [900, 900, 700, 700], ['Adult', 'Adult', 'Student', 'Student'])!;
+  const built = buildTicketOrder([
+    g({ tierKey: 'Adult', unitPriceCents: 900, count: 2, discountCents: applied.perTicket[0] + applied.perTicket[1], discountName: rule.label }),
+    g({ tierKey: 'Student', variationId: 'VAR_STU', unitPriceCents: 700, count: 2, discountCents: 0 }),
+  ]);
+  assertEquals(built.discounts.length, 1);
+  assertEquals((built.lineItems[1] as any).applied_discounts, undefined);
+  assertEquals(built.expectedTotalCents, 2915);
+});

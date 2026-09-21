@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { type DiscountRule, type DiscountRuleRow, usableRules } from './orderMath';
 
-const COLUMNS = 'id, type, value, min_quantity, label, created_at, is_active, code, starts_at, ends_at';
+const COLUMNS = 'id, type, value, min_quantity, label, created_at, is_active, code, starts_at, ends_at, eligible_tiers';
 
 /**
  * The discount rules that could apply to a showing right now: its own, and its
@@ -49,3 +49,13 @@ export function describeOffer(rule: DiscountRule): string {
   if (rule.min_quantity <= 1) return `Save ${amount}`;
   return `Buy ${rule.min_quantity} or more and save ${amount}`;
 }
+
+/** "Adult and Child tickets" — or '' when a rule applies to every type. */
+export function describeEligibility(rule: Pick<DiscountRule, 'eligible_tiers'>): string {
+  const names = rule.eligible_tiers;
+  if (!names) return '';
+  const shown = names.map((n) => n || 'general admission');
+  if (shown.length === 1) return `${shown[0]} tickets`;
+  return `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]} tickets`;
+}
+

@@ -9,6 +9,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
  */
 const state = vi.hoisted(() => ({
   rows: [] as any[],
+  tiers: [] as string[],
   inserts: [] as any[],
   updates: [] as any[],
   deletes: [] as string[],
@@ -24,7 +25,15 @@ vi.mock('sonner', () => ({
 }));
 
 vi.mock('@/integrations/supabase/client', () => {
-  const from = () => {
+  const from = (table: string) => {
+    if (table === 'showings') {
+      const c: any = { select: () => c, eq: () => c, then: (r: (v: unknown) => unknown) => r({ data: [{ id: 's-1' }], error: null }) };
+      return c;
+    }
+    if (table === 'showing_price_tiers') {
+      const c: any = { select: () => c, in: () => c, then: (r: (v: unknown) => unknown) => r({ data: state.tiers.map((tier_name) => ({ tier_name })), error: null }) };
+      return c;
+    }
     let op: 'select' | 'insert' | 'update' | 'delete' = 'select';
     let payload: any; let id = '';
     const chain: any = {
@@ -55,11 +64,11 @@ import DiscountRulesEditor, { suggestLabel } from './DiscountRulesEditor';
 
 const existing = {
   id: 'rule-1', type: 'percent', value: 25, min_quantity: 4, label: '25% off when you buy 4+',
-  is_active: true, starts_at: null, ends_at: null, created_at: '2026-09-01T00:00:00Z',
+  is_active: true, starts_at: null, ends_at: null, created_at: '2026-09-01T00:00:00Z', eligible_tiers: null,
 };
 
 beforeEach(() => {
-  state.rows = []; state.inserts = []; state.updates = []; state.deletes = [];
+  state.rows = []; state.tiers = []; state.inserts = []; state.updates = []; state.deletes = [];
   state.insertReturns = null; state.toasts.success = []; state.toasts.error = [];
 });
 
@@ -121,6 +130,51 @@ describe('DiscountRulesEditor', () => {
     fireEvent.click(await screen.findByRole('switch'));
     await waitFor(() => expect(state.updates).toEqual([{ id: 'rule-1', is_active: false }]));
     expect(state.deletes).toHaveLength(0);
+  });
+});
+
+describe('eligible ticket types', () => {
+  it('shows one box per type, all ticked, and stores NULL when none is unticked', async () => {
+    state.tiers = ['Adult', 'Students', 'student', 'Senior'];
+    render(<DiscountRulesEditor scope={{ event_id: 'evt-1' }} audience="every showing of this event" />);
+    const boxes = await screen.findAllByRole('checkbox');
+    expect(boxes.map((b) => b.parentElement?.textContent?.trim())).toEqual(['Adult', 'Senior', 'Student']);
+    expect(boxes.every((b) => (b as HTMLInputElement).checked)).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Percent'), { target: { value: '25' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add discount' }));
+    await waitFor(() => expect(state.inserts).toHaveLength(1));
+    expect(state.inserts[0].eligible_tiers).toBeNull();
+  });
+
+  it('stores only the ticked types once one is unticked', async () => {
+    state.tiers = ['Adult', 'Student', 'Senior'];
+    render(<DiscountRulesEditor scope={{ showing_id: 's-1' }} audience="this showing" />);
+    await screen.findAllByRole('checkbox');
+    fireEvent.click(screen.getByLabelText('Student'));
+    fireEvent.click(screen.getByLabelText('Senior'));
+    fireEvent.change(screen.getByLabelText('Percent'), { target: { value: '25' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add discount' }));
+    await waitFor(() => expect(state.inserts).toHaveLength(1));
+    expect(state.inserts[0].eligible_tiers).toEqual(['Adult']);
+  });
+
+  it('refuses a rule that applies to no type at all', async () => {
+    state.tiers = ['Adult'];
+    render(<DiscountRulesEditor scope={{ showing_id: 's-1' }} audience="this showing" />);
+    await screen.findAllByRole('checkbox');
+    fireEvent.click(screen.getByLabelText('Adult'));
+    fireEvent.change(screen.getByLabelText('Percent'), { target: { value: '25' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add discount' }));
+    await waitFor(() => expect(state.toasts.error).toHaveLength(1));
+    expect(state.toasts.error[0]).toMatch(/at least one ticket type/);
+    expect(state.inserts).toHaveLength(0);
+  });
+
+  it('says which types an existing rule covers', async () => {
+    state.rows = [{ ...existing, eligible_tiers: ['Adult', 'Child'] }];
+    render(<DiscountRulesEditor scope={{ event_id: 'evt-1' }} audience="every showing of this event" />);
+    expect(await screen.findByText(/Adult and Child tickets only/)).toBeInTheDocument();
   });
 });
 

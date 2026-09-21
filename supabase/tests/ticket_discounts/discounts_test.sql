@@ -6,7 +6,7 @@
 -- to list price (or a flat amount per ticket), then apportion tax on the net.
 -- A third copy of applyDiscount's allocation, here only so the vectors can be
 -- pushed through the real triggers.
-CREATE FUNCTION public.sell(p_showing uuid, p_rule uuid, p_token text, p_list bigint[], p_force_off bigint DEFAULT NULL)
+CREATE FUNCTION public.sell(p_showing uuid, p_rule uuid, p_token text, p_list bigint[], p_force_off bigint DEFAULT NULL, p_tiers text[] DEFAULT NULL)
 RETURNS text LANGUAGE plpgsql AS $$
 DECLARE
   r public.ticket_discounts%ROWTYPE; d bigint := 0; total bigint := 0; i int; tid uuid;
@@ -14,15 +14,21 @@ DECLARE
 BEGIN
   IF p_rule IS NOT NULL THEN
     SELECT * INTO r FROM public.ticket_discounts WHERE id = p_rule;
-    d := COALESCE(p_force_off, public.ticket_discount_cents(r.type, r.value, r.min_quantity, p_list));
+    d := COALESCE(p_force_off, public.ticket_discount_cents(r.type, r.value, r.min_quantity, p_list, r.eligible_tiers, p_tiers));
   END IF;
-  SELECT COALESCE(SUM(c), 0) INTO total FROM unnest(p_list) c WHERE c > 0;
+  -- The tier a ticket is sold under: the named type, or an ad-hoc price tier.
+  CREATE TEMP TABLE tk AS
+    SELECT c, ord, COALESCE(p_tiers[ord], 'c' || c) AS tname,
+           c > 0 AND (p_rule IS NULL OR r.eligible_tiers IS NULL
+                      OR public.canonical_tier_name(COALESCE(p_tiers[ord], '')) = ANY (r.eligible_tiers)) AS reducible
+    FROM unnest(p_list) WITH ORDINALITY AS u(c, ord);
+  SELECT COALESCE(SUM(c), 0) INTO total FROM tk WHERE reducible;
   INSERT INTO public.showing_price_tiers (showing_id, tier_name, price)
-    SELECT DISTINCT p_showing, 'c' || c, c / 100.0 FROM unnest(p_list) c
-    WHERE NOT EXISTS (SELECT 1 FROM public.showing_price_tiers t WHERE t.showing_id = p_showing AND t.tier_name = 'c' || c);
+    SELECT DISTINCT p_showing, tname, c / 100.0 FROM tk
+    WHERE NOT EXISTS (SELECT 1 FROM public.showing_price_tiers t WHERE t.showing_id = p_showing AND t.tier_name = tk.tname);
   CREATE TEMP TABLE batch (b_tier uuid, b_off numeric, b_tax numeric, b_n int);
   FOR i IN 1 .. array_length(p_list, 1) LOOP
-    IF p_rule IS NULL OR d = 0 THEN off := 0;
+    IF p_rule IS NULL OR d = 0 OR NOT (SELECT reducible FROM tk WHERE ord = i) THEN off := 0;
     ELSIF r.type = 'fixed_per_ticket' AND p_force_off IS NULL THEN off := LEAST(ROUND(r.value * 100)::bigint, p_list[i]);
     ELSE
       run_list := run_list + p_list[i];
@@ -31,16 +37,16 @@ BEGIN
     END IF;
     run_net := run_net + p_list[i] - off;
     share := public.order_tax_cents(run_net) - run_tax; run_tax := run_tax + share;
-    SELECT id INTO tid FROM public.showing_price_tiers WHERE showing_id = p_showing AND tier_name = 'c' || p_list[i];
+    SELECT id INTO tid FROM public.showing_price_tiers WHERE showing_id = p_showing AND tier_name = (SELECT tname FROM tk WHERE ord = i);
     INSERT INTO batch VALUES (tid, off / 100.0, share / 100.0, i);
   END LOOP;
   BEGIN
     INSERT INTO public.tickets (showing_id, tier_id, price, tax_amount, total_price, order_token, discount_id, discount_amount, discount_label)
       SELECT p_showing, b_tier, 0, b_tax, 0, p_token, CASE WHEN b_off > 0 THEN p_rule END, b_off, 'label' FROM batch ORDER BY b_n;
   EXCEPTION WHEN OTHERS THEN
-    DROP TABLE batch; RETURN SQLSTATE || ': ' || SQLERRM;
+    DROP TABLE batch; DROP TABLE tk; RETURN SQLSTATE || ': ' || SQLERRM;
   END;
-  DROP TABLE batch; RETURN 'ok';
+  DROP TABLE batch; DROP TABLE tk; RETURN 'ok';
 END $$;
 
 INSERT INTO public.movies (id, title) VALUES ('00000000-0000-0000-0000-00000000aaaa', 'Metropolis'), ('00000000-0000-0000-0000-00000000bbbb', 'Other film');
@@ -151,6 +157,46 @@ SELECT public.expect('a percent over 100 is refused', public.try_sql($q$
 SELECT public.expect('a window that ends before it starts is refused', public.try_sql($q$
   INSERT INTO public.ticket_discounts (showing_id, type, value, label, starts_at, ends_at)
   VALUES ('00000000-0000-0000-0000-0000000000a1', 'percent', 10, 'x', now(), now() - interval '1 hour')$q$), '23514');
+
+-- 6b. Eligible ticket types. Rule: 25% off 4+, Adult only, on showing A1.
+INSERT INTO public.ticket_discounts (id, showing_id, type, value, min_quantity, label, eligible_tiers) VALUES
+  ('00000000-0000-0000-0000-00000000d005', '00000000-0000-0000-0000-0000000000a1', 'percent', 25, 4, 'adults 25%', ARRAY['Adult']);
+
+INSERT INTO public.results (name, pass, detail)
+SELECT 'canonical_tier_name agrees with the TypeScript table on every spelling',
+       public.canonical_tier_name('Students') = 'Student' AND public.canonical_tier_name('student ') = 'Student'
+   AND public.canonical_tier_name('GA') = 'General Admission' AND public.canonical_tier_name('Student / Senior') = 'Student/Senior'
+   AND public.canonical_tier_name('vip') = 'VIP' AND public.canonical_tier_name('front row') = 'Front Row'
+   AND public.canonical_tier_name('') = '' AND public.canonical_tier_name(NULL) = '', '';
+
+SELECT public.expect('2 Adult + 2 Student: the students count towards 4+, only the adults are reduced',
+  public.sell('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-00000000d005', 'mixed-ok',
+              ARRAY[900,900,700,700]::bigint[], NULL, ARRAY['Adult','Adult','Students','student']), 'ok');
+INSERT INTO public.results (name, pass, detail)
+SELECT '...and the rows say so: 225 + 225 + 0 + 0',
+       array_agg(ROUND(discount_amount * 100)::int ORDER BY list_price DESC, id) = ARRAY[225,225,0,0]
+       AND SUM(ROUND(discount_amount * 100)) = 450,
+       array_agg(ROUND(discount_amount * 100)::int ORDER BY list_price DESC, id)::text
+FROM public.tickets WHERE order_token = 'mixed-ok';
+
+SELECT public.expect('4 Students alone are sold at full price under an Adult-only rule',
+  public.sell('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-00000000d005', 'students-only',
+              ARRAY[700,700,700,700]::bigint[], NULL, ARRAY['Student','Student','Student','Student']), 'ok');
+INSERT INTO public.results (name, pass, detail)
+SELECT '...with no discount on any row', SUM(discount_amount) = 0 AND bool_and(discount_id IS NULL), ''
+FROM public.tickets WHERE order_token = 'students-only';
+
+-- A forged allocation that puts the right total on the wrong tickets.
+INSERT INTO public.showing_price_tiers (showing_id, tier_name, price)
+  SELECT '00000000-0000-0000-0000-0000000000a1', n, p FROM (VALUES ('Adult', 9.00), ('Student', 7.00)) v(n, p)
+  WHERE NOT EXISTS (SELECT 1 FROM public.showing_price_tiers t WHERE t.showing_id = '00000000-0000-0000-0000-0000000000a1' AND t.tier_name = v.n);
+INSERT INTO public.results (name, pass, detail)
+SELECT 'money on an ineligible ticket type is refused even when the total is right', got LIKE 'PT422%', got
+FROM (SELECT public.try_sql($q$
+  INSERT INTO public.tickets (showing_id, tier_id, price, tax_amount, total_price, order_token, discount_id, discount_amount)
+  SELECT '00000000-0000-0000-0000-0000000000a1', t.id, 0, v.tax, 0, 'misplaced', '00000000-0000-0000-0000-00000000d005', v.off
+  FROM (VALUES ('Adult', 2.25, 0.41), ('Adult', 0.00, 0.54), ('Student', 2.25, 0.29), ('Student', 0.00, 0.42)) v(tier, off, tax)
+  JOIN public.showing_price_tiers t ON t.showing_id = '00000000-0000-0000-0000-0000000000a1' AND t.tier_name = v.tier$q$) AS got) x;
 
 -- 7. RLS, as PostgREST would run it.
 INSERT INTO public.ticket_discounts (id, showing_id, type, value, label, is_active) VALUES

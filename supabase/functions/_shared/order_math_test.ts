@@ -129,3 +129,58 @@ Deno.test('a bigger order can change which rule is best', () => {
   assertEquals(bestDiscount([pct, flat], [1000, 1000])!.rule.id, 'flat');        // 200 vs 500
   assertEquals(bestDiscount([pct, flat], Array(8).fill(1000))!.rule.id, 'pct');  // 800 vs 500
 });
+
+// ---------------------------------------------------------------------------
+// Eligible ticket types
+// ---------------------------------------------------------------------------
+import { canonicalTierName, tierEligible } from './order_math.ts';
+import { canonicalTier } from './square-catalog.ts';
+
+Deno.test('canonicalTierName is the same table square-catalog uses — they must not drift', () => {
+  for (const raw of ['Students', 'student', 'GA', 'Student / Senior', 'seniors', 'VIP', 'Premium', 'kids', 'Front Row', '', null]) {
+    assertEquals(canonicalTierName(raw), canonicalTier(raw));
+  }
+});
+
+const adultsOnly = (over: Partial<DiscountRule> = {}) => rule({ eligible_tiers: ['Adult'], ...over });
+const family = [900, 900, 700, 700];               // 2 Adult + 2 Student
+const familyTiers = ['Adult', 'Adult', 'Students', 'student'];
+
+Deno.test('every paid ticket counts towards the minimum; only eligible ones are reduced', () => {
+  // 2 Adult + 2 Student meets "4+", and 25% comes off the adults alone: 450.
+  const a = applyDiscount(adultsOnly(), family, familyTiers)!;
+  assertEquals(a.discountCents, 450);
+  assertEquals(a.perTicket, [225, 225, 0, 0]);
+});
+
+Deno.test('no eligible ticket in the order means no discount, even past the minimum', () => {
+  assertEquals(applyDiscount(adultsOnly(), [700, 700, 700, 700], ['Student', 'Student', 'Student', 'Student']), null);
+});
+
+Deno.test('a null eligible list is every type, and a single-price showing is one implicit type', () => {
+  assertEquals(applyDiscount(rule({ eligible_tiers: null }), family, familyTiers)!.discountCents, 800);
+  assertEquals(applyDiscount(rule({}), [900, 900, 900, 900])!.discountCents, 900);          // no tiers passed
+  assertEquals(applyDiscount(rule({ eligible_tiers: [''] }), [900, 900, 900, 900], ['', null, undefined, ''])!.discountCents, 900);
+  assertEquals(tierEligible({ eligible_tiers: ['Adult'] }, ''), false);
+});
+
+Deno.test('spelling does not matter: "Students" and "student" are Student', () => {
+  const studentsOnly = rule({ eligible_tiers: ['Student'] });
+  assertEquals(applyDiscount(studentsOnly, family, familyTiers)!.perTicket, [0, 0, 175, 175]);
+});
+
+Deno.test('a fixed per-order amount is shared across eligible tickets only', () => {
+  const a = applyDiscount(adultsOnly({ type: 'fixed_per_order', value: 10 }), family, familyTiers)!;
+  assertEquals(a.perTicket, [500, 500, 0, 0]);
+});
+
+Deno.test('a fixed per-ticket amount skips ineligible tickets', () => {
+  const a = applyDiscount(adultsOnly({ type: 'fixed_per_ticket', value: 2 }), family, familyTiers)!;
+  assertEquals(a.perTicket, [200, 200, 0, 0]);
+});
+
+Deno.test('eligibility changes which rule is best', () => {
+  const all = rule({ id: 'all', value: 10, eligible_tiers: null });          // 10% of 3200 = 320
+  const adults = rule({ id: 'adults', value: 25, eligible_tiers: ['Adult'] }); // 25% of 1800 = 450
+  assertEquals(bestDiscount([all, adults], family, familyTiers)!.rule.id, 'adults');
+});

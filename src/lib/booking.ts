@@ -82,7 +82,8 @@ export function buildTicketRows({
     // orderMath.ts). The database holds the rows to that sum and refuses the
     // insert otherwise, so this is not advisory the way the on-screen totals are.
     const listCents = rows.map((row) => Math.round(Number(row.price) * 100));
-    const applied = bestDiscount(discountRules, listCents);
+    const applied = bestDiscount(discountRules, listCents, rows.map((row) => row.__tier_name ?? ''));
+    for (const row of rows) delete row.__tier_name;
     const priceCents = listCents.map((cents, i) => cents - (applied?.perTicket[i] ?? 0));
     const { perTicket } = apportionOrderTax(priceCents);
     rows.forEach((row, i) => {
@@ -125,6 +126,8 @@ export function buildTicketRows({
             qr_code: crypto.randomUUID(),
             status: 'confirmed',
             payment_method: paymentMethod,
+            // For the discount's eligibility check only; stripped by `stamp`.
+            __tier_name: item.tierName,
           });
         }
       } else {
@@ -142,6 +145,8 @@ export function buildTicketRows({
             qr_code: crypto.randomUUID(),
             status: 'confirmed',
             payment_method: paymentMethod,
+            // For the discount's eligibility check only; stripped by `stamp`.
+            __tier_name: item.tierName,
           });
         }
       }
@@ -199,14 +204,14 @@ export function buildTicketRows({
  *     to 25; in exact arithmetic it is 25.5 and rounds to 26. A cent of
  *     disagreement here is a customer charged more than the page quoted.
  */
-function totalsFor(prices: number[], rules: DiscountRule[] = []) {
+function totalsFor(prices: number[], rules: DiscountRule[] = [], tiers?: Array<string | null | undefined>) {
   const listCents = prices.map((price) => Math.round(price * 100));
   const listSubtotalCents = listCents.reduce((sum, cents) => sum + cents, 0);
 
   // The one discount this selection earns, if any — the same function, fed the
   // same rules, that the server uses to set the charge. This is a preview: the
   // server re-reads the rules and the database re-checks the result.
-  const applied = bestDiscount(rules, listCents);
+  const applied = bestDiscount(rules, listCents, tiers);
   const netCents = listCents.map((cents, i) => cents - (applied?.perTicket[i] ?? 0));
   const netSubtotalCents = netCents.reduce((sum, cents) => sum + cents, 0);
   const { taxCents } = apportionOrderTax(netCents);
@@ -231,16 +236,22 @@ export function computeOrderTotals(ticketCount: number, ticketPrice: number, rul
 
 export function computeLineItemTotals(lineItems: TicketLineItem[], rules: DiscountRule[] = []) {
   const prices: number[] = [];
+  const tiers: string[] = [];
   for (const item of lineItems) {
     const qty = item.seatIds ? item.seatIds.length : item.quantity;
-    for (let i = 0; i < qty; i++) prices.push(Number(item.price));
+    for (let i = 0; i < qty; i++) { prices.push(Number(item.price)); tiers.push(item.tierName); }
   }
-  return { ...totalsFor(prices, rules), totalCount: prices.length };
+  return { ...totalsFor(prices, rules, tiers), totalCount: prices.length };
 }
 
 /** Assigned seating where each seat carries its own tier price. */
-export function computeSeatTotals(seatPrices: number[], rules: DiscountRule[] = []) {
-  return totalsFor(seatPrices.map(Number), rules);
+export function computeSeatTotals(
+  seatPrices: number[],
+  rules: DiscountRule[] = [],
+  /** Each seat's tier name, in the same order, when the rules care about types. */
+  seatTiers?: Array<string | null | undefined>,
+) {
+  return totalsFor(seatPrices.map(Number), rules, seatTiers);
 }
 
 // Square processing fee rates (sandbox-aligned with production pricing).

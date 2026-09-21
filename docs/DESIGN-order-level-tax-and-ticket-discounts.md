@@ -317,3 +317,26 @@ zero, no separate default to look up. Not applied at the box office, as before.
 both 3935; limit set to 2 → 3 tickets refused with "This showing allows up to 2 tickets per buyer
 online…"; limit NULL → 21 tickets, rows and Square both 13774.
 
+## 13. Eligible ticket types (Tom, 21 Sep 2026)
+
+A rule can be limited to some ticket types — "not on Student/Senior, they are already reduced".
+`ticket_discounts.eligible_tiers text[]`, NULL = every type. Names are stored **canonical**
+("Student/Senior"), matched through the same table Square variations are named with, so
+"Students", "student" and "Student" are one type. `canonicalTierName` now lives in
+`order_math.ts` (a copy of `square-catalog.ts`'s table — a Deno test asserts they agree) and
+`canonical_tier_name()` in SQL (the harness asserts it too).
+
+**Decision: every paid ticket counts towards the minimum; only eligible tickets are reduced.**
+Two adults and two students have earned a 4+ family rate; the students are simply not reduced
+twice. The database also refuses an allocation that puts the right total on the wrong tickets
+(harness: "money on an ineligible ticket type is refused even when the total is right").
+
+Admin: an "Applies to" row of checkboxes, one per canonical type sold on the showing (or on any
+showing of the production), all ticked by default; all ticked stores NULL, so a rule made before
+a tier is added covers the new tier. A showing with no tiers shows no boxes.
+
+Verified: harness 90/90; Deno 487; vitest 927 (+ the same 9 pre-existing `MonthCalendar`
+failures). Staging, real sandbox sale: 2 Adult @ $9 + 2 Students @ $7 under an Adult-only 25%
+rule → off 2.25 + 2.25 + 0 + 0, rows 2915, no abandoned-order line in the checkout log. Test
+showing, tiers, rule, tickets and buyer removed afterwards.
+

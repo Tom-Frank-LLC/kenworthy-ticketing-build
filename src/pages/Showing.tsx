@@ -706,7 +706,10 @@ export default function Showing() {
       const seatPrices = Array.from(selectedSeats).map(
         seatId => seatTierMap[seatId]?.price ?? fallback.price,
       );
-      const result = computeSeatTotals(seatPrices, discountRules);
+      const seatTiers = Array.from(selectedSeats).map(
+        seatId => seatTierMap[seatId]?.tierName ?? fallback.tier_name,
+      );
+      const result = computeSeatTotals(seatPrices, discountRules, seatTiers);
       discount = result.discount;
       subtotal = result.subtotal;
       tax = result.tax;

@@ -93,6 +93,13 @@ export interface DiscountRule {
   label: string;
   /** ISO timestamp. The tie-break, so every copy of this picks the same rule. */
   created_at: string;
+  /**
+   * Canonical tier names this rule discounts, or null for every ticket. Every
+   * paid ticket still counts towards `min_quantity` — a family of two adults
+   * and two students has earned a 4+ offer; the students are simply not
+   * reduced twice (decided 21 Sep 2026).
+   */
+  eligible_tiers?: string[] | null;
 }
 
 export interface AppliedDiscount {
@@ -102,18 +109,38 @@ export interface AppliedDiscount {
   perTicket: number[];
 }
 
-/** What this rule takes off these tickets, or null if it does not apply. */
-export function applyDiscount(rule: DiscountRule, listCents: number[]): AppliedDiscount | null {
-  const eligible = listCents.filter((c) => c > 0);
-  if (eligible.length === 0 || eligible.length < Math.max(1, rule.min_quantity)) return null;
-  const eligibleTotal = eligible.reduce((s, c) => s + c, 0);
+/** Is a ticket of this tier one the rule reduces? A showing with no tiers has one implicit type. */
+export function tierEligible(rule: Pick<DiscountRule, 'eligible_tiers'>, tierName: string | null | undefined): boolean {
+  if (!rule.eligible_tiers) return true;
+  return rule.eligible_tiers.includes(canonicalTierName(tierName));
+}
+
+/**
+ * What this rule takes off these tickets, or null if it does not apply.
+ *
+ * `tiers[i]` is ticket i's tier name (any spelling; canonicalised here), or
+ * null/'' for a single-price showing. Omit it and every ticket is eligible.
+ */
+export function applyDiscount(
+  rule: DiscountRule,
+  listCents: number[],
+  tiers?: Array<string | null | undefined>,
+): AppliedDiscount | null {
+  const paid = listCents.filter((c) => c > 0);
+  if (paid.length === 0 || paid.length < Math.max(1, rule.min_quantity)) return null;
+
+  // Free tickets are never reduced; ineligible types are not either, but they
+  // did count towards the minimum above.
+  const reducible = listCents.map((c, i) => c > 0 && tierEligible(rule, tiers?.[i]) ? c : 0);
+  const eligibleTotal = reducible.reduce((s, c) => s + c, 0);
+  if (eligibleTotal === 0) return null;
 
   let perTicket: number[];
   if (rule.type === 'fixed_per_ticket') {
     // Not a share of anything: each ticket loses the same amount, capped at its
     // own price so a $2 coupon cannot make a $1 ticket cost -$1.
     const off = Math.round(rule.value * 100);
-    perTicket = listCents.map((c) => Math.min(off, c));
+    perTicket = reducible.map((c) => Math.min(off, c));
   } else {
     const orderCents = rule.type === 'percent'
       // Basis points, so 12.5% is exact. Rounded once, on the order.
@@ -124,7 +151,7 @@ export function applyDiscount(rule: DiscountRule, listCents: number[]): AppliedD
     perTicket = [];
     let runningList = 0;
     let runningOff = 0;
-    for (const c of listCents) {
+    for (const c of reducible) {
       runningList += c;
       const offSoFar = halfEvenDiv(orderCents * runningList, eligibleTotal);
       perTicket.push(offSoFar - runningOff);
@@ -142,10 +169,14 @@ export function applyDiscount(rule: DiscountRule, listCents: number[]): AppliedD
  * Ties go to the older rule, then the lower id — arbitrary, but the same
  * arbitrary everywhere, so the page, the server and the box office agree.
  */
-export function bestDiscount(rules: DiscountRule[], listCents: number[]): AppliedDiscount | null {
+export function bestDiscount(
+  rules: DiscountRule[],
+  listCents: number[],
+  tiers?: Array<string | null | undefined>,
+): AppliedDiscount | null {
   let best: AppliedDiscount | null = null;
   for (const rule of rules) {
-    const applied = applyDiscount(rule, listCents);
+    const applied = applyDiscount(rule, listCents, tiers);
     if (!applied) continue;
     if (
       !best ||
@@ -172,6 +203,7 @@ export interface DiscountRuleRow {
   code?: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
+  eligible_tiers?: string[] | null;
 }
 
 /**
@@ -191,5 +223,54 @@ export function usableRules(rows: DiscountRuleRow[], nowMs: number): DiscountRul
       min_quantity: r.min_quantity,
       label: r.label,
       created_at: r.created_at,
+      eligible_tiers: r.eligible_tiers ?? null,
     }));
+}
+
+// ---------------------------------------------------------------------------
+// Tier names
+// ---------------------------------------------------------------------------
+
+/**
+ * One spelling per ticket type, so "Students", "student" and "Student" are the
+ * same type to a discount rule. The table is the one `_shared/square-catalog.ts`
+ * uses to name Square variations, copied here because this file must stay
+ * import-free to be twinned into the browser; the two must not drift. An
+ * unknown name is title-cased and passed through — the vocabulary is not a
+ * whitelist. A blank name (a single-price showing) is ''.
+ */
+export function canonicalTierName(raw: string | null | undefined): string {
+  const t = (raw ?? '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  const key = t.toLowerCase().replace(/[.\s]+$/, '');
+  const table: Record<string, string> = {
+    'ga': 'General Admission',
+    'g.a.': 'General Admission',
+    'general admission': 'General Admission',
+    'general': 'General Admission',
+    'adult': 'Adult',
+    'adults': 'Adult',
+    'child': 'Child',
+    'children': 'Child',
+    'kid': 'Child',
+    'kids': 'Child',
+    'student': 'Student',
+    'students': 'Student',
+    'student/senior': 'Student/Senior',
+    'student / senior': 'Student/Senior',
+    'student/seniors': 'Student/Senior',
+    'senior': 'Senior',
+    'seniors': 'Senior',
+    'student/child': 'Student/Child',
+    'preferred seating': 'Preferred Seating',
+    'preferred': 'Preferred Seating',
+    'vip': 'VIP',
+    'member': 'Member',
+    'members': 'Member',
+  };
+  if (table[key]) return table[key];
+  return t
+    .split(' ')
+    .map((w) => (w.length <= 3 && w === w.toUpperCase() ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join(' ');
 }
