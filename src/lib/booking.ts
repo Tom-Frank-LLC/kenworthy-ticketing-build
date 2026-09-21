@@ -1,3 +1,5 @@
+import { apportionOrderTax } from './orderMath';
+
 export interface Seat {
   id: string;
   seat_row: string;
@@ -70,6 +72,16 @@ export function buildTicketRows({
   const fee = Math.max(0, Math.round((processingFee || 0) * 100) / 100);
   const token = orderToken || newOrderToken();
   const stamp = (rows: any[]) => {
+    // Tax belongs to the order, not the ticket: it is computed once on the sum
+    // and shared out across the rows in the order they are written (see
+    // orderMath.ts). The database holds the rows to that sum and refuses the
+    // insert otherwise, so this is not advisory the way the on-screen totals are.
+    const priceCents = rows.map((row) => Math.round(Number(row.price) * 100));
+    const { perTicket } = apportionOrderTax(priceCents);
+    rows.forEach((row, i) => {
+      row.tax_amount = perTicket[i] / 100;
+      row.total_price = (priceCents[i] + perTicket[i]) / 100;
+    });
     if (rows.length > 0 && fee > 0) rows[0].processing_fee = fee;
     for (const row of rows) {
       row.order_token = token;
@@ -82,9 +94,9 @@ export function buildTicketRows({
     const rows: any[] = [];
     for (const item of lineItems) {
       const price = Number(item.price);
-      // Integer cents, matching the trigger that overwrites these on insert.
-      const taxAmount = ticketTaxCents(price) / 100;
-      const totalPrice = (Math.round(price * 100) + ticketTaxCents(price)) / 100;
+      // Placeholders: `stamp` fills both once every row of the order exists.
+      const taxAmount = 0;
+      const totalPrice = price;
 
       if (item.seatIds && item.seatIds.length > 0) {
         // Assigned seating with tier
@@ -127,8 +139,8 @@ export function buildTicketRows({
 
   // Legacy single-price path (no tiers configured)
   const price = Number(ticketPrice || 0);
-  const taxAmount = ticketTaxCents(price) / 100;
-  const totalPrice = (Math.round(price * 100) + ticketTaxCents(price)) / 100;
+  const taxAmount = 0;
+  const totalPrice = price;
 
   const baseRow = {
     user_id: userId,
@@ -158,29 +170,27 @@ export function buildTicketRows({
   })));
 }
 
-/** Tax on one ticket, in integer cents. */
-export function ticketTaxCents(price: number) {
-  return Math.round(Math.round(price * 100) * TAX_RATE);
-}
-
 /**
- * Totals for a set of tickets, computed the way the server and the database do.
+ * Totals for a set of tickets, computed the way the server, the database and
+ * Square do.
  *
  * Two rules, both of which exist to keep the price shown equal to the price
  * charged:
  *
- *  1. **Tax is rounded per ticket**, because `enforce_ticket_pricing` stores
- *     `ROUND(price * 0.06, 2)` on each row and the charge is the sum of the
- *     rows. Rounding once on the subtotal disagrees by a cent at some
- *     quantities.
+ *  1. **Tax is the order's, not the ticket's.** Square takes 6% of the whole
+ *     subtotal once and rounds half-to-even; so does `_shared/pricing.ts`, and
+ *     the database refuses ticket rows that do not sum to it. This used to round
+ *     per ticket, half-up, which differs by a cent or two at prices like $8.25
+ *     — see `orderMath.ts` and docs/FINDINGS-square-order-arithmetic.md.
  *  2. **The arithmetic is in integer cents.** In floating point,
- *     `4.25 * 0.06 * 100` is 25.499999999999996 and rounds to 25, while the
- *     database computes 25.5 in exact numeric and rounds to 26. A cent of
+ *     `4.25 * 0.06 * 100` is 25.499999999999996, which is not a tie and rounds
+ *     to 25; in exact arithmetic it is 25.5 and rounds to 26. A cent of
  *     disagreement here is a customer charged more than the page quoted.
  */
 function totalsFor(prices: number[]) {
-  const subtotalCents = prices.reduce((sum, price) => sum + Math.round(price * 100), 0);
-  const taxCents = prices.reduce((sum, price) => sum + ticketTaxCents(price), 0);
+  const priceCents = prices.map((price) => Math.round(price * 100));
+  const subtotalCents = priceCents.reduce((sum, cents) => sum + cents, 0);
+  const { taxCents } = apportionOrderTax(priceCents);
   return {
     subtotal: subtotalCents / 100,
     tax: taxCents / 100,

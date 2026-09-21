@@ -117,7 +117,6 @@ Deno.serve(async (req: Request) => {
   for (const t of cash) {
     const tierKey = canonicalTier(t.tier_id ? tierNameById.get(t.tier_id) ?? null : null);
     const unitPriceCents = Math.round(Number(t.price) * 100);
-    const unitTaxCents = Math.round(Number(t.tax_amount) * 100);
     feeCents += Math.round(Number(t.processing_fee ?? 0) * 100);
     expectedCents += Math.round(Number(t.total_price) * 100);
 
@@ -129,7 +128,6 @@ Deno.serve(async (req: Request) => {
       displayName: variationName(tierKey, showing.start_time, tz),
       variationId: variationByTier.get(tierKey) ?? null,
       unitPriceCents,
-      unitTaxCents,
       count: 1,
     });
   }

@@ -1,0 +1,276 @@
+{
+ "_comment": "Expected values are what Square's SANDBOX returned from POST /v2/orders/calculate on 2026-09-21 (API 2024-01-18) \u2014 not our own arithmetic. Regenerate with supabase/functions/square-discount-probe. See docs/FINDINGS-square-order-arithmetic.md.",
+ "tax_only": [
+  {
+   "label": "1 x $8.00",
+   "ticket_net_cents": [
+    800
+   ],
+   "square_tax_cents": 48,
+   "square_total_cents": 848
+  },
+  {
+   "label": "4 x $8.00",
+   "ticket_net_cents": [
+    800,
+    800,
+    800,
+    800
+   ],
+   "square_tax_cents": 192,
+   "square_total_cents": 3392
+  },
+  {
+   "label": "10 x $10.00",
+   "ticket_net_cents": [
+    1000,
+    1000,
+    1000,
+    1000,
+    1000,
+    1000,
+    1000,
+    1000,
+    1000,
+    1000
+   ],
+   "square_tax_cents": 600,
+   "square_total_cents": 10600
+  },
+  {
+   "label": "3 x $14.50",
+   "ticket_net_cents": [
+    1450,
+    1450,
+    1450
+   ],
+   "square_tax_cents": 261,
+   "square_total_cents": 4611
+  },
+  {
+   "label": "1 x $8.25 (49.5 -> 50 either way)",
+   "ticket_net_cents": [
+    825
+   ],
+   "square_tax_cents": 50,
+   "square_total_cents": 875
+  },
+  {
+   "label": "2 x $8.25",
+   "ticket_net_cents": [
+    825,
+    825
+   ],
+   "square_tax_cents": 99,
+   "square_total_cents": 1749
+  },
+  {
+   "label": "3 x $8.25",
+   "ticket_net_cents": [
+    825,
+    825,
+    825
+   ],
+   "square_tax_cents": 148,
+   "square_total_cents": 2623
+  },
+  {
+   "label": "4 x $8.25",
+   "ticket_net_cents": [
+    825,
+    825,
+    825,
+    825
+   ],
+   "square_tax_cents": 198,
+   "square_total_cents": 3498
+  },
+  {
+   "label": "7 x $8.25",
+   "ticket_net_cents": [
+    825,
+    825,
+    825,
+    825,
+    825,
+    825,
+    825
+   ],
+   "square_tax_cents": 346,
+   "square_total_cents": 6121
+  },
+  {
+   "label": "1 x $6.75 (40.5 -> 40 half-even)",
+   "ticket_net_cents": [
+    675
+   ],
+   "square_tax_cents": 40,
+   "square_total_cents": 715
+  },
+  {
+   "label": "4 x $6.75",
+   "ticket_net_cents": [
+    675,
+    675,
+    675,
+    675
+   ],
+   "square_tax_cents": 162,
+   "square_total_cents": 2862
+  },
+  {
+   "label": "5 x $6.75",
+   "ticket_net_cents": [
+    675,
+    675,
+    675,
+    675,
+    675
+   ],
+   "square_tax_cents": 202,
+   "square_total_cents": 3577
+  },
+  {
+   "label": "7 x $6.75",
+   "ticket_net_cents": [
+    675,
+    675,
+    675,
+    675,
+    675,
+    675,
+    675
+   ],
+   "square_tax_cents": 284,
+   "square_total_cents": 5009
+  },
+  {
+   "label": "1 x $10.75 (64.5 -> 64)",
+   "ticket_net_cents": [
+    1075
+   ],
+   "square_tax_cents": 64,
+   "square_total_cents": 1139
+  },
+  {
+   "label": "2 x $10.75",
+   "ticket_net_cents": [
+    1075,
+    1075
+   ],
+   "square_tax_cents": 129,
+   "square_total_cents": 2279
+  },
+  {
+   "label": "5 x $10.75",
+   "ticket_net_cents": [
+    1075,
+    1075,
+    1075,
+    1075,
+    1075
+   ],
+   "square_tax_cents": 322,
+   "square_total_cents": 5697
+  },
+  {
+   "label": "1 x $8.02",
+   "ticket_net_cents": [
+    802
+   ],
+   "square_tax_cents": 48,
+   "square_total_cents": 850
+  },
+  {
+   "label": "7 x $8.02",
+   "ticket_net_cents": [
+    802,
+    802,
+    802,
+    802,
+    802,
+    802,
+    802
+   ],
+   "square_tax_cents": 337,
+   "square_total_cents": 5951
+  },
+  {
+   "label": "3 x $19.99",
+   "ticket_net_cents": [
+    1999,
+    1999,
+    1999
+   ],
+   "square_tax_cents": 360,
+   "square_total_cents": 6357
+  },
+  {
+   "label": "5 x $3.33",
+   "ticket_net_cents": [
+    333,
+    333,
+    333,
+    333,
+    333
+   ],
+   "square_tax_cents": 100,
+   "square_total_cents": 1765
+  },
+  {
+   "label": "1 x $0.75 (4.5 -> 4)",
+   "ticket_net_cents": [
+    75
+   ],
+   "square_tax_cents": 4,
+   "square_total_cents": 79
+  },
+  {
+   "label": "mixed: 2 x $20 + 3 x $8.25",
+   "ticket_net_cents": [
+    2000,
+    2000,
+    825,
+    825,
+    825
+   ],
+   "square_tax_cents": 388,
+   "square_total_cents": 6863
+  },
+  {
+   "label": "mixed, interleaved: $8.25 $6.75 $8.25 $10.75",
+   "ticket_net_cents": [
+    825,
+    675,
+    825,
+    1075
+   ],
+   "square_tax_cents": 204,
+   "square_total_cents": 3604
+  },
+  {
+   "label": "mixed: 1 x $19.99 + 2 x $3.33 + 4 x $6.75",
+   "ticket_net_cents": [
+    1999,
+    333,
+    333,
+    675,
+    675,
+    675,
+    675
+   ],
+   "square_tax_cents": 322,
+   "square_total_cents": 5687
+  },
+  {
+   "label": "a free ticket among paid ones: $0 + 2 x $8.25",
+   "ticket_net_cents": [
+    0,
+    825,
+    825
+   ],
+   "square_tax_cents": 99,
+   "square_total_cents": 1749
+  }
+ ]
+}

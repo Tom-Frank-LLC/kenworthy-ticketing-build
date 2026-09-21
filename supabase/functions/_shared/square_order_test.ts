@@ -1,10 +1,10 @@
-import { assertEquals, assert } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
-  aggregationChangesTax,
   buildTicketOrder,
   orderRequestBody,
   type TicketGroup,
 } from './square-order.ts';
+import vectors from './pricing_vectors.json' with { type: 'json' };
 
 /**
  * These numbers are the charge. If the order Square totals differs from
@@ -18,7 +18,6 @@ const g = (over: Partial<TicketGroup> = {}): TicketGroup => ({
   displayName: 'Adult - Wednesday, September 16 at 7 PM',
   variationId: 'VAR_ADULT',
   unitPriceCents: 800,
-  unitTaxCents: 48,
   count: 1,
   ...over,
 });
@@ -28,32 +27,45 @@ Deno.test('a whole-dollar tier aggregates onto one line', () => {
   const b = buildTicketOrder([g({ count: 2 })]);
   assertEquals(b.lineItems.length, 1);
   assertEquals(b.lineItems[0].quantity, '2');
-  assertEquals(b.splitGroups, 0);
   assertEquals(b.expectedTotalCents, (800 + 48) * 2);
 });
 
-Deno.test('a half-cent tier is split so the tax still matches ours', () => {
-  // $8.25: 825 * 6% = 49.5. We charge 2 * 50 = 100; one line of qty 2 would be
-  // round(1650 * 6%) = 99. A cent, every time, on every such sale.
-  const group = g({ unitPriceCents: 825, unitTaxCents: 50, count: 2 });
-  assert(aggregationChangesTax(group));
-  const b = buildTicketOrder([group]);
-  assertEquals(b.lineItems.length, 2);
-  assertEquals(b.lineItems.map((l) => l.quantity), ['1', '1']);
-  assertEquals(b.splitGroups, 1);
-  assertEquals(b.expectedTotalCents, (825 + 50) * 2);
+Deno.test('a half-cent tier stays on one line, and totals the way Square totals it', () => {
+  // $8.25 x 2. This used to be split into two single lines, expecting Square to
+  // round each separately: 2 x 50 = 100 tax, 1750. Square taxes the order once
+  // — 6% of 1650 is 99 — and returns 1749 whether it is sent one line or two
+  // (measured; pricing_vectors.json). So the split is gone and the expectation
+  // is Square's number, which is now also what pricing.ts charges.
+  const b = buildTicketOrder([g({ unitPriceCents: 825, count: 2 })]);
+  assertEquals(b.lineItems.length, 1);
+  assertEquals(b.lineItems[0].quantity, '2');
+  assertEquals(b.expectedTotalCents, 1749);
 });
 
-Deno.test('whole dollars need no splitting', () => {
-  assertEquals(aggregationChangesTax(g({ count: 5 })), false);
-  assertEquals(aggregationChangesTax(g({ unitPriceCents: 2000, unitTaxCents: 120, count: 3 })), false);
+for (const v of vectors.tax_only) {
+  Deno.test(`expectedTotalCents is what Square returned — ${v.label}`, () => {
+    // One group per distinct price, exactly as loadTicketGroups would make them.
+    const counts = new Map<number, number>();
+    for (const c of v.ticket_net_cents) counts.set(c, (counts.get(c) ?? 0) + 1);
+    const groups = [...counts].map(([cents, count], i) =>
+      g({ tierKey: `T${i}`, unitPriceCents: cents, count }));
+    assertEquals(buildTicketOrder(groups).expectedTotalCents, v.square_total_cents);
+  });
+}
+
+Deno.test('an untaxed line stays out of the tax base but in the total', () => {
+  // 3 x $8.25 is 2475 -> 148.5 -> 148 tax. Were the $25 gift taxed with it the
+  // base would be 4975 -> 298.5 -> 298; were tax taken per line and summed, the
+  // tie would not exist at all. One tax, on the taxable lines only.
+  const b = buildTicketOrder([g({ unitPriceCents: 825, count: 3 }), donationGroup(2500)]);
+  assertEquals(b.expectedTotalCents, 2475 + 148 + 2500);
 });
 
 Deno.test('a multi-tier sale is one line per tier', () => {
   const b = buildTicketOrder([
     g({ count: 2 }),
     g({ tierKey: 'Student', displayName: 'Student - x', variationId: 'VAR_STU',
-        unitPriceCents: 500, unitTaxCents: 30, count: 1 }),
+        unitPriceCents: 500, count: 1 }),
   ]);
   assertEquals(b.lineItems.length, 2);
   assertEquals(b.lineItems[0].catalog_object_id, 'VAR_ADULT');
@@ -83,7 +95,7 @@ Deno.test('an ad-hoc line carries our tax too', () => {
 });
 
 Deno.test('every line in a mixed order is taxed, and the tax is declared once', () => {
-  const b = buildTicketOrder([g(), g({ tierKey: 'Student', variationId: null, unitPriceCents: 500, unitTaxCents: 30 })]);
+  const b = buildTicketOrder([g(), g({ tierKey: 'Student', variationId: null, unitPriceCents: 500 })]);
   assertEquals((b.lineItems[0].applied_taxes as any[]).length, 1);
   assertEquals((b.lineItems[1].applied_taxes as any[]).length, 1);
   assertEquals(b.taxes.length, 1);
@@ -93,13 +105,13 @@ Deno.test('every line in a mixed order is taxed, and the tax is declared once', 
 Deno.test('base_price_money always overrides, so a stale catalog price cannot charge', () => {
   // The catalog may say $8.25 while the showing says $9. Our number wins, and
   // the buyer is charged what the site quoted.
-  const b = buildTicketOrder([g({ unitPriceCents: 900, unitTaxCents: 54 })]);
+  const b = buildTicketOrder([g({ unitPriceCents: 900 })]);
   assertEquals(b.lineItems[0].base_price_money, { amount: 900, currency: 'USD' });
 });
 
 Deno.test('zero-count and free tiers behave', () => {
   assertEquals(buildTicketOrder([g({ count: 0 })]).lineItems.length, 0);
-  const free = buildTicketOrder([g({ unitPriceCents: 0, unitTaxCents: 0, count: 1 })]);
+  const free = buildTicketOrder([g({ unitPriceCents: 0, count: 1 })]);
   assertEquals(free.expectedTotalCents, 0);
   assertEquals(free.lineItems.length, 1);
 });

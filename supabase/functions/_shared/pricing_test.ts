@@ -175,17 +175,34 @@ Deno.test('falls back to the showing price when no tier is named', async () => {
   assertEquals(order.amountCents, 2120);
 });
 
-Deno.test('rounds tax per ticket, as the database trigger does', async () => {
-  // 8.25 * 6% = 0.495 -> 0.50 each. Rounding once on the 33.00 subtotal would
-  // give 1.98, and the charge would disagree with the stored ticket rows.
+Deno.test("taxes the order the way Square does, not ticket by ticket", async () => {
+  // 8.25 * 6% = 0.495. Per ticket, half-up, that is 0.50 each and 2.00 for four
+  // — which is what this used to assert. Square taxes the 33.00 subtotal once:
+  // 1.98, total 34.98 (measured; pricing_vectors.json "4 x $8.25"). Charging
+  // 35.00 meant Square's order disagreed with the charge and was abandoned.
   const order = await priceTicketOrder(
     stubAdmin(fixture()),
     SHOWING_ID,
     Array.from({ length: 4 }, () => ({ tier_id: 'tier-student' })),
   );
   assertEquals(order.subtotal, 33);
-  assertEquals(order.tax, 2);
-  assertEquals(order.total, 35);
+  assertEquals(order.tax, 1.98);
+  assertEquals(order.total, 34.98);
+  assertEquals(order.amountCents, 3498);
+});
+
+Deno.test('the ticket rows add up to the order, to the cent', async () => {
+  // The refund path re-reads rows, so the rows ARE the charge. Identical
+  // tickets may differ by a cent; their sum may not differ from the order.
+  const order = await priceTicketOrder(
+    stubAdmin(fixture()),
+    SHOWING_ID,
+    Array.from({ length: 4 }, () => ({ tier_id: 'tier-student' })),
+  );
+  const cents = (n: number) => Math.round(n * 100);
+  assertEquals(order.tickets.map((t) => cents(t.tax_amount)), [50, 49, 49, 50]);
+  assertEquals(order.tickets.reduce((s, t) => s + cents(t.total_price), 0), order.amountCents);
+  for (const t of order.tickets) assertEquals(cents(t.price) + cents(t.tax_amount), cents(t.total_price));
 });
 
 Deno.test('rounds a half-cent up, the way exact numeric does', async () => {

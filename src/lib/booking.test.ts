@@ -8,23 +8,24 @@ import {
 
 /**
  * These tests protect one invariant: the total shown to the customer is the
- * total the server charges.
+ * total the server charges — and the total Square arrives at for the same order.
  *
  * The server prices every order from the database and charges the sum of the
- * ticket rows it writes, where `enforce_ticket_pricing` stores
- * `tax_amount = ROUND(price * 0.06, 2)` **per row**. Computing tax once on the
- * subtotal instead — which is what this file used to do — disagrees by a cent
- * at certain prices, and the customer would see one number and be charged
- * another.
+ * ticket rows it writes. Tax is the ORDER's: 6% of the subtotal, once, rounded
+ * half-to-even, because that is how Square totals an order and a Square order
+ * that disagrees with the charge is thrown away. This file used to pin the
+ * opposite rule (tax rounded per ticket), which matched an older database
+ * trigger and not Square. `orderMath.test.ts` holds the Square-measured cases.
  */
 describe('order totals', () => {
-  it('rounds tax per ticket, matching the database trigger', () => {
-    // $8.25 × 6% = $0.495 → $0.50 per ticket, so four tickets carry $2.00 of
-    // tax. Rounding once on the $33.00 subtotal would give $1.98.
+  it('taxes the order once, the way Square does', () => {
+    // $8.25 × 4 is a $33.00 subtotal; 6% of that is $1.98. This used to assert
+    // $2.00 — four tickets at $0.495 → $0.50 each — which is what the database
+    // trigger stored then and is NOT what Square totals. See orderMath.ts.
     const { subtotal, tax, total } = computeOrderTotals(4, 8.25);
     expect(subtotal).toBe(33);
-    expect(tax).toBe(2);
-    expect(total).toBe(35);
+    expect(tax).toBe(1.98);
+    expect(total).toBe(34.98);
   });
 
   it('rounds a half-cent up, in integer cents rather than floating point', () => {
@@ -57,7 +58,7 @@ describe('order totals', () => {
       { tierId: 'b', tierName: 'Student', price: 8.25, quantity: 1 },
     ]);
     expect(subtotal).toBe(32.25);
-    expect(tax).toBe(1.94); // 0.72 + 0.72 + 0.50
+    expect(tax).toBe(1.94); // 6% of 32.25 is 1.935 — a tie, and 193 is odd, so up
     expect(total).toBe(34.19);
     expect(totalCount).toBe(3);
   });
