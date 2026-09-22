@@ -341,3 +341,11 @@ rule → off 2.25 + 2.25 + 0 + 0, rows 2915; Square payment 2915 COMPLETED, orde
 (tax 165) with the discount on the Adult line alone, read back through the probe. Test showing,
 tiers, rule, tickets and buyer removed afterwards; the probe deleted again.
 
+**In production (PR #314, `649a71d`, 21 Sep 2026):** production compared by content against a
+build of `ff4c62e` first (20/20 identical). Migration `20260921234146` applied; confirmed with the
+public key: `canonical_tier_name('Students')` = Student, `ticket_discount_cents` over 2 Adult +
+2 Student with Adult-only = 450. `ticket-checkout` v52→53, `square-cash-sale` v6→7. Worker
+`120678b3…` → `a9216fb5-ff7b-4e8b-926f-71406cab099c` (the former is the rollback); the first
+origin check ran before the edge had propagated and read stale, a second twenty seconds later
+found both origins serving the new index and chunks byte-identically.
+
