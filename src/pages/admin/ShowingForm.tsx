@@ -1349,7 +1349,7 @@ export default function ShowingForm() {
             {notSoldHere && (
               <div className="space-y-1 border-t border-border pt-4" role="status">
                 <p className="font-semibold">
-                  {selectedItem?.ticket_type === 'rsvp' ? 'Ticketed elsewhere' : 'Info only — not ticketed'}
+                  {selectedItem?.ticket_type === 'rsvp' ? 'External ticketing' : 'Info only — not ticketed'}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {selectedItem?.ticket_type === 'rsvp' ? (

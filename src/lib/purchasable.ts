@@ -159,9 +159,10 @@ export function ticketsSoldHere(production: ProductionTicketing | null | undefin
 
 /**
  * What the outside-ticket button says. A festival film is bought, not
- * RSVP'd to; a community event is the other way round. The admin-facing mode
- * is called RSVP for both because the column is, and that word belongs in
- * the admin, not on the button.
+ * RSVP'd to; a community event is the other way round. The stored mode is
+ * `rsvp` for both because the column is; the admin calls it External on a
+ * film (see TicketingKind in liveEventTypes.ts), and neither word belongs on
+ * the button.
  */
 export function externalTicketLabel(type: 'movie' | 'event' | 'concert' | string | null | undefined): string {
   return type === 'movie' ? 'Get Tickets' : 'RSVP';

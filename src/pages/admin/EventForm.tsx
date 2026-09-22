@@ -173,6 +173,7 @@ export default function EventForm() {
 
             <TicketingModeFields
               idPrefix="event"
+              kind="live"
               ticketType={ticketType}
               onTicketTypeChange={setTicketType}
               rsvpUrl={rsvpUrl}
