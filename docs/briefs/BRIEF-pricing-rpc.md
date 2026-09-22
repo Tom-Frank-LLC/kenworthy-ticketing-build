@@ -146,6 +146,18 @@ Promo codes; film-pass checkout and concessions (their own per-item tax, own bri
   online sale through the deployed checkout → rows 2915, Square payment; a cash sale through
   `create_ticket_order` → 5 rows, 3577. Test data removed.
 
+**Ship 1 in production (22 Sep 2026, PR #316 `ef631da`) — with an incident.** Migration
+applied ~16:11 UTC; the first anon quote against a real production showing failed:
+`malformed array literal: ""`. `price_ticket_order` appended a single-price ticket's empty tier
+name with `v_tiers || ''`, which Postgres resolves as array-concat-array. Every showing WITHOUT
+tiers — most of production — could not be quoted, so online checkout on them returned "Could not
+price this order". Hotfix `20260922161316` (`''::text`) applied 16:13 UTC. Window ≈ 2 minutes;
+the two sales either side (15:35, 16:09) completed under the old checkout; a failed quote writes
+no row, so failed attempts in the window are not visible. **Why it was missed:** the harness
+built every showing with tiers. It now runs every single-price vector on an untiered showing
+too (84 checks), and fails without the fix. Rollback points: Worker `a9216fb5…`,
+`ticket-checkout` v53.
+
 **Ship 2 (not started):** showing page and POS preview via `quote_ticket_order`; delete
 `orderMath.ts` / `booking.ts` arithmetic and the Deno twin; POS card → pending → charge → confirm
 with a Square Order; drop `enforce_ticket_order_totals`.

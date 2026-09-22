@@ -19,6 +19,7 @@ run < supabase/migrations/20260921200433_order_level_tax.sql
 run < supabase/migrations/20260921203017_ticket_discounts.sql
 run < supabase/migrations/20260921234146_ticket_discounts_eligible_tiers.sql
 run < supabase/migrations/20260922001849_pricing_rpc.sql
+run < supabase/migrations/20260922161316_pricing_rpc_untiered_fix.sql
 docker cp supabase/functions/_shared/pricing_vectors.json pgrpc:/tmp/pricing_vectors.json
 { echo "\\set doc \`cat /tmp/pricing_vectors.json\`"; cat $T/pricing_rpc/pricing_rpc_test.sql; } | run
 [ -n "$KEEP" ] || docker rm -f pgrpc >/dev/null

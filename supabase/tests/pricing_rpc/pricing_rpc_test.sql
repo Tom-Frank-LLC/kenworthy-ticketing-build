@@ -41,6 +41,24 @@ BEGIN
   END LOOP;
 END $$;
 
+-- 1b. The same vectors on a SINGLE-PRICE showing (no tiers, tickets are {}).
+--     This branch was untested and broke production on 22 Sep 2026: appending
+--     the empty tier name resolved to array || array. Every vector with one
+--     distinct price runs here too.
+DO $$
+DECLARE v record; sid uuid; q record; arr jsonb;
+BEGIN
+  FOR v IN SELECT j ->> 'label' AS label, (j ->> 'square_total_cents')::bigint AS total,
+                  ARRAY(SELECT jsonb_array_elements_text(j -> 'ticket_net_cents')::bigint) AS list
+           FROM jsonb_array_elements((SELECT doc FROM public.vectors) -> 'tax_only') j LOOP
+    CONTINUE WHEN (SELECT count(DISTINCT x) FROM unnest(v.list) x) <> 1;
+    INSERT INTO public.showings (ticket_price) VALUES (v.list[1] / 100.0) RETURNING id INTO sid;
+    SELECT jsonb_agg('{}'::jsonb) INTO arr FROM unnest(v.list);
+    SELECT SUM(ROUND(total_price * 100)) tot, bool_and(tier_id IS NULL AND tier_name IS NULL) untiered INTO q FROM public.quote_ticket_order(sid, arr);
+    INSERT INTO public.results (name, pass, detail) VALUES ('untiered quote = Square: ' || v.label, q.tot = v.total AND q.untiered, q.tot || '/' || v.total);
+  END LOOP;
+END $$;
+
 -- 2. Square's discounted vectors, with the rule on the showing.
 DO $$
 DECLARE v record; m record; q record;
