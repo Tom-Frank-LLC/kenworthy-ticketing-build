@@ -706,3 +706,18 @@ Deno.test("the showing's per-buyer limit rides along with the priced order", asy
   rows.showings[0].max_tickets_per_buyer = null;
   assertEquals((await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [{}])).showing.max_tickets_per_buyer, null);
 });
+
+Deno.test('a rule limited to some ticket types reduces only those, and the rest still count towards the minimum', async () => {
+  const rows = fixture();
+  rows.showing_price_tiers = [
+    { id: 'tier-adult', showing_id: SHOWING_ID, tier_name: 'Adult', price: 9, is_active: true },
+    { id: 'tier-student', showing_id: SHOWING_ID, tier_name: 'Students', price: 7, is_active: true },
+  ];
+  rows.ticket_discounts = [discountRow({ eligible_tiers: ['Adult'] })];
+  const order = await priceTicketOrder(stubAdmin(rows), SHOWING_ID, [
+    { tier_id: 'tier-adult' }, { tier_id: 'tier-adult' }, { tier_id: 'tier-student' }, { tier_id: 'tier-student' },
+  ]);
+  assertEquals(order.discount?.cents, 450);
+  assertEquals(order.tickets.map((t) => c(t.discount_amount)), [225, 225, 0, 0]);
+  assertEquals(order.tickets.map((t) => t.discount_id), ['rule-25', 'rule-25', null, null]);
+});

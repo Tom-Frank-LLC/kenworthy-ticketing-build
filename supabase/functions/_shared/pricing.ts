@@ -274,9 +274,9 @@ export async function priceTicketOrder(
       .eq('showing_id', showingId),
   ]);
 
-  const tierById = new Map<string, { price: number; is_active: boolean }>();
+  const tierById = new Map<string, { price: number; is_active: boolean; name: string }>();
   for (const t of tierRows || []) {
-    tierById.set(t.id, { price: Number(t.price), is_active: t.is_active !== false });
+    tierById.set(t.id, { price: Number(t.price), is_active: t.is_active !== false, name: t.tier_name ?? '' });
   }
 
   // Seat → tier resolution needs the seat's row/section/number, because the
@@ -332,7 +332,7 @@ export async function priceTicketOrder(
     // `8.25 + 8.25 * 0.06` lands just under 8.745, while Postgres computes the
     // same expression in exact numeric. Every sum below is over integers so
     // that no total here can differ from the database's by float error.
-    return { seatId, tierId, price, priceCents: Math.round(price * 100) };
+    return { seatId, tierId, price, priceCents: Math.round(price * 100), tierName: tierId ? tierById.get(tierId)?.name ?? '' : '' };
   });
 
   // Pass two: the one discount this order earns, if any.
@@ -343,7 +343,11 @@ export async function priceTicketOrder(
   // but nothing it sends can create, enlarge or extend a discount. The database
   // then re-checks the chosen rule against the rows as written.
   const listCents = resolved.map((r) => r.priceCents);
-  const applied = bestDiscount(await loadDiscountRules(admin, showing), listCents);
+  const applied = bestDiscount(
+    await loadDiscountRules(admin, showing),
+    listCents,
+    resolved.map((r) => r.tierName),
+  );
   const netCents = listCents.map((c, i) => c - (applied?.perTicket[i] ?? 0));
 
   // Pass three: the order's tax — on what is left — shared out in row order.
@@ -412,7 +416,7 @@ export async function priceTicketOrder(
  * event-scoped rule through NULL.
  */
 async function loadDiscountRules(admin: any, showing: any) {
-  const columns = 'id, type, value, min_quantity, label, created_at, is_active, code, starts_at, ends_at';
+  const columns = 'id, type, value, min_quantity, label, created_at, is_active, code, starts_at, ends_at, eligible_tiers';
   const production: [string, string | null] = showing.event_id
     ? ['event_id', showing.event_id]
     : showing.live_performance_id

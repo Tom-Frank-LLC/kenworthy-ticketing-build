@@ -21,6 +21,7 @@ run < supabase/migrations/20260819040000_film_pass_redemption_untaxed.sql
 run < $T/order_tax/trigger.sql
 run < supabase/migrations/20260921200433_order_level_tax.sql
 run < supabase/migrations/20260921203017_ticket_discounts.sql
+run < supabase/migrations/20260921234146_ticket_discounts_eligible_tiers.sql
 docker cp supabase/functions/_shared/pricing_vectors.json pgdiscounts:/tmp/pricing_vectors.json
 echo "== Ship 1 suite, replayed under the discounts migration"
 run < $T/order_tax/order_tax_test.sql | tail -4
