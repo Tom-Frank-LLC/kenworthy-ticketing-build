@@ -26,6 +26,8 @@ import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
 import { PosTodayStats } from '@/components/pos/PosTodayStats';
 import { TodaysPresales } from '@/components/pos/TodaysPresales';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
+import { TerminalReaderPicker } from '@/components/pos/TerminalReaderPicker';
+import { useTerminalReader } from '@/lib/terminalReader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
 import { type Seat, type PriceTier, type TicketLineItem, newOrderToken } from '@/lib/booking';
@@ -88,6 +90,8 @@ export default function StaffPOS() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
   const [squareCheckoutId, setSquareCheckoutId] = useState<string | null>(null);
+  // Which Square Terminal this station sends card sales to.
+  const reader = useTerminalReader();
   const [isSimulated, setIsSimulated] = useState(false);
 
   const [transactions, setTransactions] = useState<SessionTransaction[]>([]);
@@ -613,12 +617,18 @@ export default function StaffPOS() {
     let ticketIds: string[] = [];
     let readerReached = false;
 
+    if (!reader.chosenId) {
+      setSelling(false); setPaymentStatus('idle');
+      toast.error('Choose this station\'s card reader first (top of the page).');
+      return;
+    }
+
     try {
       ({ ticketIds, orderToken } = await createTickets('card', null, 'pending'));
 
       const idempotencyKey = crypto.randomUUID();
       const { data, error } = await supabase.functions.invoke('square-terminal', {
-        body: { action: 'start_sale', order_token: orderToken, donation_cents: donationCents, idempotency_key: idempotencyKey },
+        body: { action: 'start_sale', order_token: orderToken, donation_cents: donationCents, idempotency_key: idempotencyKey, device_id: reader.chosenId },
       });
       if (error) throw new Error(error.message || 'Failed to start the card sale');
       if (data?.error) throw new Error(data.error);
@@ -840,8 +850,9 @@ export default function StaffPOS() {
       </div>
       <p className="text-muted-foreground mb-6">Sell tickets and concessions to walk-in patrons</p>
 
-      <div className="mb-4">
+      <div className="mb-4 space-y-3">
         <TimeClockWidget />
+        <TerminalReaderPicker reader={reader} />
       </div>
 
       <PosTodayStats />
@@ -1236,7 +1247,7 @@ export default function StaffPOS() {
         )}
 
         <TabsContent value="film-passes">
-          <FilmPassPOS />
+          <FilmPassPOS readerId={reader.chosenId} />
         </TabsContent>
 
         {/* The door's list, beside the till. Read-only: check-in is the

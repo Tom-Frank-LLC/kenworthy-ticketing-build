@@ -78,6 +78,9 @@ Deno.serve(async (req) => {
     if (action === "get_checkout") {
       return await getCheckout(square.config, params, corsHeaders);
     }
+    if (action === "list_devices") {
+      return await listDevices(square.config, corsHeaders);
+    }
     if (action === "start_sale") {
       return await startSale(square.config, params, corsHeaders);
     }
@@ -114,7 +117,7 @@ async function createCheckout(
         currency: "USD",
       },
       device_options: {
-        device_id: params.device_id || "SIMULATED_SANDBOX_DEVICE",
+        device_id: params.device_id || Deno.env.get("SQUARE_TERMINAL_DEVICE_ID") || "SIMULATED_SANDBOX_DEVICE",
         skip_receipt_screen: true,
         collect_signature: false,
         tip_settings: { allow_tipping: false },
@@ -367,5 +370,29 @@ async function confirmSale(
     return jsonRes(headers, { error: "The card was charged but the tickets could not be confirmed. Do not charge again — contact support.", payment_id: paymentId }, 500);
   }
   return jsonRes(headers, { confirmed: true, ticket_ids: ids, payment_id: paymentId, amount_cents: cents });
+}
+
+/**
+ * The Square Terminals paired to this location, for the POS's reader picker.
+ *
+ * The theatre has two — box office and concessions — so a card sale has to say
+ * which reader it is for, and a single configured id was never going to be
+ * right for both. Read-only: Square's Devices API, filtered to Terminals. The
+ * default (`SQUARE_TERMINAL_DEVICE_ID`, if set) is returned so a fresh browser
+ * can start with it before anyone has picked.
+ */
+async function listDevices(config: SquareConfig, headers: Record<string, string>) {
+  const r = await squareFetch(config, "/devices?limit=100", { method: "GET" });
+  if (!r.ok) return jsonRes(headers, { error: "Could not list the card readers", detail: r.data?.errors }, 502);
+  const devices = (r.data?.devices ?? [])
+    .filter((d: any) => d.attributes?.type === "TERMINAL")
+    .map((d: any) => ({
+      id: d.id,
+      name: d.attributes?.name ?? d.id,
+      status: d.status?.category ?? "UNKNOWN",
+      // Square reports a location per component; the first is the pairing.
+      location_id: d.components?.find((c: any) => c.type === "APPLICATION")?.application_details?.location_id ?? null,
+    }));
+  return jsonRes(headers, { devices, default_id: Deno.env.get("SQUARE_TERMINAL_DEVICE_ID") ?? null, environment: config.environment });
 }
 

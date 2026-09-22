@@ -93,7 +93,8 @@ function passTotalCents(pt: { price: number }) {
   return Math.round(Number(pt.price) * 100) + passTaxCents(pt);
 }
 
-export function FilmPassPOS() {
+/** `readerId`: the Square Terminal this station sends card sales to (chosen in the POS header). */
+export function FilmPassPOS({ readerId }: { readerId: string | null }) {
   const [passTypes, setPassTypes] = useState<PassType[]>([]);
   const [queue, setQueue] = useState<QueuedOrder[]>([]);
   const [awaitingPost, setAwaitingPost] = useState<AwaitingPostOrder[]>([]);
@@ -182,6 +183,7 @@ export function FilmPassPOS() {
    * COMPLETED, so a pass that was never paid for never carries a balance.
    */
   async function collectTerminalPayment(amountCents: number, note: string): Promise<string | null> {
+    if (!readerId) throw new Error('Choose this station\'s card reader first (top of the page).');
     const created = await invokeFunction<{
       simulated?: boolean;
       checkout?: { id?: string; status?: string };
@@ -190,6 +192,7 @@ export function FilmPassPOS() {
       amount_cents: amountCents,
       note,
       idempotency_key: crypto.randomUUID(),
+      device_id: readerId,
     });
 
     if (created.simulated) return null;
