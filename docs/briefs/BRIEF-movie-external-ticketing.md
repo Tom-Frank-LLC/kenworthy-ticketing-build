@@ -5,7 +5,7 @@ status: shipped
 track: feature
 severity: P2
 date: 2026-09-22
-shipped_in: ["#329"]
+shipped_in: ["#329", "#331"]
 shipped_at: 2026-09-22
 verified: true
 ---
@@ -117,3 +117,11 @@ the upload log: every route serves `index-BYBCeOaz.js` and the chunk carries
 the refusal sentence. The first check hit a stale edge-cache entry
 (`cf-cache-status: HIT`, old hash) that revalidated within a minute — worth
 knowing before concluding a deploy failed.
+
+### Follow-up shipped (2026-09-22, #331)
+
+The mode is called **External** on a film and **RSVP** on an event — same
+stored value `rsvp`, no migration. `TicketingKind` in `liveEventTypes.ts`
+picks the words for the form option, the link field, the refusal messages,
+the calendar badge and the showing-form notice. Production Worker
+`df6d651c-2b53-44a7-ac4c-a4181feb86aa`; rollback `95981135-…`.
