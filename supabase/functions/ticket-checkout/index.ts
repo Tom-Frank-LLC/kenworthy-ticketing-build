@@ -44,6 +44,7 @@ import {
   PricingError,
   bundledDonationEmailError,
   priceTicketOrder,
+  createTicketOrder,
   readDonationCents,
   type TicketDescriptor,
 } from '../_shared/pricing.ts';
@@ -285,41 +286,34 @@ Deno.serve(async (req: Request) => {
   // Write the order as pending
   // -------------------------------------------------------------------------
   const orderToken = crypto.randomUUID();
-  const ticketRows = order.tickets.map((t, i) => ({
-    user_id: userId,
-    showing_id: showingId,
-    seat_id: t.seat_id,
-    tier_id: t.tier_id,
-    price: t.price,
-    tax_rate: 0.06,
-    tax_amount: t.tax_amount,
-    total_price: t.total_price,
-    // This ticket's share of the order's discount, and the rule it came from.
-    // The database re-checks the rule against the whole order as written —
-    // active, in its window, in scope, minimum met, amount exact — so these are
-    // a claim it can refuse, not a number it takes on trust.
-    discount_id: t.discount_id,
-    discount_amount: t.discount_amount,
-    discount_label: t.discount_label,
-    // The surcharge belongs to the order, not to a seat; it rides on the first
-    // row so refunds can recover it without an orders table.
-    processing_fee: i === 0 ? order.processingFee : 0,
-    qr_code: crypto.randomUUID(),
-    order_token: orderToken,
+
+  // Priced and written by the database in one statement. Nothing about the
+  // price is sent: the function derives it again from the same tables the
+  // quote above read, so what is stored is what was quoted unless a rule or a
+  // tier changed in between — which the check after the insert catches.
+  const made = await createTicketOrder(admin, {
+    showingId,
+    descriptors,
+    paymentMethod: 'online',
+    userId,
+    orderToken,
     status: 'pending',
-    payment_method: 'online',
-    checkout_idempotency_key: idempotencyKey,
+    idempotencyKey,
     // Written with the order, not just passed to the send, so a resend later
     // can honour what the buyer actually answered instead of falling back to
     // whatever number is on file. Strict boolean: the form always asks, so
     // anything the client omits is a no rather than an unknown.
-    sms_consent: body.sms_consent === true,
-  }));
-
-  const { data: created, error: insertErr } = await admin
-    .from('tickets')
-    .insert(ticketRows)
-    .select('id, qr_code, price, total_price, seat_id, tier_id');
+    smsConsent: body.sms_consent === true,
+  });
+  if ('refused' in made) {
+    // The availability checks above are advisory; the capacity trigger is
+    // what actually refuses to oversell, and it says so with PT409 — the same
+    // code a manual sold-out uses. Both are a 409 with the database's sentence.
+    // Nothing has been charged: the card is not touched until after this.
+    return json({ error: made.refused.message }, made.refused.code === 'PT409' ? 409 : 400);
+  }
+  const insertErr = 'error' in made ? made.error : null;
+  const created: any[] | null = 'rows' in made ? made.rows : null;
 
   if (insertErr || !created || created.length === 0) {
     console.error('[ticket-checkout] pending insert failed', insertErr);
