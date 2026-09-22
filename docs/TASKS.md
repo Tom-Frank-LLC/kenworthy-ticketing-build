@@ -5,14 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**104 briefs** — 91 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
+**104 briefs** — 92 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P0` **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md) · [notes](briefs/confirmed%20from%20production%20logs%2028%20Aug%202026)
-- `P1` **Deleting a price tier and saving never duplicates tiers again, and the duplicates already in production are repaired**<br>`data` — [brief](briefs/BRIEF-duplicate-tiers-fix.md) · [notes](briefs/../FINDINGS-duplicate-price-tiers.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
@@ -30,6 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Deleting a price tier and saving never duplicates tiers again, and the duplicates already in production are repaired**<br>`data` — `#327` — [brief](briefs/BRIEF-duplicate-tiers-fix.md) · [notes](briefs/../FINDINGS-duplicate-price-tiers.md)
 - **One SQL function prices and writes every paid ticket order, so the arithmetic exists once**<br>`ops` — `#316`, `#317`, `#318`, `#320`, `#324` — [brief](briefs/BRIEF-pricing-rpc.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - **Staff can add ticket discounts (percent, $ per ticket, $ per order) that reconcile with Square to the cent**<br>`feature` — `#311`, `#312`, `#314` — [brief](briefs/BRIEF-ticket-discounts.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - **Admins manage staff and host accounts; only a superadmin touches admins and superadmins**<br>`security` — `#305` — [brief](briefs/BRIEF-admin-account-role-management.md)

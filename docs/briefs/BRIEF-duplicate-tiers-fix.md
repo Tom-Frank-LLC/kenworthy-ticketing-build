@@ -1,11 +1,13 @@
 ---
 brief: duplicate-tiers-fix
 title: Deleting a price tier and saving never duplicates tiers again, and the duplicates already in production are repaired
-status: built
+status: shipped
 track: data
 severity: P1
 date: 2026-09-22
-verified: false
+shipped_in: ["#327"]
+shipped_at: 2026-09-22
+verified: true
 findings: ../FINDINGS-duplicate-price-tiers.md
 ---
 
@@ -20,6 +22,12 @@ findings: ../FINDINGS-duplicate-price-tiers.md
 > "one *live* tier per (showing, name)" and persistence is a reconcile RPC,
 > because a tier a ticket references cannot be deleted at all — it is retired.
 > Full account, with the proof, in `docs/FINDINGS-duplicate-price-tiers.md`.
+>
+> **Production, 22 Sep 2026 (#327, `0701f61`).** Migration applied: 70 → 65 live
+> tier rows, zero duplicate groups. Worker `9175a7d5…` → `02353347-1103-4c3a-9ca2-873de9a300b0`
+> (the former is the rollback), verified byte-identical at the origin. The Paragon
+> showing is left with a typo'd "Preferrred Seating" beside the correct spelling —
+> different names, so not a duplicate; remove it in the form, which is now safe.
 
 # Brief (for Claude Code): Fix duplicate price tiers on showing save
 
