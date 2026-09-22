@@ -5,7 +5,7 @@ status: shipped
 track: ops
 severity: P2
 date: 2026-09-22
-shipped_in: ["#316", "#317", "#318"]
+shipped_in: ["#316", "#317", "#318", "#320"]
 shipped_at: 2026-09-22
 verified: true
 findings: FINDINGS-square-order-arithmetic.md
@@ -201,7 +201,7 @@ the reader's id from Square's Devices list before relying on counter card sales 
 addressed a fake device, so this was already true. The first real card sale at the counter is the
 end-to-end check of `confirm_sale`: rows `pending` → `confirmed`, Square order with line items.
 
-**Follow-ups, done (22 Sep 2026):**
+**Follow-ups, in production (22 Sep 2026, PR #320 `28c06b6`; Worker `2aae61e7…` → `4e7a02a2-5de0-41b6-bc3f-f1204f364bf9`; migration then site; all 16 upcoming showings re-quoted fine after the migration):**
 - Comps go through `create_ticket_order` (`payment_method = 'comp'`, recipient name required; staff,
   or the host of that showing). Both remaining INSERT policies on `tickets` are dropped — the hosts'
   one had never been narrowed, so a host could have written a paid row directly. No browser can
