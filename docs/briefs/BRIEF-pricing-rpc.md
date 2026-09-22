@@ -196,10 +196,15 @@ through `quote_ticket_order` with the public key (14 tiered, 2 untiered) — 16/
 v30→31. Worker `d23396ec…` → `2aae61e7-058a-447b-bb25-6dfb256f11c1` (rollback); both origins serve
 the new build and its two new-code chunks byte-identically.
 
-**Open, for the theatre:** set `SQUARE_TERMINAL_DEVICE_ID` (`supabase secrets set`, production) to
-the reader's id from Square's Devices list before relying on counter card sales — the old path
-addressed a fake device, so this was already true. The first real card sale at the counter is the
-end-to-end check of `confirm_sale`: rows `pending` → `confirmed`, Square order with line items.
+**Card readers (22 Sep 2026).** The theatre has two Square Terminals — box office and
+concessions — so a single configured id was never the answer. The POS header now carries a
+**reader picker**: `square-terminal list_devices` (read-only, staff) lists the Terminals paired
+to the location; each station chooses its reader once, remembered in that browser
+(`localStorage`, a property of the station, not the staff member); ticket and film-pass card
+sales send it as `device_id`, and refuse to start without one. `SQUARE_TERMINAL_DEVICE_ID`
+remains an optional default for a fresh station. Neither POS screen had ever passed a device id
+before, so counter card sales cannot have worked in production since the cutover; the first real
+counter card sale is the end-to-end check of the whole card path, `confirm_sale` included.
 
 **Follow-ups, in production (22 Sep 2026, PR #320 `28c06b6`; Worker `2aae61e7…` → `4e7a02a2-5de0-41b6-bc3f-f1204f364bf9`; migration then site; all 16 upcoming showings re-quoted fine after the migration):**
 - Comps go through `create_ticket_order` (`payment_method = 'comp'`, recipient name required; staff,
