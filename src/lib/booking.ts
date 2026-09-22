@@ -1,4 +1,9 @@
-import { apportionOrderTax, bestDiscount, type DiscountRule } from './orderMath';
+// Types the booking screens share, and the order token.
+//
+// This file used to hold the browser's copy of the pricing arithmetic. That is
+// gone: the running total is asked of the database (lib/quote.ts →
+// quote_ticket_order), and rows are written by create_ticket_order. Nothing in
+// the browser computes a price. BRIEF-pricing-rpc.
 
 export interface Seat {
   id: string;
@@ -16,8 +21,6 @@ export interface PriceTier {
   color?: string | null;
 }
 
-export const TAX_RATE = 0.06;
-
 export interface TicketLineItem {
   tierId: string;
   tierName: string;
@@ -27,252 +30,11 @@ export interface TicketLineItem {
 }
 
 /**
- * Token shared by every ticket in one purchase.
- *
- * Stands in for the orders table this schema does not have: it is what the
- * confirmation email/SMS and the public ticket page use to address a whole
- * order, so a four-ticket purchase is one link rather than four. Random and
- * unguessable, because holding it is what proves you were sent the ticket.
+ * Token shared by every ticket in one purchase. Stands in for the orders
+ * table this schema does not have: it is what the confirmation and the public
+ * ticket page use to address a whole order. Random and unguessable, because
+ * holding it is what proves you were sent the ticket.
  */
 export function newOrderToken(): string {
   return crypto.randomUUID();
-}
-
-export function buildTicketRows({
-  lineItems,
-  userId,
-  showingId,
-  paymentMethod,
-  selectedSeats,
-  quantity,
-  ticketPrice,
-  processingFee = 0,
-  orderToken,
-  squarePaymentId,
-  discountRules = [],
-}: {
-  lineItems?: TicketLineItem[];
-  userId: string;
-  showingId: string;
-  paymentMethod: string;
-  // Legacy single-price params (used when no tiers)
-  selectedSeats?: Set<string>;
-  quantity?: number;
-  ticketPrice?: number;
-  // Buyer-paid Square processing surcharge for the whole order.
-  // Attributed entirely to the first ticket row so refunds can recover it
-  // without needing a separate orders table.
-  processingFee?: number;
-  // Groups these rows into one deliverable order. Generated per purchase by
-  // the caller so it can pass the same token to the confirmation sender.
-  orderToken?: string;
-  // Square payment behind a box-office card sale. Without it a refund can only
-  // flip a status column — the customer's card is never credited.
-  squarePaymentId?: string | null;
-  // The usable rules for this showing (see lib/discounts.ts). The best one is
-  // applied across the rows exactly as the server would; the database then
-  // verifies the rule and the amounts, and refuses the insert if either is off.
-  discountRules?: DiscountRule[];
-}) {
-  const fee = Math.max(0, Math.round((processingFee || 0) * 100) / 100);
-  const token = orderToken || newOrderToken();
-  const stamp = (rows: any[]) => {
-    // Tax belongs to the order, not the ticket: it is computed once on the sum
-    // and shared out across the rows in the order they are written (see
-    // orderMath.ts). The database holds the rows to that sum and refuses the
-    // insert otherwise, so this is not advisory the way the on-screen totals are.
-    const listCents = rows.map((row) => Math.round(Number(row.price) * 100));
-    const applied = bestDiscount(discountRules, listCents, rows.map((row) => row.__tier_name ?? ''));
-    for (const row of rows) delete row.__tier_name;
-    const priceCents = listCents.map((cents, i) => cents - (applied?.perTicket[i] ?? 0));
-    const { perTicket } = apportionOrderTax(priceCents);
-    rows.forEach((row, i) => {
-      const off = applied?.perTicket[i] ?? 0;
-      row.price = priceCents[i] / 100;
-      row.discount_amount = off / 100;
-      row.discount_id = off > 0 ? applied!.rule.id : null;
-      row.discount_label = off > 0 ? applied!.rule.label : null;
-      row.tax_amount = perTicket[i] / 100;
-      row.total_price = (priceCents[i] + perTicket[i]) / 100;
-    });
-    if (rows.length > 0 && fee > 0) rows[0].processing_fee = fee;
-    for (const row of rows) {
-      row.order_token = token;
-      if (squarePaymentId) row.square_payment_id = squarePaymentId;
-    }
-    return rows;
-  };
-  // New tiered path
-  if (lineItems && lineItems.length > 0) {
-    const rows: any[] = [];
-    for (const item of lineItems) {
-      const price = Number(item.price);
-      // Placeholders: `stamp` fills both once every row of the order exists.
-      const taxAmount = 0;
-      const totalPrice = price;
-
-      if (item.seatIds && item.seatIds.length > 0) {
-        // Assigned seating with tier
-        for (const seatId of item.seatIds) {
-          rows.push({
-            user_id: userId,
-            showing_id: showingId,
-            seat_id: seatId,
-            tier_id: item.tierId,
-            price,
-            tax_rate: TAX_RATE,
-            tax_amount: taxAmount,
-            total_price: totalPrice,
-            qr_code: crypto.randomUUID(),
-            status: 'confirmed',
-            payment_method: paymentMethod,
-            // For the discount's eligibility check only; stripped by `stamp`.
-            __tier_name: item.tierName,
-          });
-        }
-      } else {
-        // GA with tier
-        for (let i = 0; i < item.quantity; i++) {
-          rows.push({
-            user_id: userId,
-            showing_id: showingId,
-            seat_id: null,
-            tier_id: item.tierId,
-            price,
-            tax_rate: TAX_RATE,
-            tax_amount: taxAmount,
-            total_price: totalPrice,
-            qr_code: crypto.randomUUID(),
-            status: 'confirmed',
-            payment_method: paymentMethod,
-            // For the discount's eligibility check only; stripped by `stamp`.
-            __tier_name: item.tierName,
-          });
-        }
-      }
-    }
-    return stamp(rows);
-  }
-
-  // Legacy single-price path (no tiers configured)
-  const price = Number(ticketPrice || 0);
-  const taxAmount = 0;
-  const totalPrice = price;
-
-  const baseRow = {
-    user_id: userId,
-    showing_id: showingId,
-    price,
-    tax_rate: TAX_RATE,
-    tax_amount: taxAmount,
-    total_price: totalPrice,
-    qr_code: '',
-    status: 'confirmed',
-    payment_method: paymentMethod,
-  };
-
-  if (selectedSeats && selectedSeats.size > 0) {
-    return stamp(Array.from(selectedSeats).map(seatId => ({
-      ...baseRow,
-      seat_id: seatId,
-      qr_code: crypto.randomUUID(),
-    })));
-  }
-
-  const count = quantity || 0;
-  return stamp(Array.from({ length: count }, () => ({
-    ...baseRow,
-    seat_id: null,
-    qr_code: crypto.randomUUID(),
-  })));
-}
-
-/**
- * Totals for a set of tickets, computed the way the server, the database and
- * Square do.
- *
- * Two rules, both of which exist to keep the price shown equal to the price
- * charged:
- *
- *  1. **Tax is the order's, not the ticket's.** Square takes 6% of the whole
- *     subtotal once and rounds half-to-even; so does `_shared/pricing.ts`, and
- *     the database refuses ticket rows that do not sum to it. This used to round
- *     per ticket, half-up, which differs by a cent or two at prices like $8.25
- *     — see `orderMath.ts` and docs/FINDINGS-square-order-arithmetic.md.
- *  2. **The arithmetic is in integer cents.** In floating point,
- *     `4.25 * 0.06 * 100` is 25.499999999999996, which is not a tie and rounds
- *     to 25; in exact arithmetic it is 25.5 and rounds to 26. A cent of
- *     disagreement here is a customer charged more than the page quoted.
- */
-function totalsFor(prices: number[], rules: DiscountRule[] = [], tiers?: Array<string | null | undefined>) {
-  const listCents = prices.map((price) => Math.round(price * 100));
-  const listSubtotalCents = listCents.reduce((sum, cents) => sum + cents, 0);
-
-  // The one discount this selection earns, if any — the same function, fed the
-  // same rules, that the server uses to set the charge. This is a preview: the
-  // server re-reads the rules and the database re-checks the result.
-  const applied = bestDiscount(rules, listCents, tiers);
-  const netCents = listCents.map((cents, i) => cents - (applied?.perTicket[i] ?? 0));
-  const netSubtotalCents = netCents.reduce((sum, cents) => sum + cents, 0);
-  const { taxCents } = apportionOrderTax(netCents);
-
-  return {
-    // The LIST subtotal, so the summary reads top to bottom:
-    // subtotal − discount + tax = total.
-    subtotal: listSubtotalCents / 100,
-    discount: applied
-      ? { id: applied.rule.id, label: applied.rule.label, amount: applied.discountCents / 100 }
-      : null,
-    tax: taxCents / 100,
-    total: (netSubtotalCents + taxCents) / 100,
-  };
-}
-
-export type OrderDiscount = ReturnType<typeof totalsFor>['discount'];
-
-export function computeOrderTotals(ticketCount: number, ticketPrice: number, rules: DiscountRule[] = []) {
-  return totalsFor(Array.from({ length: Math.max(0, ticketCount) }, () => Number(ticketPrice)), rules);
-}
-
-export function computeLineItemTotals(lineItems: TicketLineItem[], rules: DiscountRule[] = []) {
-  const prices: number[] = [];
-  const tiers: string[] = [];
-  for (const item of lineItems) {
-    const qty = item.seatIds ? item.seatIds.length : item.quantity;
-    for (let i = 0; i < qty; i++) { prices.push(Number(item.price)); tiers.push(item.tierName); }
-  }
-  return { ...totalsFor(prices, rules, tiers), totalCount: prices.length };
-}
-
-/** Assigned seating where each seat carries its own tier price. */
-export function computeSeatTotals(
-  seatPrices: number[],
-  rules: DiscountRule[] = [],
-  /** Each seat's tier name, in the same order, when the rules care about types. */
-  seatTiers?: Array<string | null | undefined>,
-) {
-  return totalsFor(seatPrices.map(Number), rules, seatTiers);
-}
-
-// Square processing fee rates (sandbox-aligned with production pricing).
-// We compute the buyer-facing surcharge by "grossing up" so the venue nets
-// the full ticket subtotal + tax after Square takes its cut from the charge.
-//   total = (net + fixed) / (1 - pct)
-//   fee   = total - net
-// Sources: squareup.com/us/en/pricing
-//   - Online / keyed entry: 2.9% + $0.30
-//   - In-person (Terminal / card-present): 2.6% + $0.10
-export const SQUARE_RATES = {
-  online:    { pct: 0.029, fixed: 0.30 },
-  in_person: { pct: 0.026, fixed: 0.10 },
-} as const;
-
-export type ProcessingChannel = keyof typeof SQUARE_RATES;
-
-export function computeProcessingFee(netAmount: number, channel: ProcessingChannel) {
-  const { pct, fixed } = SQUARE_RATES[channel];
-  const grossed = (netAmount + fixed) / (1 - pct);
-  const total = Math.round(grossed * 100) / 100;
-  const fee = Math.round((total - netAmount) * 100) / 100;
-  return { fee, total };
 }

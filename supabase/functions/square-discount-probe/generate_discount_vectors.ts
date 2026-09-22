@@ -7,13 +7,39 @@
 //   PROBE_KEY=<staging service_role key> deno run --allow-net --allow-env --allow-read --allow-write \
 //     supabase/functions/square-discount-probe/generate_discount_vectors.ts
 //
-// For each case it computes the discount with order_math.ts, then asks Square's
+// For each case it asks the STAGING database's own pricing function
+// (quote_ticket_order, via a throwaway showing) how the discount is allocated —
+// there is no local copy of that arithmetic any more — then asks Square's
 // SANDBOX to total the order in the exact shape checkout sends (one line per
 // price, each with its own fixed LINE_ITEM discount). For percent rules it also
-// asks Square to apply its OWN percentage, so our order-wide rounding of D is
-// checked against Square's rather than against itself.
+// asks Square to apply its OWN percentage, so the database's order-wide
+// rounding of D is checked against Square's rather than against itself.
+//
+// Needs PROBE_KEY (staging service_role) and leaves nothing behind on staging.
 
-import { applyDiscount, type DiscountRule } from '../_shared/order_math.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+
+type DiscountRule = { id: string; type: 'percent' | 'fixed_per_ticket' | 'fixed_per_order'; value: number; min_quantity: number; label: string; created_at: string };
+
+const db = createClient(`https://${'rpqzrpboyhshdrfdwayk'}.supabase.co`, Deno.env.get('PROBE_KEY')!);
+
+/** The database's allocation of a rule over these list prices, per ticket. */
+async function allocate(rule: DiscountRule, list: number[]): Promise<{ perTicket: number[] }> {
+  const { data: showing } = await db.from('showings').insert({ ticket_price: 0, start_time: new Date(Date.now() + 7 * 86400e3).toISOString(), is_active: true }).select('id').single();
+  try {
+    const tiers = await Promise.all([...new Set(list)].map(async (c) => {
+      const { data } = await db.from('showing_price_tiers').insert({ showing_id: showing!.id, tier_name: `c${c}`, price: c / 100 }).select('id').single();
+      return [c, data!.id] as const;
+    }));
+    const tierId = new Map(tiers);
+    await db.from('ticket_discounts').insert({ showing_id: showing!.id, type: rule.type, value: rule.value, min_quantity: rule.min_quantity, label: rule.label });
+    const { data: rows, error } = await db.rpc('quote_ticket_order', { p_showing_id: showing!.id, p_tickets: list.map((c) => ({ tier_id: tierId.get(c) })), p_channel: 'none' });
+    if (error) throw new Error(error.message);
+    return { perTicket: rows.map((r: any) => Math.round(Number(r.discount_amount) * 100)) };
+  } finally {
+    await db.from('showings').delete().eq('id', showing!.id); // cascades tiers and rules
+  }
+}
 
 const REF = 'rpqzrpboyhshdrfdwayk';
 const KEY = Deno.env.get('PROBE_KEY')!;
@@ -56,7 +82,7 @@ function grouped(list: number[], perTicket: number[]) {
 
 const body: { cases: unknown[] } = { cases: [] };
 for (const c of cases) {
-  const applied = applyDiscount(c.rule, c.list)!;
+  const applied = await allocate(c.rule, c.list);
   const groups = grouped(c.list, applied.perTicket);
   body.cases.push({
     label: c.label,

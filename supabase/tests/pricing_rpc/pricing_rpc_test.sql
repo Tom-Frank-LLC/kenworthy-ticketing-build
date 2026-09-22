@@ -136,7 +136,7 @@ SELECT public.expect('inactive showing', public.try_sql($q$SELECT * FROM public.
 SELECT public.expect('no tickets', public.try_sql($q$SELECT * FROM public.quote_ticket_order('00000000-0000-0000-0000-0000000000e3', '[]')$q$), 'PT400: No tickets requested');
 SELECT public.expect('unknown showing', public.try_sql($q$SELECT * FROM public.quote_ticket_order('00000000-0000-0000-0000-00000000dead', '[{}]')$q$), 'PT404');
 
--- 5. create_ticket_order writes what quote says, and passes the tripwire trigger.
+-- 5. create_ticket_order writes what quote says.
 DO $$
 DECLARE m record; rows int; tot bigint; fee numeric; tok text;
 BEGIN
@@ -176,6 +176,39 @@ SELECT public.expect('a staff bundle can no longer insert a paid row directly', 
   INSERT INTO public.tickets (showing_id, price, tax_amount, total_price, payment_method, order_token) VALUES ('00000000-0000-0000-0000-0000000000f1', 1, 0, 1, 'cash', 'direct')$q$), '42501');
 SELECT public.expect('...but can still issue a comp directly', public.try_sql($q$
   INSERT INTO public.tickets (showing_id, price, tax_amount, total_price, payment_method, order_token) VALUES ('00000000-0000-0000-0000-0000000000f1', 0, 0, 0, 'comp', 'comp-direct')$q$), 'ok');
+RESET ROLE;
+
+-- 8. ticket_discounts: its own constraints and RLS (moved from the retired
+--    ticket_discounts harness; the pricing checks it held are §1–§3 above).
+SELECT public.expect('a rule must have exactly one scope', public.try_sql($q$
+  INSERT INTO public.ticket_discounts (showing_id, movie_id, type, value, label)
+  VALUES ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000fa', 'percent', 10, 'x')$q$), '23514');
+SELECT public.expect('...and cannot have none', public.try_sql($q$
+  INSERT INTO public.ticket_discounts (type, value, label) VALUES ('percent', 10, 'x')$q$), '23514');
+SELECT public.expect('a percent over 100 is refused', public.try_sql($q$
+  INSERT INTO public.ticket_discounts (showing_id, type, value, label) VALUES ('00000000-0000-0000-0000-0000000000f1', 'percent', 101, 'x')$q$), '23514');
+SELECT public.expect('a window that ends before it starts is refused', public.try_sql($q$
+  INSERT INTO public.ticket_discounts (showing_id, type, value, label, starts_at, ends_at)
+  VALUES ('00000000-0000-0000-0000-0000000000f1', 'percent', 10, 'x', now(), now() - interval '1 hour')$q$), '23514');
+SELECT public.expect('an empty eligible list is refused (NULL means every type)', public.try_sql($q$
+  INSERT INTO public.ticket_discounts (showing_id, type, value, label, eligible_tiers) VALUES ('00000000-0000-0000-0000-0000000000f1', 'percent', 10, 'x', '{}')$q$), '23514');
+INSERT INTO public.ticket_discounts (showing_id, type, value, label, is_active) VALUES ('00000000-0000-0000-0000-0000000000f1', 'percent', 10, 'hidden draft', false);
+GRANT INSERT, SELECT ON public.results TO anon; GRANT USAGE ON SEQUENCE public.results_n_seq TO anon;
+GRANT SELECT ON public.ticket_discounts TO anon; GRANT SELECT, INSERT, UPDATE, DELETE ON public.ticket_discounts TO authenticated;
+SET ROLE anon; SELECT set_config('test.role', '', false);
+INSERT INTO public.results (name, pass, detail)
+SELECT 'the public reads active rules only', count(*) FILTER (WHERE NOT is_active) = 0 AND count(*) > 0, count(*) || ' visible' FROM public.ticket_discounts;
+SELECT public.expect('the public cannot write a rule', public.try_sql($q$
+  INSERT INTO public.ticket_discounts (showing_id, type, value, label) VALUES ('00000000-0000-0000-0000-0000000000f1', 'percent', 99, 'free money')$q$), '42501');
+RESET ROLE;
+SET ROLE authenticated; SELECT set_config('test.role', 'staff', false);
+INSERT INTO public.results (name, pass, detail)
+SELECT 'staff read inactive rules too', count(*) FILTER (WHERE NOT is_active) = 1, '' FROM public.ticket_discounts;
+SELECT public.expect('staff cannot write a rule', public.try_sql($q$
+  INSERT INTO public.ticket_discounts (showing_id, type, value, label) VALUES ('00000000-0000-0000-0000-0000000000f1', 'percent', 99, 'x')$q$), '42501');
+SELECT set_config('test.role', 'admin', false);
+SELECT public.expect('an admin can', public.try_sql($q$
+  INSERT INTO public.ticket_discounts (showing_id, type, value, label) VALUES ('00000000-0000-0000-0000-0000000000f1', 'percent', 5, 'admin made')$q$), 'ok');
 RESET ROLE;
 
 SELECT n, CASE WHEN pass THEN 'ok  ' ELSE 'FAIL' END AS verdict, name, detail FROM public.results WHERE NOT pass ORDER BY n;

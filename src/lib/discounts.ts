@@ -1,5 +1,34 @@
 import { supabase } from '@/integrations/supabase/client';
-import { type DiscountRule, type DiscountRuleRow, usableRules } from './orderMath';
+
+export type DiscountType = 'percent' | 'fixed_per_ticket' | 'fixed_per_order';
+
+/** A `ticket_discounts` row as the site reads it, for the offer badge. */
+export interface DiscountRule {
+  id: string;
+  type: DiscountType;
+  value: number;
+  min_quantity: number;
+  label: string;
+  created_at: string;
+  eligible_tiers?: string[] | null;
+  is_active?: boolean | null;
+  code?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+}
+
+/**
+ * The rules that may apply right now: active, inside their window, no promo
+ * code. For DISPLAY — the offer badge. The database applies the same tests
+ * when it prices, against its own clock; nothing here affects a charge.
+ */
+export function usableRules(rows: DiscountRule[], nowMs: number): DiscountRule[] {
+  return rows
+    .filter((r) => r.is_active !== false && !r.code)
+    .filter((r) => !r.starts_at || Date.parse(r.starts_at) <= nowMs)
+    .filter((r) => !r.ends_at || nowMs < Date.parse(r.ends_at))
+    .map((r) => ({ ...r, value: Number(r.value) }));
+}
 
 const COLUMNS = 'id, type, value, min_quantity, label, created_at, is_active, code, starts_at, ends_at, eligible_tiers';
 
@@ -33,7 +62,7 @@ export async function fetchDiscountRules(showing: {
       table().eq('showing_id', showing.id),
       production[1] ? table().eq(production[0], production[1]) : Promise.resolve({ data: [] }),
     ]);
-    const rows: DiscountRuleRow[] = [...(own.data ?? []), ...(shared.data ?? [])];
+    const rows: DiscountRule[] = [...(own.data ?? []), ...(shared.data ?? [])];
     return usableRules(rows, Date.now());
   } catch (err) {
     console.warn('[discounts] could not load rules; quoting full price', err);

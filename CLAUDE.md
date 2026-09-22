@@ -59,7 +59,7 @@ npm run check:worker                    # the Cloudflare Worker in worker/ (no D
 npx vitest run                          # src/ and worker/ tests
 deno check supabase/functions/**/*.ts    # build/vitest never touch these
 deno test --allow-env supabase/functions
-sh supabase/tests/ticket_discounts/run.sh # needs Docker. Pricing, tax and discount triggers, against Square's totals
+sh supabase/tests/pricing_rpc/run.sh   # needs Docker. The pricing function, against Square's own totals
 ```
 
 Bare `tsc --noEmit` **checks nothing**: `tsconfig.json` is solution-style with

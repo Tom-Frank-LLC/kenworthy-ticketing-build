@@ -16,9 +16,10 @@ import { SeatMap } from '@/components/SeatMap';
 import { SalesFinalNote } from '@/components/SalesFinalNote';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
 import { DonationPrompt } from '@/components/DonationPrompt';
-import { type Seat, type PriceTier, computeSeatTotals, computeOrderTotals, computeLineItemTotals, computeProcessingFee, type TicketLineItem, type OrderDiscount } from '@/lib/booking';
+import { type Seat, type PriceTier } from '@/lib/booking';
+import { useOrderQuote } from '@/lib/quote';
 import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
-import type { DiscountRule } from '@/lib/orderMath';
+import type { DiscountRule } from '@/lib/discounts';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
@@ -689,75 +690,20 @@ export default function Showing() {
     });
   };
 
-  // Compute totals
-  let ticketCount = 0;
-  let subtotal = 0;
-  let tax = 0;
-  let total = 0;
-  let discount: OrderDiscount = null;
-
-  if (hasTiers) {
-    if (isAssignedSeating) {
-      // Assigned seating + tiers: each seat is priced by its own tier
-      // mapping. Seats with no mapping fall back to the lowest tier so we
-      // never give away a free ticket.
-      const fallback = priceTiers.reduce((m, t) => (t.price < m.price ? t : m), priceTiers[0]);
-      ticketCount = selectedSeats.size;
-      const seatPrices = Array.from(selectedSeats).map(
-        seatId => seatTierMap[seatId]?.price ?? fallback.price,
-      );
-      const seatTiers = Array.from(selectedSeats).map(
-        seatId => seatTierMap[seatId]?.tierName ?? fallback.tier_name,
-      );
-      const result = computeSeatTotals(seatPrices, discountRules, seatTiers);
-      discount = result.discount;
-      subtotal = result.subtotal;
-      tax = result.tax;
-      total = result.total;
-    } else {
-      // GA + tiers: per-tier quantities
-      const items: TicketLineItem[] = priceTiers
-        .filter(t => (tierQuantities[t.id] || 0) > 0)
-        .map(t => ({ tierId: t.id, tierName: t.tier_name, price: t.price, quantity: tierQuantities[t.id] }));
-      const result = computeLineItemTotals(items, discountRules);
-      discount = result.discount;
-      ticketCount = result.totalCount;
-      subtotal = result.subtotal;
-      tax = result.tax;
-      total = result.total;
-    }
-  } else {
-    // No tiers — legacy single price
-    ticketCount = isAssignedSeating ? selectedSeats.size : gaQuantity;
-    const result = computeOrderTotals(ticketCount, showing?.ticket_price || 0, discountRules);
-    discount = result.discount;
-    subtotal = result.subtotal;
-    tax = result.tax;
-    total = result.total;
-  }
-
-  // Standard ticket sales carry no processing fee — the buyer pays ticket price
-  // plus tax and the theatre absorbs Square's cut. This stays only for the
-  // rental exception, where a promoter has agreed their buyers carry the fee;
-  // `pass_processing_fee` is false on every production unless someone sets it.
-  const passProcessingFee = !!production?.pass_processing_fee && total > 0;
-  const processingFee = passProcessingFee ? computeProcessingFee(total, 'online').fee : 0;
-  const grandTotal = Math.round((total + processingFee) * 100) / 100;
-  // The gift is added to the charge after tax and is never taxed — the tax line
-  // above is computed from ticket rows alone and this does not touch it. The
-  // server does the same arithmetic and its answer is the one that is charged.
-  const chargeTotal = Math.round(grandTotal * 100 + donationCents) / 100;
-  // A free ($0) showing has no card step: Square rejects a $0 charge, and the
-  // server skips it, so the browser must not ask for a card or send a token.
-  // A free showing with a gift attached does have money to move, so it does.
-  const isFree = chargeTotal <= 0;
+  // How many tickets are picked. Everything about what they cost comes from
+  // the database, below.
+  const ticketCount = hasTiers
+    ? (isAssignedSeating
+      ? selectedSeats.size
+      : priceTiers.reduce((sum, t) => sum + (tierQuantities[t.id] || 0), 0))
+    : (isAssignedSeating ? selectedSeats.size : gaQuantity);
 
   /**
    * What the buyer asked for, as seats and tiers — never as prices.
    *
-   * The server re-derives every amount from these descriptors, so tampering
-   * with this list can only change *which* tickets are bought, not what they
-   * cost. The client's totals below are for display.
+   * The same list is sent to the server to buy and to the database to quote,
+   * so tampering with it can only change *which* tickets are bought, not what
+   * they cost.
    */
   const buildTicketDescriptors = () => {
     const descriptors: { seat_id?: string; tier_id?: string }[] = [];
@@ -782,6 +728,24 @@ export default function Showing() {
 
     return descriptors;
   };
+
+  // The running total is the database's answer — quote_ticket_order, the same
+  // function the server prices with — so the number on screen is the number
+  // charged. It carries the discount, the order-level tax and the surcharge a
+  // rental production may pass on; nothing is computed here.
+  const { quote, error: quoteError, loading: quoting } = useOrderQuote(
+    showing?.id, buildTicketDescriptors(), 'online',
+  );
+  const { subtotal, discount, tax, total, processingFee, grandTotal } = quote;
+  // The gift is added to the charge after tax and is never taxed — the tax line
+  // above is computed from ticket rows alone and this does not touch it. The
+  // server does the same arithmetic and its answer is the one that is charged.
+  const chargeTotal = Math.round(grandTotal * 100 + donationCents) / 100;
+  // A free ($0) showing has no card step: Square rejects a $0 charge, and the
+  // server skips it, so the browser must not ask for a card or send a token.
+  // A free showing with a gift attached does have money to move, so it does.
+  const isFree = chargeTotal <= 0;
+
 
   // One key per purchase attempt. Kept across a repeated submit so the server
   // returns the order it already made instead of charging twice; replaced after
@@ -1446,6 +1410,11 @@ export default function Showing() {
                       )
                     )}
                   </div>
+                  {/* The database's own refusal — sold out, passed, a tier
+                      withdrawn — in the summary, before the pay button meets it. */}
+                  {quoteError && (
+                    <p className="text-sm text-destructive" role="alert">{quoteError}</p>
+                  )}
                   {ticketCount >= buyerLimit && (
                     <p className="text-sm text-muted-foreground" role="status">
                       {buyerLimit} is the most tickets one buyer can purchase online for this showing.
@@ -1509,11 +1478,15 @@ export default function Showing() {
                         className="w-full"
                         size="lg"
                         onClick={handlePurchase}
-                        disabled={purchasing || (!isFree && !cardReady)}
+                        // Not while a quote is in flight: the button names the
+                        // amount, and it must be the amount for THIS selection.
+                        disabled={purchasing || quoting || !!quoteError || (!isFree && !cardReady)}
                       >
                         <Check className="h-4 w-4 mr-1" />
                         {purchasing
                           ? 'Processing...'
+                          : quoting
+                            ? 'Pricing…'
                           : isFree
                             ? `Reserve ${ticketCount} Ticket(s)`
                             : `Pay $${chargeTotal.toFixed(2)}`}
