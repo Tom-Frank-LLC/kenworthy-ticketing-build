@@ -30,7 +30,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Shipped
 
 - **Deleting a price tier and saving never duplicates tiers again, and the duplicates already in production are repaired**<br>`data` — `#327` — [brief](briefs/BRIEF-duplicate-tiers-fix.md) · [notes](briefs/../FINDINGS-duplicate-price-tiers.md)
-- **A film can be ticketed through an outside site, the way an event can, and nothing sells against it here**<br>`feature` — `#329` — [brief](briefs/BRIEF-movie-external-ticketing.md)
+- **A film can be ticketed through an outside site, the way an event can, and nothing sells against it here**<br>`feature` — `#329`, `#331` — [brief](briefs/BRIEF-movie-external-ticketing.md)
 - **One SQL function prices and writes every paid ticket order, so the arithmetic exists once**<br>`ops` — `#316`, `#317`, `#318`, `#320`, `#324` — [brief](briefs/BRIEF-pricing-rpc.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - **Staff can add ticket discounts (percent, $ per ticket, $ per order) that reconcile with Square to the cent**<br>`feature` — `#311`, `#312`, `#314` — [brief](briefs/BRIEF-ticket-discounts.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - **Admins manage staff and host accounts; only a superadmin touches admins and superadmins**<br>`security` — `#305` — [brief](briefs/BRIEF-admin-account-role-management.md)
