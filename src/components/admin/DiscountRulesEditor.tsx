@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { describeEligibility, describeOffer } from '@/lib/discounts';
-import { canonicalTierName, type DiscountType } from '@/lib/orderMath';
+import type { DiscountType } from '@/lib/discounts';
 
 /**
  * Ticket discount rules for one showing, or for every showing of a production.
@@ -119,7 +119,15 @@ export default function DiscountRulesEditor({ scope, audience }: {
       }
       if (showingIds.length === 0) { if (!cancelled) setTierNames([]); return; }
       const { data } = await supabase.from('showing_price_tiers').select('tier_name').in('showing_id', showingIds);
-      const names = [...new Set((data ?? []).map((t) => canonicalTierName(t.tier_name)).filter(Boolean))].sort();
+      // One spelling per type, decided by the database's canonical_tier_name —
+      // the same function the pricing uses to match a rule to a ticket — so
+      // the box an admin ticks is the name a sale will be checked against.
+      const raw = [...new Set((data ?? []).map((t) => t.tier_name).filter(Boolean))];
+      const canonical = await Promise.all(raw.map(async (r) => {
+        const { data: c } = await (supabase as any).rpc('canonical_tier_name', { raw: r });
+        return typeof c === 'string' ? c : r;
+      }));
+      const names = [...new Set(canonical.filter(Boolean))].sort();
       if (!cancelled) setTierNames(names);
     })();
     return () => { cancelled = true; };

@@ -57,7 +57,9 @@ vi.mock('@/integrations/supabase/client', () => {
     };
     return chain;
   };
-  return { supabase: { from } };
+  const canon: Record<string, string> = { Students: 'Student', student: 'Student' };
+  const rpc = (_fn: string, args: { raw: string }) => Promise.resolve({ data: canon[args.raw] ?? args.raw, error: null });
+  return { supabase: { from, rpc } };
 });
 
 import DiscountRulesEditor, { suggestLabel } from './DiscountRulesEditor';

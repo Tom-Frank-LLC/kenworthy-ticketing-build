@@ -232,33 +232,22 @@ Deno.test('an order of nothing but a donation declares no tax at all', () => {
 // ---------------------------------------------------------------------------
 // Discounts
 // ---------------------------------------------------------------------------
-import { applyDiscount, type DiscountRule } from './order_math.ts';
+// The builder is fed groups the way loadTicketGroups makes them from stored
+// rows: list price on the line, the discount shares summed per line. How a
+// discount is allocated across tickets is the database's business
+// (price_ticket_order) and is tested there; these tests use the allocations
+// Square's vectors recorded, and hard-coded ones where a vector has none.
 
-/** Groups exactly as loadTicketGroups makes them: one per list price, shares summed. */
-function discountedGroups(list: number[], rule: DiscountRule): TicketGroup[] {
-  const applied = applyDiscount(rule, list)!;
-  const by = new Map<number, TicketGroup>();
-  list.forEach((cents, i) => {
-    if (cents === 0) return; // a free ticket never reaches Square
-    const existing = by.get(cents);
-    if (existing) {
-      existing.count++;
-      existing.discountCents! += applied.perTicket[i];
-    } else {
-      by.set(cents, g({ tierKey: `T${cents}`, unitPriceCents: cents, count: 1,
-        discountCents: applied.perTicket[i], discountName: rule.label }));
-    }
-  });
-  return [...by.values()];
-}
-
+/** A single-price discounted vector is one group carrying the whole discount. */
 for (const v of vectors.discounted) {
+  const distinct = new Set(v.ticket_list_cents.filter((c: number) => c > 0));
+  if (distinct.size !== 1) continue;
   Deno.test(`discounted expectedTotalCents is what Square returned — ${v.label}`, () => {
-    const rule = { id: 'r', label: '25% off 4+', created_at: '2026-01-01T00:00:00Z', ...v.rule } as DiscountRule;
-    const built = buildTicketOrder(discountedGroups(v.ticket_list_cents, rule));
+    const cents = [...distinct][0] as number;
+    const count = v.ticket_list_cents.filter((c: number) => c > 0).length;
+    const built = buildTicketOrder([g({ unitPriceCents: cents, count, discountCents: v.square_discount_cents, discountName: 'x' })]);
     assertEquals(built.expectedTotalCents, v.square_total_cents);
-    const sent = built.discounts.reduce((s, d: any) => s + d.amount_money.amount, 0);
-    assertEquals(sent, v.square_discount_cents);
+    assertEquals(built.discounts.reduce((s, d: any) => s + d.amount_money.amount, 0), v.square_discount_cents);
   });
 }
 
@@ -266,10 +255,10 @@ Deno.test('a discount is a fixed amount scoped to its own line, never to the ord
   // Scoped to the ORDER, Square spread 25% across a bundled donation as well
   // (measured). Every discount object must name LINE_ITEM and be applied by
   // exactly the ticket line it came off.
-  const rule = { id: 'r', type: 'percent', value: 25, min_quantity: 4, label: '25% off 4+ tickets',
-    created_at: '2026-01-01T00:00:00Z' } as DiscountRule;
-  const built = buildTicketOrder([...discountedGroups([900, 900, 900, 900], rule), donationGroup(2500)]);
-
+  const built = buildTicketOrder([
+    g({ unitPriceCents: 900, count: 4, discountCents: 900, discountName: '25% off 4+ tickets' }),
+    donationGroup(2500),
+  ]);
   assertEquals(built.discounts.length, 1);
   const d = built.discounts[0] as any;
   assertEquals(d.scope, 'LINE_ITEM');
@@ -281,16 +270,12 @@ Deno.test('a discount is a fixed amount scoped to its own line, never to the ord
   assertEquals(tickets.base_price_money.amount, 900); // list price, not the net
   assertEquals(tickets.applied_discounts, [{ discount_uid: d.uid }]);
   assertEquals(gift.applied_discounts, undefined);
-
-  // 2862 for the tickets (Square's figure) and the gift untouched.
-  assertEquals(built.expectedTotalCents, 2862 + 2500);
+  assertEquals(built.expectedTotalCents, 2862 + 2500); // Square's 2862, gift untouched
 });
 
 Deno.test('the order body carries discounts only when there are some', () => {
-  const rule = { id: 'r', type: 'fixed_per_order', value: 10, min_quantity: 1, label: '$10 off',
-    created_at: '2026-01-01T00:00:00Z' } as DiscountRule;
   const base = { locationId: 'L', referenceId: 'ref', idempotencyKey: 'k', fulfillment: 'NONE' as const };
-  const withOne = orderRequestBody({ ...base, built: buildTicketOrder(discountedGroups([900, 900], rule)) });
+  const withOne = orderRequestBody({ ...base, built: buildTicketOrder([g({ count: 2, unitPriceCents: 900, discountCents: 1000, discountName: '$10 off' })]) });
   const without = orderRequestBody({ ...base, built: buildTicketOrder([g({ count: 2 })]) });
   assertEquals((withOne.order as any).discounts.length, 1);
   assertEquals('discounts' in without.order, false);
@@ -303,13 +288,11 @@ Deno.test('a discount can never exceed the line it sits on', () => {
 });
 
 Deno.test('an order where only some tickets are discounted: the discount sits on those lines alone', () => {
-  // 2 Adult @ $9 + 2 Student @ $7, 25% off Adults only: D = 450 on the Adult
-  // line, Student line untouched. Square: 3200 − 450 = 2750, tax 165 → 2915.
-  const rule = { id: 'r', type: 'percent', value: 25, min_quantity: 4, label: 'Adults 25% off',
-    created_at: '2026-01-01T00:00:00Z', eligible_tiers: ['Adult'] } as DiscountRule;
-  const applied = applyDiscount(rule, [900, 900, 700, 700], ['Adult', 'Adult', 'Student', 'Student'])!;
+  // 2 Adult @ $9 + 2 Student @ $7, 25% off Adults only. The database allocates
+  // 225 + 225 + 0 + 0 (measured on staging and in the harness): 450 on the
+  // Adult line, Student line untouched. Square: 3200 − 450 = 2750, tax 165 → 2915.
   const built = buildTicketOrder([
-    g({ tierKey: 'Adult', unitPriceCents: 900, count: 2, discountCents: applied.perTicket[0] + applied.perTicket[1], discountName: rule.label }),
+    g({ tierKey: 'Adult', unitPriceCents: 900, count: 2, discountCents: 450, discountName: 'Adults 25% off' }),
     g({ tierKey: 'Student', variationId: 'VAR_STU', unitPriceCents: 700, count: 2, discountCents: 0 }),
   ]);
   assertEquals(built.discounts.length, 1);

@@ -28,9 +28,10 @@ import { TodaysPresales } from '@/components/pos/TodaysPresales';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
-import { type Seat, type PriceTier, type TicketLineItem, computeLineItemTotals, computeOrderTotals, computeProcessingFee, newOrderToken } from '@/lib/booking';
+import { type Seat, type PriceTier, type TicketLineItem, newOrderToken } from '@/lib/booking';
+import { useOrderQuote } from '@/lib/quote';
 import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
-import type { DiscountRule } from '@/lib/orderMath';
+import type { DiscountRule } from '@/lib/discounts';
 import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
@@ -287,32 +288,6 @@ export default function StaffPOS() {
 
   const gaAvailable = (selectedShowing?.total_seats || 200) - gaTicketsSold;
 
-  const { subtotal, discount, tax, total } = hasTiers
-    ? computeLineItemTotals(lineItems, discountRules)
-    : computeOrderTotals(ticketCount, selectedShowing?.ticket_price || 0, discountRules);
-
-  // Standard sales carry no processing fee; the theatre absorbs Square's cut.
-  // Only a rental production whose agreement says otherwise sets
-  // pass_processing_fee, and even then only a card sale can carry it — cash
-  // never does, because no card was processed.
-  const passProcessingFee =
-    !!selectedShowing?.pass_processing_fee && paymentMethod === 'card' && total > 0;
-  const processingFee = passProcessingFee ? computeProcessingFee(total, 'in_person').fee : 0;
-  const grandTotal = Math.round((total + processingFee) * 100) / 100;
-  // Tax was computed from the ticket lines above; the gift is added after it
-  // and is never part of it. This is the number the terminal is handed.
-  const chargeTotal = Math.round(grandTotal * 100 + donationCents) / 100;
-
-  const toggleSeat = (seatId: string) => {
-    if (takenSeatIds.has(seatId)) return;
-    setSelectedSeats(prev => {
-      const next = new Set(prev);
-      if (next.has(seatId)) next.delete(seatId);
-      else next.add(seatId);
-      return next;
-    });
-  };
-
   /** The order as seats and tiers, in the order the rows will be written. */
   const ticketDescriptors = useCallback((): Array<{ seat_id: string | null; tier_id: string | null }> => {
     const out: Array<{ seat_id: string | null; tier_id: string | null }> = [];
@@ -329,9 +304,32 @@ export default function StaffPOS() {
     return out;
   }, [hasTiers, lineItems, isAssignedSeating, selectedSeats, gaQuantity]);
 
+  // The running total is the database's answer — the same function that will
+  // write the rows — so the screen and the sale cannot disagree. The channel
+  // decides the surcharge: a rental production may pass Square's in-person
+  // rate on to a card sale; cash never carries one, no card was processed.
+  const { quote, error: quoteError, loading: quoting } = useOrderQuote(
+    selectedShowingId || null, ticketDescriptors(), paymentMethod === 'card' ? 'in_person' : 'none',
+  );
+  const { subtotal, discount, tax, total, processingFee, grandTotal } = quote;
+  // Tax was computed from the ticket lines above; the gift is added after it
+  // and is never part of it. This is the number the terminal is handed.
+  const chargeTotal = Math.round(grandTotal * 100 + donationCents) / 100;
+
+  const toggleSeat = (seatId: string) => {
+    if (takenSeatIds.has(seatId)) return;
+    setSelectedSeats(prev => {
+      const next = new Set(prev);
+      if (next.has(seatId)) next.delete(seatId);
+      else next.add(seatId);
+      return next;
+    });
+  };
+
   const createTickets = useCallback(async (
     method: PaymentMethod,
     squarePaymentId: string | null = null,
+    status: 'confirmed' | 'pending' = 'confirmed',
   ): Promise<{ ticketIds: string[]; orderToken: string }> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
@@ -354,7 +352,7 @@ export default function StaffPOS() {
       p_payment_method: method,
       p_user_id: user.id,
       p_order_token: orderToken,
-      p_status: 'confirmed',
+      p_status: status,
       // Recorded so a refund credits the card that paid, rather than only
       // flipping the ticket's status.
       p_square_payment_id: squarePaymentId,
@@ -604,60 +602,49 @@ export default function StaffPOS() {
     }
   };
 
+  /**
+   * A card sale, the way an online sale works: rows first (pending), then the
+   * reader, then confirm. The server reads the amount from the rows and
+   * confirms them only after Square reports the checkout complete for that
+   * amount; nothing here names a price.
+   */
   const handleCardSale = async () => {
     setSelling(true);
     setPaymentStatus('processing');
+    let orderToken: string | null = null;
+    let ticketIds: string[] = [];
+    let readerReached = false;
 
     try {
+      ({ ticketIds, orderToken } = await createTickets('card', null, 'pending'));
+
       const idempotencyKey = crypto.randomUUID();
-      // One charge on the reader for tickets, their tax, and the gift. Square's
-      // own checkout UI cannot show a donation button — see docs/DONATIONS.md,
-      // Part E — so the prompt happens here and the terminal is simply handed
-      // the combined amount.
-      const amountCents = Math.round(chargeTotal * 100);
-
       const { data, error } = await supabase.functions.invoke('square-terminal', {
-        body: {
-          action: 'create_checkout',
-          amount_cents: amountCents,
-          note: donationCents > 0
-            ? `${selectedShowing!.movie_title} — ${ticketCount} ticket(s) + $${(donationCents / 100).toFixed(2)} donation`
-            : `${selectedShowing!.movie_title} — ${ticketCount} ticket(s)`,
-          idempotency_key: idempotencyKey,
-        },
+        body: { action: 'start_sale', order_token: orderToken, donation_cents: donationCents, idempotency_key: idempotencyKey },
       });
+      if (error) throw new Error(error.message || 'Failed to start the card sale');
+      if (data?.error) throw new Error(data.error);
 
-      if (error) throw new Error(error.message || 'Failed to create checkout');
-
-      const checkoutId = data.checkout?.id;
+      readerReached = true;
+      const checkoutId: string = data.checkout?.id;
       setSquareCheckoutId(checkoutId);
       setIsSimulated(data.simulated || false);
-
-      if (data.simulated || data.checkout?.status === 'COMPLETED') {
-        setPaymentStatus('completed');
-        const paymentId = data.checkout?.payment_ids?.[0] ?? null;
-        const { ticketIds, orderToken } = await createTickets('card', paymentId);
-        addTransaction(ticketIds, 'card', orderToken);
-        toast.success(
-          `${ticketCount} ticket(s) sold (card)! ${data.simulated ? '(Sandbox simulation)' : ''}`,
-          { duration: 5000 }
-        );
-        await recordDonation('terminal', paymentId, orderToken);
-        await deliverPos(orderToken);
-        resetForm();
-        await refreshAfterSale();
-      } else {
-        pollCheckoutStatus(checkoutId);
-      }
+      pollCheckoutStatus(checkoutId, orderToken, ticketIds);
     } catch (err: any) {
       setPaymentStatus('failed');
       toast.error(err.message || 'Payment failed');
+      // The reader was never reached: the pending rows are released so the
+      // seats go back on sale. If it was reached, they stay pending for the
+      // confirm to find.
+      if (orderToken && ticketIds.length > 0 && !readerReached) {
+        await supabase.from('tickets').update({ status: 'failed', payment_error: String(err?.message ?? 'card sale failed').slice(0, 500) }).in('id', ticketIds);
+      }
     } finally {
       setSelling(false);
     }
   };
 
-  const pollCheckoutStatus = useCallback(async (checkoutId: string) => {
+  const pollCheckoutStatus = useCallback(async (checkoutId: string, orderToken: string, ticketIds: string[]) => {
     const maxAttempts = 60;
     let attempt = 0;
 
@@ -665,33 +652,32 @@ export default function StaffPOS() {
       attempt++;
       try {
         const { data, error } = await supabase.functions.invoke('square-terminal', {
-          body: { action: 'get_checkout', checkout_id: checkoutId },
+          body: { action: 'confirm_sale', order_token: orderToken, checkout_id: checkoutId },
         });
-
         if (error) throw error;
+        if (data?.error) { setPaymentStatus('failed'); toast.error(data.error, { duration: 15000 }); return; }
 
-        const status = data.checkout?.status;
-        if (status === 'COMPLETED') {
+        if (data.confirmed || data.already_confirmed) {
           setPaymentStatus('completed');
-          const { ticketIds, orderToken } = await createTickets('card', data.payment_id ?? null);
           addTransaction(ticketIds, 'card', orderToken);
-          toast.success(`Payment complete! ${ticketCount} ticket(s) sold.`);
+          toast.success(`Payment complete! ${ticketIds.length} ticket(s) sold.`);
           await recordDonation('terminal', data.payment_id ?? null, orderToken);
           await deliverPos(orderToken);
           resetForm();
           await refreshAfterSale();
           return;
         }
-        if (status === 'CANCELED' || status === 'CANCEL_REQUESTED') {
+        if (data.status === 'CANCELED' || data.status === 'CANCEL_REQUESTED') {
           setPaymentStatus('failed');
           toast.error('Payment was canceled on the terminal.');
+          await supabase.from('tickets').update({ status: 'failed', payment_error: 'Canceled on the terminal' }).in('id', ticketIds);
           return;
         }
         if (attempt < maxAttempts) {
           setTimeout(poll, 2000);
         } else {
           setPaymentStatus('failed');
-          toast.error('Payment timed out. Check the terminal.');
+          toast.error('Payment timed out. Check the terminal; if it took the card, the sale is in Today\'s sales as pending.');
         }
       } catch {
         if (attempt < maxAttempts) {
@@ -704,7 +690,7 @@ export default function StaffPOS() {
     };
 
     poll();
-  }, [createTickets, addTransaction, resetForm, refreshAfterSale, recordDonation, deliverPos, ticketCount]);
+  }, [addTransaction, resetForm, refreshAfterSale, recordDonation, deliverPos]);
 
   const handleSell = () => {
     if (!selectedShowingId || ticketCount === 0) {
@@ -1138,6 +1124,9 @@ export default function StaffPOS() {
                       <span className="text-muted-foreground">Subtotal</span>
                       <span>${subtotal.toFixed(2)}</span>
                     </div>
+                    {quoteError && (
+                      <p className="text-destructive" role="alert">{quoteError}</p>
+                    )}
                     {discount && (
                       <div className="flex justify-between text-primary font-medium">
                         <span>{discount.label}</span>
@@ -1208,7 +1197,7 @@ export default function StaffPOS() {
                     className="w-full"
                     size="lg"
                     onClick={handleSell}
-                    disabled={selling || paymentStatus === 'processing'}
+                    disabled={selling || paymentStatus === 'processing' || quoting || !!quoteError || ticketCount === 0}
                   >
                     {selling || paymentStatus === 'processing' ? (
                       <>

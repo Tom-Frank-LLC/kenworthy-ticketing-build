@@ -158,7 +158,31 @@ built every showing with tiers. It now runs every single-price vector on an unti
 too (84 checks), and fails without the fix. Rollback points: Worker `a9216fb5…`,
 `ticket-checkout` v53.
 
-**Ship 2 (not started):** showing page and POS preview via `quote_ticket_order`; delete
+**Ship 2 — built (22 Sep 2026):** showing page and POS preview via `quote_ticket_order`; delete
 `orderMath.ts` / `booking.ts` arithmetic and the Deno twin; POS card → pending → charge → confirm
 with a Square Order; drop `enforce_ticket_order_totals`.
+
+### Ship 2 detail
+- `src/lib/quote.ts` — `useOrderQuote`: debounced, stale-safe, last quote shown while the next
+  loads; the showing page and the POS use it for every number on screen. The pay/sell buttons hold
+  while a quote is in flight and show the database's refusal sentence. **Deleted:** `orderMath.ts`,
+  the arithmetic in `booking.ts` (types and the token remain), the Deno twin's pricing (only
+  `halfEvenDiv`/`taxOnCents` remain, for `square-order.ts`'s prediction of Square's total).
+  `grep apportionOrderTax|applyDiscount|bestDiscount|canonicalTierName src supabase/functions` → 0.
+- The discounts editor gets canonical tier names from `canonical_tier_name()` in the database.
+- **POS card:** `create_ticket_order(status='pending')` → `square-terminal start_sale` (reads the
+  rows, builds a Square Order with line items and the discount, opens a Terminal checkout for the
+  rows' amount carrying `order_id`) → poll `confirm_sale` (confirms only on COMPLETED for at least
+  the rows' amount). The browser never names an amount. A reader that is never reached releases
+  the rows (`failed`); a cancel on the terminal does too. `SQUARE_TERMINAL_DEVICE_ID` (secret) names
+  the real reader — **note:** the old path never passed a device id at all, so production card
+  checkouts were addressed to `SIMULATED_SANDBOX_DEVICE`; set the secret before relying on POS card.
+- Migration `20260922162659`: `enforce_ticket_order_totals` dropped. The `ticket_discounts` harness
+  retired; its constraint and RLS checks moved into `pricing_rpc` (94 checks).
+- **Measured in the sandbox:** a Terminal checkout accepts `order_id` and returns it. **Not
+  observable:** completion — sandbox test devices never complete on their own — so the
+  confirm branch and the payment→order link are unverified end to end, as they were before.
+- Staging, as a real staff user: direct paid insert → 403; quote 28.62; pending rows 2862;
+  `start_sale` → Square Order for 3362 (tickets + $5 gift), checkout PENDING with the order id;
+  `confirm_sale` → not confirmed while PENDING; cash sale 2 rows. Test data removed.
 
