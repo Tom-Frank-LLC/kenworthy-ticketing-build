@@ -13,6 +13,7 @@ import {
   priceTicketOrder,
   readDonationCents,
 } from './pricing.ts';
+import { NOT_SOLD_HERE_MESSAGE, ticketsSoldHere } from './purchasable.ts';
 
 /** A fake supabase client: `rpc` answers from a script, `from().select()` returns the showing. */
 function fakeAdmin(rpc: (fn: string, args: any) => { data: any; error: any }, showing: any = { id: 's', total_seats: 200, requires_seat_selection: false, start_time: 't', max_tickets_per_buyer: 20 }) {
@@ -51,6 +52,14 @@ Deno.test('the priced order is read off the rows: numbers, discount, cents', asy
 Deno.test("the database's refusals become PricingErrors with its own sentence", async () => {
   const admin = fakeAdmin(() => ({ data: null, error: { code: 'PT410', message: 'This showing has passed.' } }));
   await assertRejects(() => priceTicketOrder(admin, 's', [{}]), PricingError, 'This showing has passed.');
+});
+
+Deno.test('a production not ticketed here is refused with the sentence the page shows', async () => {
+  // The refusal is in price_ticket_order (20260922203433) and is exercised by
+  // the SQL harness; this pins that ticket-checkout hands the buyer that same
+  // sentence rather than 'Could not price this order'.
+  const admin = fakeAdmin(() => ({ data: null, error: { code: 'PT409', message: NOT_SOLD_HERE_MESSAGE } }));
+  await assertRejects(() => priceTicketOrder(admin, 's', [{}]), PricingError, NOT_SOLD_HERE_MESSAGE);
 });
 
 Deno.test('any other database error is not a pricing refusal', async () => {
@@ -119,3 +128,13 @@ Deno.test('gift with an email is allowed', () => {
   assertEquals(bundledDonationEmailError('donor@example.com', MAX_BUNDLED_DONATION_CENTS), null);
 });
 
+
+Deno.test('ticketsSoldHere: false for rsvp and info_only, true otherwise and when absent', () => {
+  assertEquals(ticketsSoldHere({ ticket_type: 'ticketed' }), true);
+  assertEquals(ticketsSoldHere({ ticket_type: 'rsvp', rsvp_url: 'https://festival.example' }), false);
+  assertEquals(ticketsSoldHere({ ticket_type: 'info_only' }), false);
+  assertEquals(ticketsSoldHere({}), true);
+  assertEquals(ticketsSoldHere(null), true);
+  // Twin of the RAISE in the migration and of src/lib/purchasable.ts.
+  assertEquals(NOT_SOLD_HERE_MESSAGE, 'Tickets for this showing are not sold here.');
+});

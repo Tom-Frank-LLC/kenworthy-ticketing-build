@@ -123,3 +123,65 @@ describe('Showing: a link that outlives its showing', () => {
     expect(screen.queryByText('HOME SENTINEL')).toBeNull();
   });
 });
+
+/**
+ * A film ticketed somewhere else keeps its showing page — the date, the venue
+ * and the trailer are what somebody deciding whether to go needs — and sends
+ * them out for the ticket. Nothing here sells: price_ticket_order refuses the
+ * sale for a stale tab, and this pins that the page never offers one.
+ */
+describe('Showing: a film whose tickets are not sold here', () => {
+  const upcoming = {
+    ...pastShowing,
+    id: 'showing-soon',
+    start_time: iso(3 * DAY),
+    is_active: true,
+  };
+
+  it('links out for an RSVP film, in a new tab, and renders no purchase panel', async () => {
+    tables = {
+      showings: [upcoming],
+      movies: [{ ...movie, ticket_type: 'rsvp', rsvp_url: 'https://festival.example/gold-rush' }],
+    };
+    renderShowing('showing-soon');
+
+    expect(await screen.findByText('Tickets for this showing are not sold here.')).toBeTruthy();
+    const link = screen.getByRole('link', { name: /get tickets/i });
+    expect(link.getAttribute('href')).toBe('https://festival.example/gold-rush');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toContain('noopener');
+    expect(screen.queryByRole('heading', { name: 'General Admission' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Order Summary' })).toBeNull();
+    expect(screen.queryByText(/per ticket/)).toBeNull();
+    expect(screen.getByText('Tickets sold elsewhere')).toBeTruthy();
+  });
+
+  it('offers nothing at all for an info-only film', async () => {
+    tables = { showings: [upcoming], movies: [{ ...movie, ticket_type: 'info_only' }] };
+    renderShowing('showing-soon');
+
+    expect(await screen.findByText('Tickets for this showing are not sold here.')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /get tickets/i })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'General Admission' })).toBeNull();
+    expect(screen.getByText('Not ticketed')).toBeTruthy();
+  });
+
+  it('still sells an ordinary ticketed film — the default every existing row has', async () => {
+    tables = { showings: [upcoming], movies: [{ ...movie, ticket_type: 'ticketed' }] };
+    renderShowing('showing-soon');
+
+    expect(await screen.findByRole('heading', { name: 'General Admission' })).toBeTruthy();
+    expect(screen.queryByText('Tickets for this showing are not sold here.')).toBeNull();
+  });
+
+  it('says passed, not "sold elsewhere", once the date is behind us', async () => {
+    tables = {
+      showings: [pastShowing],
+      movies: [{ ...movie, ticket_type: 'rsvp', rsvp_url: 'https://festival.example/gold-rush' }],
+    };
+    renderShowing('showing-past');
+
+    expect(await screen.findByText('This showing has passed.')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /get tickets/i })).toBeNull();
+  });
+});

@@ -56,6 +56,18 @@ export const NO_TICKET_REQUIRED_MESSAGE = 'This showing does not require a ticke
  */
 export const SOLD_OUT_MESSAGE = 'This showing is sold out.';
 
+/**
+ * What a showing of a production that is not ticketed here says, everywhere.
+ *
+ * Twin of the sentence price_ticket_order raises (migration
+ * 20260922203433_movies_external_ticketing.sql) and of the same constant in
+ * src/lib/purchasable.ts. The refusal itself lives in the SQL — every paid
+ * ticket row goes through that function, online and at the counter — so this
+ * file states the sentence and the rule for any Deno caller that needs to ask
+ * before pricing, and nothing here enforces it.
+ */
+export const NOT_SOLD_HERE_MESSAGE = 'Tickets for this showing are not sold here.';
+
 const MINUTE_MS = 60 * 1000;
 
 export interface ShowingTiming {
@@ -72,6 +84,22 @@ export interface ShowingTiming {
 
 export interface ProductionRuntime {
   duration_minutes?: number | null;
+}
+
+/** See the note on the same interface in src/lib/purchasable.ts. */
+export interface ProductionTicketing {
+  ticket_type?: string | null;
+  rsvp_url?: string | null;
+}
+
+/**
+ * Are tickets for this production sold through this site? False for `rsvp`
+ * and `info_only`. Absent reads as sold here — see the note on the same
+ * function in src/lib/purchasable.ts, and on `needsNoTicket` below.
+ */
+export function ticketsSoldHere(production: ProductionTicketing | null | undefined): boolean {
+  const mode = production?.ticket_type;
+  return mode !== 'rsvp' && mode !== 'info_only';
 }
 
 function positiveMinutes(value: unknown): number | null {

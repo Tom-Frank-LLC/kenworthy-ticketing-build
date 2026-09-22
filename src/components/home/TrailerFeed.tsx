@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
 import { resolveTrailer } from '@/lib/trailer';
 import { formatShowtime } from '@/lib/datetime';
-import { isPast } from '@/lib/purchasable';
+import { externalTicketLabel, isPast } from '@/lib/purchasable';
 import { htmlToPlainText } from '@/lib/richText';
 
 /** One purchasable date on a production, as the listings render it. */
@@ -62,7 +62,7 @@ export interface FeedItem {
   startTime: string;          // ISO
   showingId: string | null;   // null when no purchasable showing yet
   type: 'movie' | 'event' | 'concert';
-  ticketType?: string;        // for events
+  ticketType?: string;        // event_ticket_type, on every production since 20260922203433
   rsvpUrl?: string | null;
   curatorNote?: string | null;
   /**
@@ -296,7 +296,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                   {item.ticketType === 'rsvp' && item.rsvpUrl && !isPast({ start_time: item.startTime }) ? (
                     <Button asChild size="lg" className="h-12">
                       <a href={item.rsvpUrl} target="_blank" rel="noopener noreferrer">
-                        <Calendar className="h-4 w-4 mr-1" /> RSVP
+                        <Calendar className="h-4 w-4 mr-1" /> {externalTicketLabel(item.type)}
                       </a>
                     </Button>
                   ) : item.ticketType === 'info_only' ? (

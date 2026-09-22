@@ -84,6 +84,18 @@ export const NO_TICKET_REQUIRED_MESSAGE = 'This showing does not require a ticke
  */
 export const SOLD_OUT_MESSAGE = 'This showing is sold out.';
 
+/**
+ * What a showing of a production that is not ticketed here says, everywhere.
+ *
+ * Twin of the sentence price_ticket_order raises (migration
+ * 20260922203433_movies_external_ticketing.sql) and of the same constant in
+ * supabase/functions/_shared/purchasable.ts. A film sold through a festival's
+ * own site, or listed for information only, keeps its showings so the dates
+ * are on the calendar — and a stale tab that tries to buy one is told this,
+ * the thing the page would have shown, rather than a pricing error.
+ */
+export const NOT_SOLD_HERE_MESSAGE = 'Tickets for this showing are not sold here.';
+
 const MINUTE_MS = 60 * 1000;
 
 export interface ShowingTiming {
@@ -113,6 +125,46 @@ export interface ShowingTiming {
 export interface ProductionRuntime {
   /** `movies.duration_minutes`. Events and live performances have none. */
   duration_minutes?: number | null;
+}
+
+/**
+ * How a production is ticketed. `ticket_type` is the `event_ticket_type` enum
+ * (`ticketed` | `rsvp` | `info_only`), carried by movies, events and live
+ * performances alike; `rsvp_url` is where the ticket is sold when it is not
+ * sold here.
+ */
+export interface ProductionTicketing {
+  ticket_type?: string | null;
+  rsvp_url?: string | null;
+}
+
+/**
+ * Are tickets for this production sold through this site?
+ *
+ * False for `rsvp` (sold somewhere else, through `rsvp_url`) and `info_only`
+ * (nothing to book). The production's answer, not the showing's: a film
+ * ticketed by a festival is ticketed by the festival on every date it plays.
+ *
+ * Absent reads as sold here, for the reason `needsNoTicket` reads absent as
+ * ticketed: it is the answer for every production that existed before the
+ * column did, and the direction that fails towards refusing nothing rather
+ * than towards hiding every buy button on the site while a schema cache
+ * reloads. The server has the column straight from the row and refuses the
+ * sale regardless — this is the browser's advisory copy.
+ */
+export function ticketsSoldHere(production: ProductionTicketing | null | undefined): boolean {
+  const mode = production?.ticket_type;
+  return mode !== 'rsvp' && mode !== 'info_only';
+}
+
+/**
+ * What the outside-ticket button says. A festival film is bought, not
+ * RSVP'd to; a community event is the other way round. The admin-facing mode
+ * is called RSVP for both because the column is, and that word belongs in
+ * the admin, not on the button.
+ */
+export function externalTicketLabel(type: 'movie' | 'event' | 'concert' | string | null | undefined): string {
+  return type === 'movie' ? 'Get Tickets' : 'RSVP';
 }
 
 function startMs(showing: ShowingTiming): number {

@@ -52,6 +52,29 @@ export const TICKETING_MODES: { value: TicketingMode; label: string; help: strin
   { value: 'info_only', label: 'Info only', help: 'Listed for information. Nothing to book.' },
 ];
 
+/**
+ * Why an RSVP link cannot be saved, or null when it can.
+ *
+ * Required, and https only. An RSVP production with no link renders as if it
+ * were ticketed here — every reader of the flag checks `rsvp && rsvp_url`
+ * before offering the outside link and falls through to the internal path
+ * otherwise — so a blank is not "no link yet", it is a film that silently
+ * sells nothing. Any other mode ignores the field entirely; the forms clear it.
+ */
+export function rsvpUrlError(mode: TicketingMode, url: string): string | null {
+  if (mode !== 'rsvp') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return 'An RSVP link is needed — that is where people will be sent for tickets.';
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return 'The RSVP link is not a valid URL. It should start with https://';
+  }
+  if (parsed.protocol !== 'https:') return 'The RSVP link must start with https://';
+  return null;
+}
+
 /** Human label for a stored type, for badges and lists. Falls back to the raw value. */
 export function liveEventTypeLabel(value: string | null | undefined): string | null {
   if (!value) return null;

@@ -1637,7 +1637,9 @@ export type Database = {
           rating: string | null
           release_label: string | null
           release_year: number | null
+          rsvp_url: string | null
           square_item_id: string | null
+          ticket_type: Database["public"]["Enums"]["event_ticket_type"]
           terms_percent: number | null
           title: string
           trailer_url: string | null
@@ -1658,7 +1660,9 @@ export type Database = {
           rating?: string | null
           release_label?: string | null
           release_year?: number | null
+          rsvp_url?: string | null
           square_item_id?: string | null
+          ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
           terms_percent?: number | null
           title: string
           trailer_url?: string | null
@@ -1679,7 +1683,9 @@ export type Database = {
           rating?: string | null
           release_label?: string | null
           release_year?: number | null
+          rsvp_url?: string | null
           square_item_id?: string | null
+          ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
           terms_percent?: number | null
           title?: string
           trailer_url?: string | null
