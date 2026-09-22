@@ -208,6 +208,20 @@ counter card sale is the end-to-end check of the whole card path, `confirm_sale`
 **In production** (PR #324 `72bdc16`; `square-terminal` v31→32; Worker `4e7a02a2…` →
 `9175a7d5-b711-4376-93a2-9d7ac33419ea`).
 
+**Caveat (Tom, 22 Sep 2026): the counter card path is shipped but untested against a real reader.**
+No counter card sale will happen for a while, so it is marked shipped on the strength of the
+harness, the sandbox walk (rows → Square Order → checkout PENDING with `order_id`) and code
+review, not on a completed sale. The sandbox cannot complete a Terminal checkout, so three
+things have never been observed end to end and may surface something when the counters are
+first used: (1) `confirm_sale` on a real COMPLETED checkout — the rows going `pending` →
+`confirmed` with the payment id; (2) the payment being applied to the Square Order created in
+`start_sale` (Square documents this; unmeasured here); (3) the reader picker against the
+theatre's two real Terminals rather than sandbox test devices. If any of these fails, the
+failure mode is safe by design — rows stay `pending`, nothing is confirmed against a payment
+Square did not report — but the sale would need finishing by hand. When the first counter card
+sale is attempted, treat it as the test: rows `pending` → `confirmed`, Square order with line
+items, and the reader prompting at all.
+
 **Follow-ups, in production (22 Sep 2026, PR #320 `28c06b6`; Worker `2aae61e7…` → `4e7a02a2-5de0-41b6-bc3f-f1204f364bf9`; migration then site; all 16 upcoming showings re-quoted fine after the migration):**
 - Comps go through `create_ticket_order` (`payment_method = 'comp'`, recipient name required; staff,
   or the host of that showing). Both remaining INSERT policies on `tickets` are dropped — the hosts'
