@@ -57,12 +57,18 @@ export async function fetchDiscountRules(showing: {
     : ['movie_id', showing.movie_id];
 
   try {
-    const table = () => (supabase as any).from('ticket_discounts').select(COLUMNS);
-    const [own, shared] = await Promise.all([
-      table().eq('showing_id', showing.id),
-      production[1] ? table().eq(production[0], production[1]) : Promise.resolve({ data: [] }),
-    ]);
-    const rows: DiscountRule[] = [...(own.data ?? []), ...(shared.data ?? [])];
+    // The scope column is one of four; naming it dynamically sends the query
+    // builder's generics into a loop, so the column is spelt out per branch.
+    const own = supabase.from('ticket_discounts').select(COLUMNS).eq('showing_id', showing.id);
+    const shared = !production[1]
+      ? Promise.resolve({ data: [] as DiscountRule[] })
+      : production[0] === 'event_id'
+      ? supabase.from('ticket_discounts').select(COLUMNS).eq('event_id', production[1])
+      : production[0] === 'live_performance_id'
+      ? supabase.from('ticket_discounts').select(COLUMNS).eq('live_performance_id', production[1])
+      : supabase.from('ticket_discounts').select(COLUMNS).eq('movie_id', production[1]);
+    const [o, sh] = await Promise.all([own, shared]);
+    const rows = [...((o.data ?? []) as DiscountRule[]), ...((sh.data ?? []) as DiscountRule[])];
     return usableRules(rows, Date.now());
   } catch (err) {
     console.warn('[discounts] could not load rules; quoting full price', err);

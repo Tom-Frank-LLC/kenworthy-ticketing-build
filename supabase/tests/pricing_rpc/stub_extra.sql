@@ -20,3 +20,9 @@ CREATE FUNCTION public.showing_ends_at(s public.showings) RETURNS timestamptz LA
 CREATE FUNCTION public.door_grace_window() RETURNS interval LANGUAGE sql IMMUTABLE AS $$ SELECT interval '30 minutes' $$;
 -- auth.role() is driven by a GUC, like auth.uid().
 CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$ SELECT current_setting('test.authrole', true) $$;
+-- Hosts (for comps through create_ticket_order): a stand-in for the real
+-- is_host_of_showing, driven by a table the test fills.
+CREATE TABLE public.host_assignments (user_id uuid, showing_id uuid);
+CREATE FUNCTION public.is_host_of_showing(_user_id uuid, _showing_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT EXISTS (SELECT 1 FROM public.host_assignments WHERE user_id = _user_id AND showing_id = _showing_id) $$;
+ALTER TABLE public.tickets ADD COLUMN comp_recipient_name text, ADD COLUMN comp_recipient_email text, ADD COLUMN issued_by_user_id uuid;

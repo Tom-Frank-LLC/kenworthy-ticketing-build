@@ -167,15 +167,41 @@ BEGIN
   PERFORM set_config('test.authrole', 'service_role', false);
 END $$;
 
--- 7. The policy: a direct paid insert by staff is refused; a comp is not.
+-- 6b. Comps through the function.
+DO $$
+DECLARE m record; got text; n int;
+BEGIN
+  SELECT * INTO m FROM public.mk(ARRAY[900,900]::bigint[]);
+  INSERT INTO public.host_assignments VALUES ('00000000-0000-0000-0000-000000000003', m.showing);
+
+  PERFORM set_config('test.authrole', 'authenticated', false); PERFORM set_config('test.role', 'staff', false); PERFORM set_config('test.uid', '00000000-0000-0000-0000-000000000002', false);
+  got := public.try_sql(format($q$SELECT * FROM public.create_ticket_order(%L, '[{},{}]', 'comp', '00000000-0000-0000-0000-000000000002', 'comp-1', 'confirmed', NULL, NULL, NULL, 'Guest Name', 'guest@example.com')$q$, m.showing));
+  PERFORM public.expect('staff can issue comps through the function', got, 'ok');
+  SELECT count(*) INTO n FROM public.tickets WHERE order_token = 'comp-1' AND payment_method = 'comp' AND total_price = 0 AND comp_recipient_name = 'Guest Name' AND qr_code LIKE 'COMP-%' AND issued_by_user_id = '00000000-0000-0000-0000-000000000002';
+  INSERT INTO public.results (name, pass, detail) VALUES ('...two $0 comp rows, named, COMP- coded, issuer recorded', n = 2, n::text);
+  got := public.try_sql(format($q$SELECT * FROM public.create_ticket_order(%L, '[{}]', 'comp', '00000000-0000-0000-0000-000000000002', 'comp-2', 'confirmed', NULL, NULL, NULL, '   ', NULL)$q$, m.showing));
+  PERFORM public.expect('a comp needs a recipient name', got, 'PT400');
+
+  -- a host: comps for an assigned showing, nothing else
+  PERFORM set_config('test.role', '', false); PERFORM set_config('test.uid', '00000000-0000-0000-0000-000000000003', false);
+  got := public.try_sql(format($q$SELECT * FROM public.create_ticket_order(%L, '[{}]', 'comp', '00000000-0000-0000-0000-000000000003', 'comp-host', 'confirmed', NULL, NULL, NULL, 'Host Guest', NULL)$q$, m.showing));
+  PERFORM public.expect('a host can comp their own showing', got, 'ok');
+  got := public.try_sql(format($q$SELECT * FROM public.create_ticket_order(%L, '[{}]', 'cash', '00000000-0000-0000-0000-000000000003', 'host-cash')$q$, m.showing));
+  PERFORM public.expect('...but cannot sell', got, '42501');
+  got := public.try_sql($q$SELECT * FROM public.create_ticket_order('00000000-0000-0000-0000-0000000000f1', '[{}]', 'comp', '00000000-0000-0000-0000-000000000003', 'host-other', 'confirmed', NULL, NULL, NULL, 'X', NULL)$q$);
+  PERFORM public.expect('...nor comp a showing they are not assigned to', got, '42501');
+  PERFORM set_config('test.authrole', 'service_role', false); PERFORM set_config('test.uid', '', false);
+END $$;
+
+-- 7. No INSERT policy remains: a direct insert by staff is refused, comp or not.
 GRANT INSERT, SELECT ON public.results TO authenticated; GRANT USAGE ON SEQUENCE public.results_n_seq TO authenticated;
 GRANT SELECT, INSERT ON public.tickets TO authenticated; GRANT SELECT ON public.showings, public.showing_price_tiers TO authenticated;
 ALTER TABLE public.tickets ENABLE ROW LEVEL SECURITY;
 SET ROLE authenticated; SELECT set_config('test.role', 'staff', false); SELECT set_config('test.authrole', 'authenticated', false);
 SELECT public.expect('a staff bundle can no longer insert a paid row directly', public.try_sql($q$
   INSERT INTO public.tickets (showing_id, price, tax_amount, total_price, payment_method, order_token) VALUES ('00000000-0000-0000-0000-0000000000f1', 1, 0, 1, 'cash', 'direct')$q$), '42501');
-SELECT public.expect('...but can still issue a comp directly', public.try_sql($q$
-  INSERT INTO public.tickets (showing_id, price, tax_amount, total_price, payment_method, order_token) VALUES ('00000000-0000-0000-0000-0000000000f1', 0, 0, 0, 'comp', 'comp-direct')$q$), 'ok');
+SELECT public.expect('...and neither can a direct comp any more', public.try_sql($q$
+  INSERT INTO public.tickets (showing_id, price, tax_amount, total_price, payment_method, order_token) VALUES ('00000000-0000-0000-0000-0000000000f1', 0, 0, 0, 'comp', 'comp-direct')$q$), '42501');
 RESET ROLE;
 
 -- 8. ticket_discounts: its own constraints and RLS (moved from the retired

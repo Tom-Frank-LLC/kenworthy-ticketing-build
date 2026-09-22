@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -1772,6 +1772,84 @@ export type Database = {
         }
         Relationships: []
       }
+      poster_restore_plan: {
+        Row: {
+          approved: boolean | null
+          attached_at: string | null
+          attached_image_id: string | null
+          category: string | null
+          confidence: string | null
+          created_at: string
+          error: string | null
+          item_name: string
+          poster_url: string | null
+          source: string | null
+          source_ref: string | null
+          source_title: string | null
+          square_catalog_id: string
+          title_key: string | null
+        }
+        Insert: {
+          approved?: boolean | null
+          attached_at?: string | null
+          attached_image_id?: string | null
+          category?: string | null
+          confidence?: string | null
+          created_at?: string
+          error?: string | null
+          item_name: string
+          poster_url?: string | null
+          source?: string | null
+          source_ref?: string | null
+          source_title?: string | null
+          square_catalog_id: string
+          title_key?: string | null
+        }
+        Update: {
+          approved?: boolean | null
+          attached_at?: string | null
+          attached_image_id?: string | null
+          category?: string | null
+          confidence?: string | null
+          created_at?: string
+          error?: string | null
+          item_name?: string
+          poster_url?: string | null
+          source?: string | null
+          source_ref?: string | null
+          source_title?: string | null
+          square_catalog_id?: string
+          title_key?: string | null
+        }
+        Relationships: []
+      }
+      poster_source_wordpress: {
+        Row: {
+          event_date: string | null
+          event_id: number
+          fetched_at: string
+          poster_url: string | null
+          title: string
+          title_key: string
+        }
+        Insert: {
+          event_date?: string | null
+          event_id: number
+          fetched_at?: string
+          poster_url?: string | null
+          title: string
+          title_key: string
+        }
+        Update: {
+          event_date?: string | null
+          event_id?: number
+          fetched_at?: string
+          poster_url?: string | null
+          title?: string
+          title_key?: string
+        }
+        Relationships: []
+      }
       press_articles: {
         Row: {
           created_at: string
@@ -2797,6 +2875,72 @@ export type Database = {
         }
         Relationships: []
       }
+      square_catalog_snapshot_20260814: {
+        Row: {
+          category: string
+          likely_overwritten: boolean | null
+          name: string
+          price: number | null
+          square_catalog_id: string
+          square_synced_at: string | null
+          square_variation_id: string | null
+          square_version: number | null
+          updated_at: string | null
+          was_active: boolean | null
+        }
+        Insert: {
+          category: string
+          likely_overwritten?: boolean | null
+          name: string
+          price?: number | null
+          square_catalog_id: string
+          square_synced_at?: string | null
+          square_variation_id?: string | null
+          square_version?: number | null
+          updated_at?: string | null
+          was_active?: boolean | null
+        }
+        Update: {
+          category?: string
+          likely_overwritten?: boolean | null
+          name?: string
+          price?: number | null
+          square_catalog_id?: string
+          square_synced_at?: string | null
+          square_variation_id?: string | null
+          square_version?: number | null
+          updated_at?: string | null
+          was_active?: boolean | null
+        }
+        Relationships: []
+      }
+      square_item_images_20260815: {
+        Row: {
+          applied_at: string | null
+          captured_at: string
+          image_ids_after: Json | null
+          image_ids_before: Json
+          name: string | null
+          square_catalog_id: string
+        }
+        Insert: {
+          applied_at?: string | null
+          captured_at?: string
+          image_ids_after?: Json | null
+          image_ids_before?: Json
+          name?: string | null
+          square_catalog_id: string
+        }
+        Update: {
+          applied_at?: string | null
+          captured_at?: string
+          image_ids_after?: Json | null
+          image_ids_before?: Json
+          name?: string | null
+          square_catalog_id?: string
+        }
+        Relationships: []
+      }
       square_link_dismissals: {
         Row: {
           created_at: string
@@ -2831,6 +2975,87 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      square_orphan_images: {
+        Row: {
+          image_id: string
+          image_name: string | null
+          image_url: string | null
+          indexed_at: string
+          match_kind: string | null
+          matched_item_id: string | null
+          matched_item_name: string | null
+          name_key: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          image_id: string
+          image_name?: string | null
+          image_url?: string | null
+          indexed_at?: string
+          match_kind?: string | null
+          matched_item_id?: string | null
+          matched_item_name?: string | null
+          name_key?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          image_id?: string
+          image_name?: string | null
+          image_url?: string | null
+          indexed_at?: string
+          match_kind?: string | null
+          matched_item_id?: string | null
+          matched_item_name?: string | null
+          name_key?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      square_poster_matches_20260815: {
+        Row: {
+          approved: boolean | null
+          candidates: Json | null
+          created_at: string
+          extracted_title: string | null
+          extracted_year: number | null
+          image_id: string
+          image_url: string | null
+          match_kind: string | null
+          matched_item_id: string | null
+          matched_item_name: string | null
+          model_confidence: string | null
+          reviewed: boolean
+        }
+        Insert: {
+          approved?: boolean | null
+          candidates?: Json | null
+          created_at?: string
+          extracted_title?: string | null
+          extracted_year?: number | null
+          image_id: string
+          image_url?: string | null
+          match_kind?: string | null
+          matched_item_id?: string | null
+          matched_item_name?: string | null
+          model_confidence?: string | null
+          reviewed?: boolean
+        }
+        Update: {
+          approved?: boolean | null
+          candidates?: Json | null
+          created_at?: string
+          extracted_title?: string | null
+          extracted_year?: number | null
+          image_id?: string
+          image_url?: string | null
+          match_kind?: string | null
+          matched_item_id?: string | null
+          matched_item_name?: string | null
+          model_confidence?: string | null
+          reviewed?: boolean
+        }
+        Relationships: []
       }
       staff_bios: {
         Row: {
@@ -2906,6 +3131,92 @@ export type Database = {
         }
         Relationships: []
       }
+      ticket_discounts: {
+        Row: {
+          code: string | null
+          created_at: string
+          eligible_tiers: string[] | null
+          ends_at: string | null
+          event_id: string | null
+          id: string
+          is_active: boolean
+          label: string
+          live_performance_id: string | null
+          min_quantity: number
+          movie_id: string | null
+          showing_id: string | null
+          starts_at: string | null
+          type: string
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          eligible_tiers?: string[] | null
+          ends_at?: string | null
+          event_id?: string | null
+          id?: string
+          is_active?: boolean
+          label: string
+          live_performance_id?: string | null
+          min_quantity?: number
+          movie_id?: string | null
+          showing_id?: string | null
+          starts_at?: string | null
+          type: string
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          eligible_tiers?: string[] | null
+          ends_at?: string | null
+          event_id?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          live_performance_id?: string | null
+          min_quantity?: number
+          movie_id?: string | null
+          showing_id?: string | null
+          starts_at?: string | null
+          type?: string
+          updated_at?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_discounts_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_discounts_live_performance_id_fkey"
+            columns: ["live_performance_id"]
+            isOneToOne: false
+            referencedRelation: "live_performances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_discounts_movie_id_fkey"
+            columns: ["movie_id"]
+            isOneToOne: false
+            referencedRelation: "movies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_discounts_showing_id_fkey"
+            columns: ["showing_id"]
+            isOneToOne: false
+            referencedRelation: "showings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tickets: {
         Row: {
           checkout_idempotency_key: string | null
@@ -2916,8 +3227,12 @@ export type Database = {
           confirmation_dismissed_by: string | null
           confirmation_error: string | null
           confirmation_sent_at: string | null
+          discount_amount: number
+          discount_id: string | null
+          discount_label: string | null
           id: string
           issued_by_user_id: string | null
+          list_price: number | null
           order_token: string
           payment_error: string | null
           payment_method: string
@@ -2949,8 +3264,12 @@ export type Database = {
           confirmation_dismissed_by?: string | null
           confirmation_error?: string | null
           confirmation_sent_at?: string | null
+          discount_amount?: number
+          discount_id?: string | null
+          discount_label?: string | null
           id?: string
           issued_by_user_id?: string | null
+          list_price?: number | null
           order_token?: string
           payment_error?: string | null
           payment_method?: string
@@ -2982,8 +3301,12 @@ export type Database = {
           confirmation_dismissed_by?: string | null
           confirmation_error?: string | null
           confirmation_sent_at?: string | null
+          discount_amount?: number
+          discount_id?: string | null
+          discount_label?: string | null
           id?: string
           issued_by_user_id?: string | null
+          list_price?: number | null
           order_token?: string
           payment_error?: string | null
           payment_method?: string
@@ -3007,6 +3330,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "tickets_discount_id_fkey"
+            columns: ["discount_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_discounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tickets_seat_id_fkey"
             columns: ["seat_id"]
@@ -3273,6 +3603,7 @@ export type Database = {
       audit_is_secret_key: { Args: { p_key: string }; Returns: boolean }
       audit_redact: { Args: { p_value: Json }; Returns: Json }
       audit_uuid_or_null: { Args: { p_text: string }; Returns: string }
+      canonical_tier_name: { Args: { raw: string }; Returns: string }
       check_in_ticket: {
         Args: { p_qr_code: string; p_showing_id?: string }
         Returns: Json
@@ -3289,6 +3620,62 @@ export type Database = {
       configure_square_catalog_guard: {
         Args: { p_service_key: string; p_url: string }
         Returns: string
+      }
+      create_ticket_order: {
+        Args: {
+          p_checkout_idempotency_key?: string
+          p_order_token?: string
+          p_payment_method: string
+          p_showing_id: string
+          p_sms_consent?: boolean
+          p_square_payment_id?: string
+          p_status?: string
+          p_tickets: Json
+          p_user_id: string
+        }
+        Returns: {
+          checkout_idempotency_key: string | null
+          comp_recipient_email: string | null
+          comp_recipient_name: string | null
+          confirmation_channel: string | null
+          confirmation_dismissed_at: string | null
+          confirmation_dismissed_by: string | null
+          confirmation_error: string | null
+          confirmation_sent_at: string | null
+          discount_amount: number
+          discount_id: string | null
+          discount_label: string | null
+          id: string
+          issued_by_user_id: string | null
+          list_price: number | null
+          order_token: string
+          payment_error: string | null
+          payment_method: string
+          price: number
+          processing_fee: number
+          purchased_at: string
+          qr_code: string | null
+          refunded_at: string | null
+          scanned_at: string | null
+          seat_id: string | null
+          showing_id: string
+          sms_consent: boolean | null
+          square_payment_id: string | null
+          square_receipt_url: string | null
+          square_refund_id: string | null
+          status: string
+          tax_amount: number
+          tax_rate: number
+          tier_id: string | null
+          total_price: number
+          user_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tickets"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       door_grace_window: { Args: never; Returns: string }
       get_contract_signature: {
@@ -3397,7 +3784,23 @@ export type Database = {
         Args: { _showing_id: string; _user_id: string }
         Returns: boolean
       }
+      is_protected_user: { Args: { _user_id: string }; Returns: boolean }
       log_failed_staff_login: { Args: { p_email: string }; Returns: undefined }
+      order_tax_cents: { Args: { base_cents: number }; Returns: number }
+      price_ticket_order: {
+        Args: { p_channel?: string; p_showing_id: string; p_tickets: Json }
+        Returns: Database["public"]["CompositeTypes"]["priced_ticket"][]
+        SetofOptions: {
+          from: "*"
+          to: "priced_ticket"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      processing_fee_cents: {
+        Args: { channel: string; net_cents: number }
+        Returns: number
+      }
       qbo_disconnect: { Args: { p_environment?: string }; Returns: boolean }
       qbo_get_active_tokens: {
         Args: { p_environment?: string }
@@ -3430,6 +3833,16 @@ export type Database = {
         }
         Returns: string
       }
+      quote_ticket_order: {
+        Args: { p_channel?: string; p_showing_id: string; p_tickets: Json }
+        Returns: Database["public"]["CompositeTypes"]["priced_ticket"][]
+        SetofOptions: {
+          from: "*"
+          to: "priced_ticket"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       redeem_film_pass: {
         Args: { p_amount: number; p_pass_id: string; p_ticket_id: string }
         Returns: boolean
@@ -3438,6 +3851,7 @@ export type Database = {
         Args: { p_source_key: string; p_source_type: string }
         Returns: string
       }
+      round_half_even_div: { Args: { d: number; n: number }; Returns: number }
       run_square_catalog_guard_check: { Args: never; Returns: string }
       search_film_passes: {
         Args: {
@@ -3471,6 +3885,17 @@ export type Database = {
       showing_ends_at: {
         Args: { s: Database["public"]["Tables"]["showings"]["Row"] }
         Returns: string
+      }
+      ticket_discount_cents: {
+        Args: {
+          p_eligible_tiers?: string[]
+          p_list_cents: number[]
+          p_min_quantity: number
+          p_tiers?: string[]
+          p_type: string
+          p_value: number
+        }
+        Returns: number
       }
       ticket_hold_window: { Args: never; Returns: string }
     }
@@ -3510,7 +3935,28 @@ export type Database = {
         | "archived"
     }
     CompositeTypes: {
-      [_ in never]: never
+      priced_ticket: {
+        seq: number | null
+        seat_id: string | null
+        tier_id: string | null
+        tier_name: string | null
+        list_price: number | null
+        discount_amount: number | null
+        price: number | null
+        tax_amount: number | null
+        total_price: number | null
+        discount_id: string | null
+        discount_label: string | null
+        order_list_subtotal: number | null
+        order_discount: number | null
+        order_subtotal: number | null
+        order_tax: number | null
+        order_total: number | null
+        order_processing_fee: number | null
+        order_grand_total: number | null
+        production_title: string | null
+        production_category: string | null
+      }
     }
   }
 }
@@ -3523,12 +3969,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3552,11 +3998,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3577,11 +4023,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3602,11 +4048,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3619,11 +4065,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

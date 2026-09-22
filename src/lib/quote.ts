@@ -53,7 +53,7 @@ export function quoteFromRows(rows: any[]): OrderQuote {
 }
 
 export async function fetchQuote(showingId: string, tickets: TicketDescriptor[], channel: QuoteChannel): Promise<{ quote: OrderQuote } | { error: string }> {
-  const { data, error } = await (supabase as any).rpc('quote_ticket_order', {
+  const { data, error } = await supabase.rpc('quote_ticket_order', {
     p_showing_id: showingId,
     p_tickets: tickets.map((t) => ({ seat_id: t.seat_id ?? null, tier_id: t.tier_id ?? null })),
     p_channel: channel,

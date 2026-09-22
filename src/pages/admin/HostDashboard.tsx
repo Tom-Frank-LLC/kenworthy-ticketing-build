@@ -445,22 +445,24 @@ function CompTicketIssuer({ showings, onChanged }: { showings: any[]; onChanged:
     if (!showingId || !name) { toast.error('Pick a showing and enter a name'); return; }
     const count = Math.max(1, parseInt(qty, 10) || 1);
     setIssuing(true);
-    const rows = Array.from({ length: count }).map(() => ({
-      user_id: user.id,
-      showing_id: showingId,
-      payment_method: 'comp',
-      qr_code: `COMP-${crypto.randomUUID()}`,
-      comp_recipient_name: name,
-      comp_recipient_email: email || null,
-      issued_by_user_id: user.id,
-      price: 0,
-      tax_rate: 0,
-      tax_amount: 0,
-      total_price: 0,
-      status: 'confirmed',
-    }));
-    const { error } = await supabase.from('tickets').insert(rows);
+    // Written by the same function every ticket row goes through. There is
+    // no INSERT policy on tickets any more; the function checks that the
+    // caller is staff or the host of this showing, and the showing's own
+    // rules (no ticket needed, already happened) apply to a comp as to a sale.
+    const { data, error } = await supabase.rpc('create_ticket_order', {
+      p_showing_id: showingId,
+      p_tickets: Array.from({ length: count }, () => ({})),
+      p_payment_method: 'comp',
+      p_user_id: user.id,
+      p_comp_recipient_name: name,
+      p_comp_recipient_email: email || null,
+    });
     setIssuing(false);
+    if (!error && (data ?? []).length !== count) {
+      toast.error(`Only ${(data ?? []).length} of ${count} comps were recorded.`);
+      onChanged();
+      return;
+    }
     if (error) toast.error(error.message);
     else {
       toast.success(`Issued ${count} comp ticket${count > 1 ? 's' : ''}`);

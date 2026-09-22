@@ -201,6 +201,17 @@ the reader's id from Square's Devices list before relying on counter card sales 
 addressed a fake device, so this was already true. The first real card sale at the counter is the
 end-to-end check of `confirm_sale`: rows `pending` → `confirmed`, Square order with line items.
 
-**Later:** comps through `create_ticket_order` (decision 3); regenerate `types.ts` from a clean
-database so the `(supabase as any).rpc` casts can go.
+**Follow-ups, done (22 Sep 2026):**
+- Comps go through `create_ticket_order` (`payment_method = 'comp'`, recipient name required; staff,
+  or the host of that showing). Both remaining INSERT policies on `tickets` are dropped — the hosts'
+  one had never been narrowed, so a host could have written a paid row directly. No browser can
+  insert a ticket row now; `admit_with_film_pass` is SECURITY DEFINER and unaffected. Harness 100.
+  Staging as a host who is not staff: direct comp → 403, direct paid → 403, comp through the
+  function → 2 rows, cash through the function → 403.
+- `types.ts` regenerated from **production's** schema (its migration history equals main). The
+  casts this work introduced are gone; ~75 older `(supabase as any)` casts from other work remain.
+  **Found:** production has three tables with no migration and absent from staging —
+  `poster_restore_plan`, `poster_source_wordpress`, `square_orphan_images` (the poster-restore
+  work). They are in the generated types because they are live; someone should either write the
+  migration or drop them.
 

@@ -74,7 +74,7 @@ export default function DiscountRulesEditor({ scope, audience }: {
   /** "this showing" / "every showing of this event" — completes the help line. */
   audience: string;
 }) {
-  const [scopeColumn, scopeId] = Object.entries(scope)[0] as [string, string];
+  const [scopeColumn, scopeId] = Object.entries(scope)[0] as ['showing_id' | 'movie_id' | 'event_id' | 'live_performance_id', string];
 
   const [rules, setRules] = useState<RuleRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,10 +93,12 @@ export default function DiscountRulesEditor({ scope, audience }: {
   const [tierNames, setTierNames] = useState<string[]>([]);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
 
-  const table = () => (supabase as any).from('ticket_discounts');
+  const table = () => supabase.from('ticket_discounts');
 
   const load = useCallback(async () => {
-    const { data, error } = await table().select(COLUMNS).eq(scopeColumn, scopeId).order('created_at');
+    // The scope column is one of four; a dynamic column name sends the query
+    // builder's generics into a loop, so it is matched with a filter string.
+    const { data, error } = await table().select(COLUMNS).filter(scopeColumn, 'eq', scopeId).order('created_at');
     if (error) toast.error('Could not load discounts: ' + error.message);
     setRules((data ?? []).map((r: any) => ({ ...r, value: Number(r.value) })));
     setLoading(false);
@@ -114,7 +116,7 @@ export default function DiscountRulesEditor({ scope, audience }: {
       let showingIds: string[] = [];
       if (scopeColumn === 'showing_id') showingIds = [scopeId];
       else {
-        const { data } = await supabase.from('showings').select('id').eq(scopeColumn as 'movie_id', scopeId);
+        const { data } = await supabase.from('showings').select('id').filter(scopeColumn, 'eq', scopeId);
         showingIds = (data ?? []).map((s) => s.id);
       }
       if (showingIds.length === 0) { if (!cancelled) setTierNames([]); return; }
@@ -124,7 +126,7 @@ export default function DiscountRulesEditor({ scope, audience }: {
       // the box an admin ticks is the name a sale will be checked against.
       const raw = [...new Set((data ?? []).map((t) => t.tier_name).filter(Boolean))];
       const canonical = await Promise.all(raw.map(async (r) => {
-        const { data: c } = await (supabase as any).rpc('canonical_tier_name', { raw: r });
+        const { data: c } = await supabase.rpc('canonical_tier_name', { raw: r });
         return typeof c === 'string' ? c : r;
       }));
       const names = [...new Set(canonical.filter(Boolean))].sort();

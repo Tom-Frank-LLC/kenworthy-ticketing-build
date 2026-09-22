@@ -27,7 +27,7 @@ vi.mock('sonner', () => ({
 vi.mock('@/integrations/supabase/client', () => {
   const from = (table: string) => {
     if (table === 'showings') {
-      const c: any = { select: () => c, eq: () => c, then: (r: (v: unknown) => unknown) => r({ data: [{ id: 's-1' }], error: null }) };
+      const c: any = { select: () => c, eq: () => c, filter: () => c, then: (r: (v: unknown) => unknown) => r({ data: [{ id: 's-1' }], error: null }) };
       return c;
     }
     if (table === 'showing_price_tiers') {
@@ -40,6 +40,7 @@ vi.mock('@/integrations/supabase/client', () => {
       select: () => chain,
       order: () => chain,
       eq: (col: string, val: string) => { if (col === 'id') id = val; return chain; },
+      filter: () => chain,
       insert: (p: any) => { op = 'insert'; payload = p; return chain; },
       update: (p: any) => { op = 'update'; payload = p; return chain; },
       delete: () => { op = 'delete'; return chain; },
