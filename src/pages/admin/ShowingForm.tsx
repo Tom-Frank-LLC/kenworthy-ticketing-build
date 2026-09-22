@@ -18,7 +18,7 @@ import {
   instantToVenueLocalInput,
   venueLocalToInstant,
 } from '@/lib/datetime';
-import { DEFAULT_SHOWING_MINUTES } from '@/lib/purchasable';
+import { DEFAULT_SHOWING_MINUTES, ticketsSoldHere } from '@/lib/purchasable';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { squareSaveOutcome } from '@/lib/squareLink';
 import { setShowingPriceTiers } from '@/lib/priceTiers';
@@ -213,7 +213,7 @@ export default function ShowingForm() {
       fetchAllRows((from, to) =>
         supabase
           .from('movies')
-          .select('id, title, is_active, release_year, duration_minutes')
+          .select('id, title, is_active, release_year, duration_minutes, ticket_type, rsvp_url')
           .order('title')
           .order('id')
           .range(from, to)
@@ -562,6 +562,25 @@ export default function ShowingForm() {
   const noTicket = noTicketRequired && isFreeShowing;
 
   /**
+   * The production is not ticketed here — sold through an outside site, or
+   * listed for information only. Unlike a non-ticketed event, which the picker
+   * above leaves out, a film like this still takes showings: the dates are
+   * real and belong on the calendar, and the showing row is what puts them
+   * there. What it cannot take is anything that describes a sale — a price,
+   * tiers, assigned seats, passes, a buyer limit, a sold-out notice, a Square
+   * item — because price_ticket_order refuses every sale against it.
+   *
+   * So below, `sellsNothing` is what a walk-in night and this have in common,
+   * and it gates the sale-shaped parts of the form and the save. `noTicket`
+   * alone still decides `no_ticket_required`: this is not a walk-in night, and
+   * writing the flag would tell the site "Free — no ticket needed", which is a
+   * different fact from "tickets are sold over there".
+   */
+  const selectedItem = currentItems.find((item: any) => item.id === itemId);
+  const notSoldHere = !!selectedItem && !ticketsSoldHere(selectedItem);
+  const sellsNothing = noTicket || notSoldHere;
+
+  /**
    * The shared config one showing is written from, plus the date it is for.
    *
    * Built per showtime rather than held as one object, but from the same state
@@ -595,7 +614,7 @@ export default function ShowingForm() {
     // one to. Forced rather than merely hidden, so that flipping an
     // assigned-seating showing to no-ticket does not leave a seat map behind
     // that the page would try to render with nothing to sell from it.
-    requires_seat_selection: !noTicket && venueHasSeatMap && requiresSeatSelection,
+    requires_seat_selection: !sellsNothing && venueHasSeatMap && requiresSeatSelection,
     is_featured: isFeatured,
     no_ticket_required: noTicket,
     // Forced false on a walk-in night, for the same reason the price and the
@@ -603,7 +622,7 @@ export default function ShowingForm() {
     // and leaving a stale true behind would print "Sold Out" over a screening
     // anyone can attend. The readers guard against it too — this is the half
     // that stops the contradiction being written down.
-    manually_sold_out: !noTicket && manuallySoldOut,
+    manually_sold_out: !sellsNothing && manuallySoldOut,
     // NULL is "no cap" (capacity still applies). A blank or nonsense number falls
     // back to the house default rather than to unlimited: removing the limit has
     // to be the box somebody ticked, never the result of a typo.
@@ -665,9 +684,10 @@ export default function ShowingForm() {
     // every showing that had sold a ticket, and the insert that followed
     // appended a second copy of every tier. See
     // docs/FINDINGS-duplicate-price-tiers.md.
-    if (noTicket) {
+    if (sellsNothing) {
       // Cleared, not merely skipped. A showing flipped from tiered-and-priced
-      // to walk-in would otherwise keep its old tiers: rows that sell nothing
+      // to walk-in (or whose film moved its ticketing elsewhere) would
+      // otherwise keep its old tiers: rows that sell nothing
       // (the checkout refuses the showing outright) but that make the showing
       // read as priced the next time this form loads it. A tier that has sold
       // is retired rather than removed, so its tickets keep their tier.
@@ -722,7 +742,7 @@ export default function ShowingForm() {
       // special-cased inside admit_with_film_pass().
       await setShowingEligibility(
         showingId,
-        !noTicket && passEligible ? eligiblePassTypeIds : [],
+        !sellsNothing && passEligible ? eligiblePassTypeIds : [],
       );
     } catch (err) {
       const why = err instanceof Error ? err.message : 'unknown error';
@@ -753,7 +773,9 @@ export default function ShowingForm() {
     // reporting this exists to feed has nothing to report for a night that
     // takes no money. Returning null is "no shortfall to report", which is
     // exactly right — not deploying an item here is the intended outcome.
-    if (noTicket) return null;
+    // The same for a film ticketed elsewhere: Square would hold a variation
+    // that no order here can ever reference.
+    if (sellsNothing) return null;
 
     try {
       const { data: sq, error: sqErr } = await supabase.functions.invoke('square-showing-variations', {
@@ -847,11 +869,11 @@ export default function ShowingForm() {
     e.preventDefault();
     if (!itemId) { toast.error('Please select an item'); return; }
 
-    // `!noTicket` for the same reason the column is forced false: a walk-in
+    // `!sellsNothing` for the same reason the column is forced false: a walk-in
     // showing has no seats to price, and letting the seat editor validate and
     // persist against one would write per-seat tiers for tickets that can never
     // exist.
-    const assignedSeating = !noTicket && venueHasSeatMap && requiresSeatSelection;
+    const assignedSeating = !sellsNothing && venueHasSeatMap && requiresSeatSelection;
 
     // Checked before any insert below. Failing afterwards would leave created
     // showings behind with the form still on screen, and a second press of the
@@ -966,7 +988,7 @@ export default function ShowingForm() {
   // `!noTicket` for the same reason the switch is hidden below: a walk-in
   // showing sells no seats, so the per-seat pricing column has nothing to
   // price.
-  const showSeatOverride = !noTicket && venueHasSeatMap && requiresSeatSelection;
+  const showSeatOverride = !sellsNothing && venueHasSeatMap && requiresSeatSelection;
 
 
   return (
@@ -1168,7 +1190,7 @@ export default function ShowingForm() {
                 screening one night and a reserved-seat performance the next.
                 Only offered when the chosen venue has a seat map to reserve
                 from — without one there is nothing to pick. */}
-            {venueHasSeatMap && !noTicket && (
+            {venueHasSeatMap && !sellsNothing && (
               <div className="space-y-2 border-t border-border pt-4">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input
@@ -1319,6 +1341,35 @@ export default function ShowingForm() {
               </p>
             </div>
 
+            {/* Not ticketed here. Everything from the price down describes a
+                sale, and this film's sale happens on somebody else's site (or
+                nowhere). Said once, in the place the price would have been,
+                so the absence of the pricing controls reads as a fact about
+                the film rather than a form that failed to load. */}
+            {notSoldHere && (
+              <div className="space-y-1 border-t border-border pt-4" role="status">
+                <p className="font-semibold">
+                  {selectedItem?.ticket_type === 'rsvp' ? 'Ticketed elsewhere' : 'Info only — not ticketed'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedItem?.ticket_type === 'rsvp' ? (
+                    <>
+                      The site lists this date and sends people to{' '}
+                      <a href={selectedItem.rsvp_url} target="_blank" rel="noopener noreferrer" className="underline">
+                        {selectedItem.rsvp_url}
+                      </a>{' '}
+                      for tickets.
+                    </>
+                  ) : (
+                    'The site lists this date with no ticket link.'
+                  )}{' '}
+                  Nothing is priced or sold here, no passes are accepted, and no Square item is
+                  created. Change that on the film itself.
+                </p>
+              </div>
+            )}
+
+            {!notSoldHere && (
             <div className="space-y-2">
               {/* Labelled the way the runtime field beside it is: the <Label>
                   was rendering unattached, so a screen reader announced the
@@ -1336,6 +1387,7 @@ export default function ShowingForm() {
                 Fallback price when no tiers are used
               </p>
             </div>
+            )}
 
             {/* The two kinds of free.
 
@@ -1349,7 +1401,7 @@ export default function ShowingForm() {
                 goes, taking the flag with it — `noTicket` is derived, so the
                 price always wins over a box ticked earlier. Applies to every
                 showtime in a batch, like the rest of these settings. */}
-            {isFreeShowing && (
+            {isFreeShowing && !notSoldHere && (
               <div className="space-y-3 border-t border-border pt-4">
                 <Label className="text-base font-semibold">This showing is free</Label>
                 <label className="flex items-start gap-2 text-sm cursor-pointer">
@@ -1409,7 +1461,7 @@ export default function ShowingForm() {
                 Deliberately not the same control as Active. Deactivating hides
                 the showing from the site; this leaves it listed and readable
                 and only stops it selling. */}
-            {!noTicket && (
+            {!sellsNothing && (
               <div className="space-y-3 border-t border-border pt-4">
                 <label className="flex items-start gap-2 text-sm cursor-pointer">
                   <input
@@ -1453,7 +1505,7 @@ export default function ShowingForm() {
             {/* How many tickets one buyer may hold online. Hidden on a walk-in night:
                 there is nothing to buy. Not applied at the box office, which sells
                 whatever the house will hold. */}
-            {!noTicket && (
+            {!sellsNothing && (
               <div className="space-y-2 border-t border-border pt-4">
                 <Label htmlFor="buyer-limit" className="font-semibold">Online ticket limit per buyer</Label>
                 <div className="flex flex-wrap items-center gap-4">
@@ -1490,7 +1542,7 @@ export default function ShowingForm() {
                 a festival pass covering a performance inside its run is the
                 point rather than drift. Which passes work here is the only
                 question left, and it is asked in one place for all three. */}
-            {!noTicket && (
+            {!sellsNothing && (
             <div className="space-y-3 border-t border-border pt-4">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
@@ -1577,7 +1629,7 @@ export default function ShowingForm() {
                 seat editor, which owns both the prices and which seats carry them.
                 Two writers for showing_price_tiers is what let one of them delete
                 the other's work. */}
-            {!noTicket && !(venueHasSeatMap && requiresSeatSelection) && (
+            {!sellsNothing && !(venueHasSeatMap && requiresSeatSelection) && (
             <div className="space-y-3 border-t border-border pt-4">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-semibold">Price Tiers</Label>
@@ -1669,7 +1721,7 @@ export default function ShowingForm() {
           </CardContent>
         </Card>
       )}
-      {savedShowingId && !noTicket && (
+      {savedShowingId && !sellsNothing && (
         <Card className="glass">
           <CardHeader>
             <CardTitle className="font-display">Discounts — This Showing</CardTitle>

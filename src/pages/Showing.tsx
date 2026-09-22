@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Film, Calendar, Clock, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard } from 'lucide-react';
+import { Film, Calendar, Clock, Check, Minus, Plus, MapPin, Sparkles, Music, CreditCard, ExternalLink } from 'lucide-react';
 import { SeatMap } from '@/components/SeatMap';
 import { SalesFinalNote } from '@/components/SalesFinalNote';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
@@ -27,12 +27,15 @@ import { ticketPagePath } from '@/lib/tickets';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
 import {
+  NOT_SOLD_HERE_MESSAGE,
   NO_TICKET_REQUIRED_MESSAGE,
   SHOWING_PASSED_MESSAGE,
+  externalTicketLabel,
   isManuallySoldOut,
   isPast,
   needsNoTicket,
   soldOutMessage,
+  ticketsSoldHere,
 } from '@/lib/purchasable';
 import { showingTitle } from '@/lib/showingTitle';
 import { fetchSiblingShowings } from '@/lib/showtimes';
@@ -42,6 +45,7 @@ import { SITE_URL } from '@/lib/site';
 import { htmlToPlainText, toMetaDescription } from '@/lib/richText';
 import { RichText } from '@/components/RichText';
 import { ShowingUnavailable } from '@/components/ShowingUnavailable';
+import { MOVIE_PUBLIC_COLUMNS } from '@/lib/movieColumns';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -142,6 +146,57 @@ function PassedNotice({ startTime }: { startTime: string }) {
           <Link to="/calendar">Browse the calendar</Link>
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A showing whose tickets are not sold here.
+ *
+ * Two facts share this panel because they share a consequence — nothing to
+ * buy on this page — and differ only in where to point. An RSVP production
+ * (a film sold through a festival's own box office, an event booked on
+ * somebody else's form) gets the outside link, opened in a new tab so this
+ * page, with the date and the venue on it, is still there when they come
+ * back. An info-only one gets the sentence and nothing else: there is no
+ * ticket anywhere, and a button would promise one.
+ *
+ * Presentation, not enforcement. price_ticket_order refuses the sale for a
+ * stale tab or a direct call — the same sentence, so the two agree.
+ */
+function ExternalTicketingPanel({
+  production,
+  productionType,
+}: {
+  production: { ticket_type?: string | null; rsvp_url?: string | null };
+  productionType: ProductionType;
+}) {
+  const external = production.ticket_type === 'rsvp' && !!production.rsvp_url;
+  return (
+    <div
+      role="status"
+      className="rounded-lg border border-border bg-secondary/40 p-6 text-center"
+    >
+      <p className="font-display text-lg font-semibold">{NOT_SOLD_HERE_MESSAGE}</p>
+      {external ? (
+        <>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Tickets for this {productionType === 'movie' ? 'screening' : 'event'} are sold through an outside site.
+          </p>
+          <div className="mt-4">
+            <Button size="lg" asChild>
+              <a href={production.rsvp_url!} target="_blank" rel="noopener noreferrer">
+                {externalTicketLabel(productionType)} <ExternalLink className="h-4 w-4 ml-1" aria-hidden="true" />
+                <span className="sr-only">(opens in a new tab)</span>
+              </a>
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">
+          This {productionType === 'movie' ? 'screening' : 'event'} is listed for information only.
+        </p>
+      )}
     </div>
   );
 }
@@ -570,7 +625,7 @@ export default function Showing() {
       } else {
         productionPromise = supabase
           .from('movies')
-          .select('id,title,description,poster_url,duration_minutes,rating,genre,is_active,created_at,updated_at,trailer_url,is_featured,release_year,release_label,pass_processing_fee')
+          .select(MOVIE_PUBLIC_COLUMNS)
           .eq('id', s.movie_id)
           .single();
       }
@@ -783,6 +838,14 @@ export default function Showing() {
       return;
     }
 
+    // And for a production whose ticketing moved elsewhere while this page was
+    // open. Same shape: the server (price_ticket_order) refuses it regardless;
+    // this gives the stale tab the page's own sentence.
+    if (!ticketsSoldHere(production)) {
+      toast.error(NOT_SOLD_HERE_MESSAGE);
+      return;
+    }
+
     setPurchasing(true);
     try {
       const data = await invokeFunction<{
@@ -967,6 +1030,11 @@ export default function Showing() {
   // ticketed, and the reserve flow it gets is the correct one. See
   // src/lib/purchasable.ts.
   const noTicket = needsNoTicket(showing);
+  // Sold somewhere else, or not at all: the production's answer, so every date
+  // of a festival film says the same thing. Like `noTicket`, this replaces the
+  // purchase panel with a notice and takes the price, the offers and the
+  // sold-out badge with it — all of them describe a sale this page cannot make.
+  const soldHere = ticketsSoldHere(production);
   // Trailer/poster come from the production row we already fetched — no extra
   // query. When neither exists we keep the small type-icon tile instead of
   // reserving a media column for nothing.
@@ -979,7 +1047,9 @@ export default function Showing() {
   // here: the flag requires ticket_price = 0 and the tier trigger refuses a
   // priced tier, so this branch is checked first rather than merged into the
   // ternary below.
-  const priceDisplay = noTicket
+  const priceDisplay = !soldHere
+    ? (production?.ticket_type === 'rsvp' ? 'Tickets sold elsewhere' : 'Not ticketed')
+    : noTicket
     ? 'Free — no ticket needed'
     : hasTiers
       ? `$${Math.min(...priceTiers.map(t => t.price)).toFixed(2)}–$${Math.max(...priceTiers.map(t => t.price)).toFixed(2)}`
@@ -1057,7 +1127,7 @@ export default function Showing() {
                   capacity is not what limits a showing that sells nothing —
                   an old row still flagged for assigned seating would otherwise
                   print "Sold Out" over a screening anyone can walk into. */}
-              {soldOut && !noTicket && (
+              {soldOut && !noTicket && soldHere && (
                 <span className="text-xs bg-destructive/15 text-destructive px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
                   Sold Out
                 </span>
@@ -1094,7 +1164,7 @@ export default function Showing() {
             </div>
             {/* The offer, said once where the price is. Hidden on a walk-in night:
                 there is nothing to buy, so nothing to save on. */}
-            {!noTicket && discountRules.length > 0 && (
+            {!noTicket && soldHere && discountRules.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {discountRules.map((rule) => (
                   <span
@@ -1137,6 +1207,8 @@ export default function Showing() {
           to keep this change legible as the one-line rule it is. */}
       {hasPassed ? (
         <PassedNotice startTime={showing.start_time} />
+      ) : !soldHere ? (
+        <ExternalTicketingPanel production={production} productionType={productionType} />
       ) : noTicket ? (
         <FreeAdmissionPanel
           startTime={showing.start_time}

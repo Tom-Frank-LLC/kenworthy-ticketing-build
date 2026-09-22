@@ -38,6 +38,7 @@ import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { ticketsSoldHere } from '@/lib/purchasable';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { COLLECT_PHONE, CONCESSION_POS_ENABLED } from '@/lib/flags';
 import { formatShowtime } from '@/lib/datetime';
@@ -133,7 +134,7 @@ export default function StaffPOS() {
       const { data } = await fetchAllRows<any, unknown>((from, to) =>
         supabase
           .from('showings')
-          .select('id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee)')
+          .select('id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee, ticket_type)')
           .eq('is_active', true)
           .gte('start_time', new Date().toISOString())
           .order('start_time')
@@ -142,7 +143,13 @@ export default function StaffPOS() {
       );
 
       setShowings(
-        (data || []).map((s: any) => ({
+        (data || [])
+          // A film ticketed elsewhere is not on sale at the counter either:
+          // price_ticket_order refuses it, so listing it here would only
+          // produce that refusal with a patron waiting. Comps for it go
+          // through the comp issuer, which is a different door.
+          .filter((s: any) => !s.movies || ticketsSoldHere(s.movies))
+          .map((s: any) => ({
           id: s.id,
           start_time: s.start_time,
           ticket_price: s.ticket_price,

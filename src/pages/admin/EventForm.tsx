@@ -15,10 +15,11 @@ import { PosterUpload } from '@/components/admin/PosterUpload';
 import { GenreInput } from '@/components/admin/GenreInput';
 import { formatGenres, parseGenres } from '@/lib/genres';
 import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
+import { TicketingModeFields } from '@/components/admin/TicketingModeFields';
 import {
   LEGACY_PERFORMANCE_TYPES,
   LIVE_EVENT_TYPES,
-  TICKETING_MODES,
+  rsvpUrlError,
   type LiveEventType,
   type TicketingMode,
 } from '@/lib/liveEventTypes';
@@ -105,6 +106,8 @@ export default function EventForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!eventType) { toast.error('Choose what kind of event this is'); return; }
+    const linkError = rsvpUrlError(ticketType, rsvpUrl);
+    if (linkError) { toast.error(linkError); return; }
     setSaving(true);
 
     const eventData = {
@@ -117,7 +120,7 @@ export default function EventForm() {
       ticket_type: ticketType,
       // Only meaningful for RSVP. Cleared otherwise so a mode change cannot
       // leave a stale link behind that the site would still render.
-      rsvp_url: ticketType === 'rsvp' ? (rsvpUrl || null) : null,
+      rsvp_url: ticketType === 'rsvp' ? rsvpUrl.trim() : null,
       is_active: isActive,
       trailer_url: trailerUrl || null,
       is_featured: isFeatured,
@@ -168,27 +171,13 @@ export default function EventForm() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="event-ticketing">Ticketing *</Label>
-              <Select value={ticketType} onValueChange={v => setTicketType(v as TicketingMode)}>
-                <SelectTrigger id="event-ticketing"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TICKETING_MODES.map(m => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="font-serif text-xs text-muted-foreground">
-                {TICKETING_MODES.find(m => m.value === ticketType)?.help}
-              </p>
-            </div>
-
-            {ticketType === 'rsvp' && (
-              <div className="space-y-2">
-                <Label htmlFor="event-rsvp-url">RSVP URL</Label>
-                <Input id="event-rsvp-url" value={rsvpUrl} onChange={e => setRsvpUrl(e.target.value)} placeholder="https://..." />
-              </div>
-            )}
+            <TicketingModeFields
+              idPrefix="event"
+              ticketType={ticketType}
+              onTicketTypeChange={setTicketType}
+              rsvpUrl={rsvpUrl}
+              onRsvpUrlChange={setRsvpUrl}
+            />
 
             <div className="space-y-2">
               <Label htmlFor="event-description">Description</Label>

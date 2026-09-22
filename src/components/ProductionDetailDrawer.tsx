@@ -6,7 +6,7 @@ import { Calendar, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
 import { formatShowtime } from '@/lib/datetime';
-import { isPast } from '@/lib/purchasable';
+import { externalTicketLabel, isPast, ticketsSoldHere } from '@/lib/purchasable';
 import { RichText } from '@/components/RichText';
 
 interface ShowingInfo {
@@ -53,6 +53,14 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
   // without a date, and there is nothing to judge it against.
   const rsvpClosed = production.showings.length > 0 && upcoming.length === 0;
 
+  // Sold here, or somewhere else, or not at all. A film ticketed through a
+  // festival's own site still has its dates — they are what the reader opened
+  // this for — so the showtimes list stays; what goes is the price on each
+  // row, which is not ours to print, and the internal buy path the row used
+  // to be a doorway to (the showing page it links to shows the outside link).
+  const soldHere = ticketsSoldHere(production);
+  const external = production.ticket_type === 'rsvp' && !!production.rsvp_url;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" hideClose className="w-full sm:max-w-lg overflow-y-auto p-0">
@@ -91,17 +99,20 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
           {/* Showings come before the synopsis: buying a ticket is the point
               of this drawer, and on a phone a long description pushed every
               showtime below the fold. */}
-          {production.ticket_type === 'rsvp' && production.rsvp_url ? (
+          {external && (
             rsvpClosed ? (
               <p className="text-sm text-muted-foreground">This event has passed.</p>
             ) : (
               <div>
                 <Button size="lg" className="w-full" asChild>
-                  <a href={production.rsvp_url} target="_blank" rel="noopener noreferrer">RSVP Now</a>
+                  <a href={production.rsvp_url!} target="_blank" rel="noopener noreferrer">
+                    {externalTicketLabel(production.type)}
+                  </a>
                 </Button>
               </div>
             )
-          ) : production.ticket_type === 'info_only' ? null : upcoming.length > 0 ? (
+          )}
+          {upcoming.length > 0 ? (
             <div className="space-y-3">
               <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Upcoming Showings</h3>
               <div className="space-y-2">
@@ -136,16 +147,16 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
                       </span>
                       <span className="flex items-center gap-2 shrink-0">
                         <span className="text-muted-foreground">{formatShowtime(showing.start_time, 'h:mm a')}</span>
-                        <Badge variant="secondary">${showing.ticket_price.toFixed(2)}</Badge>
+                        {soldHere && <Badge variant="secondary">${showing.ticket_price.toFixed(2)}</Badge>}
                       </span>
                     </Link>
                   </Button>
                 ))}
               </div>
             </div>
-          ) : (
+          ) : soldHere ? (
             <p className="text-sm text-muted-foreground">No upcoming showings scheduled.</p>
-          )}
+          ) : null /* the standalone RSVP / info-only kind: dated by its link, or not at all */}
 
           <RichText
             html={production.description}

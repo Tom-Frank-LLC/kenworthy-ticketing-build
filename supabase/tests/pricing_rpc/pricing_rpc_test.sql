@@ -133,6 +133,24 @@ INSERT INTO public.showings (id, ticket_price, manually_sold_out, sold_out_messa
 SELECT public.expect('manually sold out, with the admin''s own sentence', public.try_sql($q$SELECT * FROM public.quote_ticket_order('00000000-0000-0000-0000-0000000000e3', '[{}]')$q$), 'PT409: Booked privately.');
 INSERT INTO public.showings (id, ticket_price, is_active) VALUES ('00000000-0000-0000-0000-0000000000e4', 8, false);
 SELECT public.expect('inactive showing', public.try_sql($q$SELECT * FROM public.quote_ticket_order('00000000-0000-0000-0000-0000000000e4', '[{}]')$q$), 'PT409: This showing is no longer on sale');
+-- Not sold here: a film ticketed through an outside site, and an info-only
+-- one, keep their showings (the dates are real) but sell nothing through this
+-- door. Same sentence as the showing page. A comp is not a sale and still goes
+-- through — the theatre may seat a guest at a film it is hosting but not selling.
+INSERT INTO public.movies (id, title, ticket_type, rsvp_url) VALUES ('00000000-0000-0000-0000-0000000000f1', 'Festival Film', 'rsvp', 'https://festival.example/tickets');
+INSERT INTO public.showings (id, ticket_price, movie_id) VALUES ('00000000-0000-0000-0000-0000000000e5', 8, '00000000-0000-0000-0000-0000000000f1');
+SELECT public.expect('film ticketed elsewhere', public.try_sql($q$SELECT * FROM public.quote_ticket_order('00000000-0000-0000-0000-0000000000e5', '[{}]')$q$), 'PT409: Tickets for this showing are not sold here.');
+INSERT INTO public.movies (id, title, ticket_type) VALUES ('00000000-0000-0000-0000-0000000000f2', 'Info Only Film', 'info_only');
+INSERT INTO public.showings (id, ticket_price, movie_id) VALUES ('00000000-0000-0000-0000-0000000000e6', 8, '00000000-0000-0000-0000-0000000000f2');
+SELECT public.expect('info-only film', public.try_sql($q$SELECT * FROM public.quote_ticket_order('00000000-0000-0000-0000-0000000000e6', '[{}]')$q$), 'PT409: Tickets for this showing are not sold here.');
+INSERT INTO public.events (id, title, ticket_type, rsvp_url) VALUES ('00000000-0000-0000-0000-0000000000f3', 'RSVP Event', 'rsvp', 'https://rsvp.example');
+INSERT INTO public.showings (id, ticket_price, event_id) VALUES ('00000000-0000-0000-0000-0000000000e7', 8, '00000000-0000-0000-0000-0000000000f3');
+SELECT public.expect('RSVP event with a showing row', public.try_sql($q$SELECT * FROM public.quote_ticket_order('00000000-0000-0000-0000-0000000000e7', '[{}]')$q$), 'PT409: Tickets for this showing are not sold here.');
+INSERT INTO public.movies (id, title) VALUES ('00000000-0000-0000-0000-0000000000f4', 'Ordinary Film');
+INSERT INTO public.showings (id, ticket_price, movie_id) VALUES ('00000000-0000-0000-0000-0000000000e8', 8, '00000000-0000-0000-0000-0000000000f4');
+SELECT public.expect('a ticketed film still prices', (SELECT count(*)::text FROM public.quote_ticket_order('00000000-0000-0000-0000-0000000000e8', '[{}]')), '1');
+SELECT public.expect('comp at a film ticketed elsewhere', public.try_sql($q$SELECT * FROM public.create_ticket_order('00000000-0000-0000-0000-0000000000e5', '[{}]', 'comp', NULL, 'comp-ext', 'confirmed', NULL, NULL, NULL, 'A Guest', NULL)$q$), 'ok');
+SELECT public.expect('cash sale at a film ticketed elsewhere', public.try_sql($q$SELECT * FROM public.create_ticket_order('00000000-0000-0000-0000-0000000000e5', '[{}]', 'cash', NULL)$q$), 'PT409: Tickets for this showing are not sold here.');
 SELECT public.expect('no tickets', public.try_sql($q$SELECT * FROM public.quote_ticket_order('00000000-0000-0000-0000-0000000000e3', '[]')$q$), 'PT400: No tickets requested');
 SELECT public.expect('unknown showing', public.try_sql($q$SELECT * FROM public.quote_ticket_order('00000000-0000-0000-0000-00000000dead', '[{}]')$q$), 'PT404');
 

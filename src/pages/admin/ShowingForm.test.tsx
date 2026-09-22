@@ -34,6 +34,7 @@ beforeAll(() => {
 });
 
 const MOVIE_ID = 'aaaaaaaa-1111-4000-8000-000000000001';
+const EXTERNAL_MOVIE_ID = 'aaaaaaaa-2222-4000-8000-000000000002';
 const VENUE_ID = 'vvvvvvvv-1111-4000-8000-000000000001';
 const EVENT_ID = 'eeeeeeee-1111-4000-8000-000000000001';
 const RSVP_EVENT_ID = 'eeeeeeee-1111-4000-8000-000000000002';
@@ -59,8 +60,12 @@ const state = vi.hoisted(() => ({
   editShowing: null as any,
   existingTiers: [] as any[],
   passTypes: [] as any[],
+  /** What the film picker lists. Reset to the one ticketed film before each test. */
+  movies: [] as any[],
   toasts: { error: [] as string[], success: [] as string[], warning: [] as string[] },
 }));
+
+const DUNE = { id: MOVIE_ID, title: 'Dune', is_active: true, release_year: 1984, duration_minutes: 137, ticket_type: 'ticketed', rsvp_url: null };
 
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ isAdmin: true, loading: false }) }));
 
@@ -78,8 +83,7 @@ vi.mock('sonner', () => ({
 vi.mock('@/components/admin/SeatTierEditor', () => ({ SeatTierEditor: () => null }));
 
 vi.mock('@/lib/fetchAllRows', () => ({
-  fetchAllRows: () =>
-    Promise.resolve({ data: [{ id: MOVIE_ID, title: 'Dune', is_active: true, release_year: 1984, duration_minutes: 137 }], error: null }),
+  fetchAllRows: () => Promise.resolve({ data: state.movies, error: null }),
 }));
 
 vi.mock('@/lib/passEligibility', () => ({
@@ -197,6 +201,7 @@ beforeEach(() => {
   state.editShowing = null;
   state.existingTiers = [];
   state.passTypes = [];
+  state.movies = [DUNE];
   state.toasts = { error: [], success: [], warning: [] };
 });
 
@@ -729,5 +734,75 @@ describe('ShowingForm — editing the price tiers of a showing that has sold', (
     await waitFor(() => expect(state.toasts.success).toContain('Showing updated!'));
     expect(state.tierWrites).toEqual([{ showingId: SHOWING_ID, tiers: [] }]);
     expect(state.tierTableWrites).toEqual([]);
+  });
+});
+
+/**
+ * A film ticketed somewhere else still takes showings — the dates are what put
+ * it on the calendar — but nothing about a sale: no price, no tiers, no
+ * passes, no sold-out switch, and no Square item, because price_ticket_order
+ * refuses every sale against it and a variation nothing can reference is dead
+ * weight in the catalog. BRIEF-movie-external-ticketing.
+ */
+describe('ShowingForm — a film whose tickets are not sold here', () => {
+  const FESTIVAL = {
+    id: EXTERNAL_MOVIE_ID, title: 'Festival Film', is_active: true, release_year: 2026,
+    duration_minutes: 100, ticket_type: 'rsvp', rsvp_url: 'https://festival.example/tickets',
+  };
+
+  it('replaces the pricing controls with the fact, and keeps the date', async () => {
+    state.movies = [DUNE, FESTIVAL];
+    renderForm(`/admin/showings/new?movie=${EXTERNAL_MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Festival Film'));
+    expect(await screen.findByText('Ticketed elsewhere')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'https://festival.example/tickets' })).toBeTruthy();
+    expect(screen.queryByLabelText('Base Ticket Price ($)')).toBeNull();
+    expect(screen.queryByText('Price Tiers')).toBeNull();
+    expect(screen.queryByText(/Accept passes at the door/)).toBeNull();
+    expect(screen.queryByText(/Sold out — close online sales/)).toBeNull();
+    expect(screen.queryByLabelText('Online ticket limit per buyer')).toBeNull();
+    // The date is the point, and it is still asked for.
+    expect(screen.getByLabelText('Showtime 1')).toBeTruthy();
+  });
+
+  it('creates the showing with nothing sale-shaped on it, and never calls Square', async () => {
+    state.movies = [DUNE, FESTIVAL];
+    state.passTypes = [{ id: 'pass-std', name: 'Film Pass', redemption_price: 6, per_showing_use_limit: null, is_active: true, is_default_for_movies: true }];
+    renderForm(`/admin/showings/new?movie=${EXTERNAL_MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Festival Film'));
+    fillShowtimes(['2026-10-03T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    const row = state.showingInserts[0];
+    expect(row.movie_id).toBe(EXTERNAL_MOVIE_ID);
+    // Not a walk-in night: that flag says "Free — no ticket needed", which is a
+    // different fact from "tickets are sold over there".
+    expect(row.no_ticket_required).toBe(false);
+    expect(row.requires_seat_selection).toBe(false);
+    expect(row.manually_sold_out).toBe(false);
+
+    await waitFor(() => expect(state.eligibility).toHaveLength(1));
+    expect(state.eligibility[0].passTypeIds).toEqual([]);
+    // Tiers cleared rather than written — the production template may have seeded some.
+    expect(state.tierWrites).toHaveLength(1);
+    expect(state.tierWrites[0].tiers).toEqual([]);
+    expect(state.invokes.filter(i => i.fn === 'square-showing-variations')).toHaveLength(0);
+  });
+
+  it('still prices and tells Square about an ordinary film chosen the same way', async () => {
+    state.movies = [DUNE, FESTIVAL];
+    renderForm(`/admin/showings/new?movie=${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Dune'));
+    expect(screen.getByLabelText('Base Ticket Price ($)')).toBeTruthy();
+    expect(screen.queryByText('Ticketed elsewhere')).toBeNull();
+    fillShowtimes(['2026-10-03T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    await waitFor(() => expect(state.invokes.filter(i => i.fn === 'square-showing-variations')).toHaveLength(1));
   });
 });

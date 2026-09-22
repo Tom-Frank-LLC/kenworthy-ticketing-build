@@ -15,6 +15,8 @@ import { PosterUpload } from '@/components/admin/PosterUpload';
 import { GenreInput } from '@/components/admin/GenreInput';
 import { formatGenres, parseGenres } from '@/lib/genres';
 import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
+import { TicketingModeFields } from '@/components/admin/TicketingModeFields';
+import { rsvpUrlError, type TicketingMode } from '@/lib/liveEventTypes';
 
 export default function MovieForm() {
   const { id } = useParams();
@@ -36,6 +38,11 @@ export default function MovieForm() {
   const [termsPercent, setTermsPercent] = useState<string>('');
   const [releaseYear, setReleaseYear] = useState<string>('');
   const [releaseLabel, setReleaseLabel] = useState('');
+  // How people get in — the same two columns events carry. A film sold through
+  // a festival's or a distributor's own site is listed here with its dates and
+  // sends people there for the ticket; nothing sells through this site for it.
+  const [ticketType, setTicketType] = useState<TicketingMode>('ticketed');
+  const [rsvpUrl, setRsvpUrl] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -58,6 +65,8 @@ export default function MovieForm() {
           setTermsPercent((data as any).terms_percent != null ? String((data as any).terms_percent) : '');
           setReleaseYear((data as any).release_year != null ? String((data as any).release_year) : '');
           setReleaseLabel((data as any).release_label || '');
+          setTicketType(((data as any).ticket_type as TicketingMode) || 'ticketed');
+          setRsvpUrl((data as any).rsvp_url || '');
         }
       });
     }
@@ -65,6 +74,8 @@ export default function MovieForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const linkError = rsvpUrlError(ticketType, rsvpUrl);
+    if (linkError) { toast.error(linkError); return; }
     setSaving(true);
     try {
       const movieData = {
@@ -82,6 +93,10 @@ export default function MovieForm() {
         terms_percent: termsPercent ? Number(termsPercent) : null,
         release_year: releaseYear ? Number(releaseYear) : null,
         release_label: releaseLabel || null,
+        ticket_type: ticketType,
+        // Only meaningful for RSVP. Cleared otherwise so a mode change cannot
+        // leave a stale link behind that the site would still render.
+        rsvp_url: ticketType === 'rsvp' ? rsvpUrl.trim() : null,
       };
 
       // .select() matters: an UPDATE that RLS filters out entirely comes back
@@ -108,10 +123,15 @@ export default function MovieForm() {
 
   if (authLoading) return null;
 
+  // Seat pricing and discounts describe a sale, and a film ticketed elsewhere
+  // (or listed for information) has none. Hidden as EventForm hides them, so
+  // the form does not offer to price something that cannot be bought here.
+  const showsPricing = isEdit && !!id && ticketType === 'ticketed';
+
   return (
-    <div className={`container py-8 px-4 ${isEdit ? 'max-w-4xl' : 'max-w-lg'}`}>
+    <div className={`container py-8 px-4 ${showsPricing ? 'max-w-4xl' : 'max-w-lg'}`}>
       <Button variant="ghost" size="sm" onClick={() => navigate('/admin')} className="mb-4">← Back</Button>
-      <div className={isEdit ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}>
+      <div className={showsPricing ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}>
       <Card className="glass">
         <CardHeader>
           <CardTitle className="font-display">{isEdit ? 'Edit Movie' : 'Add Movie'}</CardTitle>
@@ -119,9 +139,16 @@ export default function MovieForm() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label>Title *</Label>
-              <Input required value={title} onChange={e => setTitle(e.target.value)} />
+              <Label htmlFor="movie-title">Title *</Label>
+              <Input id="movie-title" required value={title} onChange={e => setTitle(e.target.value)} />
             </div>
+            <TicketingModeFields
+              idPrefix="movie"
+              ticketType={ticketType}
+              onTicketTypeChange={setTicketType}
+              rsvpUrl={rsvpUrl}
+              onRsvpUrlChange={setRsvpUrl}
+            />
             <div className="space-y-2">
               <Label htmlFor="movie-description">Description</Label>
               <RichTextEditor
@@ -210,7 +237,7 @@ export default function MovieForm() {
           </form>
         </CardContent>
       </Card>
-      {isEdit && id && (
+      {showsPricing && (
         <Card className="glass">
           <CardHeader>
             <CardTitle className="font-display">Seat Pricing</CardTitle>
@@ -223,7 +250,7 @@ export default function MovieForm() {
           </CardContent>
         </Card>
       )}
-      {isEdit && id && (
+      {showsPricing && (
         <Card className="glass">
           <CardHeader>
             <CardTitle className="font-display">Discounts</CardTitle>

@@ -10,9 +10,11 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SHOWING_MINUTES,
   DOOR_GRACE_MINUTES,
+  NOT_SOLD_HERE_MESSAGE,
   NO_TICKET_REQUIRED_MESSAGE,
   SOLD_OUT_MESSAGE,
   doorClosesAt,
+  externalTicketLabel,
   isManuallySoldOut,
   isPast,
   isPurchasable,
@@ -20,6 +22,7 @@ import {
   resolveDurationMinutes,
   showingEndsAt,
   soldOutMessage,
+  ticketsSoldHere,
 } from './purchasable';
 
 const START = '2026-08-19T02:00:00Z'; // 7:00 PM Pacific
@@ -301,5 +304,43 @@ describe('the showing page combines the two sold-out states with OR', () => {
 
   it('stays open only when neither says otherwise', () => {
     expect(soldOut(false, false)).toBe(false);
+  });
+});
+
+// The production's answer, not the showing's. A film ticketed by a festival is
+// ticketed by the festival on every date it plays, so every surface that
+// renders a date asks this of the production row it already has.
+describe('ticketsSoldHere', () => {
+  it('is true for a ticketed production', () => {
+    expect(ticketsSoldHere({ ticket_type: 'ticketed' })).toBe(true);
+  });
+
+  it('is false for one sold through an outside link', () => {
+    expect(ticketsSoldHere({ ticket_type: 'rsvp', rsvp_url: 'https://festival.example' })).toBe(false);
+  });
+
+  it('is false for one listed for information only', () => {
+    expect(ticketsSoldHere({ ticket_type: 'info_only' })).toBe(false);
+  });
+
+  it('reads an absent or null mode as sold here — the pre-column answer, and the safe direction', () => {
+    expect(ticketsSoldHere({})).toBe(true);
+    expect(ticketsSoldHere({ ticket_type: null })).toBe(true);
+    expect(ticketsSoldHere(null)).toBe(true);
+    expect(ticketsSoldHere(undefined)).toBe(true);
+  });
+
+  it('carries the sentence the SQL function raises, verbatim', () => {
+    // Twin of the RAISE in 20260922203433_movies_external_ticketing.sql and
+    // of the harness case 'film ticketed elsewhere'. Change all three together.
+    expect(NOT_SOLD_HERE_MESSAGE).toBe('Tickets for this showing are not sold here.');
+  });
+});
+
+describe('externalTicketLabel', () => {
+  it('says Get Tickets for a film and RSVP for anything else', () => {
+    expect(externalTicketLabel('movie')).toBe('Get Tickets');
+    expect(externalTicketLabel('event')).toBe('RSVP');
+    expect(externalTicketLabel('concert')).toBe('RSVP');
   });
 });

@@ -10,6 +10,11 @@ ALTER TABLE public.showings
 ALTER TABLE public.movies ADD COLUMN pass_processing_fee boolean DEFAULT false, ADD COLUMN duration_minutes integer;
 ALTER TABLE public.events ADD COLUMN pass_processing_fee boolean DEFAULT false;
 ALTER TABLE public.live_performances ADD COLUMN pass_processing_fee boolean DEFAULT false;
+-- How people get in (the real enum is in 20260402031617; movies gain the
+-- columns in 20260922203433, which the harness applies).
+CREATE TYPE public.event_ticket_type AS ENUM ('ticketed', 'rsvp', 'info_only');
+ALTER TABLE public.events ADD COLUMN ticket_type public.event_ticket_type NOT NULL DEFAULT 'ticketed', ADD COLUMN rsvp_url text;
+ALTER TABLE public.live_performances ADD COLUMN ticket_type public.event_ticket_type NOT NULL DEFAULT 'ticketed', ADD COLUMN rsvp_url text;
 ALTER TABLE public.showing_price_tiers ADD COLUMN is_active boolean NOT NULL DEFAULT true;
 ALTER TABLE public.tickets
   ADD COLUMN user_id uuid, ADD COLUMN qr_code text, ADD COLUMN square_payment_id text,
