@@ -136,6 +136,13 @@ main.
   database. Add the missing file locally; never `migration repair --status reverted`.
 - Test a risky migration in a throwaway `postgres:15` container first. Create the
   `anon`, `authenticated` and `service_role` roles before running it.
+- **A harness only proves the branches it takes.** The pricing function shipped
+  with 63 green checks and broke every single-price showing in production for
+  two minutes (22 Sep 2026): every test showing had tiers. Before a migration
+  touches a code path production uses, run the harness against the shapes
+  production actually has — most showings here have no tiers — and, for a SQL
+  function, call it once against production data (read-only) before deploying
+  the code that depends on it.
 
 ## Square
 
