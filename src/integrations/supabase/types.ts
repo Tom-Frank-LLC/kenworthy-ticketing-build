@@ -3804,6 +3804,14 @@ export type Database = {
         }
         Returns: number
       }
+      showing_ticket_counts: {
+        Args: never
+        Returns: {
+          showing_id: string | null
+          sold: number
+          scanned: number
+        }[]
+      }
       ticket_hold_window: { Args: never; Returns: string }
     }
     Enums: {
