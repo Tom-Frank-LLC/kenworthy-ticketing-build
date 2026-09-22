@@ -344,9 +344,7 @@ export default function StaffPOS() {
     // policy, so a stale or tampered POS bundle cannot write a wrong price.
     const descriptors = ticketDescriptors();
 
-    // `as any`: types.ts is not regenerated (staging carries other sessions'
-    // unmerged schema); the function's shape is in the migration.
-    const { data, error } = await (supabase as any).rpc('create_ticket_order', {
+    const { data, error } = await supabase.rpc('create_ticket_order', {
       p_showing_id: selectedShowingId,
       p_tickets: descriptors,
       p_payment_method: method,
