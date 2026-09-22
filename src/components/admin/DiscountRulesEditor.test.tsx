@@ -31,7 +31,7 @@ vi.mock('@/integrations/supabase/client', () => {
       return c;
     }
     if (table === 'showing_price_tiers') {
-      const c: any = { select: () => c, in: () => c, then: (r: (v: unknown) => unknown) => r({ data: state.tiers.map((tier_name) => ({ tier_name })), error: null }) };
+      const c: any = { select: () => c, in: () => c, eq: () => c, then: (r: (v: unknown) => unknown) => r({ data: state.tiers.map((tier_name) => ({ tier_name })), error: null }) };
       return c;
     }
     let op: 'select' | 'insert' | 'update' | 'delete' = 'select';

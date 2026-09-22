@@ -42,16 +42,22 @@ const MOVIE_PASS_ID = 'pppppppp-1111-4000-8000-000000000001';
 
 const state = vi.hoisted(() => ({
   showingInserts: [] as any[],
-  tierInserts: [] as any[],
+  /** Every set_showing_price_tiers call, as { showingId, tiers }. */
+  tierWrites: [] as Array<{ showingId: string; tiers: any[] }>,
+  /** Any direct write to showing_price_tiers — there must never be one. */
+  tierTableWrites: [] as string[],
   rpcCalls: [] as Array<{ fn: string; args: any }>,
   invokes: [] as Array<{ fn: string; body: any }>,
   eligibility: [] as Array<{ showingId: string; passTypeIds: string[] }>,
   /** start_time ISO → the message its insert should fail with. */
   insertFailures: {} as Record<string, string>,
-  /** start_time ISO → the message its tier insert should fail with. */
+  /** showing id → the message its tier write should fail with. */
   tierFailures: {} as Record<string, string>,
   squareResponse: null as any,
   existingShowings: [] as any[],
+  /** Edit mode: the showing being edited, and its live tiers. */
+  editShowing: null as any,
+  existingTiers: [] as any[],
   passTypes: [] as any[],
   toasts: { error: [] as string[], success: [] as string[], warning: [] as string[] },
 }));
@@ -92,10 +98,14 @@ vi.mock('@/integrations/supabase/client', () => {
       select: () => self,
       eq: () => self,
       in: () => self,
+      filter: () => self,
       order: () => self,
       gte: () => self,
       lte: () => self,
-      single: () => Promise.resolve(result),
+      single: () => Promise.resolve({
+        ...result,
+        data: Array.isArray(result.data) ? (result.data[0] ?? null) : result.data,
+      }),
       range: () => Promise.resolve(result),
       then: (res: any, rej: any) => Promise.resolve(result).then(res, rej),
     };
@@ -106,7 +116,8 @@ vi.mock('@/integrations/supabase/client', () => {
     if (table === 'venues') {
       return [{ id: VENUE_ID, name: 'Main Auditorium', has_assigned_seating: false, total_seats: 265 }];
     }
-    if (table === 'showings') return state.existingShowings;
+    if (table === 'showings') return state.editShowing ? [state.editShowing] : state.existingShowings;
+    if (table === 'showing_price_tiers') return state.existingTiers;
     if (table === 'events') {
       return [
         { id: EVENT_ID, title: 'Gala Night', ticket_type: 'ticketed', is_active: true },
@@ -127,8 +138,14 @@ vi.mock('@/integrations/supabase/client', () => {
     supabase: {
       from: (table: string) => ({
         select: () => chain({ data: rows(table), error: null }),
-        delete: () => chain({ data: null, error: null }),
-        update: () => chain({ data: null, error: null }),
+        delete: () => {
+          if (table === 'showing_price_tiers') state.tierTableWrites.push('delete');
+          return chain({ data: null, error: null });
+        },
+        update: () => {
+          if (table === 'showing_price_tiers') state.tierTableWrites.push('update');
+          return chain({ data: null, error: null });
+        },
         insert: (payload: any) => {
           if (table === 'showings') {
             state.showingInserts.push(payload);
@@ -136,17 +153,21 @@ vi.mock('@/integrations/supabase/client', () => {
             if (failure) return chain({ data: null, error: { message: failure } });
             return chain({ data: { id: `showing-${state.showingInserts.length}` }, error: null });
           }
-          if (table === 'showing_price_tiers') {
-            state.tierInserts.push(payload);
-            const showingId = payload[0]?.showing_id;
-            const failure = state.tierFailures[showingId];
-            return chain({ data: null, error: failure ? { message: failure } : null });
-          }
+          if (table === 'showing_price_tiers') state.tierTableWrites.push('insert');
           return chain({ data: null, error: null });
         },
       }),
       rpc: (fn: string, args: any) => {
         state.rpcCalls.push({ fn, args });
+        if (fn === 'set_showing_price_tiers') {
+          state.tierWrites.push({ showingId: args.p_showing_id, tiers: args.p_tiers });
+          const failure = state.tierFailures[args.p_showing_id];
+          if (failure) return Promise.resolve({ data: null, error: { message: failure } });
+          return Promise.resolve({
+            data: args.p_tiers.map((t: any, i: number) => ({ id: `tier-${i}`, showing_id: args.p_showing_id, ...t, display_order: i, is_active: true })),
+            error: null,
+          });
+        }
         return Promise.resolve({ data: null, error: null });
       },
       functions: {
@@ -163,7 +184,8 @@ const { default: ShowingForm } = await import('./ShowingForm');
 
 beforeEach(() => {
   state.showingInserts = [];
-  state.tierInserts = [];
+  state.tierWrites = [];
+  state.tierTableWrites = [];
   state.rpcCalls = [];
   state.invokes = [];
   state.eligibility = [];
@@ -172,6 +194,8 @@ beforeEach(() => {
   // A clean planner response: something was planned and nothing fell short.
   state.squareResponse = { counts: { created: 2 }, tally: { written: 2 }, skipped: [] };
   state.existingShowings = [];
+  state.editShowing = null;
+  state.existingTiers = [];
   state.passTypes = [];
   state.toasts = { error: [], success: [], warning: [] };
 });
@@ -191,6 +215,10 @@ function renderForm(entry = '/admin/showings/new') {
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/admin/showings/new" element={<ShowingForm />} />
+        {/* The app mounts the form itself at /admin/showings/:id. Here that
+            path stays a stub so the create tests can see where they landed,
+            and edit mode gets its own path — the form only reads :id. */}
+        <Route path="/admin/showings/:id/edit" element={<ShowingForm />} />
         <Route path="/admin/showings/:id" element={<div>showing detail</div>} />
         <Route path="/admin" element={<LandedOnAdmin />} />
       </Routes>
@@ -232,7 +260,8 @@ describe('ShowingForm — creating several showtimes at once', () => {
 
     // Every side effect, per showing — not just for the first one.
     expect(state.rpcCalls.filter(c => c.fn === 'apply_production_template_to_showing')).toHaveLength(3);
-    expect(state.tierInserts).toHaveLength(3);
+    expect(state.tierWrites.map(w => w.showingId)).toEqual(['showing-1', 'showing-2', 'showing-3']);
+    expect(state.tierTableWrites).toEqual([]);
     expect(state.eligibility).toHaveLength(3);
     expect(state.invokes.filter(i => i.fn === 'square-showing-variations')).toHaveLength(3);
     expect(state.invokes.map(i => i.body.showing_id)).toEqual(['showing-1', 'showing-2', 'showing-3']);
@@ -642,5 +671,63 @@ describe('ShowingForm — online ticket limit per buyer', () => {
     const row = await createWith(() =>
       fireEvent.change(screen.getByLabelText('Online ticket limit per buyer'), { target: { value: '' } }));
     expect(row.max_tickets_per_buyer).toBe(20);
+  });
+});
+
+describe('ShowingForm — editing the price tiers of a showing that has sold', () => {
+  const SHOWING_ID = 'e53371fe-5b04-491f-8e04-198482a2bbe5';
+
+  beforeEach(() => {
+    state.editShowing = {
+      id: SHOWING_ID, movie_id: MOVIE_ID, event_id: null, live_performance_id: null,
+      venue_id: VENUE_ID, start_time: '2026-09-26T02:00:00+00:00', ticket_price: 50,
+      duration_minutes: null, requires_seat_selection: false, no_ticket_required: false,
+      manually_sold_out: false, max_tickets_per_buyer: 20, sold_out_message: null, is_featured: false,
+    };
+    state.existingTiers = [
+      { id: 'ga', showing_id: SHOWING_ID, tier_name: 'General Admission', price: 50, display_order: 0, is_active: true },
+      { id: 'ps', showing_id: SHOWING_ID, tier_name: 'Preferred Seating', price: 75, display_order: 1, is_active: true },
+    ];
+  });
+
+  async function openForEdit() {
+    renderForm(`/admin/showings/${SHOWING_ID}/edit`);
+    await waitFor(() => expect(screen.getByDisplayValue('Preferred Seating')).toBeInTheDocument());
+  }
+
+  it('deleting a tier and saving reconciles once, with the survivor — never a delete-and-reinsert', async () => {
+    // The regression. Delete-then-insert failed at the delete (a sold tier
+    // cannot be deleted), swallowed it, and appended: General Admission ×4.
+    await openForEdit();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove tier Preferred Seating' }));
+    expect(screen.queryByDisplayValue('Preferred Seating')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update Showing' }));
+
+    await waitFor(() => expect(state.toasts.success).toContain('Showing updated!'));
+    expect(state.tierWrites).toEqual([
+      { showingId: SHOWING_ID, tiers: [{ tier_name: 'General Admission', price: 50 }] },
+    ]);
+    expect(state.tierTableWrites).toEqual([]);
+  });
+
+  it('a refused tier write is reported, not swallowed', async () => {
+    state.tierFailures[SHOWING_ID] = 'Two tiers are named "General Admission"';
+    await openForEdit();
+    fireEvent.click(screen.getByRole('button', { name: 'Update Showing' }));
+
+    await waitFor(() => expect(state.toasts.error).toHaveLength(1));
+    expect(state.toasts.error[0]).toMatch(/tiers failed: Two tiers are named/);
+    expect(state.toasts.success).toEqual([]);
+  });
+
+  it('unticking tiered pricing sends an empty list, so sold tiers are retired rather than deleted', async () => {
+    await openForEdit();
+    fireEvent.click(screen.getByLabelText('Enable tiered pricing'));
+    fireEvent.click(screen.getByRole('button', { name: 'Update Showing' }));
+
+    await waitFor(() => expect(state.toasts.success).toContain('Showing updated!'));
+    expect(state.tierWrites).toEqual([{ showingId: SHOWING_ID, tiers: [] }]);
+    expect(state.tierTableWrites).toEqual([]);
   });
 });

@@ -120,7 +120,8 @@ export default function DiscountRulesEditor({ scope, audience }: {
         showingIds = (data ?? []).map((s) => s.id);
       }
       if (showingIds.length === 0) { if (!cancelled) setTierNames([]); return; }
-      const { data } = await supabase.from('showing_price_tiers').select('tier_name').in('showing_id', showingIds);
+      // Live tiers only: a retired one is not a type anybody can buy.
+      const { data } = await supabase.from('showing_price_tiers').select('tier_name').in('showing_id', showingIds).eq('is_active', true);
       // One spelling per type, decided by the database's canonical_tier_name —
       // the same function the pricing uses to match a rule to a ticket — so
       // the box an admin ticks is the name a sale will be checked against.
