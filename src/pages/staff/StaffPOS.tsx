@@ -28,7 +28,7 @@ import { TodaysPresales } from '@/components/pos/TodaysPresales';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
-import { type Seat, type PriceTier, type TicketLineItem, buildTicketRows, computeLineItemTotals, computeOrderTotals, computeProcessingFee, newOrderToken, TAX_RATE } from '@/lib/booking';
+import { type Seat, type PriceTier, type TicketLineItem, computeLineItemTotals, computeOrderTotals, computeProcessingFee, newOrderToken } from '@/lib/booking';
 import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
 import type { DiscountRule } from '@/lib/orderMath';
 import { DonationPrompt } from '@/components/DonationPrompt';
@@ -313,6 +313,22 @@ export default function StaffPOS() {
     });
   };
 
+  /** The order as seats and tiers, in the order the rows will be written. */
+  const ticketDescriptors = useCallback((): Array<{ seat_id: string | null; tier_id: string | null }> => {
+    const out: Array<{ seat_id: string | null; tier_id: string | null }> = [];
+    if (hasTiers) {
+      for (const item of lineItems) {
+        if (item.seatIds) for (const seatId of item.seatIds) out.push({ seat_id: seatId, tier_id: item.tierId });
+        else for (let i = 0; i < item.quantity; i++) out.push({ seat_id: null, tier_id: item.tierId });
+      }
+    } else if (isAssignedSeating) {
+      for (const seatId of selectedSeats) out.push({ seat_id: seatId, tier_id: null });
+    } else {
+      for (let i = 0; i < gaQuantity; i++) out.push({ seat_id: null, tier_id: null });
+    }
+    return out;
+  }, [hasTiers, lineItems, isAssignedSeating, selectedSeats, gaQuantity]);
+
   const createTickets = useCallback(async (
     method: PaymentMethod,
     squarePaymentId: string | null = null,
@@ -320,40 +336,45 @@ export default function StaffPOS() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
-    // Generated here rather than left to buildTicketRows so a donation taken
-    // with this sale can be filed against the same order.
+    // Generated here so a donation taken with this sale can be filed against
+    // the same order.
     const orderToken = newOrderToken();
 
-    const ticketRows = buildTicketRows({
-      orderToken,
-      // The rows carry the discount and the database verifies it against the
-      // rule — an expired or switched-off offer is refused, not honoured.
-      discountRules,
-      lineItems: hasTiers ? lineItems : undefined,
-      selectedSeats: !hasTiers ? selectedSeats : undefined,
-      quantity: !hasTiers && !isAssignedSeating ? gaQuantity : undefined,
-      userId: user.id,
-      showingId: selectedShowingId,
-      ticketPrice: !hasTiers ? selectedShowing!.ticket_price : undefined,
-      paymentMethod: method,
-      processingFee: method === 'card' ? processingFee : 0,
+    // What the buyer asked for, as seats and tiers — never as prices. The
+    // database prices the order and writes the rows in one statement
+    // (create_ticket_order); a direct insert of a paid row is refused by
+    // policy, so a stale or tampered POS bundle cannot write a wrong price.
+    const descriptors = ticketDescriptors();
+
+    // `as any`: types.ts is not regenerated (staging carries other sessions'
+    // unmerged schema); the function's shape is in the migration.
+    const { data, error } = await (supabase as any).rpc('create_ticket_order', {
+      p_showing_id: selectedShowingId,
+      p_tickets: descriptors,
+      p_payment_method: method,
+      p_user_id: user.id,
+      p_order_token: orderToken,
+      p_status: 'confirmed',
       // Recorded so a refund credits the card that paid, rather than only
       // flipping the ticket's status.
-      squarePaymentId,
+      p_square_payment_id: squarePaymentId,
     });
-
-    const { data, error } = await supabase.from('tickets').insert(ticketRows).select('id');
-    if (error) throw error;
-    // A blocked write returns no error and no rows. Fewer rows than were sent
-    // is a sale that did not happen the way the screen says it did.
-    if (!data || data.length !== ticketRows.length) {
-      throw new Error(`Only ${data?.length ?? 0} of ${ticketRows.length} tickets were recorded. Check Today's sales before retrying.`);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as Array<{ id: string; total_price: number; processing_fee: number }>;
+    // A blocked write returns no error and no rows. Fewer rows than were asked
+    // for is a sale that did not happen the way the screen says it did.
+    if (rows.length !== descriptors.length) {
+      throw new Error(`Only ${rows.length} of ${descriptors.length} tickets were recorded. Check Today's sales before retrying.`);
     }
-    return { ticketIds: data.map(t => t.id), orderToken };
-    // discountRules is a dependency on purpose: without it this callback keeps
-    // the rules from an earlier render, and the rows disagree with the total on
-    // screen — which the database would then refuse, after a card was charged.
-  }, [selectedSeats, gaQuantity, isAssignedSeating, selectedShowingId, selectedShowing, hasTiers, lineItems, processingFee, discountRules]);
+    // The screen's total is a preview; the rows are the sale. If they differ,
+    // the customer has been told one number and charged another. Loud, because
+    // on the card path the terminal has already been charged by this point.
+    const storedCents = rows.reduce((sum, r) => sum + Math.round(Number(r.total_price) * 100) + Math.round(Number(r.processing_fee) * 100), 0);
+    if (storedCents !== Math.round(grandTotal * 100)) {
+      toast.error(`Recorded $${(storedCents / 100).toFixed(2)} but the screen showed $${grandTotal.toFixed(2)}. Check this sale in Today's sales.`, { duration: 15000 });
+    }
+    return { ticketIds: rows.map(r => r.id), orderToken };
+  }, [selectedShowingId, ticketDescriptors, grandTotal]);
 
   /**
    * File the counter donation, once the sale it rode in on has gone through.

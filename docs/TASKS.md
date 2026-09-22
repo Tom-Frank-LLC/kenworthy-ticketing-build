@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**102 briefs** — 90 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
+**103 briefs** — 90 shipped, 7 built, 6 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -25,6 +25,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **Comp tickets are issued but never delivered to the person receiving them**<br>`bug` — [brief](briefs/BRIEF-comp-ticket-delivery.md)
 - `P2` **The Mailchimp campaign has never been able to send, because it queries a column that does not exist**<br>`bug` — [brief](briefs/BRIEF-mailchimp-campaign-dead-column.md)
 - `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)
+- `P2` **One SQL function prices and writes every paid ticket order, so the arithmetic exists once**<br>`ops` — [brief](briefs/BRIEF-pricing-rpc.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - `P2` **Establish whether Section 504 applies to the Kenworthy, and put the record behind it in place**<br>`ops` — [brief](briefs/BRIEF-section-504-compliance.md) · [notes](briefs/../accessibility-audit.md)
 
 ## Shipped

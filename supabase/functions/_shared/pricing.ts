@@ -1,40 +1,17 @@
-// Authoritative order pricing.
+// Order pricing — the server's door to the one pricing function.
 //
-// The amount a customer is charged is computed here, on the server, from the
-// showing's own price rows — never from anything the browser sent. The client
-// still computes the same numbers for display, but its arithmetic is advisory:
-// if the two disagree, the server's number is what Square charges and what the
-// ticket rows record.
+// The arithmetic lives in the database: public.price_ticket_order, reached
+// through quote_ticket_order (prices, writes nothing) and create_ticket_order
+// (prices, then inserts). Migration …_pricing_rpc.sql, BRIEF-pricing-rpc. It
+// used to live here as well, and in the browser, and the three were held in
+// step by a vector file and a tripwire trigger. Now there is one, and this file
+// is what the edge functions call to reach it: it maps the function's refusals
+// to PricingError (same sentences the buyer has always been shown), and reads
+// the few showing fields checkout needs that are not prices.
 //
-// Tax is the ORDER's tax, computed the way Square computes it — once, on the sum
-// of the tickets, rounded half-to-even — and then apportioned to the ticket
-// rows (`_shared/order_math.ts`). It used to be rounded per ticket, half-up, to
-// mirror the `enforce_ticket_pricing` trigger. That agreed with Square only
-// while every price was a multiple of 50 cents; at $8.25 the two differ by a
-// cent on two tickets, and a Square order that disagrees with the charge is
-// abandoned to a bare payment (docs/FINDINGS-square-order-arithmetic.md).
-//
-// What has not changed is the invariant: the charged amount always equals
-// SUM(tickets.total_price) for the order, which is what the refund path
-// re-reads. The database now holds the rows to the same order-level figure
-// (`enforce_ticket_order_tax`), so a copy of this arithmetic that drifts is
-// refused at the insert — before any card is charged — rather than recorded.
-//
-// The trigger also zeroes price and tax for `comp` AND `film_pass` (migration
-// 20260819040000): a pass admission was paid for, with tax, when the pass was
-// bought, so redeeming it is a $0 admission rather than a second taxable sale.
-// Nothing here prices a redemption — ticket-checkout refuses film passes
-// outright — but the two must not drift.
-
-import {
-  NO_TICKET_REQUIRED_MESSAGE,
-  SHOWING_PASSED_MESSAGE,
-  isManuallySoldOut,
-  isPast,
-  needsNoTicket,
-  soldOutMessage,
-} from './purchasable.ts';
-import { apportionOrderTax, bestDiscount, type DiscountRuleRow, usableRules } from './order_math.ts';
+// Nothing here computes a price. If you find yourself adding arithmetic to this
+// file, it belongs in the SQL, with a vector in pricing_vectors.json and a
+// check in supabase/tests/pricing_rpc.
 
 export const TAX_RATE = 0.06;
 
@@ -113,7 +90,14 @@ export interface PricedOrder {
   };
 }
 
-export class PricingError extends Error {}
+export class PricingError extends Error {
+  /** The SQLSTATE the database refused with, when it was the database. */
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
 
 /**
  * The largest gift a checkout page may add to an order.
@@ -184,11 +168,45 @@ export function bundledDonationEmailError(
   return 'An email address is required to add a donation — it is where the receipt for your gift goes, and how we record it. Remove the donation to check out with a phone number only.';
 }
 
+/** The refusal codes price_ticket_order raises. All become a 400 with its sentence. */
+const PRICING_REFUSALS = new Set(['PT400', 'PT404', 'PT409', 'PT410']);
+
+/** One row of public.priced_ticket, as PostgREST returns it. */
+interface PricedRow {
+  seq: number;
+  seat_id: string | null;
+  tier_id: string | null;
+  tier_name: string | null;
+  list_price: number | string;
+  discount_amount: number | string;
+  price: number | string;
+  tax_amount: number | string;
+  total_price: number | string;
+  discount_id: string | null;
+  discount_label: string | null;
+  order_list_subtotal: number | string;
+  order_discount: number | string;
+  order_subtotal: number | string;
+  order_tax: number | string;
+  order_total: number | string;
+  order_processing_fee: number | string;
+  order_grand_total: number | string;
+  production_title: string;
+  production_category: string;
+}
+
+function refusal(error: { code?: string; message?: string } | null): PricingError | null {
+  if (!error) return null;
+  if (error.code && PRICING_REFUSALS.has(error.code)) return new PricingError(error.message || 'Could not price this order', error.code);
+  return null;
+}
+
 /**
- * Recompute an order from the database.
+ * Price an order without writing anything: what create_ticket_order would
+ * write, for the checks checkout makes before it does.
  *
- * `channel` decides which Square rate the surcharge uses; pass 'none' for
- * film-pass redemptions, which never touch Square and so carry no surcharge.
+ * `channel` decides which Square rate the surcharge uses; 'none' for a cash
+ * sale or a film-pass redemption, which carry no surcharge.
  */
 export async function priceTicketOrder(
   admin: any,
@@ -200,205 +218,59 @@ export async function priceTicketOrder(
     throw new PricingError('No tickets requested');
   }
 
-  const { data: showing, error: showingErr } = await admin
-    .from('showings')
-    .select(
-      'id, ticket_price, is_active, requires_seat_selection, total_seats, start_time, duration_minutes, movie_id, event_id, live_performance_id, no_ticket_required, manually_sold_out, sold_out_message, max_tickets_per_buyer',
-    )
-    .eq('id', showingId)
-    .maybeSingle();
-
-  if (showingErr) throw new PricingError('Could not load the showing');
-  if (!showing) throw new PricingError('Showing not found');
-  if (showing.is_active === false) throw new PricingError('This showing is no longer on sale');
-
-  // A showing that issues no ticket cannot be sold one, whatever the buyer
-  // sends. This is the stale-tab case for the walk-in state: an admin flips a
-  // free screening to "no ticket needed" while somebody has its old purchase
-  // panel open, and that tab still holds a rendered Reserve button.
-  //
-  // Asked before the production load below, unlike the past-showing rule: this
-  // one needs no runtime and no clock, so there is nothing to fetch first. It
-  // is asked before that rule for the same reason the trigger asks it first —
-  // a walk-in night that has also finished should be described as the former,
-  // not sent somebody looking for a date problem.
-  if (needsNoTicket(showing)) throw new PricingError(NO_TICKET_REQUIRED_MESSAGE);
-
-  // Production row carries the title, the buyer-paid-fee opt-in, and — for a
-  // film — the runtime that decides when this showing is over.
-  const production = await loadProduction(admin, showing);
-
-  // You cannot buy a ticket to something that has already happened.
-  //
-  // This sits here rather than in ticket-checkout because this function is the
-  // one gate every online sale passes through, so a future checkout path
-  // inherits the rule instead of having to remember it. It is *after* the
-  // production load because the cutoff is the end of the show, and for a film
-  // the runtime that defines "the end" lives on the movies row.
-  //
-  // The browser also hides its buy button (src/lib/purchasable.ts), and the
-  // tickets table refuses the insert outright (the trigger in
-  // migrations/20260819143722_showing_end_and_past_sales_rules.sql). This is
-  // the layer that turns a stale tab into a sentence a customer can read.
-  if (isPast(showing, production)) throw new PricingError(SHOWING_PASSED_MESSAGE);
-
-  // An admin has closed this showing to online sales by hand — the house
-  // filled through a channel this system cannot count, so the seats the
-  // arithmetic below would happily sell do not exist.
-  //
-  // This is the whole enforcement of that flag. There is no trigger on
-  // `tickets` behind it, deliberately: StaffPOS and the comp issuer insert
-  // straight through PostgREST, and the point of a manual sold-out is to close
-  // the website while the counter stays open. So unlike the two rules above,
-  // if this line is removed nothing else refuses the sale.
-  //
-  // Asked *after* the past-showing rule, and unlike the walk-in rule which is
-  // asked before it. A showing that is both finished and flagged should say it
-  // has passed: that is the older, plainer fact, and "sold out" would invite a
-  // patron to ring the box office about a screening that ended last week.
-  //
-  // The buyer gets the admin's own sentence when there is one, so the refusal
-  // and the page they were just looking at say the same thing.
-  if (isManuallySoldOut(showing)) throw new PricingError(soldOutMessage(showing));
-
-  // Active tiers for this showing, and the per-seat tier mapping. Both are
-  // read once and matched in memory — the trigger does the same join per row.
-  const [{ data: tierRows }, { data: seatTierRows }] = await Promise.all([
+  const [{ data: rows, error }, { data: showing }] = await Promise.all([
+    admin.rpc('quote_ticket_order', {
+      p_showing_id: showingId,
+      // Only what the function reads. A forged descriptor cannot smuggle a
+      // price, a discount or anything else in: these two keys are all it has.
+      p_tickets: descriptors.map((d) => ({ seat_id: d.seat_id ?? null, tier_id: d.tier_id ?? null })),
+      p_channel: channel,
+    }),
     admin
-      .from('showing_price_tiers')
-      .select('id, tier_name, price, is_active')
-      .eq('showing_id', showingId),
-    admin
-      .from('showing_seat_tiers')
-      .select('tier_id, venue_seats!showing_seat_tiers_venue_seat_id_fkey(seat_row, seat_number, section)')
-      .eq('showing_id', showingId),
+      .from('showings')
+      .select('id, total_seats, requires_seat_selection, start_time, max_tickets_per_buyer')
+      .eq('id', showingId)
+      .maybeSingle(),
   ]);
 
-  const tierById = new Map<string, { price: number; is_active: boolean; name: string }>();
-  for (const t of tierRows || []) {
-    tierById.set(t.id, { price: Number(t.price), is_active: t.is_active !== false, name: t.tier_name ?? '' });
-  }
+  const refused = refusal(error);
+  if (refused) throw refused;
+  if (error) throw new Error(`quote_ticket_order: ${error.message}`);
+  const priced: PricedRow[] = rows ?? [];
+  if (priced.length === 0 || !showing) throw new PricingError('Showing not found');
 
-  // Seat → tier resolution needs the seat's row/section/number, because the
-  // mapping is stored against venue_seats while tickets reference seats.
-  const requestedSeatIds = descriptors
-    .map((d) => d.seat_id)
-    .filter((id): id is string => typeof id === 'string' && id.length > 0);
-
-  const seatTierBySeatId = new Map<string, string>();
-  if (requestedSeatIds.length > 0 && (seatTierRows || []).length > 0) {
-    const { data: seatRows } = await admin
-      .from('seats')
-      .select('id, seat_row, seat_number, section')
-      .in('id', requestedSeatIds);
-
-    const tierByKey = new Map<string, string>();
-    for (const row of seatTierRows || []) {
-      const vs = row.venue_seats;
-      if (!vs) continue;
-      tierByKey.set(seatKey(vs.seat_row, vs.section, vs.seat_number), row.tier_id);
-    }
-    for (const seat of seatRows || []) {
-      const tierId = tierByKey.get(seatKey(seat.seat_row, seat.section, seat.seat_number));
-      if (tierId) seatTierBySeatId.set(seat.id, tierId);
-    }
-  }
-
-  // Pass one: what each ticket costs before tax.
-  const resolved = descriptors.map((d) => {
-    const seatId = d.seat_id || null;
-
-    // A seat's own tier mapping wins over whatever tier the client asked for.
-    // This is the trigger's rule, and it is what stops a buyer from claiming a
-    // front-row seat at the back-row price.
-    let tierId: string | null = seatId ? seatTierBySeatId.get(seatId) ?? null : null;
-    if (!tierId && d.tier_id) tierId = d.tier_id;
-
-    let price: number;
-    if (tierId) {
-      const tier = tierById.get(tierId);
-      if (!tier) throw new PricingError('Invalid ticket tier for this showing');
-      if (!tier.is_active) throw new PricingError('That ticket tier is no longer on sale');
-      price = tier.price;
-    } else {
-      price = Number(showing.ticket_price);
-    }
-
-    if (!Number.isFinite(price) || price < 0) {
-      throw new PricingError('This showing has no valid price configured');
-    }
-
-    // Integer cents, not floating-point dollars. In doubles,
-    // `8.25 + 8.25 * 0.06` lands just under 8.745, while Postgres computes the
-    // same expression in exact numeric. Every sum below is over integers so
-    // that no total here can differ from the database's by float error.
-    return { seatId, tierId, price, priceCents: Math.round(price * 100), tierName: tierId ? tierById.get(tierId)?.name ?? '' : '' };
-  });
-
-  // Pass two: the one discount this order earns, if any.
-  //
-  // Rules attach to this showing or to its whole production; every usable one
-  // competes and the largest wins — no stacking. Resolved here, on the server,
-  // from the database: the browser previews the same rule with the same function
-  // but nothing it sends can create, enlarge or extend a discount. The database
-  // then re-checks the chosen rule against the rows as written.
-  const listCents = resolved.map((r) => r.priceCents);
-  const applied = bestDiscount(
-    await loadDiscountRules(admin, showing),
-    listCents,
-    resolved.map((r) => r.tierName),
-  );
-  const netCents = listCents.map((c, i) => c - (applied?.perTicket[i] ?? 0));
-
-  // Pass three: the order's tax — on what is left — shared out in row order.
-  const { taxCents: taxTotalCents, perTicket } = apportionOrderTax(netCents);
-
-  const tickets: PricedTicket[] = resolved.map((r, i) => {
-    const off = applied?.perTicket[i] ?? 0;
-    return {
-      seat_id: r.seatId,
-      tier_id: r.tierId,
-      price: netCents[i] / 100,
-      tax_amount: perTicket[i] / 100,
-      total_price: (netCents[i] + perTicket[i]) / 100,
-      list_price: r.price,
-      discount_amount: off / 100,
-      discount_id: off > 0 ? applied!.rule.id : null,
-      discount_label: off > 0 ? applied!.rule.label : null,
-    };
-  });
-
-  const listSubtotalCents = listCents.reduce((s, c) => s + c, 0);
-  const subtotalCents = netCents.reduce((s, c) => s + c, 0);
-  const totalCents = subtotalCents + taxTotalCents;
-
-  const subtotal = subtotalCents / 100;
-  const tax = taxTotalCents / 100;
-  const total = totalCents / 100;
-
-  // No surcharge on a standard ticket sale: the patron pays ticket price plus
-  // tax, and the theatre absorbs Square's cut. `pass_processing_fee` is a
-  // per-production rental exception, off on every production unless a rental
-  // agreement says otherwise, so this branch is normally dead.
-  const wantsFee = channel !== 'none' && !!production.pass_processing_fee && total > 0;
-  const processingFee = wantsFee ? computeProcessingFee(total, channel as ProcessingChannel).fee : 0;
-  const feeCents = Math.round(processingFee * 100);
-  const grandTotalCents = totalCents + feeCents;
+  const first = priced[0];
+  const n = (v: number | string) => Number(v);
+  const discountCents = Math.round(n(first.order_discount) * 100);
 
   return {
-    tickets,
-    subtotal,
-    listSubtotal: listSubtotalCents / 100,
-    discount: applied
-      ? { id: applied.rule.id, label: applied.rule.label, cents: applied.discountCents }
+    tickets: priced.map((r) => ({
+      seat_id: r.seat_id,
+      tier_id: r.tier_id,
+      price: n(r.price),
+      tax_amount: n(r.tax_amount),
+      total_price: n(r.total_price),
+      list_price: n(r.list_price),
+      discount_amount: n(r.discount_amount),
+      discount_id: r.discount_id,
+      discount_label: r.discount_label,
+    })),
+    subtotal: n(first.order_subtotal),
+    listSubtotal: n(first.order_list_subtotal),
+    discount: discountCents > 0
+      ? {
+        id: priced.find((r) => r.discount_id)?.discount_id ?? '',
+        label: priced.find((r) => r.discount_label)?.discount_label ?? '',
+        cents: discountCents,
+      }
       : null,
-    tax,
-    total,
-    processingFee,
-    grandTotal: grandTotalCents / 100,
-    amountCents: grandTotalCents,
-    productionTitle: production.title,
-    productionCategory: production.category,
+    tax: n(first.order_tax),
+    total: n(first.order_total),
+    processingFee: n(first.order_processing_fee),
+    grandTotal: n(first.order_grand_total),
+    amountCents: Math.round(n(first.order_grand_total) * 100),
+    productionTitle: first.production_title,
+    productionCategory: first.production_category,
     showing: {
       id: showing.id,
       total_seats: showing.total_seats ?? 200,
@@ -410,72 +282,36 @@ export async function priceTicketOrder(
 }
 
 /**
- * Every rule that could apply to this showing right now: its own, and its
- * production's. Two reads rather than one `.or()`, so the scope columns are
- * matched by equality and a showing with no event can never match an
- * event-scoped rule through NULL.
+ * Price and write an order in one statement. Returns the rows as stored —
+ * the only place a paid ticket row is ever created.
  */
-async function loadDiscountRules(admin: any, showing: any) {
-  const columns = 'id, type, value, min_quantity, label, created_at, is_active, code, starts_at, ends_at, eligible_tiers';
-  const production: [string, string | null] = showing.event_id
-    ? ['event_id', showing.event_id]
-    : showing.live_performance_id
-    ? ['live_performance_id', showing.live_performance_id]
-    : ['movie_id', showing.movie_id ?? null];
-
-  const [own, shared] = await Promise.all([
-    admin.from('ticket_discounts').select(columns).eq('showing_id', showing.id),
-    production[1]
-      ? admin.from('ticket_discounts').select(columns).eq(production[0], production[1])
-      : Promise.resolve({ data: [] }),
-  ]);
-  const rows: DiscountRuleRow[] = [...(own.data ?? []), ...(shared.data ?? [])];
-  return usableRules(rows, Date.now());
-}
-
-function seatKey(row: string, section: string | null, number: number) {
-  return `${row}|${(section || '').toLowerCase()}|${number}`;
-}
-
-async function loadProduction(admin: any, showing: any) {
-  if (showing.event_id) {
-    const { data } = await admin
-      .from('events')
-      .select('title, pass_processing_fee')
-      .eq('id', showing.event_id)
-      .maybeSingle();
-    return {
-      title: data?.title || 'Kenworthy event',
-      pass_processing_fee: !!data?.pass_processing_fee,
-      category: 'Special Events',
-    };
-  }
-  if (showing.live_performance_id) {
-    const { data } = await admin
-      .from('live_performances')
-      .select('title, pass_processing_fee')
-      .eq('id', showing.live_performance_id)
-      .maybeSingle();
-    return {
-      title: data?.title || 'Kenworthy performance',
-      pass_processing_fee: !!data?.pass_processing_fee,
-      category: 'Live Performances',
-    };
-  }
-  // duration_minutes is what makes "sales stop when the show ends" mean
-  // anything for a film — showings.duration_minutes is only ever set when an
-  // admin overrides it. Events and live performances have no runtime column at
-  // all, which is why the two branches above carry none and fall back to
-  // DEFAULT_SHOWING_MINUTES.
-  const { data } = await admin
-    .from('movies')
-    .select('title, pass_processing_fee, duration_minutes')
-    .eq('id', showing.movie_id)
-    .maybeSingle();
-  return {
-    title: data?.title || 'Kenworthy showing',
-    pass_processing_fee: !!data?.pass_processing_fee,
-    duration_minutes: data?.duration_minutes ?? null,
-    category: 'Films',
-  };
+export async function createTicketOrder(
+  admin: any,
+  params: {
+    showingId: string;
+    descriptors: TicketDescriptor[];
+    paymentMethod: 'online' | 'cash' | 'card';
+    userId: string | null;
+    orderToken: string;
+    status: 'pending' | 'confirmed';
+    squarePaymentId?: string | null;
+    idempotencyKey?: string | null;
+    smsConsent?: boolean | null;
+  },
+): Promise<{ rows: any[] } | { refused: PricingError } | { error: { code?: string; message: string } }> {
+  const { data, error } = await admin.rpc('create_ticket_order', {
+    p_showing_id: params.showingId,
+    p_tickets: params.descriptors.map((d) => ({ seat_id: d.seat_id ?? null, tier_id: d.tier_id ?? null })),
+    p_payment_method: params.paymentMethod,
+    p_user_id: params.userId,
+    p_order_token: params.orderToken,
+    p_status: params.status,
+    p_square_payment_id: params.squarePaymentId ?? null,
+    p_checkout_idempotency_key: params.idempotencyKey ?? null,
+    p_sms_consent: params.smsConsent ?? null,
+  });
+  const refused = refusal(error);
+  if (refused) return { refused };
+  if (error) return { error };
+  return { rows: data ?? [] };
 }
