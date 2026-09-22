@@ -29,7 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
-- **One SQL function prices and writes every paid ticket order, so the arithmetic exists once**<br>`ops` — `#316`, `#317`, `#318`, `#320` — [brief](briefs/BRIEF-pricing-rpc.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
+- **One SQL function prices and writes every paid ticket order, so the arithmetic exists once**<br>`ops` — `#316`, `#317`, `#318`, `#320`, `#324` — [brief](briefs/BRIEF-pricing-rpc.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - **Staff can add ticket discounts (percent, $ per ticket, $ per order) that reconcile with Square to the cent**<br>`feature` — `#311`, `#312`, `#314` — [brief](briefs/BRIEF-ticket-discounts.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - **Admins manage staff and host accounts; only a superadmin touches admins and superadmins**<br>`security` — `#305` — [brief](briefs/BRIEF-admin-account-role-management.md)
 - **Staff are emailed about every marquee and rental request, and admins choose who**<br>`feature` — `#307` — [brief](briefs/BRIEF-staff-notifications.md)

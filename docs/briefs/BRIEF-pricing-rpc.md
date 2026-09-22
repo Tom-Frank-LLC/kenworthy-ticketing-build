@@ -5,7 +5,7 @@ status: shipped
 track: ops
 severity: P2
 date: 2026-09-22
-shipped_in: ["#316", "#317", "#318", "#320"]
+shipped_in: ["#316", "#317", "#318", "#320", "#324"]
 shipped_at: 2026-09-22
 verified: true
 findings: FINDINGS-square-order-arithmetic.md
@@ -205,6 +205,8 @@ sales send it as `device_id`, and refuse to start without one. `SQUARE_TERMINAL_
 remains an optional default for a fresh station. Neither POS screen had ever passed a device id
 before, so counter card sales cannot have worked in production since the cutover; the first real
 counter card sale is the end-to-end check of the whole card path, `confirm_sale` included.
+**In production** (PR #324 `72bdc16`; `square-terminal` v31→32; Worker `4e7a02a2…` →
+`9175a7d5-b711-4376-93a2-9d7ac33419ea`).
 
 **Follow-ups, in production (22 Sep 2026, PR #320 `28c06b6`; Worker `2aae61e7…` → `4e7a02a2-5de0-41b6-bc3f-f1204f364bf9`; migration then site; all 16 upcoming showings re-quoted fine after the migration):**
 - Comps go through `create_ticket_order` (`payment_method = 'comp'`, recipient name required; staff,
