@@ -1,11 +1,13 @@
 ---
 brief: pricing-rpc
 title: One SQL function prices and writes every paid ticket order, so the arithmetic exists once
-status: in-progress
+status: shipped
 track: ops
 severity: P2
 date: 2026-09-22
-verified: false
+shipped_in: ["#316", "#317", "#318"]
+shipped_at: 2026-09-22
+verified: true
 findings: FINDINGS-square-order-arithmetic.md
 ---
 
@@ -185,4 +187,20 @@ with a Square Order; drop `enforce_ticket_order_totals`.
 - Staging, as a real staff user: direct paid insert → 403; quote 28.62; pending rows 2862;
   `start_sale` → Square Order for 3362 (tickets + $5 gift), checkout PENDING with the order id;
   `confirm_sale` → not confirmed while PENDING; cash sale 2 rows. Test data removed.
+
+## Ship 2 in production (22 Sep 2026, PR #318, `fa1ec83`)
+
+Production compared by content against pre-merge main first (20/20). Migration `20260922162659`
+applied; then, before any code depending on it, **all 16 upcoming production showings were quoted
+through `quote_ticket_order` with the public key (14 tiered, 2 untiered) — 16/16**. `square-terminal`
+v30→31. Worker `d23396ec…` → `2aae61e7-058a-447b-bb25-6dfb256f11c1` (rollback); both origins serve
+the new build and its two new-code chunks byte-identically.
+
+**Open, for the theatre:** set `SQUARE_TERMINAL_DEVICE_ID` (`supabase secrets set`, production) to
+the reader's id from Square's Devices list before relying on counter card sales — the old path
+addressed a fake device, so this was already true. The first real card sale at the counter is the
+end-to-end check of `confirm_sale`: rows `pending` → `confirmed`, Square order with line items.
+
+**Later:** comps through `create_ticket_order` (decision 3); regenerate `types.ts` from a clean
+database so the `(supabase as any).rpc` casts can go.
 
