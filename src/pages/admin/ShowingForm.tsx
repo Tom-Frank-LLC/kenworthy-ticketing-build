@@ -21,6 +21,7 @@ import {
 import { DEFAULT_SHOWING_MINUTES } from '@/lib/purchasable';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { squareSaveOutcome } from '@/lib/squareLink';
+import { setShowingPriceTiers } from '@/lib/priceTiers';
 import {
   findCollidingRowIndexes,
   findDuplicateRowIndexes,
@@ -279,7 +280,10 @@ export default function ShowingForm() {
     if (isEdit) {
       Promise.all([
         supabase.from('showings').select('*').eq('id', id).single(),
-        supabase.from('showing_price_tiers').select('*').eq('showing_id', id).order('display_order'),
+        // Live tiers only. A tier the admin removed after it had sold stays
+        // in the table, retired, so its tickets keep their tier — and it
+        // must not come back into the form as if it were still on sale.
+        supabase.from('showing_price_tiers').select('*').eq('showing_id', id).eq('is_active', true).order('display_order'),
         fetchShowingEligibility(id!).catch(() => [] as string[]),
       ]).then(([showingRes, tiersRes, eligibleIds]) => {
         // What is actually tagged, never a guess. An existing screening's
@@ -623,6 +627,21 @@ export default function ShowingForm() {
    * nullable failure rather than an `ok` union because this project compiles
    * with `strict: false`, where a boolean discriminant does not narrow.
    */
+  const clearTiers = async (
+    showingId: string,
+  ): Promise<{ message: string; detail: string } | null> => {
+    try {
+      await setShowingPriceTiers(showingId, []);
+      return null;
+    } catch (err) {
+      const why = err instanceof Error ? err.message : 'unknown error';
+      return {
+        message: `Showing saved, but its old price tiers could not be removed — ${why}`,
+        detail: `price tiers were not removed — ${why}`,
+      };
+    }
+  };
+
   const applySideEffects = async (
     showingId: string,
     assignedSeating: boolean,
@@ -638,16 +657,26 @@ export default function ShowingForm() {
     // every showing in a batch. That is what "these settings apply to every
     // showtime" has to mean for a room with assigned seats, and it is why a
     // reserved run does not have to be created a night at a time.
+    //
+    // Every branch below that touches tiers goes through setShowingPriceTiers,
+    // which reconciles rather than deleting and reinserting. That matters
+    // because a tier a ticket has sold against cannot be deleted at all
+    // (tickets.tier_id has no ON DELETE); the old delete failed silently on
+    // every showing that had sold a ticket, and the insert that followed
+    // appended a second copy of every tier. See
+    // docs/FINDINGS-duplicate-price-tiers.md.
     if (noTicket) {
       // Cleared, not merely skipped. A showing flipped from tiered-and-priced
-      // to walk-in would otherwise keep its old tiers: dead rows that sell
-      // nothing (the checkout refuses the showing outright) but that make the
-      // showing read as priced the next time this form loads it.
+      // to walk-in would otherwise keep its old tiers: rows that sell nothing
+      // (the checkout refuses the showing outright) but that make the showing
+      // read as priced the next time this form loads it. A tier that has sold
+      // is retired rather than removed, so its tickets keep their tier.
       //
       // This runs *after* the showings write above, which is why the database
       // guards only the tier side of the rule — a trigger on `showings` would
-      // refuse the flag for tiers that this very next statement deletes.
-      await supabase.from('showing_price_tiers').delete().eq('showing_id', showingId);
+      // refuse the flag for tiers that this very next statement retires.
+      const failed = await clearTiers(showingId);
+      if (failed) return failed;
     } else if (assignedSeating) {
       const ok = await seatEditorRef.current?.persist(showingId);
       // `!== true` rather than `=== false`: an absent ref returns undefined, and
@@ -661,28 +690,23 @@ export default function ShowingForm() {
     } else if (useTiers) {
       // Not redundant on a brand-new showing: the production template RPC may
       // have just seeded tiers, and these replace them.
-      await supabase.from('showing_price_tiers').delete().eq('showing_id', showingId);
-
       const validTiers = tiers.filter(t => t.tier_name.trim());
-      if (validTiers.length > 0) {
-        const { error: tierError } = await supabase.from('showing_price_tiers').insert(
-          validTiers.map((t, i) => ({
-            showing_id: showingId,
-            tier_name: t.tier_name.trim(),
-            price: parseFloat(t.price),
-            display_order: i,
-          }))
+      try {
+        await setShowingPriceTiers(
+          showingId,
+          validTiers.map(t => ({ tier_name: t.tier_name, price: parseFloat(t.price) })),
         );
-        if (tierError) {
-          return {
-            message: 'Showing saved but tiers failed: ' + tierError.message,
-            detail: `price tiers failed — ${tierError.message}`,
-          };
-        }
+      } catch (err) {
+        const why = err instanceof Error ? err.message : 'unknown error';
+        return {
+          message: 'Showing saved but tiers failed: ' + why,
+          detail: `price tiers failed — ${why}`,
+        };
       }
     } else if (isEdit) {
-      // Remove tiers if user unchecked
-      await supabase.from('showing_price_tiers').delete().eq('showing_id', showingId);
+      // Tiered pricing unticked: the showing sells at its base price now.
+      const failed = await clearTiers(showingId);
+      if (failed) return failed;
     }
 
     // Pass eligibility, after the showing exists so a new one has an id to
@@ -1587,7 +1611,14 @@ export default function ShowingForm() {
                           className="pl-6"
                         />
                       </div>
-                      <Button type="button" variant="ghost" size="icon" onClick={() => removeTier(i)} className="shrink-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeTier(i)}
+                        className="shrink-0"
+                        aria-label={`Remove tier ${tier.tier_name.trim() || i + 1}`}
+                      >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>

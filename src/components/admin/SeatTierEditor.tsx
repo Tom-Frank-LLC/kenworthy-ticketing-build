@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Plus, Trash2, Save, RotateCcw, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { setShowingPriceTiers } from '@/lib/priceTiers';
 
 // Layout constants — match SeatMap.tsx (Kenworthy auditorium banks)
 const LEFT_COLS = [1, 2, 3, 4, 5, 6, 7];
@@ -143,9 +144,11 @@ export const SeatTierEditor = forwardRef<SeatTierEditorHandle, SeatTierEditorPro
         // showingId is null while the showing is still being composed — there is
         // nothing stored yet, so this seeds from the production and the painting
         // is held in local state until ShowingForm calls persist() after insert.
+        // Live tiers only: a retired one (removed after it had sold) is not
+        // a tier to paint seats with.
         const tierRes = showingId
           ? await supabase.from('showing_price_tiers')
-              .select('*').eq('showing_id', showingId).order('display_order')
+              .select('*').eq('showing_id', showingId).eq('is_active', true).order('display_order')
           : { data: [] as any[] };
         const mapRes = showingId
           ? await supabase.from('showing_seat_tiers')
@@ -293,27 +296,26 @@ export const SeatTierEditor = forwardRef<SeatTierEditorHandle, SeatTierEditorPro
 
   // The whole of a showing's seat pricing, rewritten in one go.
   //
-  // showing_price_tiers is deleted and reinserted, and showing_seat_tiers.tier_id
-  // is ON DELETE CASCADE against it, so the assignments have to be rebuilt in the
-  // same operation — which is exactly why nothing else may write price tiers for
-  // an assigned-seating showing. ShowingForm used to delete them on every save of
-  // its own tier list, cascading the painted map away without a word.
+  // The tiers go through setShowingPriceTiers, which matches them by name and
+  // keeps their ids — a tier that has sold cannot be deleted (tickets point at
+  // it), and the old delete-and-reinsert here failed silently on exactly those
+  // showings and appended duplicates. The seat map is then rebuilt against the
+  // ids the reconcile returns. Nothing else may write price tiers for an
+  // assigned-seating showing: ShowingForm used to, on every save of its own
+  // tier list, and the map went with them.
   async function writeShowingTiers(targetShowingId: string) {
-    await supabase.from('showing_seat_tiers').delete().eq('showing_id', targetShowingId);
-    await supabase.from('showing_price_tiers').delete().eq('showing_id', targetShowingId);
+    const liveTiers = await setShowingPriceTiers(
+      targetShowingId,
+      tiers.map(t => ({ tier_name: t.tier_name, price: parseFloat(t.price), color: t.color })),
+    );
 
-    const inserts = tiers.map((t, i) => ({
-      showing_id: targetShowingId, tier_name: t.tier_name.trim(),
-      price: parseFloat(t.price), color: t.color, display_order: i, is_active: true,
-    }));
-    if (inserts.length === 0) return;
-
-    const { data: insertedTiers, error: tierErr } = await supabase
-      .from('showing_price_tiers').insert(inserts).select('id, display_order');
-    if (tierErr) throw tierErr;
+    // Old assignments first, then the new ones. A retired tier's map rows go
+    // with it here rather than by cascade: the row itself stays.
+    const { error: clearErr } = await supabase.from('showing_seat_tiers').delete().eq('showing_id', targetShowingId);
+    if (clearErr) throw clearErr;
 
     const orderToServer: Record<number, string> = {};
-    for (const r of insertedTiers || []) orderToServer[(r as any).display_order] = (r as any).id;
+    for (const r of liveTiers) orderToServer[r.display_order] = r.id;
     const localToServer: Record<string, string> = {};
     tiers.forEach((t, i) => { localToServer[t.localId] = orderToServer[i]; });
 

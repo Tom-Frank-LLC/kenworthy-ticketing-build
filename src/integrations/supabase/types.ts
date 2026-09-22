@@ -3751,6 +3751,19 @@ export type Database = {
         }
         Returns: Json
       }
+      set_showing_price_tiers: {
+        Args: { p_showing_id: string; p_tiers: Json }
+        Returns: {
+          color: string
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          price: number
+          showing_id: string
+          tier_name: string
+        }[]
+      }
       showing_attendees: {
         Args: { p_showing_ids: string[] }
         Returns: {
