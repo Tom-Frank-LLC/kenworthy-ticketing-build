@@ -5,7 +5,7 @@ status: built
 track: feature
 severity: P2
 date: 2026-09-22
-shipped_in: []
+shipped_in: ["#329"]
 shipped_at:
 verified: false
 ---
