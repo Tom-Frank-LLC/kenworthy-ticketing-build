@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { formatShowtime, toVenueWallClock, venueDayKey } from '@/lib/datetime';
 import type { FeedItem } from './TrailerFeed';
 import { isRichTextEmpty } from '@/lib/richText';
+import { ticketingLabel } from '@/lib/liveEventTypes';
 import { RichText } from '@/components/RichText';
 
 const TYPE_ICON = {
@@ -125,7 +126,9 @@ export function EditorialCalendar({
                                 {item.type === 'movie' ? 'Film' : item.type === 'concert' ? 'Live' : 'Event'}
                               </span>
                               {item.ticketType === 'rsvp' && (
-                                <Badge variant="outline" className="text-xs py-0">RSVP</Badge>
+                                <Badge variant="outline" className="text-xs py-0">
+                                  {ticketingLabel('rsvp', item.type === 'movie' ? 'film' : 'live')}
+                                </Badge>
                               )}
                               {/* This row opens a drawer rather than offering
                                   a ticket, so there is no CTA here to reword —

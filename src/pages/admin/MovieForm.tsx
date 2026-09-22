@@ -74,7 +74,7 @@ export default function MovieForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const linkError = rsvpUrlError(ticketType, rsvpUrl);
+    const linkError = rsvpUrlError(ticketType, rsvpUrl, 'film');
     if (linkError) { toast.error(linkError); return; }
     setSaving(true);
     try {
@@ -94,7 +94,7 @@ export default function MovieForm() {
         release_year: releaseYear ? Number(releaseYear) : null,
         release_label: releaseLabel || null,
         ticket_type: ticketType,
-        // Only meaningful for RSVP. Cleared otherwise so a mode change cannot
+        // Only meaningful for External (stored as `rsvp`). Cleared otherwise so a mode change cannot
         // leave a stale link behind that the site would still render.
         rsvp_url: ticketType === 'rsvp' ? rsvpUrl.trim() : null,
       };
@@ -144,6 +144,7 @@ export default function MovieForm() {
             </div>
             <TicketingModeFields
               idPrefix="movie"
+              kind="film"
               ticketType={ticketType}
               onTicketTypeChange={setTicketType}
               rsvpUrl={rsvpUrl}

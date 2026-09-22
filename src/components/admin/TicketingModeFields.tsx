@@ -1,7 +1,12 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { TICKETING_MODES, type TicketingMode } from '@/lib/liveEventTypes';
+import {
+  rsvpUrlFieldLabel,
+  ticketingModesFor,
+  type TicketingKind,
+  type TicketingMode,
+} from '@/lib/liveEventTypes';
 
 /**
  * How people get in: sold here, booked through an outside link, or nothing to
@@ -14,21 +19,26 @@ import { TICKETING_MODES, type TicketingMode } from '@/lib/liveEventTypes';
  * `rsvpUrlError` beside it is what both forms check before saving.
  *
  * `idPrefix` keeps each form's ids and labels distinct, which is what the
- * tests and screen readers find them by.
+ * tests and screen readers find them by. `kind` picks the words: the stored
+ * `rsvp` mode is "RSVP" on an event and "External" on a film — see
+ * TicketingKind.
  */
 export function TicketingModeFields({
   idPrefix,
+  kind,
   ticketType,
   onTicketTypeChange,
   rsvpUrl,
   onRsvpUrlChange,
 }: {
   idPrefix: string;
+  kind: TicketingKind;
   ticketType: TicketingMode;
   onTicketTypeChange: (mode: TicketingMode) => void;
   rsvpUrl: string;
   onRsvpUrlChange: (url: string) => void;
 }) {
+  const modes = ticketingModesFor(kind);
   return (
     <>
       <div className="space-y-2">
@@ -36,19 +46,19 @@ export function TicketingModeFields({
         <Select value={ticketType} onValueChange={v => onTicketTypeChange(v as TicketingMode)}>
           <SelectTrigger id={`${idPrefix}-ticketing`}><SelectValue /></SelectTrigger>
           <SelectContent>
-            {TICKETING_MODES.map(m => (
+            {modes.map(m => (
               <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <p className="font-serif text-xs text-muted-foreground">
-          {TICKETING_MODES.find(m => m.value === ticketType)?.help}
+          {modes.find(m => m.value === ticketType)?.help}
         </p>
       </div>
 
       {ticketType === 'rsvp' && (
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-rsvp-url`}>RSVP URL</Label>
+          <Label htmlFor={`${idPrefix}-rsvp-url`}>{rsvpUrlFieldLabel(kind)}</Label>
           <Input
             id={`${idPrefix}-rsvp-url`}
             type="url"

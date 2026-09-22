@@ -108,12 +108,12 @@ describe('MovieForm — how people get in', () => {
     expect(state.writes[0].payload).toMatchObject({ ticket_type: 'ticketed', rsvp_url: null });
   });
 
-  it('stores an RSVP film with its outside link', async () => {
+  it('stores an External film with its outside link (stored as rsvp — the column value events use)', async () => {
     renderForm('/admin/movies/new');
 
     fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'Festival Film' } });
-    await choose('Ticketing *', 'RSVP');
-    fireEvent.change(screen.getByLabelText('RSVP URL'), { target: { value: 'https://festival.example/tickets' } });
+    await choose('Ticketing *', 'External');
+    fireEvent.change(screen.getByLabelText('External ticket URL'), { target: { value: 'https://festival.example/tickets' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create Movie' }));
 
     await waitFor(() => expect(state.writes).toHaveLength(1));
@@ -123,11 +123,11 @@ describe('MovieForm — how people get in', () => {
     });
   });
 
-  it('refuses an RSVP film without a link rather than saving one that sells nothing anywhere', async () => {
+  it('refuses an External film without a link rather than saving one that sells nothing anywhere', async () => {
     renderForm('/admin/movies/new');
 
     fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'Festival Film' } });
-    await choose('Ticketing *', 'RSVP');
+    await choose('Ticketing *', 'External');
     fireEvent.click(screen.getByRole('button', { name: 'Create Movie' }));
 
     await waitFor(() => expect(state.toasts.error).toHaveLength(1));
@@ -139,8 +139,8 @@ describe('MovieForm — how people get in', () => {
     renderForm('/admin/movies/new');
 
     fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'Festival Film' } });
-    await choose('Ticketing *', 'RSVP');
-    fireEvent.change(screen.getByLabelText('RSVP URL'), { target: { value: 'http://festival.example' } });
+    await choose('Ticketing *', 'External');
+    fireEvent.change(screen.getByLabelText('External ticket URL'), { target: { value: 'http://festival.example' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create Movie' }));
 
     await waitFor(() => expect(state.toasts.error).toHaveLength(1));
@@ -151,8 +151,8 @@ describe('MovieForm — how people get in', () => {
     renderForm('/admin/movies/new');
 
     fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'Gala' } });
-    await choose('Ticketing *', 'RSVP');
-    fireEvent.change(screen.getByLabelText('RSVP URL'), { target: { value: 'https://festival.example/old' } });
+    await choose('Ticketing *', 'External');
+    fireEvent.change(screen.getByLabelText('External ticket URL'), { target: { value: 'https://festival.example/old' } });
     await choose('Ticketing *', 'Ticketed');
     fireEvent.click(screen.getByRole('button', { name: 'Create Movie' }));
 
@@ -160,7 +160,7 @@ describe('MovieForm — how people get in', () => {
     expect(state.writes[0].payload).toMatchObject({ ticket_type: 'ticketed', rsvp_url: null });
   });
 
-  it('loads an existing RSVP film with its mode and link, and keeps them on save', async () => {
+  it('loads an existing External film with its mode and link, and keeps them on save', async () => {
     state.rows.movies = {
       id: MOVIE_ID, title: 'Festival Film', duration_minutes: 100, is_active: true,
       ticket_type: 'rsvp', rsvp_url: 'https://festival.example/tickets',
@@ -168,7 +168,7 @@ describe('MovieForm — how people get in', () => {
     renderForm(`/admin/movies/${MOVIE_ID}`);
 
     await waitFor(() => expect(screen.getByLabelText('Title *')).toHaveValue('Festival Film'));
-    expect(screen.getByLabelText('RSVP URL')).toHaveValue('https://festival.example/tickets');
+    expect(screen.getByLabelText('External ticket URL')).toHaveValue('https://festival.example/tickets');
     fireEvent.click(screen.getByRole('button', { name: 'Update Movie' }));
 
     await waitFor(() => expect(state.writes).toHaveLength(1));
@@ -194,5 +194,14 @@ describe('MovieForm — how people get in', () => {
     await choose('Ticketing *', 'Ticketed');
     expect(await screen.findByText('SEAT PRICING')).toBeTruthy();
     expect(screen.getByText('DISCOUNTS')).toBeTruthy();
+  });
+});
+
+describe('MovieForm — the word is External, not RSVP', () => {
+  it('offers External where an event form offers RSVP, for the same stored value', async () => {
+    renderForm('/admin/movies/new');
+    fireEvent.click(await screen.findByLabelText('Ticketing *'));
+    expect(await screen.findByRole('option', { name: 'External' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'RSVP' })).toBeNull();
   });
 });

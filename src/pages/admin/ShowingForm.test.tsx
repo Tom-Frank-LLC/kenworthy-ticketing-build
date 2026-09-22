@@ -755,7 +755,7 @@ describe('ShowingForm — a film whose tickets are not sold here', () => {
     renderForm(`/admin/showings/new?movie=${EXTERNAL_MOVIE_ID}`);
 
     await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Festival Film'));
-    expect(await screen.findByText('Ticketed elsewhere')).toBeTruthy();
+    expect(await screen.findByText('External ticketing')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'https://festival.example/tickets' })).toBeTruthy();
     expect(screen.queryByLabelText('Base Ticket Price ($)')).toBeNull();
     expect(screen.queryByText('Price Tiers')).toBeNull();
@@ -798,7 +798,7 @@ describe('ShowingForm — a film whose tickets are not sold here', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Movie *')).toHaveTextContent('Dune'));
     expect(screen.getByLabelText('Base Ticket Price ($)')).toBeTruthy();
-    expect(screen.queryByText('Ticketed elsewhere')).toBeNull();
+    expect(screen.queryByText('External ticketing')).toBeNull();
     fillShowtimes(['2026-10-03T19:30']);
     submit();
 
