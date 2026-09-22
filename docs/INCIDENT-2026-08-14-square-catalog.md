@@ -287,3 +287,12 @@ may not survive anywhere.
    consequence came from a sentence that read like a finding and was a guess.
    An untested conclusion must say so, or the next reader will treat it as
    settled and plan around it.
+
+## Tooling retired (22 Sep 2026)
+
+The `poster-restore` edge function and its three working tables
+(`poster_restore_plan`, `poster_source_wordpress`, `square_orphan_images`) were removed —
+migration `drop_poster_restore_tables`, function deleted from production. They had no
+migration and no caller, and everything in them was derived from Square or the website. The
+156 unrepaired orphans remain in Square's image library, as accepted above.
+
