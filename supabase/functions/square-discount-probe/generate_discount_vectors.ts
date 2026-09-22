@@ -1,5 +1,9 @@
 // Regenerates the `discounted` section of _shared/pricing_vectors.json.
 //
+// The probe is NOT left deployed. First:
+//   npx supabase functions deploy square-discount-probe --project-ref rpqzrpboyhshdrfdwayk --no-verify-jwt
+// and delete it again afterwards. It refuses to run against production.
+//
 //   PROBE_KEY=<staging service_role key> deno run --allow-net --allow-env --allow-read --allow-write \
 //     supabase/functions/square-discount-probe/generate_discount_vectors.ts
 //
