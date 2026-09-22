@@ -1,18 +1,18 @@
 ---
 brief: movie-external-ticketing
 title: A film can be ticketed through an outside site, the way an event can, and nothing sells against it here
-status: built
+status: shipped
 track: feature
 severity: P2
 date: 2026-09-22
 shipped_in: ["#329"]
-shipped_at:
-verified: false
+shipped_at: 2026-09-22
+verified: true
 ---
 
 # Brief (for Claude Code): External ticketing for movies (same as events)
 
-**Status:** built 2026-09-22 (see *What was built* at the end) — was: 🟢 Mostly plumbing — the pattern already exists for events/performances; movies just need the columns, the form control, and to be included in the selects. The care item is the server boundary (internal checkout must refuse an externally-ticketed movie).
+**Status:** shipped 2026-09-22 (see *What was built* at the end) — was: 🟢 Mostly plumbing — the pattern already exists for events/performances; movies just need the columns, the form control, and to be included in the selects. The care item is the server boundary (internal checkout must refuse an externally-ticketed movie).
 **Date:** September 22, 2026
 **Requested by:** Team — "add ticketing from an outside website for movies (the same as how it works for events)."
 
@@ -102,3 +102,18 @@ Not done: the calendar's per-row badge still reads "RSVP" for a film (it is a
 badge, not a button, and the drawer it opens says the right thing); the
 `ticket_type` column comment on `movies` names the refusing function so the
 next reader finds it.
+
+## Shipped (2026-09-22)
+
+PR #329 merged as `f2bff34`. Migration `20260922203433` applied to staging and
+production (`db push` named it; `migration list` showed both databases exactly
+in step beforehand, so nothing else moved). All 1,115 production films read
+`ticketed` / no link afterwards.
+
+Production Worker `95981135-f59b-47f5-990d-12684b83e6ba`; rollback
+`02353347-1103-4c3a-9ca2-873de9a300b0` (#327). Staging Worker
+`63f05afa-55ac-42d2-a46a-445e0ca6d3f8`. Verified against `kenworthy.org`, not
+the upload log: every route serves `index-BYBCeOaz.js` and the chunk carries
+the refusal sentence. The first check hit a stale edge-cache entry
+(`cf-cache-status: HIT`, old hash) that revalidated within a minute — worth
+knowing before concluding a deploy failed.
