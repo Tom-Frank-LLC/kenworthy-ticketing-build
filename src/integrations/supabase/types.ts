@@ -1772,84 +1772,6 @@ export type Database = {
         }
         Relationships: []
       }
-      poster_restore_plan: {
-        Row: {
-          approved: boolean | null
-          attached_at: string | null
-          attached_image_id: string | null
-          category: string | null
-          confidence: string | null
-          created_at: string
-          error: string | null
-          item_name: string
-          poster_url: string | null
-          source: string | null
-          source_ref: string | null
-          source_title: string | null
-          square_catalog_id: string
-          title_key: string | null
-        }
-        Insert: {
-          approved?: boolean | null
-          attached_at?: string | null
-          attached_image_id?: string | null
-          category?: string | null
-          confidence?: string | null
-          created_at?: string
-          error?: string | null
-          item_name: string
-          poster_url?: string | null
-          source?: string | null
-          source_ref?: string | null
-          source_title?: string | null
-          square_catalog_id: string
-          title_key?: string | null
-        }
-        Update: {
-          approved?: boolean | null
-          attached_at?: string | null
-          attached_image_id?: string | null
-          category?: string | null
-          confidence?: string | null
-          created_at?: string
-          error?: string | null
-          item_name?: string
-          poster_url?: string | null
-          source?: string | null
-          source_ref?: string | null
-          source_title?: string | null
-          square_catalog_id?: string
-          title_key?: string | null
-        }
-        Relationships: []
-      }
-      poster_source_wordpress: {
-        Row: {
-          event_date: string | null
-          event_id: number
-          fetched_at: string
-          poster_url: string | null
-          title: string
-          title_key: string
-        }
-        Insert: {
-          event_date?: string | null
-          event_id: number
-          fetched_at?: string
-          poster_url?: string | null
-          title: string
-          title_key: string
-        }
-        Update: {
-          event_date?: string | null
-          event_id?: number
-          fetched_at?: string
-          poster_url?: string | null
-          title?: string
-          title_key?: string
-        }
-        Relationships: []
-      }
       press_articles: {
         Row: {
           created_at: string
@@ -2976,42 +2898,6 @@ export type Database = {
           },
         ]
       }
-      square_orphan_images: {
-        Row: {
-          image_id: string
-          image_name: string | null
-          image_url: string | null
-          indexed_at: string
-          match_kind: string | null
-          matched_item_id: string | null
-          matched_item_name: string | null
-          name_key: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          image_id: string
-          image_name?: string | null
-          image_url?: string | null
-          indexed_at?: string
-          match_kind?: string | null
-          matched_item_id?: string | null
-          matched_item_name?: string | null
-          name_key?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          image_id?: string
-          image_name?: string | null
-          image_url?: string | null
-          indexed_at?: string
-          match_kind?: string | null
-          matched_item_id?: string | null
-          matched_item_name?: string | null
-          name_key?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
       square_poster_matches_20260815: {
         Row: {
           approved: boolean | null
@@ -3624,6 +3510,8 @@ export type Database = {
       create_ticket_order: {
         Args: {
           p_checkout_idempotency_key?: string
+          p_comp_recipient_email?: string
+          p_comp_recipient_name?: string
           p_order_token?: string
           p_payment_method: string
           p_showing_id: string
