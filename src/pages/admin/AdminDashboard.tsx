@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
+import { lazyWithRecovery } from '@/lib/lazyWithRecovery';
 import { collectGenres, hasGenre, parseGenres } from '@/lib/genres';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,43 +20,74 @@ import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
 import { CollapsibleSection } from '@/components/admin/CollapsibleSection';
 import { ProductionShowings, TicketCountBadge } from '@/components/admin/ProductionShowings';
 import { liveEventTypeLabel, ticketingLabel } from '@/lib/liveEventTypes';
-import AnalyticsTab from '@/components/admin/AnalyticsTab';
-import { BoxOfficeToday } from '@/components/admin/BoxOfficeToday';
-import TransactionsTab from '@/components/admin/TransactionsTab';
-import ConcessionItemsTab from '@/components/admin/ConcessionItemsTab';
-import ConcessionMenusTab from '@/components/admin/ConcessionMenusTab';
-import FestivalProgramsTab from '@/components/admin/FestivalProgramsTab';
 import { SquareLinkPanel } from '@/components/admin/SquareLinkPanel';
-import SquareCatalogTab from '@/components/admin/SquareCatalogTab';
 import {
   DEFAULT_PAGES_TAB,
   DEFAULT_SCHEDULE_TAB,
   resolveAdminSection,
 } from '@/lib/adminSections';
-import FilmPassesTab from '@/components/admin/FilmPassesTab';
-import HostManagementTab from '@/components/admin/HostManagementTab';
-import AccountingTab from '@/components/admin/AccountingTab';
-import ChartOfAccountsTab from '@/components/admin/accounting/ChartOfAccountsTab';
-import AccountMappingsTab from '@/components/admin/accounting/AccountMappingsTab';
-import QboExportTab from '@/components/admin/accounting/QboExportTab';
 import { FINANCIAL_IMPORTS_ENABLED } from '@/lib/flags';
-import RentalRequestsTab from '@/components/admin/RentalRequestsTab';
-import BoxOfficeReceiptsTab from '@/components/admin/BoxOfficeReceiptsTab';
-import LaborTab from '@/components/admin/LaborTab';
-import SponsorsTab from '@/components/admin/SponsorsTab';
-import DvdLibraryTab from '@/components/admin/DvdLibraryTab';
-import MailchimpTab from '@/components/admin/MailchimpTab';
-import LglTab from '@/components/admin/LglTab';
-import NotificationsTab from '@/components/admin/NotificationsTab';
-import HiringTab from '@/components/admin/HiringTab';
-import PressTab from '@/components/admin/PressTab';
-import BackstageTab from '@/components/admin/BackstageTab';
-import FeaturedSlidesTab from '@/components/admin/FeaturedSlidesTab';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
 import { formatShowtime } from '@/lib/datetime';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+
+/*
+ * Every tab is its own chunk, loaded when it is first selected.
+ *
+ * These were static imports, which made the dashboard one 1.1 MB chunk
+ * (309 KB gzipped) — the largest in the build by a factor of three. Rolldown
+ * bundles whatever a static import reaches, so recharts (Analytics), the xlsx
+ * parser (Imports) and jsPDF (Staff timecards) were all downloaded and parsed
+ * before the Listings tab could paint, for staff who open one tab. The route
+ * level already splits this way in App.tsx; this is the same rule one level
+ * down. Radix only mounts the active TabsContent, so only the chosen tab's
+ * chunk is ever requested.
+ *
+ * lazyWithRecovery rather than React.lazy for the same reason the routes use
+ * it: a deploy deletes the previous build's chunks, and a dashboard left open
+ * across one would otherwise go blank on the next tab click.
+ *
+ * SquareLinkPanel stays static. It sits at the top of the default tab, so a
+ * separate chunk would cost a round-trip and save nothing.
+ */
+const AnalyticsTab = lazyWithRecovery(() => import('@/components/admin/AnalyticsTab'));
+const BoxOfficeToday = lazyWithRecovery(() =>
+  import('@/components/admin/BoxOfficeToday').then(m => ({ default: m.BoxOfficeToday }))
+);
+const TransactionsTab = lazyWithRecovery(() => import('@/components/admin/TransactionsTab'));
+const ConcessionItemsTab = lazyWithRecovery(() => import('@/components/admin/ConcessionItemsTab'));
+const ConcessionMenusTab = lazyWithRecovery(() => import('@/components/admin/ConcessionMenusTab'));
+const FestivalProgramsTab = lazyWithRecovery(() => import('@/components/admin/FestivalProgramsTab'));
+const SquareCatalogTab = lazyWithRecovery(() => import('@/components/admin/SquareCatalogTab'));
+const FilmPassesTab = lazyWithRecovery(() => import('@/components/admin/FilmPassesTab'));
+const HostManagementTab = lazyWithRecovery(() => import('@/components/admin/HostManagementTab'));
+const AccountingTab = lazyWithRecovery(() => import('@/components/admin/AccountingTab'));
+const ChartOfAccountsTab = lazyWithRecovery(() => import('@/components/admin/accounting/ChartOfAccountsTab'));
+const AccountMappingsTab = lazyWithRecovery(() => import('@/components/admin/accounting/AccountMappingsTab'));
+const QboExportTab = lazyWithRecovery(() => import('@/components/admin/accounting/QboExportTab'));
+const RentalRequestsTab = lazyWithRecovery(() => import('@/components/admin/RentalRequestsTab'));
+const BoxOfficeReceiptsTab = lazyWithRecovery(() => import('@/components/admin/BoxOfficeReceiptsTab'));
+const LaborTab = lazyWithRecovery(() => import('@/components/admin/LaborTab'));
+const SponsorsTab = lazyWithRecovery(() => import('@/components/admin/SponsorsTab'));
+const DvdLibraryTab = lazyWithRecovery(() => import('@/components/admin/DvdLibraryTab'));
+const MailchimpTab = lazyWithRecovery(() => import('@/components/admin/MailchimpTab'));
+const LglTab = lazyWithRecovery(() => import('@/components/admin/LglTab'));
+const NotificationsTab = lazyWithRecovery(() => import('@/components/admin/NotificationsTab'));
+const HiringTab = lazyWithRecovery(() => import('@/components/admin/HiringTab'));
+const PressTab = lazyWithRecovery(() => import('@/components/admin/PressTab'));
+const BackstageTab = lazyWithRecovery(() => import('@/components/admin/BackstageTab'));
+const FeaturedSlidesTab = lazyWithRecovery(() => import('@/components/admin/FeaturedSlidesTab'));
+
+/**
+ * What a panel shows while its chunk downloads. Matches the in-page loading
+ * state the routes render (App.tsx RouteFallback) so a tab switch and a route
+ * change look like the same thing happening.
+ */
+const TabFallback = () => (
+  <div className="py-16 text-center text-muted-foreground">Loading...</div>
+);
 
 /**
  * PostgREST caps every response at 1000 rows, so a bare `.select('*')` silently
@@ -89,6 +121,14 @@ async function fetchAllPages<T>(
 
 /** The Listings sub-tabs that `?tab=` may name. */
 
+/** One row of `showing_ticket_counts()`: confirmed tickets, and how many were scanned. */
+interface TicketCounts {
+  sold: number;
+  scanned: number;
+}
+
+const NO_TICKETS: TicketCounts = { sold: 0, scanned: 0 };
+
 export default function AdminDashboard() {
   const { isAdmin, isSuperadmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -98,7 +138,7 @@ export default function AdminDashboard() {
   const [concerts, setConcerts] = useState<any[]>([]);
   const [showings, setShowings] = useState<any[]>([]);
   const [venues, setVenues] = useState<any[]>([]);
-  const [tickets, setTickets] = useState<any[]>([]);
+  const [ticketCounts, setTicketCounts] = useState<Map<string, TicketCounts>>(new Map());
   const [ticketCount, setTicketCount] = useState(0);
   const [scheduleQuery, setScheduleQuery] = useState(() => searchParams.get('q') || '');
   /*
@@ -190,7 +230,7 @@ export default function AdminDashboard() {
   }, [isAdmin, authLoading, navigate]);
 
   async function loadData() {
-    const [moviesRes, eventsRes, concertsRes, showingsRes, venuesRes, ticketsRes] = await Promise.all([
+    const [moviesRes, eventsRes, concertsRes, showingsRes, venuesRes, countsRes] = await Promise.all([
       fetchAllPages((from, to) => supabase.from('movies').select('*').order('title').order('id').range(from, to)),
       fetchAllPages((from, to) => supabase.from('events').select('*').order('title').order('id').range(from, to)),
       fetchAllPages((from, to) =>
@@ -208,45 +248,62 @@ export default function AdminDashboard() {
       // a map behind its flag — the two disagreed for months without anyone
       // being able to see it, because there was no Venues screen at all.
       supabase.from('venues').select('*, venue_seats(count)').order('name'),
-      // Sold counts, so unpaid checkout attempts (pending) and declines
-      // (failed) are excluded.
-      // scanned_at comes along so the dashboard can report attendance, not only
-      // sales. TicketScanner already writes it on check-in; until now nothing
-      // outside the scanner ever read it back.
-      fetchAllPages((from, to) => supabase.from('tickets').select('id, showing_id, scanned_at').eq('status', 'confirmed').order('id').range(from, to)),
+      // Two numbers per showing, counted in the database. This used to be
+      // every confirmed ticket ever sold — id, showing_id, scanned_at — pulled
+      // a thousand rows at a time and counted here with a filter() per badge,
+      // so the download and the work both grew with every sale. Confirmed
+      // only, so unpaid checkout attempts (pending) and declines (failed) are
+      // excluded; scanned is the attendance figure TicketScanner writes on
+      // check-in. Paged like everything else: PostgREST caps an RPC result at
+      // the same thousand rows, and there are more showings than that.
+      fetchAllPages<{ showing_id: string | null; sold: number; scanned: number }>((from, to) =>
+        supabase.rpc('showing_ticket_counts').order('showing_id').range(from, to)
+      ),
     ]);
     setMovies(moviesRes);
     setEvents(eventsRes);
     setConcerts(concertsRes);
     setShowings(showingsRes);
     setVenues(venuesRes.data || []);
-    setTickets(ticketsRes);
-    setTicketCount(ticketsRes.length);
+    const counts = new Map<string, TicketCounts>();
+    let total = 0;
+    for (const row of countsRes) {
+      total += row.sold;
+      if (row.showing_id) counts.set(row.showing_id, { sold: row.sold, scanned: row.scanned });
+    }
+    setTicketCounts(counts);
+    setTicketCount(total);
   }
 
 
   const getMovieShowings = (movieId: string) => showings.filter(s => s.movie_id === movieId);
 
-  const getTicketsSoldForShowing = (showingId: string) =>
-    tickets.filter(t => t.showing_id === showingId).length;
+  const countsForShowing = (showingId: string) => ticketCounts.get(showingId) ?? NO_TICKETS;
+
+  const getTicketsSoldForShowing = (showingId: string) => countsForShowing(showingId).sold;
 
   /** Checked-in count for one showing — sold tickets that have been scanned. */
-  const getScannedForShowing = (showingId: string) =>
-    tickets.filter(t => t.showing_id === showingId && t.scanned_at).length;
+  const getScannedForShowing = (showingId: string) => countsForShowing(showingId).scanned;
 
-  const getTicketsSoldForEvent = (eventId: string) => {
-    const eventShowings = showings.filter(s => s.event_id === eventId);
-    const own = tickets.filter(t => eventShowings.some((sh: any) => sh.id === t.showing_id));
-    const capacity = eventShowings.reduce((sum, sh) => sum + (sh.total_seats || 0), 0);
-    return { sold: own.length, scanned: own.filter(t => t.scanned_at).length, capacity };
-  };
+  /** Sold, scanned and capacity across every showing of one production. */
+  const sumAcrossShowings = (productionShowings: any[]) =>
+    productionShowings.reduce(
+      (acc, sh) => {
+        const c = countsForShowing(sh.id);
+        return {
+          sold: acc.sold + c.sold,
+          scanned: acc.scanned + c.scanned,
+          capacity: acc.capacity + (sh.total_seats || 0),
+        };
+      },
+      { sold: 0, scanned: 0, capacity: 0 }
+    );
 
-  const getTicketsSoldForConcert = (concertId: string) => {
-    const concertShowings = showings.filter(s => s.live_performance_id === concertId);
-    const own = tickets.filter(t => concertShowings.some((sh: any) => sh.id === t.showing_id));
-    const capacity = concertShowings.reduce((sum, sh) => sum + (sh.total_seats || 0), 0);
-    return { sold: own.length, scanned: own.filter(t => t.scanned_at).length, capacity };
-  };
+  const getTicketsSoldForEvent = (eventId: string) =>
+    sumAcrossShowings(showings.filter(s => s.event_id === eventId));
+
+  const getTicketsSoldForConcert = (concertId: string) =>
+    sumAcrossShowings(showings.filter(s => s.live_performance_id === concertId));
 
   const showingsForProduction = (type: 'movie' | 'event' | 'concert', productionId: string) => {
     const column = type === 'movie' ? 'movie_id' : type === 'event' ? 'event_id' : 'live_performance_id';
@@ -990,7 +1047,9 @@ export default function AdminDashboard() {
               title="Showtimes in Square"
               icon={Store}
             >
-              <SquareCatalogTab showPasses={false} kinds={['movie']} />
+              <Suspense fallback={<TabFallback />}>
+                <SquareCatalogTab showPasses={false} kinds={['movie']} />
+              </Suspense>
             </CollapsibleSection>
             <CollapsibleSection
               id="listings.movies"
@@ -1094,7 +1153,9 @@ export default function AdminDashboard() {
               title="Showtimes in Square"
               icon={Store}
             >
-              <SquareCatalogTab showPasses={false} kinds={['event', 'live_performance']} />
+              <Suspense fallback={<TabFallback />}>
+                <SquareCatalogTab showPasses={false} kinds={['event', 'live_performance']} />
+              </Suspense>
             </CollapsibleSection>
             <CollapsibleSection
               id="listings.live-events"
@@ -1314,7 +1375,9 @@ export default function AdminDashboard() {
             </TabsContent>
 
             <TabsContent value="featured" className="space-y-6">
-              <FeaturedSlidesTab />
+              <Suspense fallback={<TabFallback />}>
+                <FeaturedSlidesTab />
+              </Suspense>
             </TabsContent>
 
           </Tabs>
@@ -1328,10 +1391,14 @@ export default function AdminDashboard() {
               <TabsTrigger value="menus">Menu PDFs</TabsTrigger>
             </TabsList>
             <TabsContent value="items" className="space-y-6">
-              <ConcessionItemsTab />
+              <Suspense fallback={<TabFallback />}>
+                <ConcessionItemsTab />
+              </Suspense>
             </TabsContent>
             <TabsContent value="menus" className="space-y-6">
-              <ConcessionMenusTab />
+              <Suspense fallback={<TabFallback />}>
+                <ConcessionMenusTab />
+              </Suspense>
             </TabsContent>
           </Tabs>
         </TabsContent>
@@ -1341,12 +1408,16 @@ export default function AdminDashboard() {
             Analytics, where someone editing a pass had to know to look. */}
         <TabsContent value="passes" className="space-y-6">
           <SquareLinkPanel scope="passes" title="Square catalog — passes" />
-          <FilmPassesTab />
+          <Suspense fallback={<TabFallback />}>
+            <FilmPassesTab />
+          </Suspense>
         </TabsContent>
 
         {/* DVDs Tab */}
         <TabsContent value="dvds" className="space-y-6">
-          <DvdLibraryTab />
+          <Suspense fallback={<TabFallback />}>
+            <DvdLibraryTab />
+          </Suspense>
         </TabsContent>
 
         {/* Analytics Tab (with Accounting sub-tab) — admin only */}
@@ -1372,28 +1443,42 @@ export default function AdminDashboard() {
                   the number staff used to see on the POS; it moved here
                   because running a till and reviewing revenue are different
                   jobs. */}
-              <BoxOfficeToday />
-              <AnalyticsTab />
+              <Suspense fallback={<TabFallback />}>
+                <BoxOfficeToday />
+                <AnalyticsTab />
+              </Suspense>
             </TabsContent>
             <TabsContent value="transactions" className="space-y-6">
-              <TransactionsTab />
+              <Suspense fallback={<TabFallback />}>
+                <TransactionsTab />
+              </Suspense>
             </TabsContent>
             {/* Hidden, not deleted — the workbook import is not part of the
                 workflow yet (see FINANCIAL_IMPORTS_ENABLED). */}
             {FINANCIAL_IMPORTS_ENABLED && (
               <TabsContent value="accounting" className="space-y-6">
-                <AccountingTab />
+                <Suspense fallback={<TabFallback />}>
+                  <AccountingTab />
+                </Suspense>
               </TabsContent>
             )}
-            <TabsContent value="coa" className="space-y-6"><ChartOfAccountsTab /></TabsContent>
-            <TabsContent value="mappings" className="space-y-6"><AccountMappingsTab /></TabsContent>
-            <TabsContent value="qbo-export" className="space-y-6"><QboExportTab /></TabsContent>
+            <TabsContent value="coa" className="space-y-6">
+              <Suspense fallback={<TabFallback />}><ChartOfAccountsTab /></Suspense>
+            </TabsContent>
+            <TabsContent value="mappings" className="space-y-6">
+              <Suspense fallback={<TabFallback />}><AccountMappingsTab /></Suspense>
+            </TabsContent>
+            <TabsContent value="qbo-export" className="space-y-6">
+              <Suspense fallback={<TabFallback />}><QboExportTab /></Suspense>
+            </TabsContent>
           </Tabs>
         </TabsContent>
         )}
 
         <TabsContent value="bor" className="space-y-6">
-          <BoxOfficeReceiptsTab />
+          <Suspense fallback={<TabFallback />}>
+            <BoxOfficeReceiptsTab />
+          </Suspense>
         </TabsContent>
 
         {/* Rentals Tab (with Hosts sub-tab) */}
@@ -1404,22 +1489,30 @@ export default function AdminDashboard() {
               <TabsTrigger value="hosts"><Users className="h-4 w-4 mr-1 inline" />Hosts</TabsTrigger>
             </TabsList>
             <TabsContent value="requests" className="space-y-6">
-              <RentalRequestsTab />
+              <Suspense fallback={<TabFallback />}>
+                <RentalRequestsTab />
+              </Suspense>
             </TabsContent>
             <TabsContent value="hosts" className="space-y-6">
-              <HostManagementTab />
+              <Suspense fallback={<TabFallback />}>
+                <HostManagementTab />
+              </Suspense>
             </TabsContent>
           </Tabs>
         </TabsContent>
 
         {isAdmin && (
           <TabsContent value="labor" className="space-y-6">
-            <LaborTab />
+            <Suspense fallback={<TabFallback />}>
+              <LaborTab />
+            </Suspense>
           </TabsContent>
         )}
 
         <TabsContent value="sponsors" className="space-y-6">
-          <SponsorsTab />
+          <Suspense fallback={<TabFallback />}>
+            <SponsorsTab />
+          </Suspense>
         </TabsContent>
 
         {/* Pages — each sub-tab edits one public page. Admin-only, which is
@@ -1442,16 +1535,24 @@ export default function AdminDashboard() {
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="festival" className="space-y-6">
-                <FestivalProgramsTab />
+                <Suspense fallback={<TabFallback />}>
+                  <FestivalProgramsTab />
+                </Suspense>
               </TabsContent>
               <TabsContent value="hiring" className="space-y-6">
-                <HiringTab />
+                <Suspense fallback={<TabFallback />}>
+                  <HiringTab />
+                </Suspense>
               </TabsContent>
               <TabsContent value="press" className="space-y-6">
-                <PressTab />
+                <Suspense fallback={<TabFallback />}>
+                  <PressTab />
+                </Suspense>
               </TabsContent>
               <TabsContent value="backstage" className="space-y-6">
-                <BackstageTab />
+                <Suspense fallback={<TabFallback />}>
+                  <BackstageTab />
+                </Suspense>
               </TabsContent>
             </Tabs>
           </TabsContent>
@@ -1459,19 +1560,25 @@ export default function AdminDashboard() {
 
         {isAdmin && (
           <TabsContent value="mailchimp" className="space-y-6">
-            <MailchimpTab />
+            <Suspense fallback={<TabFallback />}>
+              <MailchimpTab />
+            </Suspense>
           </TabsContent>
         )}
 
         {isAdmin && (
           <TabsContent value="lgl" className="space-y-6">
-            <LglTab />
+            <Suspense fallback={<TabFallback />}>
+              <LglTab />
+            </Suspense>
           </TabsContent>
         )}
 
         {isAdmin && (
           <TabsContent value="notifications" className="space-y-6">
-            <NotificationsTab />
+            <Suspense fallback={<TabFallback />}>
+              <NotificationsTab />
+            </Suspense>
           </TabsContent>
         )}
       </Tabs>

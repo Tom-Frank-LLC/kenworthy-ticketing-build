@@ -18,8 +18,8 @@
  * before any dates were scheduled. That has already confused people — the flag
  * is set, the form says so, and the carousel does not mention it.
  *
- * These functions restate the feed's own rule (`useFeed.ts` / `Index.tsx`
- * `buildFeed`) so the admin list can say *which* of those a pick is, in a
+ * These functions restate the feed's own rule (`useFeed.ts` `fetchFeed`)
+ * so the admin list can say *which* of those a pick is, in a
  * word. They are the second copy of that rule, which is a cost; they are here,
  * pure and tested, so that the copy is one function rather than a handful of
  * inline date comparisons that can each drift on their own.
