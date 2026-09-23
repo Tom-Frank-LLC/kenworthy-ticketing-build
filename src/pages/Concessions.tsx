@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { SEO } from '@/components/SEO';
 import { MarqueeFrame } from '@/components/MarqueeFrame';
+import { ConcessionsHero, CONCESSIONS_BLURB } from '@/components/concessions/ConcessionsHero';
 
 interface ConcessionItem {
   id: string;
@@ -34,11 +35,6 @@ interface ComboChildRow {
 function bindTrailingToken(text: string) {
   return text.replace(/\s+(\S{1,2})$/u, '\u00A0$1');
 }
-
-// Doubles as the page's meta description — see the SEO block below — so it has
-// to read as a standalone sentence, not just as a line under a heading.
-const BLURB =
-  'Freshly-popped popcorn, your favorite candies, and an ice-cold beverage — in combo form or à la carte.';
 
 /**
  * The concessions menu, on its own page under Info.
@@ -133,23 +129,15 @@ export default function Concessions() {
     <>
       <SEO
         title="Concessions | Kenworthy Performing Arts Centre"
-        description={BLURB}
+        description={CONCESSIONS_BLURB}
         path="/concessions"
       />
 
-      <div className="container mx-auto px-4 py-10 md:py-16 max-w-4xl">
-        <header className="mb-10 md:mb-14 text-center">
-          <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mb-3">
-            At the stand
-          </p>
-          <h1 className="font-display uppercase text-3xl md:text-5xl tracking-[0.1em] text-foreground">
-            Concessions
-          </h1>
-          <p className="font-serif italic text-lg text-muted-foreground max-w-md mx-auto mt-4">
-            {BLURB}
-          </p>
-        </header>
+      {/* The eyebrow, h1 and blurb that used to open this container now sit
+          in the masthead, the way the calendar's do. */}
+      <ConcessionsHero />
 
+      <div className="container mx-auto px-4 py-10 md:py-16 max-w-4xl">
         <MarqueeFrame className="bg-card/30 rounded-sm">
           {loading ? (
             <p className="font-serif italic text-center text-muted-foreground py-8">
