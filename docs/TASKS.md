@@ -18,7 +18,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
-- `P2` **The admin dashboard loads a fraction of what it did, and the public pages stop re-downloading the catalogue on every navigation**<br>`ux` — [brief](briefs/BRIEF-site-performance.md)
+- `P2` **The admin dashboard loads a fraction of what it did, and the public pages stop re-downloading the catalogue on every navigation**<br>`ux` — [brief](briefs/BRIEF-site-performance.md) · [notes](briefs/FINDINGS-site-performance.md)
 
 ## Open
 

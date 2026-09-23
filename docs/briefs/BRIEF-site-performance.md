@@ -6,6 +6,7 @@ track: ux
 severity: P2
 date: 2026-09-22
 verified: false
+findings: FINDINGS-site-performance.md
 ---
 
 # Brief: Site performance — admin dashboard weight and public navigation
