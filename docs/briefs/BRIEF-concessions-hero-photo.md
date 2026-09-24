@@ -37,6 +37,12 @@ verified: false
   composition (menu board and usher in the upper-middle band, soffit above,
   the backs of the queue below). The blurb comes in as a prop so `BLURB` stays
   on the page beside the `<meta>` description that reuses it.
+- Fourth pass: the band is ~20% shorter from `md` up (40/45vh against the
+  calendar's 50/56vh) **without moving the header**. The copy box keeps the
+  50/56vh height and centres the header in it; a negative bottom margin on
+  the box pulls the section's bottom edge up by the difference and
+  `overflow-hidden` crops that strip off the photograph. Not applied below
+  `md`, where the text is taller and the strip would cut into the blurb.
 - `src/pages/Concessions.tsx` — renders the hero above the menu container in
   place of the old `<header>`; menu untouched.
 

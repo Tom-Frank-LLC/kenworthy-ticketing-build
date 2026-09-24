@@ -37,7 +37,15 @@ export function ConcessionsHero({ blurb }: { blurb: string }) {
   return (
     <section
       aria-label="Concessions at the Kenworthy"
-      className="relative overflow-hidden border-b border-accent/25 bg-background min-h-[50vh] lg:min-h-[56vh] flex"
+      /* Shorter than the calendar's band from `md` up — 40/45vh against its
+         50/56vh — and the copy does not move. The copy box below keeps the
+         calendar's 50/56vh and centres the header in it; its negative bottom
+         margin pulls the section's bottom edge up by the difference, and
+         `overflow-hidden` crops that strip off the photograph. So the header
+         sits exactly where it sat in the taller band, and the menu starts
+         ~20% sooner. Below `md` nothing is cropped: the text is taller there
+         and the strip would cut into the blurb. */
+      className="relative overflow-hidden border-b border-accent/25 bg-background min-h-[50vh] md:min-h-[40vh] lg:min-h-[45vh] flex"
     >
       <div className="absolute inset-0">
         <picture>
@@ -75,8 +83,11 @@ export function ConcessionsHero({ blurb }: { blurb: string }) {
       {/* gold hairline at the very top, like a marquee filament */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
 
-      {/* Centred both ways: the page's own header, now inside the band. */}
-      <div className="container relative w-full flex items-center justify-center py-10 sm:py-12 md:py-16">
+      {/* Centred both ways in a 50/56vh box: the page's own header, now inside
+          the band. The box is taller than the section from `md` up — see the
+          section for why — and overhangs its bottom edge by the negative
+          margin. */}
+      <div className="container relative w-full min-h-[50vh] lg:min-h-[56vh] md:-mb-[10vh] lg:-mb-[11vh] flex items-center justify-center py-10 sm:py-12 md:py-16">
         <header className="text-center">
           <p className="font-serif text-xs uppercase tracking-[0.3em] text-accent mb-3 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
             At the stand
