@@ -1,27 +1,48 @@
 ---
 brief: curator-marquee-header
-title: The home page's curator's-pick band wears the marquee-lights header, and the pick titles drop to h3 beneath it
-status: built
+title: The home page's staff-pick band is framed in the marquee lights, under a "Staff Pick / What We're Watching" header, and the pick titles drop to h3
+status: shipped
 track: ux
 severity: P3
 date: 2026-09-23
-shipped_in: []
-shipped_at:
-verified: false
+shipped_in: ["#338"]
+shipped_at: 2026-09-24
+verified: true
 ---
 
-> **Decisions taken (2026-09-24).** All three went to the recommended option:
-> **1 — "Curator's Pick"**, singular. **2 — the eyebrow is trimmed** to the
-> day (plus "· this screening" where it already applied); the fallback item
-> keeps "Featured · <day>". A hand-written slide had *only* "Curator's pick"
-> to say and no date to fall back to, so its eyebrow is dropped rather than
-> repeating the header word for word beneath it — `SlideFrame`'s `eyebrow`
-> is optional now. **3 — the header stays up** over the fallback item.
+> **What shipped (2026-09-24) — and where it left the brief below.** The
+> brief asked for the ring at the `--title` weight *as* the header. That was
+> built and put on staging first, then iterated with Tom across five staging
+> deploys, and what shipped is different in three ways:
 >
-> One thing the brief did not list: `ShowtimeChips`' "Also playing" heading
-> inside a production pick was an h3 under the old h2 title. With the title
-> at h3 it now passes `headingLevel="h4"`, so it stays nested rather than
-> reading as a sibling of the film it belongs to.
+> - **The ring frames the slides, not the heading.** `MarqueeFrame` at the
+>   panel weight the concessions menu wears (`bg-card/30 rounded-sm`), around
+>   the single slide or the carousel. Tried and rejected on the way: the ring
+>   as a title strip (the brief's version — too slight), the ring around
+>   heading and slides together, and the ring on the Upcoming listing instead
+>   (looked like a lit bill, but the staff pick is the thing worth framing).
+> - **The header is plain type above the ring**, right-aligned, and copies the
+>   Upcoming band's header pattern exactly — small accent eyebrow **Staff
+>   Pick** over the display h2 **What We're Watching** — so the two bands read
+>   as one system. "Curator's Pick" is gone from the page; the carousel's
+>   `aria-label` says "Staff picks".
+> - **The "N picks" counter is gone**, and the row that held it loses its top
+>   margin at `lg`, where it holds nothing in flow (the arrows go absolute
+>   there). Without that the ring carried an empty row's worth of space under
+>   the slide.
+>
+> The rest is as recommended: **the eyebrow is trimmed** to the day (plus
+> "· this screening" where it already applied); the fallback item keeps
+> "Featured · <day>". A hand-written slide had only "Curator's pick" to say
+> and no date to fall back to, so its eyebrow is dropped — `SlideFrame`'s
+> `eyebrow` is optional now. **The header stays up** over the fallback item.
+> And `ShowtimeChips`' "Also playing" inside a production pick passes
+> `headingLevel="h4"`, so it stays nested under the h3 title rather than
+> reading as its sibling.
+>
+> Trade-off recorded: at 375px the panel-weight ring costs ~43px a side, so
+> the content column is ~255px rather than ~335px; long titles wrap one line
+> more. `--mq-inset` is the knob if that ever needs buying back.
 
 # Brief (for Claude Code): Marquee-lights header for "Curator's Pick" on the home page
 

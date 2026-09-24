@@ -655,74 +655,79 @@ export function BoothNote({
       />
 
       <div className="container relative py-10 md:py-14">
-        {/* The band's name, in the ring of bulbs off the Kenworthy's own
-            marquee — the same `MarqueeFrame` at the same `--title` weight as
-            the admin dashboard's section header, so a change to the ring in
-            index.css lands in both places at once. The ring is ornamental and
-            `aria-hidden` inside the component, so the heading is the whole
-            accessible name; it is static, so there is no reduced-motion case.
+        {/* The same header the Upcoming band wears — eyebrow, then the
+            section's h2 — so the two bands read as one system.
 
-            This is the section's h2, which is what puts each pick's title at
-            h3 below it. It stays up even on a week when nothing was flagged
-            and the band is showing the first thing on: the band is the
-            "what to see" shelf either way, and a header that comes and goes
-            with the flag would read as the page changing shape. The slide's
-            own eyebrow is what says "Featured" rather than a pick in that
-            case. */}
-        <MarqueeFrame className="marquee-frame--title text-center mb-8 md:mb-10">
-          <h2 className="font-display text-2xl font-bold uppercase tracking-wider md:text-3xl">
-            Curator&rsquo;s Pick
+            The h2 is what puts each pick's title at h3 below it. It stays up
+            even on a week when nothing was flagged and the band is showing
+            the first thing on: the band is the "what to see" shelf either
+            way, and a header that comes and goes with the flag would read as
+            the page changing shape. The slide's own eyebrow is what says
+            "Featured" rather than a pick in that case. */}
+        <div className="mb-6 text-right">
+          <p className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">
+            Staff Pick
+          </p>
+          <h2 className="font-display text-3xl md:text-4xl uppercase tracking-wide">
+            What We&rsquo;re Watching
           </h2>
+        </div>
+
+        {/* The slides sit inside the ring of bulbs off the Kenworthy's own
+            marquee — the same `MarqueeFrame` at the same panel weight the
+            concessions menu wears, so a change to the ring in index.css lands
+            in both places at once. The ring is ornamental and `aria-hidden`
+            inside the component, so nothing in it enters the reading order;
+            it is static, so there is no reduced-motion case. */}
+        <MarqueeFrame className="bg-card/30 rounded-sm">
+          {single ? (
+            <Slide slide={picks[0]} onSelect={onSelect} />
+          ) : (
+            // No autoplay, so there is no motion the reader did not ask for and
+            // nothing to gate on prefers-reduced-motion. The arrows clamp at the
+            // ends rather than looping — a disabled Next is how the reader
+            // learns there are three picks and they have seen all three.
+            // `lg:px-16` opens a lane down each side for the arrows. Without
+            // it they would sit on the poster, which starts at the container's
+            // own gutter — there is no spare margin in a full-bleed band to
+            // hang them in, which is also why the primitive's default
+            // `-left-12` is wrong here: it parks them off the page.
+            <Carousel
+              opts={{ align: 'start', loop: false }}
+              aria-label="Staff picks"
+              className="relative lg:px-16"
+              setApi={setApi}
+            >
+              {/* `max-lg:items-start` stops the flex row stretching every slide
+                  to the tallest one; `useViewportFollowsSlide` then brings the
+                  viewport down to the slide on screen. Neither works without the
+                  other — see the hook, which also owns the height transition:
+                  the element it animates is this one's parent inside the
+                  primitive, and there is no prop that reaches it. */}
+              <CarouselContent className="max-lg:items-start">
+                {picks.map((pick) => (
+                  <CarouselItem key={pick.key}>
+                    <Slide slide={pick} onSelect={onSelect} />
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+  
+              {/* Two placements, one pair of buttons. From `lg` they are tall
+                  pills flanking the slide, where the band has a fixed height to
+                  centre them against. Below that they stay in this row: the
+                  slide is stacked and full-bleed there, so a centred side arrow
+                  would land on the copy rather than beside it — and touch has
+                  the swipe anyway. Going absolute at `lg` takes them out of
+                  this flex row, which then holds nothing in flow — so the
+                  margin goes with them, or the ring would carry an empty row's
+                  worth of space under the slide. */}
+              <div className="mt-6 lg:mt-0 flex items-center justify-end gap-3">
+                <CarouselPrevious className="static translate-y-0 h-11 w-11 lg:absolute lg:left-0 lg:top-1/2 lg:-translate-y-1/2 lg:h-16 lg:w-11" />
+                <CarouselNext className="static translate-y-0 h-11 w-11 lg:absolute lg:right-0 lg:top-1/2 lg:-translate-y-1/2 lg:h-16 lg:w-11" />
+              </div>
+            </Carousel>
+          )}
         </MarqueeFrame>
-
-        {single ? (
-          <Slide slide={picks[0]} onSelect={onSelect} />
-        ) : (
-          // No autoplay, so there is no motion the reader did not ask for and
-          // nothing to gate on prefers-reduced-motion. The arrows clamp at the
-          // ends rather than looping — a disabled Next is how the reader
-          // learns there are three picks and they have seen all three.
-          // `lg:px-16` opens a lane down each side for the arrows. Without
-          // it they would sit on the poster, which starts at the container's
-          // own gutter — there is no spare margin in a full-bleed band to
-          // hang them in, which is also why the primitive's default
-          // `-left-12` is wrong here: it parks them off the page.
-          <Carousel
-            opts={{ align: 'start', loop: false }}
-            aria-label="Curator's picks"
-            className="relative lg:px-16"
-            setApi={setApi}
-          >
-            {/* `max-lg:items-start` stops the flex row stretching every slide
-                to the tallest one; `useViewportFollowsSlide` then brings the
-                viewport down to the slide on screen. Neither works without the
-                other — see the hook, which also owns the height transition:
-                the element it animates is this one's parent inside the
-                primitive, and there is no prop that reaches it. */}
-            <CarouselContent className="max-lg:items-start">
-              {picks.map((pick) => (
-                <CarouselItem key={pick.key}>
-                  <Slide slide={pick} onSelect={onSelect} />
-                </CarouselItem>
-              ))}
-            </CarouselContent>
-
-            {/* Two placements, one pair of buttons. From `lg` they are tall
-                pills flanking the slide, where the band has a fixed height to
-                centre them against. Below that they stay in this row: the
-                slide is stacked and full-bleed there, so a centred side arrow
-                would land on the copy rather than beside it — and touch has
-                the swipe anyway. Going absolute at `lg` takes them out of
-                this flex row, leaving the count behind. */}
-            <div className="mt-6 flex items-center justify-end gap-3">
-              <p className="font-serif text-sm text-muted-foreground">
-                {picks.length} picks
-              </p>
-              <CarouselPrevious className="static translate-y-0 h-11 w-11 lg:absolute lg:left-0 lg:top-1/2 lg:-translate-y-1/2 lg:h-16 lg:w-11" />
-              <CarouselNext className="static translate-y-0 h-11 w-11 lg:absolute lg:right-0 lg:top-1/2 lg:-translate-y-1/2 lg:h-16 lg:w-11" />
-            </div>
-          </Carousel>
-        )}
       </div>
     </section>
   );

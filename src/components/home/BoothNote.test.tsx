@@ -75,8 +75,11 @@ describe('BoothNote', () => {
     it('names the band once, above a single pick', () => {
       const { container } = renderBooth(threeShowingsOfOneFilm);
 
-      const header = screen.getByRole('heading', { level: 2, name: 'Curator’s Pick' });
-      expect(header.closest('.marquee-frame--title')).not.toBeNull();
+      const header = screen.getByRole('heading', { level: 2, name: 'What We’re Watching' });
+      expect(screen.getByText('Staff Pick')).toBeTruthy();
+      // The header stands above the ring, not inside it.
+      expect(header.closest('.marquee-frame')).toBeNull();
+      expect(container.querySelector('.marquee-frame')).not.toBeNull();
       expect(container.querySelector('[aria-roledescription="carousel"]')).toBeNull();
       expect(screen.getByRole('heading', { level: 3, name: 'Page to Screen: Divergent' })).toBeTruthy();
     });
@@ -95,7 +98,8 @@ describe('BoothNote', () => {
       renderBooth(threeShowingsOfOneFilm);
 
       // The header says it; the slide leads with the day instead.
-      expect(screen.getAllByText(/curator/i)).toHaveLength(1);
+      expect(screen.getAllByText(/pick/i)).toHaveLength(1);
+      expect(screen.queryByText(/curator/i)).toBeNull();
       expect(screen.queryByText(/Featured/)).toBeNull();
     });
 
@@ -104,7 +108,7 @@ describe('BoothNote', () => {
         { ...base, id: 'a', showingId: 's1', startTime: '2099-01-01T19:00:00Z', isFeatured: false },
       ]);
 
-      expect(screen.getByRole('heading', { level: 2, name: 'Curator’s Pick' })).toBeTruthy();
+      expect(screen.getByRole('heading', { level: 2, name: 'What We’re Watching' })).toBeTruthy();
       expect(screen.getByText(/^Featured · /)).toBeTruthy();
     });
   });
@@ -199,7 +203,6 @@ describe('BoothNote', () => {
       const { container } = renderBooth(items);
 
       expect(container.querySelectorAll('[aria-roledescription="slide"]')).toHaveLength(2);
-      expect(screen.getByText(/2 picks/)).toBeTruthy();
     });
 
     it('does not collapse two flagged nights of the same film', () => {
