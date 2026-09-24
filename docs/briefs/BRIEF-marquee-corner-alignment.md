@@ -1,11 +1,13 @@
 ---
 brief: marquee-corner-alignment
 title: The marquee ring's side columns sit directly under the top and bottom runs' corner bulbs, at every weight
-status: built
+status: shipped
 track: ux
 severity: P3
 date: 2026-09-24
-verified: false
+shipped_in: ["#340"]
+shipped_at: 2026-09-24
+verified: true
 ---
 
 # Brief (for Claude Code): Fix the marquee-lights corner alignment
