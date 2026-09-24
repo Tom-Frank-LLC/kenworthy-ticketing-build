@@ -1,11 +1,13 @@
 ---
 brief: backend-cleanup-team-analytics
 title: The admin Team tab holds one Team Members sub-tab with roles, linking and bios; Labor vs Sales lives in Analytics; the two pie charts are ranked bars
-status: built
+status: shipped
 track: ux
 severity: P2
 date: 2026-09-24
-verified: false
+shipped_in: ["#342"]
+shipped_at: 2026-09-24
+verified: true
 ---
 
 # Brief (for Claude Code): Back-end cleanup — Team section, Accounts & Roles, and Analytics charts
