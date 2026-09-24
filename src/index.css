@@ -475,8 +475,12 @@
      resizes the tile to fit, and once the tile is narrower than a bulb the
      bulb is clipped.)
 
-     Top and bottom run the full width and therefore own the corners; the
-     sides are inset by one band so nothing double-draws.
+     Top and bottom own the corners; the sides are inset by one band so
+     nothing double-draws. The corner bulb has to sit at band/2 from the
+     edge — the centre of the side column — and `space` puts a run's end bulb
+     at gap/2 from the run's edge, so the top and bottom runs start
+     (band - gap)/2 in from the box, not at 0. Full width put the end bulb
+     0.11 band outboard of the column, on every corner.
      ------------------------------------------------------------------ */
   .marquee-frame {
     /* One knob. The bulb radius and spacing are the proportions measured off
@@ -526,11 +530,12 @@
       drop-shadow(0 0 1.1rem hsl(var(--accent) / 0.45));
   }
 
-  /* Top and bottom: full width, corners included. */
+  /* Top and bottom: corners included. Inset so the end tile's centre, at
+     gap/2 from the run's edge, lands on the side column's centre at band/2. */
   .marquee-frame::before,
   .marquee-frame::after {
-    left: 0;
-    right: 0;
+    left: calc((var(--mq-band) - var(--mq-gap)) / 2);
+    right: calc((var(--mq-band) - var(--mq-gap)) / 2);
     height: var(--mq-band);
     background-size: var(--mq-gap) 100%;
     background-repeat: space no-repeat;
@@ -538,7 +543,8 @@
   .marquee-frame::before { top: 0; }
   .marquee-frame::after { bottom: 0; }
 
-  /* Sides: inset by a band so they do not fight the corner bulbs. */
+  /* Sides: inset by a band so they do not fight the corner bulbs. The
+     column is centred in its band, at band/2 from the edge. */
   .marquee-frame > .marquee-frame__sides::before,
   .marquee-frame > .marquee-frame__sides::after {
     top: var(--mq-band);
