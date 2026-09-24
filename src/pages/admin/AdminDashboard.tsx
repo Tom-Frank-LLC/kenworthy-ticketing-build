@@ -130,7 +130,7 @@ interface TicketCounts {
 const NO_TICKETS: TicketCounts = { sold: 0, scanned: 0 };
 
 export default function AdminDashboard() {
-  const { isAdmin, isSuperadmin, loading: authLoading } = useAuth();
+  const { isAdmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [movies, setMovies] = useState<any[]>([]);
@@ -678,19 +678,28 @@ export default function AdminDashboard() {
               click away in the header on every page. Two buttons pointing out of
               this screen made the row read as a launcher rather than as a
               heading. */}
-          {/* Accounts & Roles is superadmin-only here. An admin manages roles
-              from Team → Team Members, which renders the same component, so a
-              second door to it from this row only made the row longer. */}
+          {/* Team Members is a shortcut into this page, not out of it: the
+              Team section further down, whose first sub-tab is the roster.
+              A state change rather than a link, because the section is
+              read from the URL once on load and then owned by state. The
+              full accounts list (/superadmin) keeps its door in the header. */}
           <div className="flex flex-wrap gap-2">
-            {isSuperadmin && (
-              <Button size="sm" variant="outline" asChild>
-                <Link to="/superadmin"><Users className="h-4 w-4 mr-1" /> Accounts &amp; Roles</Link>
-              </Button>
-            )}
             {isAdmin && (
-              <Button size="sm" variant="outline" asChild>
-                <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setActiveTopTab('labor');
+                    document.getElementById('admin-sections')?.scrollIntoView({ block: 'start' });
+                  }}
+                >
+                  <UsersRound className="h-4 w-4 mr-1" /> Team Members
+                </Button>
+                <Button size="sm" variant="outline" asChild>
+                  <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -744,7 +753,7 @@ export default function AdminDashboard() {
           only screen that reads confirmation_error back. */}
       <UndeliveredOrdersCard />
 
-      <Tabs value={activeTopTab} onValueChange={setActiveTopTab} className="space-y-6 md:space-y-8">
+      <Tabs id="admin-sections" value={activeTopTab} onValueChange={setActiveTopTab} className="space-y-6 md:space-y-8">
         {(() => {
           /* Twelve equal glyphs in one flat row was a memory test. The bar
              said nothing about which tools belong with which, so finding one
