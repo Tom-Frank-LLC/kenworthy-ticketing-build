@@ -10,6 +10,7 @@ function bio(over: Partial<StaffBio> & { name: string }): StaffBio {
     display_on_about: true,
     sort_order: 0,
     is_active: true,
+    user_id: null,
     ...over,
   };
 }

@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { MarqueeFrame } from '@/components/MarqueeFrame';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star, Bell
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, UsersRound, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star, Bell
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
@@ -130,7 +130,7 @@ interface TicketCounts {
 const NO_TICKETS: TicketCounts = { sold: 0, scanned: 0 };
 
 export default function AdminDashboard() {
-  const { isAdmin, isSuperadmin, loading: authLoading } = useAuth();
+  const { isAdmin, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [movies, setMovies] = useState<any[]>([]);
@@ -678,11 +678,23 @@ export default function AdminDashboard() {
               click away in the header on every page. Two buttons pointing out of
               this screen made the row read as a launcher rather than as a
               heading. */}
+          {/* Team Members is a shortcut into this page, not out of it: the
+              Team section further down, whose first sub-tab is the roster.
+              A state change rather than a link, because the section is
+              read from the URL once on load and then owned by state. The
+              full accounts list (/superadmin) keeps its door in the header. */}
           <div className="flex flex-wrap gap-2">
             {isAdmin && (
               <>
-                <Button size="sm" variant="outline" asChild>
-                  <Link to="/admin/accounts"><Users className="h-4 w-4 mr-1" /> Accounts &amp; Roles</Link>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setActiveTopTab('labor');
+                    document.getElementById('admin-sections')?.scrollIntoView({ block: 'start' });
+                  }}
+                >
+                  <UsersRound className="h-4 w-4 mr-1" /> Team Members
                 </Button>
                 <Button size="sm" variant="outline" asChild>
                   <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
@@ -741,7 +753,7 @@ export default function AdminDashboard() {
           only screen that reads confirmation_error back. */}
       <UndeliveredOrdersCard />
 
-      <Tabs value={activeTopTab} onValueChange={setActiveTopTab} className="space-y-6 md:space-y-8">
+      <Tabs id="admin-sections" value={activeTopTab} onValueChange={setActiveTopTab} className="space-y-6 md:space-y-8">
         {(() => {
           /* Twelve equal glyphs in one flat row was a memory test. The bar
              said nothing about which tools belong with which, so finding one
@@ -769,7 +781,7 @@ export default function AdminDashboard() {
               label: 'Operations',
               tabs: [
                 { value: 'rentals', label: 'Rentals', icon: KeyRound, show: true },
-                { value: 'labor', label: 'Staff', icon: Clock, show: isAdmin },
+                { value: 'labor', label: 'Team', icon: UsersRound, show: isAdmin },
                 { value: 'bor', label: 'BOR', icon: FileText, show: true },
                 /* Next to BOR, not over in Audience & Growth. The two are read
                    against each other — the receipts and the numbers those

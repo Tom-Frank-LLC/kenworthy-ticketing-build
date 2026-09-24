@@ -51,10 +51,9 @@ export default function StaffDashboard() {
   return (
     <div className="container py-8 px-4">
       <h1 className="font-display text-3xl font-bold mb-2">Staff</h1>
-      <p className="text-muted-foreground mb-8">
-        {user?.email ? `Signed in as ${user.email}. ` : ''}
-        Everything the counter needs, in one place.
-      </p>
+      {user?.email && (
+        <p className="text-muted-foreground mb-8">Signed in as {user.email}.</p>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tools.map(({ to, label, blurb, icon: Icon }) => (

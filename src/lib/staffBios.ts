@@ -15,11 +15,17 @@ export interface StaffBio {
   display_on_about: boolean;
   sort_order: number;
   is_active: boolean;
+  /**
+   * The account this bio describes, when it has one. A bio can exist without
+   * an account (the About page is editorial, not a list of logins) and an
+   * account without a bio; the Team Members roster joins the two on this.
+   */
+  user_id: string | null;
 }
 
 /** The columns both screens select. Kept in one place so they cannot diverge. */
 export const STAFF_BIO_COLUMNS =
-  'id, name, title, bio, headshot_url, display_on_about, sort_order, is_active';
+  'id, name, title, bio, headshot_url, display_on_about, sort_order, is_active, user_id';
 
 /**
  * Lowest sort_order first, name breaking ties.

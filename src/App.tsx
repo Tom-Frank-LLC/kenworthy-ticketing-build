@@ -142,7 +142,6 @@ const App = () => (
                   <Route path="/admin/sponsorships/new" element={<AdminOnly><SponsorshipForm /></AdminOnly>} />
                   <Route path="/admin/sponsorships/:id" element={<AdminOnly><SponsorshipForm /></AdminOnly>} />
                   <Route path="/admin/audit-log" element={<AdminOnly><AuditLog /></AdminOnly>} />
-                  <Route path="/admin/accounts" element={<AdminOnly><AccountsRoles /></AdminOnly>} />
                   {/* Where the counter tools used to live. Kept as redirects
                       because these two are bookmarked on the box-office iPad
                       and written down in half a dozen briefs — a hard move
@@ -181,8 +180,10 @@ const App = () => (
                   <Route path="/volunteer" element={<VolunteerPage />} />
                   <Route path="/privacy" element={<Privacy />} />
                   <Route path="/terms" element={<Terms />} />
-                  {/* Same page as /admin/accounts. Kept so a superadmin's header link and
-                      any bookmark still land; the page decides what to show by role. */}
+                  {/* The full accounts & roles page. Admins reach the same controls
+                      from the dashboard (Team → Team Members), which is why the old
+                      /admin/accounts route is gone; this one stays for the superadmin's
+                      header link and bookmarks. The page decides what to show by role. */}
                   <Route path="/superadmin" element={<AdminOnly><AccountsRoles /></AdminOnly>} />
                   <Route path="/contract/:token" element={<RentalContract />} />
                   <Route path="/verify/:id" element={<VerifyContract />} />

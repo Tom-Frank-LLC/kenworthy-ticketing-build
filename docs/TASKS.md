@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**110 briefs** — 98 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
+**111 briefs** — 99 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -29,6 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The admin Team tab holds one Team Members sub-tab with roles, linking and bios; Labor vs Sales lives in Analytics; the two pie charts are ranked bars**<br>`ux` — `#342` — [brief](briefs/BRIEF-backend-cleanup-team-analytics.md)
 - **The home page's staff-pick band is framed in the marquee lights, under a "Staff Pick / What We're Watching" header, and the pick titles drop to h3**<br>`ux` — `#338` — [brief](briefs/BRIEF-curator-marquee-header.md)
 - **The marquee ring's side columns sit directly under the top and bottom runs' corner bulbs, at every weight**<br>`ux` — `#340` — [brief](briefs/BRIEF-marquee-corner-alignment.md)
 - **Staff and the rental contract read theatre-rental times as 6:30 PM, not 18:30**<br>`ux` — `#339` — [brief](briefs/BRIEF-rental-request-12h-time.md)
