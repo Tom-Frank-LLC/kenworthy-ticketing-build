@@ -1,11 +1,12 @@
 ---
 brief: rental-request-12h-time
 title: Staff and the rental contract read theatre-rental times as 6:30 PM, not 18:30
-status: built
+status: shipped
 track: ux
-severity: P3
 date: 2026-09-23
-verified: false
+shipped_in: ["#339"]
+shipped_at: 2026-09-24
+verified: true
 ---
 
 # Brief (for Claude Code): Show rental-request times in 12-hour format
