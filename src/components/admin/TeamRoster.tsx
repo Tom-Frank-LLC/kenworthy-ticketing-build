@@ -17,6 +17,7 @@ import { InviteStaffDialog } from './InviteStaffDialog';
 import { toast } from 'sonner';
 import {
   UserPlus, Loader2, Link2, AlertTriangle, ArrowUp, ArrowDown, Save, X, Trash2, Unlink, ListOrdered,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { byStaffOrder, STAFF_BIO_COLUMNS, type StaffBio } from '@/lib/staffBios';
 import { htmlToPlainText } from '@/lib/richText';
@@ -448,29 +449,14 @@ export function TeamRoster() {
                       )}
                     </div>
 
-                    {/* The public bio. */}
-                    <div className="flex flex-wrap items-start gap-2 text-sm">
-                      <span className="text-muted-foreground w-16 shrink-0 pt-0.5">About</span>
-                      {bio ? (
-                        <>
-                          {bioSummary(bio)}
-                          <Button size="sm" variant="outline" className="h-8" onClick={() => startBio(m, bio)}>Edit bio</Button>
-                        </>
-                      ) : (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button size="sm" variant="outline" className="h-8" onClick={() => startBio(m)}>Add bio</Button>
-                          {unlinkedBios.length > 0 && (
-                            <Select onValueChange={id => patchBio(unlinkedBios.find(b => b.id === id)!, { user_id: m.id }, `Bio attached to ${name}`)}>
-                              <SelectTrigger className="w-[220px] h-8" aria-label={`Attach an existing bio to ${name}`}>
-                                <SelectValue placeholder="…or attach an existing bio" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {unlinkedBios.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
-                          )}
-                        </div>
-                      )}
+                    {/* The public bio. One button whether or not a bio exists
+                        yet — it opens the same form either way, and the summary
+                        beside it is what says which. */}
+                    <div className="flex flex-wrap items-start gap-3 text-sm">
+                      <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={() => startBio(m, bio)}>
+                        <ImageIcon className="h-3.5 w-3.5 mr-1.5" /> Bio &amp; photo
+                      </Button>
+                      {bio && bioSummary(bio)}
                     </div>
                   </div>
                 </CardContent>
@@ -493,16 +479,18 @@ export function TeamRoster() {
           id="labor.members.unlinked-bios"
           title="Bios without an account"
           count={unlinkedBios.length}
-          description="On the About page, or drafted for it, but not tied to a login. Attach one to a team member above, or edit it here."
+          description="On the About page, or drafted for it, but not tied to a login. Attach one to a team member, or edit it here."
           actions={({ open }) => (
-            <Button size="sm" variant="outline" onClick={() => { open(); startBio(null); }}>Add bio</Button>
+            <Button size="sm" variant="outline" onClick={() => { open(); startBio(null); }}>
+              <ImageIcon className="h-3.5 w-3.5 mr-1.5" /> Bio &amp; photo
+            </Button>
           )}
         >
           <div className="space-y-2">
             {unlinkedBios.map(b => (
               <div key={b.id} className="space-y-2">
                 <Card className="glass">
-                  <CardContent className="p-3 flex gap-3">
+                  <CardContent className="p-3 flex flex-wrap gap-3">
                     <Avatar className="h-12 w-12 shrink-0">
                       {b.headshot_url && <AvatarImage src={b.headshot_url} alt="" className="object-cover" />}
                       <AvatarFallback className="font-display">{initials(b.name)}</AvatarFallback>
@@ -511,7 +499,25 @@ export function TeamRoster() {
                       <p className="font-medium">{b.name}</p>
                       {bioSummary(b)}
                     </div>
-                    <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={() => startBio(null, b)}>Edit bio</Button>
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => startBio(null, b)}>
+                        <ImageIcon className="h-3.5 w-3.5 mr-1.5" /> Bio &amp; photo
+                      </Button>
+                      {/* Attaching lives here, on the bio, rather than as a
+                          second control on every account card. */}
+                      {members.some(m => !bioFor(m.id)) && (
+                        <Select onValueChange={id => patchBio(b, { user_id: id }, `Bio attached to ${members.find(m => m.id === id)?.display_name || 'the account'}`)}>
+                          <SelectTrigger className="w-[220px] h-8" aria-label={`Attach ${b.name}'s bio to an account`}>
+                            <SelectValue placeholder="Attach to a team member…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {members.filter(m => !bioFor(m.id)).map(m => (
+                              <SelectItem key={m.id} value={m.id}>{m.display_name || m.email}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
                 {draft?.id === b.id && editor}
