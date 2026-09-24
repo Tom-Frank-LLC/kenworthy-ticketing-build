@@ -135,3 +135,31 @@ All four decisions went the recommended way.
    `rpqzrpboyhshdrfdwayk` and `vlmslygnimfbamrtwvyo`. `poster-identify` is
    deployed nowhere.
 3. `npx wrangler deploy` — merging does not ship.
+
+### Revision (2026-09-24, after the first staging test)
+
+Tom's direction on seeing it: the Team tab gets a people icon, Team Members
+goes first, regular users stay out of it, and the three sections become one
+roster — a contact card per team account with roles, Square link and bio on
+the same line.
+
+- `src/lib/roleRules.ts` holds the role rules (grantable, invitable,
+  protected, `TEAM_ROLES`); `RoleControls.tsx` and `InviteStaffDialog.tsx`
+  render them. Both `/superadmin` (`AccountRolesManager`, still the full list
+  including regular users) and the roster use these, so nothing forks.
+- `src/components/admin/TeamRoster.tsx` replaces `LaborRoster.tsx` and
+  `StaffBios.tsx` (both deleted). One card per account holding a `TEAM_ROLES`
+  role (superadmin/admin/staff/host — host included so an admin can still
+  revoke it). The card carries: avatar from the bio headshot, roles with
+  grant/revoke, a Square team-member picker (moves a link if the member was
+  linked elsewhere, as before), and the bio — title, snippet, Display on
+  About Us, Edit / Add / attach-an-existing-bio.
+- The join is `staff_bios.user_id`, which existed nullable and unused since
+  20260814183831. Migration `20260924231506` adds a partial unique index so
+  one account has at most one bio. **No name-match backfill**: existing bios
+  show under "Bios without an account" with an attach picker on each card, so
+  linking is a deliberate click, not a guess. A bio can stay unattached
+  forever (the About page is editorial — the ED need not have a login).
+- About page ordering (the arrows) lives in its own "About page order"
+  section over the published bios, because the roster sorts by role.
+- Square members with no linked account are named in a line under the roster.

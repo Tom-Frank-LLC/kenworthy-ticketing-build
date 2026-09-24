@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { MarqueeFrame } from '@/components/MarqueeFrame';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, Clock, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star, Bell
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, UsersRound, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star, Bell
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
@@ -772,7 +772,7 @@ export default function AdminDashboard() {
               label: 'Operations',
               tabs: [
                 { value: 'rentals', label: 'Rentals', icon: KeyRound, show: true },
-                { value: 'labor', label: 'Team', icon: Clock, show: isAdmin },
+                { value: 'labor', label: 'Team', icon: UsersRound, show: isAdmin },
                 { value: 'bor', label: 'BOR', icon: FileText, show: true },
                 /* Next to BOR, not over in Audience & Growth. The two are read
                    against each other — the receipts and the numbers those
