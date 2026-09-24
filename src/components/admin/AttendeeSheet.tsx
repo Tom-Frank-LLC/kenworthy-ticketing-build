@@ -141,6 +141,15 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
             'seats(seat_row, seat_number, section), showings(start_time)'
         )
         .in('showing_id', showingIds)
+        // Confirmed only. A pending row is a checkout still in flight and a
+        // failed one a declined card; neither holds a seat, and a refunded
+        // one gave its seat back. Without this the drawer listed every attempt
+        // — four declines from one buyer sat beside the two tickets that went
+        // through — the header counted them all as "seats sold" (9 against a
+        // badge that said 5), and the CSV exported them as ticket holders. The
+        // badge that opens this drawer and showing_ticket_counts() both count
+        // status = 'confirmed'; this is the same rule, so the two agree.
+        .eq('status', 'confirmed')
         .order('purchased_at', { ascending: false }),
       supabase.rpc('showing_attendees', { p_showing_ids: showingIds }),
       // Paged, unlike the two above. A pass may now admit several people to one
