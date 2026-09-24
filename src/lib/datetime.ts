@@ -232,3 +232,32 @@ export function runtimeLabel(minutes: number | null | undefined): string {
   if (m) parts.push(`${m} ${m === 1 ? 'minute' : 'minutes'}`);
   return parts.join(' ');
 }
+
+/**
+ * A bare `HH:mm` wall-clock string in 12-hour form: `"18:30"` → `"6:30 PM"`,
+ * `"00:00"` → `"12:00 AM"`. An `HH:mm:ss` value is tolerated; the seconds are
+ * dropped.
+ *
+ * This is for values an `<input type="time">` produced — the rental request's
+ * arrival / start / end / departure times — which are stored as text with no
+ * date and no zone. They must never go near a `Date`: attaching today's date
+ * and a zone to `"18:30"` is exactly how a wall-clock value drifts by an hour
+ * (see `formatPlainDate` for the same discipline applied to dates).
+ *
+ * Empty input returns `''` so a key/value row can stay hidden as it would for
+ * the raw value; anything that is not `HH:mm` is returned unchanged rather
+ * than thrown on, since a garbled time is still more useful shown than lost.
+ */
+export function formatClockTime(value: string | null | undefined): string {
+  if (!value) return '';
+  const match = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(value.trim());
+  if (!match) return value;
+
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  if (hours > 23 || Number(minutes) > 59) return value;
+
+  const meridiem = hours < 12 ? 'AM' : 'PM';
+  const h12 = hours % 12 || 12;
+  return `${h12}:${minutes} ${meridiem}`;
+}

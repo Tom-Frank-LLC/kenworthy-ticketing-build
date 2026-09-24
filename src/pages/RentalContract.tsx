@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Printer, Save, ShieldCheck, BadgeCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { formatPlainDate } from '@/lib/datetime';
+import { formatClockTime, formatPlainDate } from '@/lib/datetime';
 // @ts-ignore - no types
 import html2pdf from 'html2pdf.js';
 
@@ -186,7 +186,9 @@ export default function RentalContract() {
       ? `${formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')} through ${formatPlainDate(request.end_date, 'EEEE MMMM do, yyyy')}`
       : formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')
     : '__________';
-  const timeRange = [request.event_start_time, request.event_end_time].filter(Boolean).join('–') || '__________';
+  const timeRange =
+    [formatClockTime(request.event_start_time), formatClockTime(request.event_end_time)].filter(Boolean).join('–') ||
+    '__________';
   const licensee = request.applicant_name || request.organization_name || '__________';
   const contact = [request.applicant_name, request.email].filter(Boolean).join(', ');
   const purpose = request.event_description || request.event_title || '__________';
