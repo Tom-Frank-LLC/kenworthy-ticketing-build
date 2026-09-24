@@ -64,6 +64,55 @@ const manual = (over: Partial<FeaturedSlideView> = {}): FeaturedSlideView => ({
 });
 
 describe('BoothNote', () => {
+  /**
+   * The band is named once, in the marquee ring above it, and that name is
+   * the section's h2. The page's h1 is the hero in HomeMarquee, so every
+   * pick's title has to sit at h3 — an h2 title under an h2 header is a
+   * flat outline, and an h3 under nothing is a skipped level; axe reports
+   * either as `heading-order`.
+   */
+  describe('the header', () => {
+    it('names the band once, above a single pick', () => {
+      const { container } = renderBooth(threeShowingsOfOneFilm);
+
+      const header = screen.getByRole('heading', { level: 2, name: 'What We’re Watching' });
+      expect(screen.getByText('Staff Pick')).toBeTruthy();
+      // The header stands above the ring, not inside it.
+      expect(header.closest('.marquee-frame')).toBeNull();
+      expect(container.querySelector('.marquee-frame')).not.toBeNull();
+      expect(container.querySelector('[aria-roledescription="carousel"]')).toBeNull();
+      expect(screen.getByRole('heading', { level: 3, name: 'Page to Screen: Divergent' })).toBeTruthy();
+    });
+
+    it('names the band once, above a carousel of picks and hand-written slides', () => {
+      renderBooth(attachUpcomingShowings(threeShowingsOfOneFilm), [manual()]);
+
+      expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(1);
+      expect(screen.getByRole('heading', { level: 3, name: 'Kenworthy Silent Film Festival' })).toBeTruthy();
+      expect(screen.getByRole('heading', { level: 3, name: 'Page to Screen: Divergent' })).toBeTruthy();
+      // The run's other dates are a sub-heading of the pick, one level down.
+      expect(screen.getByRole('heading', { level: 4, name: 'Also playing' })).toBeTruthy();
+    });
+
+    it('does not repeat itself in the eyebrow of a real pick', () => {
+      renderBooth(threeShowingsOfOneFilm);
+
+      // The header says it; the slide leads with the day instead.
+      expect(screen.getAllByText(/pick/i)).toHaveLength(1);
+      expect(screen.queryByText(/curator/i)).toBeNull();
+      expect(screen.queryByText(/Featured/)).toBeNull();
+    });
+
+    it('still stands over the fallback item, which says it is not a pick', () => {
+      renderBooth([
+        { ...base, id: 'a', showingId: 's1', startTime: '2099-01-01T19:00:00Z', isFeatured: false },
+      ]);
+
+      expect(screen.getByRole('heading', { level: 2, name: 'What We’re Watching' })).toBeTruthy();
+      expect(screen.getByText(/^Featured · /)).toBeTruthy();
+    });
+  });
+
   it('gives a film with three showings one slide, not three', () => {
     const { container } = renderBooth(threeShowingsOfOneFilm);
 
@@ -154,7 +203,6 @@ describe('BoothNote', () => {
       const { container } = renderBooth(items);
 
       expect(container.querySelectorAll('[aria-roledescription="slide"]')).toHaveLength(2);
-      expect(screen.getByText(/2 picks/)).toBeTruthy();
     });
 
     it('does not collapse two flagged nights of the same film', () => {

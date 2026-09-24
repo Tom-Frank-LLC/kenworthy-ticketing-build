@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**107 briefs** — 95 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
+**108 briefs** — 96 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -29,6 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The home page's staff-pick band is framed in the marquee lights, under a "Staff Pick / What We're Watching" header, and the pick titles drop to h3**<br>`ux` — `#338` — [brief](briefs/BRIEF-curator-marquee-header.md)
 - **The concessions page opens on a photograph of the stand, with its own centred header over it**<br>`ux` — `#334` — [brief](briefs/BRIEF-concessions-hero-photo.md)
 - **The admin dashboard loads a fraction of what it did, and the public pages stop re-downloading the catalogue on every navigation**<br>`ux` — `#333` — [brief](briefs/BRIEF-site-performance.md) · [notes](briefs/FINDINGS-site-performance.md)
 - **Deleting a price tier and saving never duplicates tiers again, and the duplicates already in production are repaired**<br>`data` — `#327` — [brief](briefs/BRIEF-duplicate-tiers-fix.md) · [notes](briefs/../FINDINGS-duplicate-price-tiers.md)

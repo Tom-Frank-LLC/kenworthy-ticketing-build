@@ -59,10 +59,12 @@ export function ShowtimeChips({
   /**
    * The heading level this block sits at.
    *
-   * It was a hardcoded <h4>, which skipped a level under BoothNote's <h2>
-   * and two under the showing page's <h1> — axe's `heading-order`, and a
-   * screen-reader user hearing a section that is not there. The default
-   * suits the two card callers; the showing page passes h2.
+   * It was a hardcoded <h4>, which skipped a level under what was then
+   * BoothNote's <h2> and two under the showing page's <h1> — axe's
+   * `heading-order`, and a screen-reader user hearing a section that is not
+   * there. The default suits the listing card; the showing page passes h2,
+   * and BoothNote passes h4 now that its titles sit at h3 under the band's
+   * own header.
    */
   headingLevel?: 'h2' | 'h3' | 'h4';
   className?: string;
