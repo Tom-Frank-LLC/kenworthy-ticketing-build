@@ -16,6 +16,7 @@ import { formatShowtime } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
 import { isRichTextEmpty } from '@/lib/richText';
 import { RichText } from '@/components/RichText';
+import { MarqueeFrame } from '@/components/MarqueeFrame';
 import { dayLabel } from './EditorialCalendar';
 import { ShowtimeChips } from './ShowtimeChips';
 import type { FeedItem } from './TrailerFeed';
@@ -92,7 +93,14 @@ function SlideFrame({
   cta,
   children,
 }: {
-  eyebrow: ReactNode;
+  /**
+   * The small line above the slide — the day, and whether this is one night
+   * of several. Optional, because a hand-written slide has no date and the
+   * band's own header already says what kind of thing it is; printing the
+   * same two words again in small caps directly beneath that header was the
+   * one thing left for it to say.
+   */
+  eyebrow?: ReactNode;
   /** The artwork cell, already wrapped in whatever control it deserves. */
   media: ReactNode;
   /** Whether `media` is really there — the whole grid changes shape without it. */
@@ -103,9 +111,11 @@ function SlideFrame({
 }) {
   return (
     <>
-      <p className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-5">
-        {eyebrow}
-      </p>
+      {eyebrow && (
+        <p className="font-serif text-xs uppercase tracking-[0.25em] text-accent mb-5">
+          {eyebrow}
+        </p>
+      )}
 
       <div
         className={cn(
@@ -347,7 +357,11 @@ function Pick({
       cta={cta}
       eyebrow={
         <>
-          {item.isFeatured || item.isFeaturedShowing ? "Curator's pick" : 'Featured'} ·{' '}
+          {/* The band's header already says "Curator's Pick", so a real pick
+              leads with the day and nothing else. The fallback item — the
+              first thing on when nobody flagged anything — is not a pick,
+              and keeps a word that says so. */}
+          {!item.isFeatured && !item.isFeaturedShowing && 'Featured · '}
           {dayLabel(item.startTime)}
           {/* Said out loud only when the pick is a single night out of several.
               On a production pick the dates are listed in full below, so
@@ -371,10 +385,9 @@ function Pick({
         ) : null
       }
     >
-      {/* h2: with the section's old "What we're watching this week" heading
-          gone, this is the section's heading, and the marquee still owns the
-          page's only h1. */}
-      <h2 className="font-display text-3xl md:text-4xl leading-tight mb-2">
+      {/* h3: the band's "Curator's Pick" header is the h2, and the marquee
+          still owns the page's only h1. */}
+      <h3 className="font-display text-3xl md:text-4xl leading-tight mb-2">
         <button
           type="button"
           onClick={() => onSelect?.(item)}
@@ -382,7 +395,7 @@ function Pick({
         >
           {item.title}
         </button>
-      </h2>
+      </h3>
       <p className="font-serif text-sm text-muted-foreground mb-3">
         {formatShowtime(item.startTime, "EEEE, MMMM d 'at' h:mm a")}
       </p>
@@ -395,6 +408,7 @@ function Pick({
           showings={item.upcomingShowings}
           currentShowingId={item.showingId}
           headingId={`pick-also-playing-${item.id}`}
+          headingLevel="h4"
           className="mt-5 shrink-0"
         />
       )}
@@ -458,7 +472,6 @@ function ManualSlide({ slide }: { slide: FeaturedSlideView }) {
     <SlideFrame
       hasMedia={picture !== null}
       cta={cta}
-      eyebrow="Curator's pick"
       media={
         picture &&
         (internal ? (
@@ -472,7 +485,7 @@ function ManualSlide({ slide }: { slide: FeaturedSlideView }) {
         ))
       }
     >
-      <h2 className="font-display text-3xl md:text-4xl leading-tight mb-3">{slide.title}</h2>
+      <h3 className="font-display text-3xl md:text-4xl leading-tight mb-3">{slide.title}</h3>
       {!isRichTextEmpty(slide.blurb) && (
         <SlideCopy label={`About ${slide.title}`} html={slide.blurb} />
       )}
@@ -642,6 +655,26 @@ export function BoothNote({
       />
 
       <div className="container relative py-10 md:py-14">
+        {/* The band's name, in the ring of bulbs off the Kenworthy's own
+            marquee — the same `MarqueeFrame` at the same `--title` weight as
+            the admin dashboard's section header, so a change to the ring in
+            index.css lands in both places at once. The ring is ornamental and
+            `aria-hidden` inside the component, so the heading is the whole
+            accessible name; it is static, so there is no reduced-motion case.
+
+            This is the section's h2, which is what puts each pick's title at
+            h3 below it. It stays up even on a week when nothing was flagged
+            and the band is showing the first thing on: the band is the
+            "what to see" shelf either way, and a header that comes and goes
+            with the flag would read as the page changing shape. The slide's
+            own eyebrow is what says "Featured" rather than a pick in that
+            case. */}
+        <MarqueeFrame className="marquee-frame--title text-center mb-8 md:mb-10">
+          <h2 className="font-display text-2xl font-bold uppercase tracking-wider md:text-3xl">
+            Curator&rsquo;s Pick
+          </h2>
+        </MarqueeFrame>
+
         {single ? (
           <Slide slide={picks[0]} onSelect={onSelect} />
         ) : (
