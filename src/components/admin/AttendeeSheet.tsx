@@ -345,8 +345,15 @@ export function AttendeeSheet({ open, onOpenChange, title, showingIds, capacity 
                       )}
                     </TableCell>
                     <TableCell>
+                      {/* The values this table actually holds are confirmed,
+                          pending, failed and refunded. This compared against
+                          `valid` and `active`, which it never has, so every row
+                          rendered muted. Only confirmed rows reach the drawer
+                          now, so the lit variant is the one that shows; the
+                          test is kept honest rather than dropped so the column
+                          stays right if the filter above ever widens. */}
                       <Badge
-                        variant={r.status === 'valid' || r.status === 'active' ? 'default' : 'secondary'}
+                        variant={r.status === 'confirmed' ? 'default' : 'secondary'}
                         className="text-xs capitalize"
                       >
                         {r.status}
