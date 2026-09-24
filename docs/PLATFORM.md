@@ -268,7 +268,7 @@ The schema is larger than this list; these are the ones an operator meets first.
 | Seating & pricing | `seats`, `venue_seats`, `showing_seat_tiers`, `showing_price_tiers`, `production_seat_tiers`, `production_price_tiers` |
 | Sales | `tickets`, `film_pass_types`, `user_film_passes`, `film_pass_redemptions`, `donations` |
 | Concessions & rentals | `concession_menus`, `concession_items`, `concession_sales`, `dvds`, `dvd_rentals`, `rental_requests` |
-| Staff & finance | `labor_settings`, `shift_requests`, `staff_square_links`, `payroll_exports`, `financial_entries`, `chart_of_accounts`, `qbo_connection` |
+| Staff & finance | `shift_requests`, `staff_square_links`, `payroll_exports`, `financial_entries`, `chart_of_accounts`, `qbo_connection` |
 
 ### Granting admin access to a new staff member
 1. Have them sign up via the app at `/auth`

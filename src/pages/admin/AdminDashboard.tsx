@@ -678,16 +678,19 @@ export default function AdminDashboard() {
               click away in the header on every page. Two buttons pointing out of
               this screen made the row read as a launcher rather than as a
               heading. */}
+          {/* Accounts & Roles is superadmin-only here. An admin manages roles
+              from Team → Team Members, which renders the same component, so a
+              second door to it from this row only made the row longer. */}
           <div className="flex flex-wrap gap-2">
+            {isSuperadmin && (
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/superadmin"><Users className="h-4 w-4 mr-1" /> Accounts &amp; Roles</Link>
+              </Button>
+            )}
             {isAdmin && (
-              <>
-                <Button size="sm" variant="outline" asChild>
-                  <Link to="/admin/accounts"><Users className="h-4 w-4 mr-1" /> Accounts &amp; Roles</Link>
-                </Button>
-                <Button size="sm" variant="outline" asChild>
-                  <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
-                </Button>
-              </>
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/admin/audit-log"><History className="h-4 w-4 mr-1" /> Activity Log</Link>
+              </Button>
             )}
           </div>
         </div>
@@ -769,7 +772,7 @@ export default function AdminDashboard() {
               label: 'Operations',
               tabs: [
                 { value: 'rentals', label: 'Rentals', icon: KeyRound, show: true },
-                { value: 'labor', label: 'Staff', icon: Clock, show: isAdmin },
+                { value: 'labor', label: 'Team', icon: Clock, show: isAdmin },
                 { value: 'bor', label: 'BOR', icon: FileText, show: true },
                 /* Next to BOR, not over in Audience & Growth. The two are read
                    against each other — the receipts and the numbers those

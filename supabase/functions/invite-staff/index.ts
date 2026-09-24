@@ -10,7 +10,7 @@
 // twice: `verify_jwt` is left at its default (true) by keeping this function
 // OUT of the `verify_jwt = false` list in config.toml, and the handler then
 // asks `has_role()` who the caller is. The client route guards on /superadmin
-// and /admin/accounts are not a boundary — hiding a dropdown entry stops
+// and the admin dashboard are not a boundary — hiding a dropdown entry stops
 // nobody from calling `functions.invoke` directly.
 //
 // Since 2026-09-16 the gate is tiered rather than superadmin-only, to match

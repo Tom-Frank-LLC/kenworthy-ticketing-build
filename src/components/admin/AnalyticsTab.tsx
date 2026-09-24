@@ -22,19 +22,48 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DollarSign, TrendingUp, Users, BarChart3, UtensilsCrossed, RefreshCw } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList,
 } from 'recharts';
 import { tallyGenres } from '@/lib/genres';
+import { LaborVsSales } from './labor/LaborVsSales';
 
-const COLORS = [
-  'hsl(var(--primary))',
-  'hsl(var(--accent))',
-  'hsl(210, 70%, 55%)',
-  'hsl(340, 65%, 55%)',
-  'hsl(160, 55%, 45%)',
-  'hsl(45, 80%, 55%)',
-];
+/**
+ * How many bars a ranked chart shows before the rest fold into "Other".
+ *
+ * Revenue by Category comes back from Square with ~18 categories. As a pie
+ * that was 18 slices, 18 labels and a six-colour cycle that repeated three
+ * times, so nothing on it could be read. Ranked bars in one hue need no
+ * legend and no per-item colour at all, and folding the tail keeps the axis
+ * short enough that every name is legible.
+ */
+const RANKED_BARS = 9;
+const RANKED_LABEL_MAX = 26;
+const RANKED_ROW_PX = 34;
+
+type RankedRow = { name: string; label: string; value: number };
+
+/** Sort descending, keep the top N, and sum the rest into one "Other" row. */
+function rankWithOther(rows: Array<{ name: string; value: number }>, keep = RANKED_BARS): RankedRow[] {
+  const sorted = [...rows].sort((a, b) => b.value - a.value);
+  const head = sorted.length > keep + 1 ? sorted.slice(0, keep) : sorted;
+  const tail = sorted.slice(head.length);
+  const out: RankedRow[] = head.map(r => ({
+    name: r.name,
+    label: r.name.length > RANKED_LABEL_MAX ? `${r.name.slice(0, RANKED_LABEL_MAX - 1)}…` : r.name,
+    value: r.value,
+  }));
+  if (tail.length > 0) {
+    out.push({
+      name: `Other (${tail.length} more)`,
+      label: `Other (${tail.length} more)`,
+      value: +tail.reduce((sum, r) => sum + r.value, 0).toFixed(2),
+    });
+  }
+  return out;
+}
+
+/** Tall enough that no row is cramped, whatever the count. */
+const rankedHeight = (rows: number) => rows * RANKED_ROW_PX + 24;
 
 const RANGES = [
   { key: '30d', label: '30 days' },
@@ -143,10 +172,12 @@ export default function AnalyticsTab() {
     other: d.otherCents / 100,
   }));
 
-  const categoryData = (data?.revenueByCategory ?? []).map(c => ({
-    name: c.name,
-    value: +(c.amountCents / 100).toFixed(2),
-  }));
+  const categoryData = rankWithOther(
+    (data?.revenueByCategory ?? []).map(c => ({
+      name: c.name,
+      value: +(c.amountCents / 100).toFixed(2),
+    })),
+  );
 
   const topPerformers = (data?.topPerformers ?? []).map(p => ({
     title: p.title.length > 28 ? `${p.title.slice(0, 27)}…` : p.title,
@@ -160,15 +191,16 @@ export default function AnalyticsTab() {
   // slices add up to more than the ticket count, which is correct for a
   // "what do people come for" chart and wrong for a "how many tickets" one —
   // this is the former.
-  const genreData = tallyGenres(
-    tickets.map(t => {
-      const s = t.showings;
-      if (!s) return null;
-      return s.movies?.genre || s.events?.genre || s.live_performances?.genre || 'Other';
-    }),
-  )
-    .slice(0, 8)
-    .map(({ genre, count }) => ({ name: genre, value: count }));
+  const genreData = rankWithOther(
+    tallyGenres(
+      tickets.map(t => {
+        const s = t.showings;
+        if (!s) return null;
+        return s.movies?.genre || s.events?.genre || s.live_performances?.genre || 'Other';
+      }),
+    ).map(({ genre, count }) => ({ name: genre, value: count })),
+    8,
+  );
 
   // --- Venue utilization (build-sourced) ---
   const venueMap: Record<string, { name: string; ticketsSold: number; showingIds: Set<string>; totalCapacity: number }> = {};
@@ -289,17 +321,13 @@ export default function AnalyticsTab() {
 
           <div className="grid md:grid-cols-2 gap-4">
             {/* Revenue by category */}
-            <CollapsibleSection id="analytics.by-category" title="Revenue by Category">
+            <CollapsibleSection
+              id="analytics.by-category"
+              title="Revenue by Category"
+              description="Gross sales by Square reporting category, largest first."
+            >
               {categoryData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                      {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                <RankedBars rows={categoryData} format={v => `$${v.toFixed(2)}`} />
               ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}
             </CollapsibleSection>
 
@@ -310,15 +338,7 @@ export default function AnalyticsTab() {
               description="From this build's own ticket sales — Square does not record genre."
             >
               {genreData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie data={genreData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name} (${value})`}>
-                      {genreData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+                <RankedBars rows={genreData} format={v => String(v)} />
               ) : <p className="text-muted-foreground text-center py-8">No tickets sold through this build yet.</p>}
             </CollapsibleSection>
           </div>
@@ -362,7 +382,6 @@ export default function AnalyticsTab() {
                     formatter={(v: number, name: string) => name === 'revenue' ? `$${v.toFixed(2)}` : v}
                     contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
                   />
-                  <Legend />
                   <Bar dataKey="revenue" fill="hsl(var(--primary))" name="Revenue" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -396,7 +415,51 @@ export default function AnalyticsTab() {
           </p>
         </>
       )}
+
+      {/* Labor against sales, from Square Labor. It lived under the Team tab
+          until Sep 2026, but it is a number you read next to revenue, not
+          next to a timecard. It keeps its own weekly range: Square Labor is
+          read by pay week, which is not the reporting range chosen above. */}
+      <CollapsibleSection
+        id="analytics.labor-vs-sales"
+        title="Labor vs Sales"
+        description="Labor cost against revenue by day, from Square Labor. Has its own range — pay weeks, not the reporting range above."
+      >
+        <LaborVsSales />
+      </CollapsibleSection>
     </div>
+  );
+}
+
+/**
+ * A ranked, single-series horizontal bar chart: names down the side, the value
+ * at the end of each bar. One hue, so there is no legend to reconcile and no
+ * colour to tell apart; height follows the row count so nothing is cramped.
+ */
+function RankedBars({ rows, format }: { rows: RankedRow[]; format: (v: number) => string }) {
+  return (
+    <ResponsiveContainer width="100%" height={rankedHeight(rows.length)}>
+      <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 64, bottom: 4, left: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-border" />
+        <XAxis type="number" tickFormatter={format} tick={{ fill: 'hsl(var(--muted-foreground))' }} className="text-xs" />
+        <YAxis
+          dataKey="label"
+          type="category"
+          width={170}
+          interval={0}
+          tick={{ fill: 'hsl(var(--muted-foreground))' }}
+          className="text-xs"
+        />
+        <Tooltip
+          formatter={(v: number) => format(v)}
+          labelFormatter={(_, payload) => (payload?.[0]?.payload as RankedRow | undefined)?.name ?? ''}
+          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+        />
+        <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} maxBarSize={22}>
+          <LabelList dataKey="value" position="right" formatter={format} className="fill-foreground text-xs" />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
 

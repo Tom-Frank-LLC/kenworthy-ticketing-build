@@ -1534,36 +1534,6 @@ export type Database = {
         }
         Relationships: []
       }
-      labor_settings: {
-        Row: {
-          created_at: string
-          id: string
-          ot_weekly_hours: number
-          role_wage_defaults: Json
-          tip_method: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          ot_weekly_hours?: number
-          role_wage_defaults?: Json
-          tip_method?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          ot_weekly_hours?: number
-          role_wage_defaults?: Json
-          tip_method?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: []
-      }
       live_performances: {
         Row: {
           created_at: string
