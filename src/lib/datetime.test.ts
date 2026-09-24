@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   VENUE_TIME_ZONE,
+  formatClockTime,
   formatPlainDate,
   formatPlainDateRange,
   formatRuntime,
@@ -208,5 +209,50 @@ describe('venueDayBounds', () => {
     const { dayKey, start, end } = venueDayBounds(new Date('2026-11-01T12:00:00Z'));
     expect(dayKey).toBe('2026-11-01');
     expect((end.getTime() - start.getTime()) / 3_600_000).toBe(25);
+  });
+});
+
+describe('formatClockTime', () => {
+  it('turns an <input type="time"> value into 12-hour form', () => {
+    expect(formatClockTime('18:30')).toBe('6:30 PM');
+    expect(formatClockTime('09:05')).toBe('9:05 AM');
+    expect(formatClockTime('23:59')).toBe('11:59 PM');
+  });
+
+  it('handles the two ends of the noon/midnight seam', () => {
+    // 12 % 12 is 0, and 0 is not an hour on a 12-hour clock.
+    expect(formatClockTime('00:00')).toBe('12:00 AM');
+    expect(formatClockTime('12:00')).toBe('12:00 PM');
+    expect(formatClockTime('00:30')).toBe('12:30 AM');
+    expect(formatClockTime('12:30')).toBe('12:30 PM');
+  });
+
+  it('never shifts by an hour, whatever zone the test runs in', () => {
+    // The value is a wall-clock string with no zone. If the implementation
+    // ever routes it through a Date, this passes in Pacific and fails in CI.
+    for (let h = 0; h < 24; h++) {
+      const hh = String(h).padStart(2, '0');
+      const out = formatClockTime(`${hh}:15`);
+      const expected = `${h % 12 || 12}:15 ${h < 12 ? 'AM' : 'PM'}`;
+      expect(out).toBe(expected);
+    }
+  });
+
+  it('tolerates seconds, which Postgres time columns and some browsers emit', () => {
+    expect(formatClockTime('18:30:00')).toBe('6:30 PM');
+    expect(formatClockTime('07:05:59.123')).toBe('7:05 AM');
+  });
+
+  it('returns "" for nothing so a key/value row stays hidden', () => {
+    expect(formatClockTime('')).toBe('');
+    expect(formatClockTime(null)).toBe('');
+    expect(formatClockTime(undefined)).toBe('');
+  });
+
+  it('returns anything it cannot read unchanged rather than throwing', () => {
+    expect(formatClockTime('6:30 PM')).toBe('6:30 PM');
+    expect(formatClockTime('around six')).toBe('around six');
+    expect(formatClockTime('25:00')).toBe('25:00');
+    expect(formatClockTime('18:60')).toBe('18:60');
   });
 });

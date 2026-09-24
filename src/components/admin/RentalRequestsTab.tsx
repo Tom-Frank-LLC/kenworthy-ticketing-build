@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Copy, ExternalLink, Trash2, Eye, FileText, Link2, Receipt, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { formatPlainDateRange } from '@/lib/datetime';
+import { formatClockTime, formatPlainDateRange } from '@/lib/datetime';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { invokeFunction } from '@/lib/functions';
 import RentalInvoiceLines from './RentalInvoiceLines';
@@ -305,10 +305,10 @@ function RequestDetail({ request: r, onStatus, onSaveNotes, onDelete, onGenerate
       <DetailSection title="Event">
         <KV k={r.end_date ? 'Proposed dates' : 'Proposed date'} v={formatPlainDateRange(r.proposed_date, r.end_date, { month: 'long' }) || null} />
         <KV k="Venue area" v={r.venue_area?.replace(/_/g, ' ')} />
-        <KV k="Arrival" v={r.arrival_time} />
-        <KV k="Event start" v={r.event_start_time} />
-        <KV k="Event end" v={r.event_end_time} />
-        <KV k="Departure" v={r.departure_time} />
+        <KV k="Arrival" v={formatClockTime(r.arrival_time)} />
+        <KV k="Event start" v={formatClockTime(r.event_start_time)} />
+        <KV k="Event end" v={formatClockTime(r.event_end_time)} />
+        <KV k="Departure" v={formatClockTime(r.departure_time)} />
         <KV k="Marquee text" v={r.marquee_text} />
       </DetailSection>
 
