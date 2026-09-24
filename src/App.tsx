@@ -75,7 +75,16 @@ const AccountsRoles = lazyWithRecovery(() => import("./pages/admin/AccountsRoles
 // statement now; see the note at the top of pages/Accessibility.tsx.
 const AccessibilityPage = lazyWithRecovery(() => import("./pages/Accessibility"));
 
-const queryClient = new QueryClient();
+/*
+ * A minute of freshness by default. react-query's own default is zero, which
+ * makes every mount a refetch and turns a back-navigation into a fresh
+ * round-trip; nothing on this site changes fast enough to want that. The
+ * catalogue feed (useFeed) sets the same figure on itself, so it does not
+ * depend on this staying put.
+ */
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 60_000 } },
+});
 
 /** Matches the in-page loading state the routes themselves render. */
 const RouteFallback = () => (

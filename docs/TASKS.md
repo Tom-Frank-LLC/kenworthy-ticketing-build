@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**106 briefs** — 93 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
+**107 briefs** — 94 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -30,6 +30,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The admin dashboard loads a fraction of what it did, and the public pages stop re-downloading the catalogue on every navigation**<br>`ux` — `#333` — [brief](briefs/BRIEF-site-performance.md) · [notes](briefs/FINDINGS-site-performance.md)
 - **Deleting a price tier and saving never duplicates tiers again, and the duplicates already in production are repaired**<br>`data` — `#327` — [brief](briefs/BRIEF-duplicate-tiers-fix.md) · [notes](briefs/../FINDINGS-duplicate-price-tiers.md)
 - **A film can be ticketed through an outside site, the way an event can, and nothing sells against it here**<br>`feature` — `#329`, `#331` — [brief](briefs/BRIEF-movie-external-ticketing.md)
 - **One SQL function prices and writes every paid ticket order, so the arithmetic exists once**<br>`ops` — `#316`, `#317`, `#318`, `#320`, `#324` — [brief](briefs/BRIEF-pricing-rpc.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)

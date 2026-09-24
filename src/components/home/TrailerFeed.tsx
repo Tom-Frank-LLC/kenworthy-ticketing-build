@@ -105,7 +105,7 @@ export interface FeedItem {
    * that only differ by date. The listings need to say "and also Saturday at
    * 2" without the reader opening anything, and the drawer used to be the only
    * place that knew the set. Attached once by `attachUpcomingShowings` in
-   * `useFeed.ts`, which both feed builders call.
+   * `useFeed.ts`, the one feed builder both pages share.
    *
    * Optional because a FeedItem constructed anywhere else is still a valid
    * FeedItem; callers treat absent as empty.
