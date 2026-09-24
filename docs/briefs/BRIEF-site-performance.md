@@ -1,17 +1,19 @@
 ---
 brief: site-performance
 title: The admin dashboard loads a fraction of what it did, and the public pages stop re-downloading the catalogue on every navigation
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-09-22
-verified: false
+shipped_in: ["#333"]
+shipped_at: 2026-09-23
+verified: true
+evidence: "Squash-merged as a4338cf. Migration 20260922233021 pushed to production by Tom 2026-09-23 (anon probe of the RPC returns 42501, not 42883). Production Worker version 0afdb5f1-7e18-4040-abf7-68c479ae4fee (rollback df6d651c-2b53-44a7-ac4c-a4181feb86aa); AdminDashboard chunk served at 58,975 bytes from the origin."
 findings: FINDINGS-site-performance.md
 ---
 
 # Brief: Site performance — admin dashboard weight and public navigation
 
-**Status:** built 2026-09-22, not yet deployed. The migration is **not applied anywhere yet** — the auto-mode classifier refuses `supabase db push` even against staging, so Tom pushes it to staging first, checks the dashboard there, then production *before* the Worker deploy (see *Deploy order*). Until it has run on staging, "the RPC pages through `.order().range()`" is PostgREST's documented behaviour for set-returning functions, not something this session observed.
+**Status:** shipped 2026-09-23. Migration on production (pushed by Tom); Worker deployed and verified at the origin. **Staging does not have the migration** — push it there before the staging Worker next gets main, or its dashboard badges read 0/0. Whether the RPC's `.order().range()` paging behaves on a real database is checked by the production dashboard's badges matching what they showed before; see *Deploy order* step 3.
 **Date:** September 22, 2026
 **Requested by:** Tom — "the team is wondering if we can speed up the site (load time, navigation)." The person who raised it works the events back end, and the measurements agreed with that instinct: the public site was already in reasonable shape; the admin dashboard was not.
 
