@@ -442,10 +442,18 @@ export function TeamRoster() {
                         <span>{sq ? squareName(sq) : <span className="text-muted-foreground">Not linked</span>}</span>
                       )}
                       {sq && (
-                        <span className="text-xs text-muted-foreground">
-                          {sq.wage?.hourly_rate_cents ? `$${(sq.wage.hourly_rate_cents / 100).toFixed(2)}/hr` : 'no hourly rate in Square'}
-                          {sq.status && sq.status !== 'ACTIVE' && ` · ${sq.status.toLowerCase()}`}
-                        </span>
+                        <>
+                          {/* Square's own word for the team member, named as
+                              such: it is whether they are deactivated in the
+                              Square Dashboard, not whether they have ever
+                              signed in here. */}
+                          <Badge variant={sq.status === 'ACTIVE' ? 'default' : 'secondary'} className="text-xs">
+                            {sq.status === 'ACTIVE' ? 'Active in Square' : `${sq.status ? sq.status.toLowerCase() : 'unknown'} in Square`}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {sq.wage?.hourly_rate_cents ? `$${(sq.wage.hourly_rate_cents / 100).toFixed(2)}/hr` : 'no hourly rate in Square'}
+                          </span>
+                        </>
                       )}
                     </div>
 
