@@ -1,16 +1,18 @@
 ---
 brief: concessions-hero-photo
 title: The concessions page opens on a photograph of the stand, with its own centred header over it
-status: built
+status: shipped
 track: ux
-severity: P3
 date: 2026-09-23
-verified: false
+shipped_in: ["#334"]
+shipped_at: 2026-09-23
+verified: true
+evidence: "Squash-merged as 01233fb. Production Worker version 8efee97c-0cd1-409f-ab6e-8175ff973021 (rollback 0afdb5f1-7e18-4040-abf7-68c479ae4fee); Concessions chunk with the hero assets served from kenworthy.org."
 ---
 
 # Brief: Concessions page masthead
 
-**Status:** built 2026-09-23, on staging, not yet in production.
+**Status:** shipped 2026-09-23 (#334); the fifth pass — photo on top, centred header, band a quarter shorter — is what went live.
 **Date:** September 23, 2026
 **Requested by:** Tom — while triaging leftover files in the main checkout, an unreferenced photograph of the concessions counter turned up (`7065433574755008316.jpg`, 11 Aug). Rather than discard it: "add it to the top of the concessions page in the same format as the Calendar page." Three rounds on staging: (1) as a calendar-style masthead with the title bottom-left; (2) header restored, photograph moved below the menu; (3) — the one that stuck — photograph back on top, **with the page's own centred header over it** rather than the calendar's bottom-left title.
 

@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**107 briefs** — 94 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
+**107 briefs** — 95 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -18,7 +18,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
-- `P3` **The concessions page opens on a photograph of the stand, with its own centred header over it**<br>`ux` — [brief](briefs/BRIEF-concessions-hero-photo.md)
 
 ## Open
 
@@ -30,6 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The concessions page opens on a photograph of the stand, with its own centred header over it**<br>`ux` — `#334` — [brief](briefs/BRIEF-concessions-hero-photo.md)
 - **The admin dashboard loads a fraction of what it did, and the public pages stop re-downloading the catalogue on every navigation**<br>`ux` — `#333` — [brief](briefs/BRIEF-site-performance.md) · [notes](briefs/FINDINGS-site-performance.md)
 - **Deleting a price tier and saving never duplicates tiers again, and the duplicates already in production are repaired**<br>`data` — `#327` — [brief](briefs/BRIEF-duplicate-tiers-fix.md) · [notes](briefs/../FINDINGS-duplicate-price-tiers.md)
 - **A film can be ticketed through an outside site, the way an event can, and nothing sells against it here**<br>`feature` — `#329`, `#331` — [brief](briefs/BRIEF-movie-external-ticketing.md)
