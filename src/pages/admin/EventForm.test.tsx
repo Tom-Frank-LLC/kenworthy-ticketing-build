@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 /**
  * One form for a live event.
@@ -80,6 +80,13 @@ beforeEach(() => {
   state.toasts = { error: [], success: [] };
 });
 
+// Stands in for the dashboard and shows the query string it was sent, since
+// the dashboard reads its sort and tab from there.
+function AdminStub() {
+  const { search } = useLocation();
+  return <div data-testid="admin">{`admin dashboard${search}`}</div>;
+}
+
 function renderForm(entry: string) {
   return render(
     <MemoryRouter initialEntries={[entry]}>
@@ -87,7 +94,7 @@ function renderForm(entry: string) {
         <Route path="/admin/events/new" element={<EventForm />} />
         <Route path="/admin/events/:id" element={<EventForm />} />
         <Route path="/admin/concerts/:id" element={<EventForm />} />
-        <Route path="/admin" element={<div>admin dashboard</div>} />
+        <Route path="/admin" element={<AdminStub />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -196,5 +203,34 @@ describe('EventForm — one form, both questions', () => {
     // Its showings, Square link and seat tiers all hang off this id.
     expect(state.writes[0].table).toBe('live_performances');
     expect(state.writes[0].op).toBe('update');
+  });
+});
+
+describe('EventForm — where it goes after saving', () => {
+  // BRIEF-listings-date-added-default. A new event has no showings, so the
+  // default showtime sort would put it at the bottom of the list it was just
+  // added to. The create redirect asks for date-added order; the edit redirect
+  // does not, so editing never re-sorts the list.
+  it('returns from a create to Live Events sorted by date added, so the new event is on top', async () => {
+    renderForm('/admin/events/new');
+
+    fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'Palouse Jazz' } });
+    await choose('Type *', 'Concert');
+    fireEvent.click(screen.getByRole('button', { name: 'Create Event' }));
+
+    expect(await screen.findByTestId('admin')).toHaveTextContent('admin dashboard?tab=live-events&sort=newest');
+  });
+
+  it('returns from an edit to Live Events without touching the sort', async () => {
+    state.rows.events = {
+      id: EVENT_ID, title: 'Palouse Jazz', subcategory: 'concert',
+      ticket_type: 'ticketed', is_active: true,
+    };
+    renderForm(`/admin/events/${EVENT_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Title *')).toHaveValue('Palouse Jazz'));
+    fireEvent.click(screen.getByRole('button', { name: 'Update Event' }));
+
+    expect(await screen.findByTestId('admin')).toHaveTextContent(/^admin dashboard\?tab=live-events$/);
   });
 });

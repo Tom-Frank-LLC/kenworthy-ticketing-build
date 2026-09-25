@@ -112,7 +112,10 @@ export default function MovieForm() {
         toast.error('Nothing was saved — your account may not have permission to edit this.');
       } else {
         toast.success(isEdit ? 'Movie updated!' : 'Movie created!');
-        navigate('/admin');
+        // A new film has no showings yet, so the default showtime sort sinks
+        // it to the bottom of the list. Come back sorted by date added so it
+        // is the first thing seen. An edit keeps whatever sort the list had.
+        navigate(isEdit ? '/admin' : '/admin?sort=newest');
       }
     } catch (err: any) {
       toast.error(err?.message || 'An unexpected error occurred');
