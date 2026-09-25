@@ -17,6 +17,7 @@ import {
   chooseHeroYear,
   describeYear,
   groupProgramsByYear,
+  newestYearWith,
   selectFestivalLineup,
   slidePath,
   stripLeadingShowtime,
@@ -444,7 +445,11 @@ export default function SilentFilmFestival() {
 
   /** Resolved once, so the grid and the render cannot disagree about it. */
   const heroTrailer = heroYear ? trailers.get(heroYear) ?? null : null;
-  const heroImage = heroYear ? heroImages.get(heroYear) ?? null : null;
+  // Between seasons there is no year to take the photograph from, so the
+  // page wears the most recent festival's — see newestYearWith. A page that
+  // opened at its bare title every October read as broken, not as resting.
+  const heroImageYear = heroYear ?? (offSeason ? newestYearWith(heroImages) : null);
+  const heroImage = heroImageYear != null ? heroImages.get(heroImageYear) ?? null : null;
 
   /**
    * This year's programme, and the ones before it, kept apart.
