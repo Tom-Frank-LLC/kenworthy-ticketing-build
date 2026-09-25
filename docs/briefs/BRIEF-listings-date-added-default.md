@@ -70,3 +70,13 @@ and it matches the existing `/admin` and `/admin?tab=live-events` redirects.
 Tests: `MovieForm.test.tsx` and `EventForm.test.tsx` each gained a "where it
 goes after saving" block asserting the create redirect carries `sort=newest`
 and the edit redirect does not.
+
+Walked through on staging (dev server, `--mode staging`, 2026-09-24) with a
+throwaway movie, deleted afterwards:
+
+- `/admin` cold: no `sort` param, control reads "Showtime (upcoming first)",
+  top film is the one with the furthest-out showing. Unchanged.
+- Create → landed on `/admin?sort=newest`, control reads "Date added
+  (newest)", the new film is the first row, followed by the next-newest.
+  Further down, the bulk-imported batch sits in title order — the tiebreaker.
+- Edit the same film → landed on `/admin`, "Showtime (upcoming first)".
