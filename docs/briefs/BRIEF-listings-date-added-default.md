@@ -80,3 +80,14 @@ throwaway movie, deleted afterwards:
   (newest)", the new film is the first row, followed by the next-newest.
   Further down, the bulk-imported batch sits in title order — the tiebreaker.
 - Edit the same film → landed on `/admin`, "Showtime (upcoming first)".
+- Create a live event (throwaway, deleted afterwards) → landed on
+  `/admin?tab=live-events&sort=newest`, Live Events tab active, "Date added
+  (newest)", the new event is the first row.
+
+When the sort goes back to showtime: the sort is nothing more than the
+`?sort=` query parameter plus the matching Select state, so it lasts exactly
+as long as the URL carries it. Anything that lands on a bare `/admin` — the
+Admin nav link, a form's Back button, the redirect after an edit, a fresh
+visit — is the default again; so is the list's Reset button. A reload or
+browser Back onto a URL that still has `?sort=newest` keeps newest, which is
+the same contract every other filter on the page has.
