@@ -133,7 +133,13 @@ export default function EventForm() {
 
     if (error) toast.error(error.message);
     else if (!data || data.length === 0) toast.error('Nothing was saved — your account may not have permission to edit this.');
-    else { toast.success(isEdit ? 'Event updated!' : 'Event created!'); navigate('/admin?tab=live-events'); }
+    else {
+      toast.success(isEdit ? 'Event updated!' : 'Event created!');
+      // A new event has no showings yet, so the default showtime sort sinks it
+      // to the bottom. Come back sorted by date added so it is on top; an edit
+      // keeps whatever sort the list had. (MovieForm does the same.)
+      navigate(isEdit ? '/admin?tab=live-events' : '/admin?tab=live-events&sort=newest');
+    }
     setSaving(false);
   };
 

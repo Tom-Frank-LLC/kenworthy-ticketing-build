@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 /**
  * A film can be ticketed somewhere else, the way an event can.
@@ -79,13 +79,20 @@ beforeEach(() => {
   state.toasts = { error: [], success: [] };
 });
 
+// Stands in for the dashboard and shows the query string it was sent, since
+// the dashboard reads its sort and tab from there.
+function AdminStub() {
+  const { search } = useLocation();
+  return <div data-testid="admin">{`admin dashboard${search}`}</div>;
+}
+
 function renderForm(entry: string) {
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/admin/movies/new" element={<MovieForm />} />
         <Route path="/admin/movies/:id" element={<MovieForm />} />
-        <Route path="/admin" element={<div>admin dashboard</div>} />
+        <Route path="/admin" element={<AdminStub />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -194,6 +201,31 @@ describe('MovieForm — how people get in', () => {
     await choose('Ticketing *', 'Ticketed');
     expect(await screen.findByText('SEAT PRICING')).toBeTruthy();
     expect(screen.getByText('DISCOUNTS')).toBeTruthy();
+  });
+});
+
+describe('MovieForm — where it goes after saving', () => {
+  // BRIEF-listings-date-added-default. A new film has no showings, so the
+  // default showtime sort would put it at the bottom of the list it was just
+  // added to. The create redirect asks for date-added order; the edit redirect
+  // does not, so editing never re-sorts the list.
+  it('returns from a create sorted by date added, so the new film is on top', async () => {
+    renderForm('/admin/movies/new');
+
+    fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'The Gold Rush' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Movie' }));
+
+    expect(await screen.findByTestId('admin')).toHaveTextContent('admin dashboard?sort=newest');
+  });
+
+  it('returns from an edit without touching the sort', async () => {
+    state.rows.movies = { id: MOVIE_ID, title: 'The Gold Rush', duration_minutes: 95, is_active: true };
+    renderForm(`/admin/movies/${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Title *')).toHaveValue('The Gold Rush'));
+    fireEvent.click(screen.getByRole('button', { name: 'Update Movie' }));
+
+    expect(await screen.findByTestId('admin')).toHaveTextContent(/^admin dashboard$/);
   });
 });
 

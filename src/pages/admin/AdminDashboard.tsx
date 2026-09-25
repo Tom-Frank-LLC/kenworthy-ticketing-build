@@ -390,6 +390,15 @@ export default function AdminDashboard() {
     return direction === 'desc' ? bt - at : at - bt;
   };
 
+  // The bulk-imported catalogue shares a `created_at` to the second, so a date
+  // sort with no tiebreaker shuffled that batch between loads. Title settles it.
+  const byCreated = (a: any, b: any, direction: 'asc' | 'desc') => {
+    const at = new Date(a.created_at || 0).getTime();
+    const bt = new Date(b.created_at || 0).getTime();
+    if (at === bt) return byTitle(a, b);
+    return direction === 'desc' ? bt - at : at - bt;
+  };
+
   const sortItems = (items: any[]) => {
     const sorted = [...items];
     switch (sortOrder) {
@@ -406,10 +415,10 @@ export default function AdminDashboard() {
         sorted.sort((a, b) => byTitle(b, a));
         break;
       case 'newest':
-        sorted.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        sorted.sort((a, b) => byCreated(a, b, 'desc'));
         break;
       case 'oldest':
-        sorted.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+        sorted.sort((a, b) => byCreated(a, b, 'asc'));
         break;
     }
     return sorted;
