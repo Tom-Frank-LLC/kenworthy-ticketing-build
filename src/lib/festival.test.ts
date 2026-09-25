@@ -4,6 +4,7 @@ import {
   chooseHeroYear,
   describeYear,
   groupProgramsByYear,
+  newestYearWith,
   pageRowsForPdf,
   previousGeneratedSet,
   selectFestivalLineup,
@@ -309,5 +310,20 @@ describe('previousGeneratedSet — what a re-upload replaces', () => {
       row('script-p1'), row('old-pdf'), row('old-p1', 'old-pdf'), row('hand-cover'),
     ]);
     expect(set.map(r => r.id).sort()).toEqual(['old-p1', 'old-pdf']);
+  });
+});
+
+describe('newestYearWith — the photograph between seasons', () => {
+  it('is the newest year that actually has one', () => {
+    expect(newestYearWith(new Map([[2024, 'a.jpg'], [2026, 'c.jpg'], [2025, 'b.jpg']]))).toBe(2026);
+  });
+
+  it('skips a newer year whose photograph is empty', () => {
+    expect(newestYearWith(new Map([[2026, null], [2025, 'b.jpg']]))).toBe(2025);
+  });
+
+  it('is nothing when no year has one', () => {
+    expect(newestYearWith(new Map([[2026, null]]))).toBeNull();
+    expect(newestYearWith(new Map())).toBeNull();
   });
 });

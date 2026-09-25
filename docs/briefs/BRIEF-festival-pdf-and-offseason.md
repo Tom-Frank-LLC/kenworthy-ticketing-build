@@ -107,9 +107,10 @@ was confirmed equal to main by content before the deploy.
   hidden tab, so an admin who switched tabs mid-upload came back to page two
   after ~25 s per page. Print intent draws the same pixels in ~10 ms without
   waiting for a frame. Found while testing in an unfocused automation tab.
-- **The hero photograph is per year, so between seasons there is none** and
-  the page starts at its title. If Tom wants the room photograph to stay up
-  in the off-season, that is a festival-level image, a small follow-up.
+- **Between seasons the page wears the most recent year's hero photograph**
+  (`newestYearWith`). The first cut showed no photograph at all, since the
+  image is per year, and Tom asked for it back the same day: a page that
+  opens at its bare title every October reads as broken, not as resting.
 
 ### Verified
 

@@ -259,6 +259,23 @@ export function chooseHeroYear(input: {
 }
 
 /**
+ * The newest year that has a value in `byYear`, or null.
+ *
+ * Between seasons no year is featured, and the hero photograph is per year,
+ * so the page opened at its bare title — which read as a regression rather
+ * than a rest. The most recent festival's photograph is the honest choice:
+ * it is a picture of this festival, taken the last time it happened, and it
+ * is replaced the moment a newer year has one of its own.
+ */
+export function newestYearWith<T>(byYear: ReadonlyMap<number, T | null | undefined>): number | null {
+  let newest: number | null = null;
+  for (const [year, value] of byYear) {
+    if (value && (newest === null || year > newest)) newest = year;
+  }
+  return newest;
+}
+
+/**
  * The rows to insert for a PDF's rendered pages, in page order.
  *
  * The shape matches what scripts/import-festival-programs.mjs writes for a
