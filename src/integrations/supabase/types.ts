@@ -846,6 +846,7 @@ export type Database = {
           festival_slug: string
           file_path: string
           file_type: string
+          generated_from: string | null
           id: string
           is_published: boolean
           thumbnail_path: string | null
@@ -859,6 +860,7 @@ export type Database = {
           festival_slug?: string
           file_path: string
           file_type: string
+          generated_from?: string | null
           id?: string
           is_published?: boolean
           thumbnail_path?: string | null
@@ -872,6 +874,7 @@ export type Database = {
           festival_slug?: string
           file_path?: string
           file_type?: string
+          generated_from?: string | null
           id?: string
           is_published?: boolean
           thumbnail_path?: string | null
@@ -881,6 +884,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "festival_programs_generated_from_fkey"
+            columns: ["generated_from"]
+            isOneToOne: false
+            referencedRelation: "festival_programs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "festival_programs_uploaded_by_fkey"
             columns: ["uploaded_by"]
             isOneToOne: false
@@ -888,6 +898,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      festivals: {
+        Row: {
+          about: string | null
+          between_seasons: boolean
+          created_at: string
+          name: string
+          off_season_note: string | null
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          about?: string | null
+          between_seasons?: boolean
+          created_at?: string
+          name: string
+          off_season_note?: string | null
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          about?: string | null
+          between_seasons?: boolean
+          created_at?: string
+          name?: string
+          off_season_note?: string | null
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       festival_years: {
         Row: {

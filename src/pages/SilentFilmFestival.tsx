@@ -14,15 +14,18 @@ import { isPast } from '@/lib/purchasable';
 import { useIsSplitLayout } from '@/hooks/use-mobile';
 import {
   FESTIVAL_SLUG,
+  chooseHeroYear,
   describeYear,
   groupProgramsByYear,
   selectFestivalLineup,
   slidePath,
   stripLeadingShowtime,
   type FestivalProgram,
+  type FestivalSettings,
   type FestivalYear,
 } from '@/lib/festival';
 import { RichText } from '@/components/RichText';
+import { toMetaDescription } from '@/lib/richText';
 
 /**
  * The Silent Film Festival's own page.
@@ -45,14 +48,20 @@ import { RichText } from '@/components/RichText';
  */
 
 // ---------------------------------------------------------------------------
-// EDITABLE COPY — Tom supplies the final wording.
-// Nothing below this block reads these values; change them freely.
+// LAST-RESORT COPY. The festival's name and standing description live in the
+// `festivals` table now and are edited from Pages → Festival Programs; these
+// are what the page shows until that row has loaded, or if it is missing.
+// The seed migration wrote the same words, so a reader never sees a swap.
 // ---------------------------------------------------------------------------
-const FESTIVAL_NAME = 'Kenworthy Silent Film Festival';
-const FESTIVAL_BLURB =
-  'Silent cinema as it was meant to be seen — on a big screen, in a full room, ' +
-  'with live music. Each night pairs a restored classic with an original score ' +
-  'performed in the auditorium.';
+const DEFAULT_SETTINGS: FestivalSettings = {
+  name: 'Kenworthy Silent Film Festival',
+  about:
+    '<p>Silent cinema as it was meant to be seen — on a big screen, in a full room, ' +
+    'with live music. Each night pairs a restored classic with an original score ' +
+    'performed in the auditorium.</p>',
+  betweenSeasons: false,
+  offSeasonNote: null,
+};
 // ---------------------------------------------------------------------------
 
 interface Production {
@@ -299,6 +308,7 @@ export default function SilentFilmFestival() {
   const [trailers, setTrailers] = useState<ReadonlyMap<number, string | null>>(new Map());
   const [blurbs, setBlurbs] = useState<ReadonlyMap<number, string | null>>(new Map());
   const [heroImages, setHeroImages] = useState<ReadonlyMap<number, string | null>>(new Map());
+  const [settings, setSettings] = useState<FestivalSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   // Which side of the split we are on decides where the slideshow *mounts*,
@@ -331,12 +341,27 @@ export default function SilentFilmFestival() {
         .select('year, trailer_url, blurb, hero_image_path')
         .eq('festival_slug', FESTIVAL_SLUG);
 
-      const [{ data: passRow }, { data: programRows }, { data: yearRows }] = await Promise.all([
-        passQuery,
-        programQuery,
-        yearQuery,
-      ]);
+      const festivalQuery = supabase
+        .from('festivals')
+        .select('name, about, between_seasons, off_season_note')
+        .eq('slug', FESTIVAL_SLUG)
+        .maybeSingle();
+
+      const [{ data: passRow }, { data: programRows }, { data: yearRows }, { data: festivalRow }] =
+        await Promise.all([passQuery, programQuery, yearQuery, festivalQuery]);
       if (cancelled) return;
+
+      // A missing row keeps the defaults above; a present one replaces them
+      // field by field, so an emptied About still falls back to the constant
+      // rather than to a blank header.
+      if (festivalRow) {
+        setSettings({
+          name: festivalRow.name || DEFAULT_SETTINGS.name,
+          about: festivalRow.about || null,
+          betweenSeasons: festivalRow.between_seasons === true,
+          offSeasonNote: festivalRow.off_season_note || null,
+        });
+      }
 
       const years = (yearRows ?? []) as Array<{
         year: number; trailer_url: string | null; blurb: string | null;
@@ -394,26 +419,28 @@ export default function SilentFilmFestival() {
       .map(g => describeYear(g, trailers));
   }, [programs, trailers]);
 
-  const festivalYear = lineup.length
+  // Between seasons there is no year being sold, whatever the pass still has
+  // tagged: the switch is the admin saying nothing is on right now.
+  const offSeason = settings.betweenSeasons;
+  const festivalYear = !offSeason && lineup.length
     ? new Date(lineup[0].start_time).getFullYear()
     : null;
 
   /**
-   * The year the top of the page speaks for.
-   *
-   * Normally the year being sold. But copy and a trailer get written before the
-   * lineup is tagged — that is the whole point of writing them early — and
-   * keying the hero to the lineup alone would silently withhold both until the
-   * screenings were linked to a pass. So it falls back to the newest year
-   * anyone has actually written something about.
+   * The year the top of the page speaks for, or none. The rule and its
+   * reasons are on chooseHeroYear; the short version is the lineup's year,
+   * else the newest year with copy, else nothing — and nothing at all while
+   * the festival is between seasons, which is what lets a finished year drop
+   * into the archive instead of staying featured until next year is written.
    */
-  const heroYear = festivalYear ?? (() => {
-    const written = [...blurbs.entries()]
+  const heroYear = chooseHeroYear({
+    lineupYear: festivalYear,
+    writtenYears: [...blurbs.entries()]
       .filter(([, v]) => v)
       .map(([y]) => y)
-      .concat([...trailers.entries()].filter(([, v]) => v).map(([y]) => y));
-    return written.length ? Math.max(...written) : null;
-  })();
+      .concat([...trailers.entries()].filter(([, v]) => v).map(([y]) => y)),
+    betweenSeasons: offSeason,
+  });
 
   /** Resolved once, so the grid and the render cannot disagree about it. */
   const heroTrailer = heroYear ? trailers.get(heroYear) ?? null : null;
@@ -461,7 +488,7 @@ export default function SilentFilmFestival() {
    * this festival's slug; until then the page simply does not advertise a
    * pass, which beats advertising one that cannot be bought.
    */
-  const passCard = pass ? (
+  const passCard = pass && !offSeason ? (
           <Card className="mb-8 border-success/40">
             <CardContent className="p-5 md:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
               {pass.image_path ? (
@@ -501,7 +528,7 @@ export default function SilentFilmFestival() {
   const titleBlock = (
     <>
       <h1 className="font-display uppercase text-3xl md:text-5xl tracking-[0.1em] text-foreground">
-        {FESTIVAL_NAME}
+        {settings.name}
       </h1>
       {festivalYear && (
         <p className="font-display uppercase tracking-[0.25em] text-sm text-primary mt-3">
@@ -514,8 +541,8 @@ export default function SilentFilmFestival() {
   return (
     <>
       <SEO
-        title={`${FESTIVAL_NAME} | Kenworthy Performing Arts Centre`}
-        description={FESTIVAL_BLURB}
+        title={`${settings.name} | Kenworthy Performing Arts Centre`}
+        description={toMetaDescription(settings.about ?? DEFAULT_SETTINGS.about)}
         path="/silent-film-festival"
       />
 
@@ -571,10 +598,11 @@ export default function SilentFilmFestival() {
             )}
           >
             {/* This year's own words when someone has written them, the standing
-                description when nobody has. A year with nothing written about it
+                description when nobody has — and always, between seasons, when
+                there is no "this year". A year with nothing written about it
                 still reads as a finished page rather than as a gap. */}
             <RichText
-              html={(heroYear && blurbs.get(heroYear)) || FESTIVAL_BLURB}
+              html={(heroYear && blurbs.get(heroYear)) || settings.about || DEFAULT_SETTINGS.about!}
               className="font-serif text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl lg:order-2"
             />
 
@@ -591,7 +619,7 @@ export default function SilentFilmFestival() {
             {heroTrailer && (
               <div className="lg:order-1 lg:mt-2 space-y-6">
                 <ProductionMedia
-                  title={`${FESTIVAL_NAME} ${heroYear}`}
+                  title={`${settings.name} ${heroYear}`}
                   type="event"
                   trailerUrl={heroTrailer}
                   fallback="none"
@@ -603,6 +631,26 @@ export default function SilentFilmFestival() {
         </header>
 
         {/* ------------------------------------------------- This year */}
+        {/* Between seasons there is no "This Year" to head a section with, and
+            "the lineup is coming soon" under it would promise a festival nobody
+            has announced. The standing line the admin wrote takes the spot —
+            or nothing does, if they left it blank. */}
+        {offSeason ? (
+          settings.offSeasonNote && (
+            <section className="mb-14 md:mb-20" aria-label="Next festival">
+              <Card>
+                <CardContent className="py-10 text-center">
+                  <p className="font-serif text-lg text-foreground">
+                    {settings.offSeasonNote}
+                  </p>
+                  <Button asChild variant="outline" className="mt-5">
+                    <Link to="/calendar">See what&rsquo;s on now</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            </section>
+          )
+        ) : (
         <section className="mb-14 md:mb-20" aria-labelledby="this-year">
           <h2
             id="this-year"
@@ -717,6 +765,7 @@ export default function SilentFilmFestival() {
             </ul>
           )}
         </section>
+        )}
 
         {/* ------------------------------------ This year's programme */}
         {/* Its own section rather than the top of the archive. A festival a

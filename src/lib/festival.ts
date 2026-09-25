@@ -23,6 +23,8 @@ export interface FestivalProgram {
   display_order: number;
   /** Cover image for a PDF, which cannot be its own thumbnail. */
   thumbnail_path?: string | null;
+  /** The PDF row this page was rendered from by the admin upload, or null. */
+  generated_from?: string | null;
 }
 
 export interface ProgramYear {
@@ -209,4 +211,102 @@ export function describeYear(
     booklet,
     coverPath,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The festival itself, as opposed to any one of its years.
+// ---------------------------------------------------------------------------
+
+export interface FestivalSettings {
+  name: string;
+  /** The standing description, HTML from the admin editor. */
+  about: string | null;
+  /** Nothing is on: feature no year, put every year in the archive. */
+  betweenSeasons: boolean;
+  /** One line shown in place of the lineup while between seasons. */
+  offSeasonNote: string | null;
+}
+
+/**
+ * The year the top of the festival page speaks for, or null for none.
+ *
+ * Normally the year being sold. But copy and a trailer get written before the
+ * lineup is tagged — that is the whole point of writing them early — and
+ * keying the hero to the lineup alone would silently withhold both until the
+ * screenings were linked to a pass. So it falls back to the newest year anyone
+ * has actually written something about.
+ *
+ * Which is exactly wrong once that festival is over. The lineup empties the
+ * day after the last screening (selectFestivalLineup), and from then until
+ * next year's copy exists the fallback keeps featuring the finished year: its
+ * blurb at the top, its programme under "This Year's Programme", the archive
+ * below missing the one year a reader most expects to find there. The
+ * `betweenSeasons` switch is the admin saying "nothing is on", and it wins
+ * over both sources — a lineup tagged while the switch is still on is an
+ * admin who has not flipped it yet, not a festival the page should sell.
+ */
+export function chooseHeroYear(input: {
+  /** The year of the lineup being sold, if any. */
+  lineupYear: number | null;
+  /** Every year with a blurb or a trailer written for it. */
+  writtenYears: Iterable<number>;
+  betweenSeasons: boolean;
+}): number | null {
+  if (input.betweenSeasons) return null;
+  if (input.lineupYear != null) return input.lineupYear;
+  const written = [...input.writtenYears];
+  return written.length ? Math.max(...written) : null;
+}
+
+/**
+ * The rows to insert for a PDF's rendered pages, in page order.
+ *
+ * The shape matches what scripts/import-festival-programs.mjs writes for a
+ * booklet — `Page N` at display_order N, the PDF last at 500 — so a year
+ * uploaded from the admin and a year imported from the archive folder are
+ * indistinguishable on the page. The only addition is `generated_from`, which
+ * is what lets a second upload of the same booklet replace these rows rather
+ * than sit beside them.
+ */
+export function pageRowsForPdf(input: {
+  festivalSlug: string;
+  year: number;
+  /** The inserted PDF row's id. */
+  pdfId: string;
+  /** Storage paths of the rendered pages, page 1 first. */
+  pagePaths: string[];
+  isPublished: boolean;
+  uploadedBy: string | null;
+}) {
+  return input.pagePaths.map((file_path, i) => ({
+    festival_slug: input.festivalSlug,
+    year: input.year,
+    title: `Page ${i + 1}`,
+    file_path,
+    file_type: 'image' as const,
+    display_order: i + 1,
+    is_published: input.isPublished,
+    uploaded_by: input.uploadedBy,
+    thumbnail_path: null,
+    generated_from: input.pdfId,
+  }));
+}
+
+/** display_order the import script gives a booklet, so it lists last. */
+export const BOOKLET_DISPLAY_ORDER = 500;
+
+/**
+ * Which of a year's rows an earlier PDF upload produced, and so which a new
+ * upload of that year's PDF replaces.
+ *
+ * The set is the rendered pages (they carry `generated_from`) together with
+ * the PDF rows they were rendered from. Nothing else: a page uploaded by hand
+ * or by the import script has no marker and is left exactly where it is, so a
+ * replacement can never delete work that was not derived in the first place.
+ */
+export function previousGeneratedSet<T extends Pick<FestivalProgram, 'id' | 'generated_from'>>(
+  rows: T[],
+): T[] {
+  const sources = new Set(rows.map(r => r.generated_from).filter((id): id is string => !!id));
+  return rows.filter(r => r.generated_from || sources.has(r.id));
 }

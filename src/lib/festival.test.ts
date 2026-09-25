@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { describeYear, groupProgramsByYear, selectFestivalLineup, slidePath, stripLeadingShowtime, type FestivalProgram } from '@/lib/festival';
+import {
+  BOOKLET_DISPLAY_ORDER,
+  chooseHeroYear,
+  describeYear,
+  groupProgramsByYear,
+  pageRowsForPdf,
+  previousGeneratedSet,
+  selectFestivalLineup,
+  slidePath,
+  stripLeadingShowtime,
+  type FestivalProgram,
+  type ProgramYear,
+} from '@/lib/festival';
 
 const program = (over: Partial<FestivalProgram> & { id: string; year: number }): FestivalProgram => ({
   title: null, file_path: `${over.id}.pdf`, file_type: 'pdf', display_order: 0, ...over,
@@ -189,5 +201,113 @@ describe('describeYear — trailers', () => {
   it('treats an explicitly null trailer as none', () => {
     const trailers = new Map<number, string | null>([[2024, null]]);
     expect(describeYear({ year: 2024, programs: [pdf('z')] }, trailers).trailerUrl).toBeNull();
+  });
+});
+
+describe('chooseHeroYear — the year the top of the page speaks for', () => {
+  it('is the year being sold when there is a lineup', () => {
+    expect(chooseHeroYear({ lineupYear: 2026, writtenYears: [2024, 2025], betweenSeasons: false }))
+      .toBe(2026);
+  });
+
+  it('falls back to the newest year anyone has written about', () => {
+    expect(chooseHeroYear({ lineupYear: null, writtenYears: [2024, 2026, 2025], betweenSeasons: false }))
+      .toBe(2026);
+  });
+
+  it('is nothing when nothing has been written and nothing is on', () => {
+    expect(chooseHeroYear({ lineupYear: null, writtenYears: [], betweenSeasons: false })).toBeNull();
+  });
+
+  // The whole point of the switch: the day after the last screening the lineup
+  // empties, and without this the finished year stays featured — its blurb at
+  // the top, its programme above the archive — until next year's copy exists.
+  it('features no year between seasons, even one that was written about', () => {
+    expect(chooseHeroYear({ lineupYear: null, writtenYears: [2026], betweenSeasons: true })).toBeNull();
+  });
+
+  it('features no year between seasons, even with a lineup still tagged', () => {
+    expect(chooseHeroYear({ lineupYear: 2026, writtenYears: [2026], betweenSeasons: true })).toBeNull();
+  });
+
+  it('returns the next year the moment the switch is off and its lineup exists', () => {
+    expect(chooseHeroYear({ lineupYear: 2027, writtenYears: [2026], betweenSeasons: false })).toBe(2027);
+  });
+});
+
+describe('the current-vs-archive split, between seasons', () => {
+  // The page's own rule: currentEntry is the hero year's entry, pastYears is
+  // everything else. Reproduced here rather than imported because it is two
+  // lines in the component, and what matters is what they do with a null.
+  const split = (archive: ProgramYear[], heroYear: number | null) => {
+    const current = heroYear != null ? archive.find(a => a.year === heroYear) ?? null : null;
+    return { current, past: archive.filter(a => a.year !== current?.year).map(a => a.year) };
+  };
+  const archive: ProgramYear[] = [2026, 2025, 2024].map(year => ({ year, programs: [] }));
+
+  it('keeps the featured year out of the archive in season', () => {
+    const heroYear = chooseHeroYear({ lineupYear: null, writtenYears: [2026], betweenSeasons: false });
+    expect(split(archive, heroYear)).toEqual({ current: archive[0], past: [2025, 2024] });
+  });
+
+  it('puts every year, the finished one included, in the archive between seasons', () => {
+    const heroYear = chooseHeroYear({ lineupYear: null, writtenYears: [2026], betweenSeasons: true });
+    expect(split(archive, heroYear)).toEqual({ current: null, past: [2026, 2025, 2024] });
+  });
+});
+
+describe('pageRowsForPdf — what a rendered booklet writes', () => {
+  const rows = pageRowsForPdf({
+    festivalSlug: 'silent-film-festival', year: 2026, pdfId: 'pdf-1',
+    pagePaths: ['silent-film-festival/2026/001-1.jpg', 'silent-film-festival/2026/002-1.jpg', 'silent-film-festival/2026/003-1.jpg'],
+    isPublished: false, uploadedBy: 'admin-1',
+  });
+
+  it('writes one image row per page, in page order, as the import script does', () => {
+    expect(rows.map(r => [r.title, r.display_order, r.file_type]))
+      .toEqual([['Page 1', 1, 'image'], ['Page 2', 2, 'image'], ['Page 3', 3, 'image']]);
+  });
+
+  it('marks every page as rendered from the booklet', () => {
+    expect(rows.every(r => r.generated_from === 'pdf-1')).toBe(true);
+  });
+
+  it('follows the upload’s publish state and year', () => {
+    expect(rows.every(r => r.is_published === false && r.year === 2026 && r.uploaded_by === 'admin-1')).toBe(true);
+  });
+
+  it('renders on the page as a flip-through with the booklet as the download', () => {
+    const pdf = program({ id: 'pdf-1', year: 2026, file_type: 'pdf', display_order: BOOKLET_DISPLAY_ORDER, thumbnail_path: 'cover.jpg' });
+    const pages = rows.map((r, i) => program({ ...r, id: `p${i}` }));
+    const [group] = groupProgramsByYear([pdf, ...pages]);
+    const year = describeYear(group);
+    expect(year.pages.map(p => p.title)).toEqual(['Page 1', 'Page 2', 'Page 3']);
+    expect(year.booklet?.id).toBe('pdf-1');
+    expect(year.coverPath).toBe('silent-film-festival/2026/001-1.jpg');
+  });
+});
+
+describe('previousGeneratedSet — what a re-upload replaces', () => {
+  const row = (id: string, generated_from: string | null = null) => ({ id, generated_from });
+
+  it('is the earlier booklet and the pages rendered from it', () => {
+    const set = previousGeneratedSet([
+      row('old-pdf'), row('old-p1', 'old-pdf'), row('old-p2', 'old-pdf'),
+    ]);
+    expect(set.map(r => r.id).sort()).toEqual(['old-p1', 'old-p2', 'old-pdf']);
+  });
+
+  it('leaves pages uploaded by hand or by the script alone', () => {
+    const set = previousGeneratedSet([
+      row('script-p1'), row('script-p2'), row('script-pdf'), row('hand-cover'),
+    ]);
+    expect(set).toEqual([]);
+  });
+
+  it('takes only the derived set out of a mixed year', () => {
+    const set = previousGeneratedSet([
+      row('script-p1'), row('old-pdf'), row('old-p1', 'old-pdf'), row('hand-cover'),
+    ]);
+    expect(set.map(r => r.id).sort()).toEqual(['old-p1', 'old-pdf']);
   });
 });
