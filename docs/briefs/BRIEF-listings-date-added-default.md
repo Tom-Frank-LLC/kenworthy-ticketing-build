@@ -1,11 +1,12 @@
 ---
 brief: listings-date-added-default
 title: After adding a movie or live event, Listings opens sorted by date added so the new title is on top
-status: built
+status: shipped
 track: ux
-severity: P3
 date: 2026-09-24
-verified: false
+shipped_in: ["#343"]
+shipped_at: 2026-09-24
+verified: true
 ---
 
 # Brief (for Claude Code): Jump Listings to "Date added (newest)" right after adding a title
