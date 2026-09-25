@@ -122,9 +122,29 @@ is **not yet on staging or production** (the auto-mode classifier refuses
   before (defaults hold; 2026 still featured because the switch does not
   exist there yet).
 
-Not verified, because it needs the migration: the admin upload end to end,
-the switch on the live page, re-upload replacement. Walk those through on
-staging after the push.
+### Staging walkthrough (2026-09-25, after Tom pushed the migration)
+
+Migration `20260925171251` on staging; Worker version
+`cf19041b-550d-48dc-87ab-b20e5caf7751`. Walked through in Chrome as
+superadmin:
+
+- Uploaded a 3-page test PDF for 2026 → rows exactly as designed: `Page 1–3`
+  images at order 1–3 carrying `generated_from`, the PDF at 500 titled
+  `Full programme (3 pages)` with a `cover-*.jpg` thumbnail. Tom's earlier
+  hand-uploaded 2026 PDF (no marker) untouched.
+- "Publish all of 2026" → the public page shows *This Year's Programme* as a
+  flip-through, "Page 1 of 3", arrows turn pages, View trailer and Download
+  PDF present.
+- Switch on + Save → the page leads with the standing description, the
+  "next festival" line replaces the lineup, no pass, and Past Programs lists
+  2026 (3 pages), 2025, 2024, 2023 with 2026's trailer intact.
+- Re-uploaded the same PDF → the earlier rendered set (PDF + 3 pages + cover
+  object) was removed and one new set remains; the old cover URL returns 400.
+- Deleted the test booklet → its three pages went with it (cascade) and all
+  four objects are gone. Staging is back to Tom's original 2026 row, with
+  **between seasons left ON** since that is the state Tom asked for.
+- One gotcha: the service worker served the previous shell on first load
+  after the deploy; a hard reload picked up the new bundle.
 
 ### To ship
 
