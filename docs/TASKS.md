@@ -5,14 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**113 briefs** — 100 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
+**113 briefs** — 101 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P0` **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md) · [notes](briefs/confirmed%20from%20production%20logs%2028%20Aug%202026)
-- `P1` **A single PDF upload gives the festival page its flip-through, and an admin can put the festival between seasons**<br>`feature` — [brief](briefs/BRIEF-festival-pdf-and-offseason.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
@@ -30,6 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A single PDF upload gives the festival page its flip-through, and an admin can put the festival between seasons**<br>`feature` — `#345` — [brief](briefs/BRIEF-festival-pdf-and-offseason.md)
 - **The admin Team tab holds one Team Members sub-tab with roles, linking and bios; Labor vs Sales lives in Analytics; the two pie charts are ranked bars**<br>`ux` — `#342` — [brief](briefs/BRIEF-backend-cleanup-team-analytics.md)
 - **The home page's staff-pick band is framed in the marquee lights, under a "Staff Pick / What We're Watching" header, and the pick titles drop to h3**<br>`ux` — `#338` — [brief](briefs/BRIEF-curator-marquee-header.md)
 - **After adding a movie or live event, Listings opens sorted by date added so the new title is on top**<br>`ux` — `#343` — [brief](briefs/BRIEF-listings-date-added-default.md)

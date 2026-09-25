@@ -1,11 +1,12 @@
 ---
 brief: festival-pdf-and-offseason
 title: A single PDF upload gives the festival page its flip-through, and an admin can put the festival between seasons
-status: built
+status: shipped
 track: feature
-severity: P1
 date: 2026-09-25
-verified: false
+shipped_in: ["#345"]
+shipped_at: 2026-09-25
+verified: true
 ---
 # Brief (for Claude Code): Silent Film Festival — one-PDF flip-through upload + off-season "About the Festival" mode
 
@@ -59,11 +60,14 @@ Everything above is edited from the existing **Pages → Festival Programs** are
 
 ---
 
-## Outcome (built 2026-09-25, not yet deployed)
+## Outcome (shipped 2026-09-25)
 
-Both parts are built on branch `feat/festival-pdf-offseason`; the migration
-is **not yet on staging or production** (the auto-mode classifier refuses
-`supabase db push`, so Tom runs it — see "To ship" below).
+Both parts shipped in PR #345 (`d2ab0b6`). Migration `20260925171251` is on
+staging and production (Tom pushed both). Production Worker version
+`646d7090-d7f1-42a5-9a4b-92d47a66e9fb`; rollback target (the #343 deploy)
+`dde1dd7a-133f-4699-8367-fec6b7b20950`. Verified at the origin: the new
+entry chunk is served and the festival tab chunk carries the change. Prod
+was confirmed equal to main by content before the deploy.
 
 ### Decisions taken (all on the brief's recommendation)
 
