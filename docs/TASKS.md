@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**112 briefs** — 99 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
+**112 briefs** — 100 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -18,7 +18,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
-- `P3` **After adding a movie or live event, Listings opens sorted by date added so the new title is on top**<br>`ux` — [brief](briefs/BRIEF-listings-date-added-default.md)
 
 ## Open
 
@@ -32,6 +31,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - **The admin Team tab holds one Team Members sub-tab with roles, linking and bios; Labor vs Sales lives in Analytics; the two pie charts are ranked bars**<br>`ux` — `#342` — [brief](briefs/BRIEF-backend-cleanup-team-analytics.md)
 - **The home page's staff-pick band is framed in the marquee lights, under a "Staff Pick / What We're Watching" header, and the pick titles drop to h3**<br>`ux` — `#338` — [brief](briefs/BRIEF-curator-marquee-header.md)
+- **After adding a movie or live event, Listings opens sorted by date added so the new title is on top**<br>`ux` — `#343` — [brief](briefs/BRIEF-listings-date-added-default.md)
 - **The marquee ring's side columns sit directly under the top and bottom runs' corner bulbs, at every weight**<br>`ux` — `#340` — [brief](briefs/BRIEF-marquee-corner-alignment.md)
 - **Staff and the rental contract read theatre-rental times as 6:30 PM, not 18:30**<br>`ux` — `#339` — [brief](briefs/BRIEF-rental-request-12h-time.md)
 - **The concessions page opens on a photograph of the stand, with its own centred header over it**<br>`ux` — `#334` — [brief](briefs/BRIEF-concessions-hero-photo.md)
