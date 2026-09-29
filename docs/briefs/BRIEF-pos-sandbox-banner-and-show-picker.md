@@ -1,11 +1,12 @@
 ---
 brief: pos-sandbox-banner-and-show-picker
 title: The POS sandbox banner shows only on the sandbox, and the show picker lists non-ticketed events disabled with a reason
-status: built
+status: shipped
 track: bug
-severity: P2
 date: 2026-09-29
-verified: false
+shipped_in: ["#351"]
+shipped_at: 2026-09-29
+verified: true
 ---
 
 # Brief (for Claude Code): Honest POS sandbox banner + stop the show-picker silently hiding events
