@@ -38,7 +38,9 @@ const EXTERNAL_MOVIE_ID = 'aaaaaaaa-2222-4000-8000-000000000002';
 const VENUE_ID = 'vvvvvvvv-1111-4000-8000-000000000001';
 const EVENT_ID = 'eeeeeeee-1111-4000-8000-000000000001';
 const RSVP_EVENT_ID = 'eeeeeeee-1111-4000-8000-000000000002';
+const LEGACY_EVENT_ID = 'eeeeeeee-1111-4000-8000-000000000003';
 const PERFORMANCE_ID = 'cccccccc-1111-4000-8000-000000000001';
+const INFO_PERFORMANCE_ID = 'cccccccc-1111-4000-8000-000000000002';
 const MOVIE_PASS_ID = 'pppppppp-1111-4000-8000-000000000001';
 
 const state = vi.hoisted(() => ({
@@ -125,14 +127,18 @@ vi.mock('@/integrations/supabase/client', () => {
     if (table === 'events') {
       return [
         { id: EVENT_ID, title: 'Gala Night', ticket_type: 'ticketed', is_active: true },
-        // Non-ticketed, so the form's own filter drops it — the case a
+        // Non-ticketed, so the form lists it disabled — and the case a
         // hand-edited ?event= can still name.
         { id: RSVP_EVENT_ID, title: 'Community Potluck', ticket_type: 'rsvp', is_active: true },
+        // No ticketing mode at all: reads as ticketed, as every row did before
+        // the column existed.
+        { id: LEGACY_EVENT_ID, title: 'Founders Dinner', ticket_type: null, is_active: true },
       ];
     }
     if (table === 'live_performances') {
       return [
         { id: PERFORMANCE_ID, title: 'Palouse Jazz Quartet', ticket_type: 'ticketed', is_active: true },
+        { id: INFO_PERFORMANCE_ID, title: 'Lobby Exhibit', ticket_type: 'info_only', is_active: true },
       ];
     }
     return [];
@@ -537,7 +543,14 @@ describe('ShowingForm — opened from a title’s card', () => {
 
     await waitFor(() => expect(state.toasts.error).toHaveLength(1));
     expect(state.toasts.error[0]).toMatch(/cannot take a show/i);
+    // Says which title, and what would make it choosable.
+    expect(state.toasts.error[0]).toMatch(/Community Potluck.*RSVP.*switch it to Ticketed/);
     expect(await screen.findByText('Category *')).toBeInTheDocument();
+    // Nothing is selected, and the event is there in the picker with its reason.
+    expect(screen.getByLabelText('Event *')).not.toHaveTextContent('Community Potluck');
+    fireEvent.click(screen.getByLabelText('Event *'));
+    expect(await screen.findByText('Community Potluck')).toBeInTheDocument();
+    expect(screen.getByText(/switch this event to Ticketed/)).toBeInTheDocument();
   });
 });
 
@@ -804,5 +817,79 @@ describe('ShowingForm — a film whose tickets are not sold here', () => {
 
     await waitFor(() => expect(state.showingInserts).toHaveLength(1));
     await waitFor(() => expect(state.invokes.filter(i => i.fn === 'square-showing-variations')).toHaveLength(1));
+  });
+});
+
+/**
+ * An event or performance that cannot take a show — RSVP or info-only — used
+ * to be filtered out of the picker without a word, so a staffer who had just
+ * made one could not find it. It is listed now, disabled, with what to change.
+ */
+describe('ShowingForm — events that cannot take a show are listed, not hidden', () => {
+  async function openEventPicker() {
+    renderForm('/admin/showings/new?kind=live');
+    fireEvent.click(await screen.findByLabelText('Event *'));
+  }
+
+  it('lists an RSVP event disabled, with the reason and the fix', async () => {
+    await openEventPicker();
+    const row = (await screen.findByText('Community Potluck')).closest('[cmdk-item]')!;
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    expect(row).toHaveTextContent('RSVP — switch this event to Ticketed to add shows.');
+  });
+
+  it('will not select it when clicked', async () => {
+    await openEventPicker();
+    fireEvent.click(await screen.findByText('Community Potluck'));
+    expect(screen.getByLabelText('Event *')).not.toHaveTextContent('Community Potluck');
+  });
+
+  it('still lets a ticketed event be chosen and saved', async () => {
+    await openEventPicker();
+    fireEvent.click(await screen.findByText('Gala Night'));
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].event_id).toBe(EVENT_ID);
+  });
+
+  it('treats an event with no ticketing mode as ticketed', async () => {
+    await openEventPicker();
+    const row = (await screen.findByText('Founders Dinner')).closest('[cmdk-item]')!;
+    expect(row).not.toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByText('Founders Dinner'));
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Founders Dinner'));
+  });
+
+  it('does the same for an info-only live performance', async () => {
+    renderForm('/admin/showings/new?kind=live');
+    fireEvent.click(await screen.findByRole('combobox', { name: /category/i }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Live Performance' }));
+    fireEvent.click(await screen.findByLabelText('Live Performance *'));
+    const row = (await screen.findByText('Lobby Exhibit')).closest('[cmdk-item]')!;
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    expect(row).toHaveTextContent('Info only — switch this performance to Ticketed to add shows.');
+  });
+
+  it('leaves an existing show on an event later switched to RSVP priced as it was', async () => {
+    // Listing the event must not make it resolve as "not sold here" — that is
+    // the film-only branch, and it would retire this show's tiers on save.
+    const SHOWING_ID = 'f0000000-0000-4000-8000-000000000001';
+    state.editShowing = {
+      id: SHOWING_ID, movie_id: null, event_id: RSVP_EVENT_ID, live_performance_id: null,
+      venue_id: VENUE_ID, start_time: '2026-10-31T02:00:00+00:00', ticket_price: 15,
+      duration_minutes: null, requires_seat_selection: false, no_ticket_required: false,
+      manually_sold_out: false, max_tickets_per_buyer: 20, sold_out_message: null, is_featured: false,
+    };
+    state.existingTiers = [
+      { id: 'ga', showing_id: SHOWING_ID, tier_name: 'General Admission', price: 15, display_order: 0, is_active: true },
+    ];
+    renderForm(`/admin/showings/${SHOWING_ID}/edit`);
+    await waitFor(() => expect(screen.getByDisplayValue('General Admission')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^Update/ }));
+
+    await waitFor(() => expect(state.tierWrites).toHaveLength(1));
+    expect(state.tierWrites[0].tiers).toEqual([{ tier_name: 'General Admission', price: 15 }]);
   });
 });

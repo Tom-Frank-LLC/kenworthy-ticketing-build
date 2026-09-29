@@ -13,6 +13,12 @@ export interface SearchableSelectOption {
   label: string;
   /** Muted secondary text (release year, "inactive"). Searched too. */
   hint?: string;
+  /**
+   * Listed but not choosable, with the reason shown under the label. Better
+   * than leaving the row out: a title that is missing from the picker gives
+   * no clue that it exists or what would make it selectable.
+   */
+  disabledReason?: string;
 }
 
 interface SearchableSelectProps {
@@ -98,16 +104,37 @@ export function SearchableSelect({
                 <CommandItem
                   key={option.value}
                   value={option.value}
-                  keywords={[option.label, option.hint ?? ""]}
+                  keywords={[option.label, option.hint ?? "", option.disabledReason ?? ""]}
+                  disabled={!!option.disabledReason}
                   onSelect={() => {
+                    if (option.disabledReason) return;
                     onChange(option.value);
                     setOpen(false);
                   }}
-                  className="cursor-pointer"
+                  // CommandItem fades a disabled row to half opacity, which
+                  // would put the reason — the whole point of listing the row —
+                  // below AA. The solid muted token carries "not choosable"
+                  // instead, and the reason stays readable.
+                  className={cn(
+                    "cursor-pointer",
+                    option.disabledReason && "cursor-not-allowed text-muted-foreground data-[disabled=true]:opacity-100",
+                  )}
                 >
                   <Check className={cn("mr-2 h-4 w-4 shrink-0", option.value === value ? "opacity-100" : "opacity-0")} />
-                  <span className="truncate">{option.label}</span>
-                  {option.hint && <span className="ml-2 shrink-0 text-xs text-muted-foreground">{option.hint}</span>}
+                  {option.disabledReason ? (
+                    <span className="min-w-0">
+                      <span className="block truncate">
+                        {option.label}
+                        {option.hint && <span className="ml-2 text-xs">{option.hint}</span>}
+                      </span>
+                      <span className="block text-xs">{option.disabledReason}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span className="truncate">{option.label}</span>
+                      {option.hint && <span className="ml-2 shrink-0 text-xs text-muted-foreground">{option.hint}</span>}
+                    </>
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>
