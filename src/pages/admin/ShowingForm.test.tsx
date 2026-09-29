@@ -127,9 +127,8 @@ vi.mock('@/integrations/supabase/client', () => {
     if (table === 'events') {
       return [
         { id: EVENT_ID, title: 'Gala Night', ticket_type: 'ticketed', is_active: true },
-        // Non-ticketed, so the form lists it disabled — and the case a
-        // hand-edited ?event= can still name.
-        { id: RSVP_EVENT_ID, title: 'Community Potluck', ticket_type: 'rsvp', is_active: true },
+        // Booked elsewhere: takes a show, but the show sells nothing here.
+        { id: RSVP_EVENT_ID, title: 'Community Potluck', ticket_type: 'rsvp', rsvp_url: 'https://potluck.example/rsvp', is_active: true },
         // No ticketing mode at all: reads as ticketed, as every row did before
         // the column existed.
         { id: LEGACY_EVENT_ID, title: 'Founders Dinner', ticket_type: null, is_active: true },
@@ -535,22 +534,21 @@ describe('ShowingForm — opened from a title’s card', () => {
     expect(state.eligibility[0].passTypeIds).toEqual([MOVIE_PASS_ID]);
   });
 
-  it('hands back the pickers when the URL names a title that cannot take a showing', async () => {
-    // An RSVP event: the listing offers no Add Showing for one, but the URL can
-    // still be typed. Without this it would open on an empty, unchangeable
-    // picker with no way out.
-    renderForm(`/admin/showings/new?event=${RSVP_EVENT_ID}`);
+  it('hands back the pickers when the URL names a title that does not exist', async () => {
+    // A hand-edited or stale link. Without this it would open on an empty,
+    // unchangeable picker with no way out.
+    renderForm('/admin/showings/new?event=eeeeeeee-9999-4000-8000-000000000099');
 
     await waitFor(() => expect(state.toasts.error).toHaveLength(1));
     expect(state.toasts.error[0]).toMatch(/cannot take a show/i);
-    // Says which title, and what would make it choosable.
-    expect(state.toasts.error[0]).toMatch(/Community Potluck.*RSVP.*switch it to Ticketed/);
     expect(await screen.findByText('Category *')).toBeInTheDocument();
-    // Nothing is selected, and the event is there in the picker with its reason.
-    expect(screen.getByLabelText('Event *')).not.toHaveTextContent('Community Potluck');
-    fireEvent.click(screen.getByLabelText('Event *'));
-    expect(await screen.findByText('Community Potluck')).toBeInTheDocument();
-    expect(screen.getByText(/switch this event to Ticketed/)).toBeInTheDocument();
+  });
+
+  it('opens on an RSVP event named in the URL, as the Live Events card links to', async () => {
+    renderForm(`/admin/showings/new?event=${RSVP_EVENT_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Community Potluck'));
+    expect(state.toasts.error).toEqual([]);
   });
 });
 
@@ -821,45 +819,60 @@ describe('ShowingForm — a film whose tickets are not sold here', () => {
 });
 
 /**
- * An event or performance that cannot take a show — RSVP or info-only — used
- * to be filtered out of the picker without a word, so a staffer who had just
- * made one could not find it. It is listed now, disabled, with what to change.
+ * RSVP and info-only events and performances take shows, as films ticketed
+ * elsewhere do: the dates belong on the calendar. What they cannot take is a
+ * sale. They used to be filtered out of the picker entirely, so a staffer who
+ * had made an RSVP event could not give it a date.
  */
-describe('ShowingForm — events that cannot take a show are listed, not hidden', () => {
-  async function openEventPicker() {
+describe('ShowingForm — an event or performance not ticketed here', () => {
+  async function chooseEvent(title: string) {
     renderForm('/admin/showings/new?kind=live');
     fireEvent.click(await screen.findByLabelText('Event *'));
+    fireEvent.click(await screen.findByText(title));
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent(title));
   }
 
-  it('lists an RSVP event disabled, with the reason and the fix', async () => {
-    await openEventPicker();
-    const row = (await screen.findByText('Community Potluck')).closest('[cmdk-item]')!;
-    expect(row).toHaveAttribute('aria-disabled', 'true');
-    expect(row).toHaveTextContent('RSVP — switch this event to Ticketed to add shows.');
+  it('can be chosen, and shows the fact where the price would be', async () => {
+    await chooseEvent('Community Potluck');
+    expect(await screen.findByText('RSVP')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'https://potluck.example/rsvp' })).toBeTruthy();
+    expect(screen.getByText(/Change that on the event itself/)).toBeTruthy();
+    expect(screen.queryByText('External ticketing')).toBeNull();
+    expect(screen.queryByLabelText('Base Ticket Price ($)')).toBeNull();
+    expect(screen.queryByText('Price Tiers')).toBeNull();
+    expect(screen.getByLabelText('Showtime 1')).toBeTruthy();
   });
 
-  it('will not select it when clicked', async () => {
-    await openEventPicker();
-    fireEvent.click(await screen.findByText('Community Potluck'));
-    expect(screen.getByLabelText('Event *')).not.toHaveTextContent('Community Potluck');
+  it('creates the show with nothing sale-shaped on it, and never calls Square', async () => {
+    await chooseEvent('Community Potluck');
+    fillShowtimes(['2026-10-31T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    const row = state.showingInserts[0];
+    expect(row.event_id).toBe(RSVP_EVENT_ID);
+    expect(row.no_ticket_required).toBe(false);
+    expect(row.requires_seat_selection).toBe(false);
+    expect(row.manually_sold_out).toBe(false);
+    await waitFor(() => expect(state.tierWrites).toHaveLength(1));
+    expect(state.tierWrites[0].tiers).toEqual([]);
+    expect(state.invokes.filter(i => i.fn === 'square-showing-variations')).toHaveLength(0);
   });
 
-  it('still lets a ticketed event be chosen and saved', async () => {
-    await openEventPicker();
-    fireEvent.click(await screen.findByText('Gala Night'));
-    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+  it('still prices and tells Square about a ticketed event', async () => {
+    await chooseEvent('Gala Night');
+    expect(screen.getByLabelText('Base Ticket Price ($)')).toBeTruthy();
     fillShowtimes(['2026-09-12T19:30']);
     submit();
     await waitFor(() => expect(state.showingInserts).toHaveLength(1));
     expect(state.showingInserts[0].event_id).toBe(EVENT_ID);
+    await waitFor(() => expect(state.invokes.filter(i => i.fn === 'square-showing-variations')).toHaveLength(1));
   });
 
   it('treats an event with no ticketing mode as ticketed', async () => {
-    await openEventPicker();
-    const row = (await screen.findByText('Founders Dinner')).closest('[cmdk-item]')!;
-    expect(row).not.toHaveAttribute('aria-disabled', 'true');
-    fireEvent.click(screen.getByText('Founders Dinner'));
-    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Founders Dinner'));
+    await chooseEvent('Founders Dinner');
+    expect(screen.getByLabelText('Base Ticket Price ($)')).toBeTruthy();
+    expect(screen.queryByText(/Nothing is priced or sold here/)).toBeNull();
   });
 
   it('does the same for an info-only live performance', async () => {
@@ -867,14 +880,17 @@ describe('ShowingForm — events that cannot take a show are listed, not hidden'
     fireEvent.click(await screen.findByRole('combobox', { name: /category/i }));
     fireEvent.click(await screen.findByRole('option', { name: 'Live Performance' }));
     fireEvent.click(await screen.findByLabelText('Live Performance *'));
-    const row = (await screen.findByText('Lobby Exhibit')).closest('[cmdk-item]')!;
-    expect(row).toHaveAttribute('aria-disabled', 'true');
-    expect(row).toHaveTextContent('Info only — switch this performance to Ticketed to add shows.');
+    fireEvent.click(await screen.findByText('Lobby Exhibit'));
+    await waitFor(() => expect(screen.getByLabelText('Live Performance *')).toHaveTextContent('Lobby Exhibit'));
+    expect(await screen.findByText('Info only — not ticketed')).toBeTruthy();
+    expect(screen.getByText(/Change that on the performance itself/)).toBeTruthy();
+    expect(screen.queryByLabelText('Base Ticket Price ($)')).toBeNull();
   });
 
-  it('leaves an existing show on an event later switched to RSVP priced as it was', async () => {
-    // Listing the event must not make it resolve as "not sold here" — that is
-    // the film-only branch, and it would retire this show's tiers on save.
+  it('retires the tiers of an existing show whose event was switched to RSVP, on its next save', async () => {
+    // As for a film moved to outside ticketing: the tiers sell nothing now
+    // (price_ticket_order refuses the show) and would make it read as priced.
+    // A sold tier is retired server-side, not deleted.
     const SHOWING_ID = 'f0000000-0000-4000-8000-000000000001';
     state.editShowing = {
       id: SHOWING_ID, movie_id: null, event_id: RSVP_EVENT_ID, live_performance_id: null,
@@ -886,10 +902,11 @@ describe('ShowingForm — events that cannot take a show are listed, not hidden'
       { id: 'ga', showing_id: SHOWING_ID, tier_name: 'General Admission', price: 15, display_order: 0, is_active: true },
     ];
     renderForm(`/admin/showings/${SHOWING_ID}/edit`);
-    await waitFor(() => expect(screen.getByDisplayValue('General Admission')).toBeInTheDocument());
+    expect(await screen.findByText(/Nothing is priced or sold here/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Update/ }));
 
     await waitFor(() => expect(state.tierWrites).toHaveLength(1));
-    expect(state.tierWrites[0].tiers).toEqual([{ tier_name: 'General Admission', price: 15 }]);
+    expect(state.tierWrites[0].tiers).toEqual([]);
+    expect(state.tierTableWrites).toEqual([]);
   });
 });

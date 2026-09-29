@@ -157,6 +157,31 @@ export function ticketsSoldHere(production: ProductionTicketing | null | undefin
   return mode !== 'rsvp' && mode !== 'info_only';
 }
 
+/** Why the box office cannot sell a show: a short row label and the full reason. */
+export interface CounterRefusal {
+  short: string;
+  long: string;
+}
+
+/**
+ * Why a show of this production cannot be sold at the counter, or null when it
+ * can. The same test as `ticketsSoldHere` — price_ticket_order refuses the
+ * rest — worded for staff: the POS lists these shows greyed out, with `short`
+ * on the row and `long` as its tooltip, rather than hiding them.
+ */
+export function counterRefusal(
+  kind: 'movie' | 'event' | 'concert',
+  production: ProductionTicketing | null | undefined,
+): CounterRefusal | null {
+  if (ticketsSoldHere(production)) return null;
+  if (production?.ticket_type === 'info_only') {
+    return { short: 'Info only', long: 'Info only — this show is not ticketed, so there is nothing to sell here.' };
+  }
+  return kind === 'movie'
+    ? { short: 'External', long: 'External ticketing — tickets for this film are sold on an outside site, not at the box office.' }
+    : { short: 'RSVP', long: 'RSVP — guests book through the RSVP link, so nothing is sold at the box office.' };
+}
+
 /**
  * What the outside-ticket button says. A festival film is bought, not
  * RSVP'd to; a community event is the other way round. The stored mode is

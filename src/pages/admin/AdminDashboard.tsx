@@ -1209,12 +1209,10 @@ export default function AdminDashboard() {
                   ? getTicketsSoldForEvent(item.id)
                   : getTicketsSoldForConcert(item.id);
                 const itemShowings = showingsForProduction(item.kind, item.id);
-                // Only a ticketed event can hold a showing — the showing form
-                // lists ticketed events and nothing else, so offering the
-                // button on an RSVP or info-only card would open a picker that
-                // cannot reach the title it was opened from. Those are dated by
-                // their RSVP link, or not dated at all.
-                const canAddShowing = item.ticket_type === 'ticketed';
+                // Every event takes shows, RSVP and info-only included: the
+                // dates belong on the calendar even when the ticket is booked
+                // elsewhere or not at all. The showing form turns off the sale
+                // for those (see notSoldHere there).
                 const showingScope = isEvent ? `kind=live&event=${item.id}` : `kind=live&performance=${item.id}`;
                 return (
                   <Card key={`${item.kind}-${item.id}`} className="glass">
@@ -1260,11 +1258,9 @@ export default function AdminDashboard() {
                           />
                           {/* Scoped to this title, so the showing form opens on
                               it instead of on an empty Movie picker. */}
-                          {canAddShowing && (
-                            <Button variant="ghost" size="sm" title="Add show" asChild>
-                              <Link to={`/admin/showings/new?${showingScope}`}><Calendar className="h-4 w-4" /></Link>
-                            </Button>
-                          )}
+                          <Button variant="ghost" size="sm" title="Add show" asChild>
+                            <Link to={`/admin/showings/new?${showingScope}`}><Calendar className="h-4 w-4" /></Link>
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"

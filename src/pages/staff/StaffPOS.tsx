@@ -38,7 +38,7 @@ import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
 import { fetchShowingAvailability } from '@/lib/availability';
 import { fetchAllRows } from '@/lib/fetchAllRows';
-import { ticketsSoldHere } from '@/lib/purchasable';
+import { counterRefusal, type CounterRefusal } from '@/lib/purchasable';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { COLLECT_PHONE, CONCESSION_POS_ENABLED } from '@/lib/flags';
 import { formatShowtime } from '@/lib/datetime';
@@ -53,6 +53,13 @@ interface ShowingOption {
   requires_seat_selection: boolean;
   total_seats: number;
   pass_processing_fee: boolean;
+  /**
+   * Why this show cannot be sold at the counter, or null when it can. Set for
+   * a production ticketed elsewhere (RSVP / External) or not at all (Info
+   * only): price_ticket_order refuses those, so the row is listed — staff
+   * can see the show exists — but greyed out rather than selectable.
+   */
+  not_sold_reason: CounterRefusal | null;
 }
 
 type PaymentStatus = 'idle' | 'processing' | 'completed' | 'failed';
@@ -134,7 +141,7 @@ export default function StaffPOS() {
       const { data } = await fetchAllRows<any, unknown>((from, to) =>
         supabase
           .from('showings')
-          .select('id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee, ticket_type)')
+          .select('id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee, ticket_type), events(title, ticket_type), live_performances(title, ticket_type)')
           .eq('is_active', true)
           .gte('start_time', new Date().toISOString())
           .order('start_time')
@@ -144,19 +151,26 @@ export default function StaffPOS() {
 
       setShowings(
         (data || [])
-          // A film ticketed elsewhere is not on sale at the counter either:
-          // price_ticket_order refuses it, so listing it here would only
-          // produce that refusal with a patron waiting. Comps for it go
-          // through the comp issuer, which is a different door.
-          .filter((s: any) => !s.movies || ticketsSoldHere(s.movies))
+          // A production ticketed elsewhere (or not at all) is not on sale at
+          // the counter: price_ticket_order refuses it. It is still listed, so
+          // staff asked about it can see the show exists, but greyed out with
+          // the reason — never selectable, since choosing it would only reach
+          // that refusal with a patron waiting. Comps for it go through the
+          // comp issuer, which is a different door.
           .map((s: any) => ({
           id: s.id,
           start_time: s.start_time,
           ticket_price: s.ticket_price,
-          movie_title: s.movies?.title || 'Unknown',
+          // Named for films when only films had showings. An event's show read
+          // "Unknown" here because only the film title was fetched.
+          movie_title: (s.movies ?? s.events ?? s.live_performances)?.title || 'Unknown',
           requires_seat_selection: s.requires_seat_selection ?? false,
           total_seats: s.total_seats ?? 200,
           pass_processing_fee: !!s.movies?.pass_processing_fee,
+          not_sold_reason: counterRefusal(
+            s.movies ? 'movie' : s.events ? 'event' : 'concert',
+            s.movies ?? s.events ?? s.live_performances,
+          ),
         }))
       );
     }
@@ -255,7 +269,12 @@ export default function StaffPOS() {
       showings.map(s => ({
         value: s.id,
         label: s.movie_title,
-        hint: `${formatShowtime(s.start_time, 'EEE d MMM, h:mm a')} · $${Number(s.ticket_price).toFixed(2)}`,
+        // A show sold elsewhere has no price here worth quoting; its row says
+        // why instead, and the tooltip says the rest.
+        hint: `${formatShowtime(s.start_time, 'EEE d MMM, h:mm a')} · ${
+          s.not_sold_reason ? s.not_sold_reason.short : `$${Number(s.ticket_price).toFixed(2)}`
+        }`,
+        disabledReason: s.not_sold_reason?.long,
       })),
     [showings],
   );
