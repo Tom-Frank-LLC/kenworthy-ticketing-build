@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { DollarSign, Banknote, CreditCard, AlertTriangle } from 'lucide-react';
+import { useSquareEnvironment } from '@/hooks/useSquareEnvironment';
 
 export type PaymentMethod = 'cash' | 'card';
 
@@ -10,6 +11,11 @@ interface PaymentMethodSelectorProps {
 }
 
 export function PaymentMethodSelector({ paymentMethod, onSelect }: PaymentMethodSelectorProps) {
+  // The sandbox warning used to render on every card sale, production
+  // included, because nothing here knew the environment. Only a confirmed
+  // sandbox shows it; unknown shows nothing (see useSquareEnvironment).
+  const environment = useSquareEnvironment();
+
   return (
     <Card className="glass">
       <CardHeader>
@@ -49,7 +55,7 @@ export function PaymentMethodSelector({ paymentMethod, onSelect }: PaymentMethod
           </button>
         </div>
 
-        {paymentMethod === 'card' && (
+        {paymentMethod === 'card' && environment === 'sandbox' && (
           <div className="mt-3 p-3 rounded-lg bg-secondary/50 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <AlertTriangle className="h-3.5 w-3.5 text-primary shrink-0" />

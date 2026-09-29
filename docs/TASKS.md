@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**114 briefs** — 102 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
+**115 briefs** — 103 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -29,6 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The POS sandbox banner shows only on the sandbox, and the show picker lists non-ticketed events disabled with a reason**<br>`bug` — `#351` — [brief](briefs/BRIEF-pos-sandbox-banner-and-show-picker.md)
 - **Admins can create a Square team member from the Team roster, and the Square badge stops implying onboarding**<br>`feature` — `#349` — [brief](briefs/BRIEF-square-create-team-member.md) · [notes](briefs/FINDINGS-square-team-member-status.md)
 - **A single PDF upload gives the festival page its flip-through, and an admin can put the festival between seasons**<br>`feature` — `#345` — [brief](briefs/BRIEF-festival-pdf-and-offseason.md)
 - **The admin Team tab holds one Team Members sub-tab with roles, linking and bios; Labor vs Sales lives in Analytics; the two pie charts are ranked bars**<br>`ux` — `#342` — [brief](briefs/BRIEF-backend-cleanup-team-analytics.md)

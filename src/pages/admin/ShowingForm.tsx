@@ -19,6 +19,7 @@ import {
   venueLocalToInstant,
 } from '@/lib/datetime';
 import { DEFAULT_SHOWING_MINUTES, ticketsSoldHere } from '@/lib/purchasable';
+import { ticketingLabel } from '@/lib/liveEventTypes';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { squareSaveOutcome } from '@/lib/squareLink';
 import { setShowingPriceTiers } from '@/lib/priceTiers';
@@ -98,6 +99,20 @@ function readScope(params: URLSearchParams): { category: Category; itemId: strin
     if (itemId) return { category, itemId };
   }
   return null;
+}
+
+/**
+ * Can this title be given a showing here?
+ *
+ * Any film can: one ticketed elsewhere still lists its dates (see
+ * `notSoldHere` below). An event or performance must be ticketed, since an
+ * RSVP or info-only one is dated by its external link, or not dated at all.
+ * Uses `ticketsSoldHere`, so a row with no `ticket_type` reads as ticketed —
+ * what every row was before the column existed — rather than silently becoming
+ * unchoosable.
+ */
+function canCarryShowing(category: Category, item: { ticket_type?: string | null }): boolean {
+  return category === 'movie' || ticketsSoldHere(item);
 }
 
 export default function ShowingForm() {
@@ -225,28 +240,32 @@ export default function ShowingForm() {
       supabase.from('venues').select('id, name, has_assigned_seating, total_seats').order('name'),
       fetchPassTypes().catch(() => [] as PassTypeOption[]),
     ]).then(([moviesRes, eventsRes, concertsRes, venuesRes, types]) => {
-      // Only ticketed events can carry a showing: an RSVP or info-only event
-      // is dated by its external link, or not dated at all.
-      const ticketedEvents = (eventsRes.data || []).filter((e: any) => e.ticket_type === 'ticketed');
-      // The same rule for performances now that they carry a ticketing mode:
-      // before, the column did not exist and every row was ticketed by
-      // default, so this filter changes nothing for the rows already there.
-      const ticketedConcerts = (concertsRes.data || []).filter((c: any) => c.ticket_type === 'ticketed');
+      // Every event and performance is listed, but only a ticketed one can be
+      // chosen (see canCarryShowing): an RSVP or info-only event is dated by
+      // its external link, or not dated at all. They used to be filtered out
+      // here, which hid them without a word — a staffer who had made an RSVP
+      // event looked for it, found nothing, and had no way to learn why.
+      const eventRows = eventsRes.data || [];
+      const concertRows = concertsRes.data || [];
       setMovies(moviesRes.data || []);
-      setEvents(ticketedEvents);
-      setConcerts(ticketedConcerts);
+      setEvents(eventRows);
+      setConcerts(concertRows);
 
-      // A hand-edited URL can name a title this picker never lists — a
+      // A hand-edited URL can name a title that cannot take a showing — a
       // non-ticketed event, say. Dropping the scope puts the selectors back,
-      // rather than presenting an empty picker with nothing reachable in it.
+      // rather than presenting a picker locked to something unchoosable, and
+      // the toast says what would make that title choosable.
       if (scope) {
         const scopedList = scope.category === 'movie' ? (moviesRes.data || [])
-          : scope.category === 'event' ? ticketedEvents
-          : ticketedConcerts;
-        if (!scopedList.some((row: any) => row.id === scope.itemId)) {
+          : scope.category === 'event' ? eventRows
+          : concertRows;
+        const scoped = scopedList.find((row: any) => row.id === scope.itemId);
+        if (!scoped || !canCarryShowing(scope.category, scoped)) {
           setScope(null);
           setItemId('');
-          toast.error(`That title cannot take a ${noun} — choose one below.`);
+          toast.error(scoped
+            ? `“${scoped.title}” is ${ticketingLabel(scoped.ticket_type)}, so it cannot take a ${noun} — switch it to Ticketed first.`
+            : `That title cannot take a ${noun} — choose one below.`);
         }
       }
       const venueList = venuesRes.data || [];
@@ -340,13 +359,18 @@ export default function ShowingForm() {
   // Inactive titles stay in the list — a film is often scheduled before it is
   // switched on — but they are labelled so it is not a silent surprise. The
   // year disambiguates remakes sharing a title (Dune, The Thing, …).
+  //
+  // An event or performance that cannot take a showing is listed too, but
+  // disabled, with what would change that.
   const itemOptions = useMemo(() => currentItems.map((item: any) => {
     const hint = [
       category === 'movie' && item.release_year ? String(item.release_year) : null,
       item.is_active ? null : 'inactive',
     ].filter(Boolean).join(' · ');
-    return { value: item.id, label: item.title, hint: hint || undefined };
-  }), [currentItems, category]);
+    const disabledReason = canCarryShowing(category, item) ? undefined
+      : `${ticketingLabel(item.ticket_type)} — switch this ${category === 'concert' ? 'performance' : 'event'} to Ticketed to add ${noun}s.`;
+    return { value: item.id, label: item.title, hint: hint || undefined, disabledReason };
+  }), [currentItems, category, noun]);
 
   // has_assigned_seating is a capability, not a policy: it says this venue has
   // a seat map in venue_seats, which is what makes the per-showing toggle
@@ -564,7 +588,7 @@ export default function ShowingForm() {
   /**
    * The production is not ticketed here — sold through an outside site, or
    * listed for information only. Unlike a non-ticketed event, which the picker
-   * above leaves out, a film like this still takes showings: the dates are
+   * above lists but will not let you choose, a film like this still takes showings: the dates are
    * real and belong on the calendar, and the showing row is what puts them
    * there. What it cannot take is anything that describes a sale — a price,
    * tiers, assigned seats, passes, a buyer limit, a sold-out notice, a Square
@@ -576,7 +600,13 @@ export default function ShowingForm() {
    * writing the flag would tell the site "Free — no ticket needed", which is a
    * different fact from "tickets are sold over there".
    */
-  const selectedItem = currentItems.find((item: any) => item.id === itemId);
+  //
+  // Only a choosable title resolves. The picker lists non-ticketed events now,
+  // and an existing show can still point at one whose event was switched to
+  // RSVP afterwards; letting that resolve here would turn on the film-only
+  // "not sold here" branch below and retire the show's tiers on its next save.
+  // Listing them is a display change, and this keeps it one.
+  const selectedItem = currentItems.find((item: any) => item.id === itemId && canCarryShowing(category, item));
   const notSoldHere = !!selectedItem && !ticketsSoldHere(selectedItem);
   const sellsNothing = noTicket || notSoldHere;
 
