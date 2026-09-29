@@ -4,7 +4,7 @@ title: The POS sandbox banner shows only on the sandbox, and the show picker lis
 status: shipped
 track: bug
 date: 2026-09-29
-shipped_in: ["#351"]
+shipped_in: ["#351", "#352"]
 shipped_at: 2026-09-29
 verified: true
 ---
