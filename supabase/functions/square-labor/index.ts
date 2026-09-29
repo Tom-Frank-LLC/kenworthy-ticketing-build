@@ -30,6 +30,7 @@ import {
   squareFetch,
   type SquareConfig,
 } from "../_shared/square.ts";
+import { ADMIN_ACTIONS, createTeamMemberBody, type CreateTeamMemberInput } from "./team.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -173,6 +174,7 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const { action, ...params } = body as { action: string; [k: string]: unknown };
+    if (ADMIN_ACTIONS.has(action) && !hasAdmin) return json({ error: "Admin required" }, 403);
 
     switch (action) {
       case "list_team":
@@ -190,23 +192,21 @@ Deno.serve(async (req) => {
       case "end_break":
         return await endBreak(config, params as { shift_id: string });
       case "force_close_shift":
-        if (!hasAdmin) return json({ error: "Admin required" }, 403);
         return await clockOut(config, params as { shift_id: string });
       case "list_scheduled_shifts":
         return await listScheduledShifts(config, params as { begin?: string; end?: string });
       case "upsert_scheduled_shift":
-        if (!hasAdmin) return json({ error: "Admin required" }, 403);
         return await upsertScheduledShift(config, params as Record<string, unknown>);
       case "delete_scheduled_shift":
-        if (!hasAdmin) return json({ error: "Admin required" }, 403);
         return await deleteScheduledShift(config, params as Record<string, unknown>);
       case "publish_week":
-        if (!hasAdmin) return json({ error: "Admin required" }, 403);
         return await publishWeek(config, params as { begin: string; end: string });
       case "labor_summary":
         return await laborSummary(config, supabase, params as { begin?: string; end?: string });
       case "my_upcoming_shifts":
         return await myUpcomingShifts(config, supabase, user.id);
+      case "create_team_member":
+        return await createTeamMember(config, supabase, params as CreateTeamMemberInput);
       default:
         return json({ error: `Unknown action: ${action}` }, 400);
     }
@@ -254,10 +254,78 @@ async function listTeam(config: SquareConfig) {
         given_name: m.given_name,
         family_name: m.family_name,
         email: m.email_address,
+        // ACTIVE / INACTIVE is the *record's* state — deactivated in the
+        // Dashboard or not. It says nothing about whether they accepted a
+        // Square invitation or can sign in: the Team API does not expose
+        // invitation state at all ("Invite expired" is Dashboard-only). See
+        // docs/briefs/FINDINGS-square-team-member-status.md.
         status: m.status,
+        reference_id: m.reference_id ?? null,
         wage: wage ? { hourly_rate_cents: wage.hourly_rate_cents, title: wage.title } : null,
       };
     }),
+  });
+}
+
+/**
+ * Create a Square team member for one of our accounts, and link it.
+ *
+ * Does not invite them: Square sends the Team app invitation only after
+ * someone assigns permissions in Dashboard → Team. Until then the record is
+ * usable for timecards and wages, and the person cannot sign in to Square.
+ *
+ * Needs the EMPLOYEES_WRITE scope. Without it Square refuses and its message
+ * comes back as a 502 like every other Square refusal.
+ */
+async function createTeamMember(config: SquareConfig, supabase: any, input: CreateTeamMemberInput) {
+  const built = createTeamMemberBody(input, config.locationId, crypto.randomUUID());
+  if (!built.ok) return json({ error: built.error }, 400);
+  const { userId, body } = built;
+
+  // One Square member per account. reference_id is what we set on create, so
+  // it is how a second click (or a retry after a failed link) is caught —
+  // across every location and status, not just what list_team shows.
+  const everyone = await searchAll(config, "/team-members/search", undefined, 200, "team_members");
+  const existing = everyone.find((m) => m.reference_id === userId);
+  if (existing) {
+    const name = [existing.given_name, existing.family_name].filter(Boolean).join(" ");
+    return json({
+      error: `This account already has a Square team member (${name || existing.id}). Pick it from the Square menu instead.`,
+      team_member_id: existing.id,
+    }, 409);
+  }
+
+  // Square's docs say an email must be unique in the account; the sandbox took
+  // a duplicate without complaint (2026-09-28). So we check, not Square.
+  const email = String((body.team_member as { email_address?: string }).email_address ?? "").toLowerCase();
+  const sameEmail = email && everyone.find((m) => String(m.email_address ?? "").toLowerCase() === email);
+  if (sameEmail) {
+    const name = [sameEmail.given_name, sameEmail.family_name].filter(Boolean).join(" ");
+    return json({
+      error: `${name || "A Square team member"} already uses ${email}${sameEmail.status === "INACTIVE" ? " (deactivated)" : ""}. Link them instead, or use a different email.`,
+      team_member_id: sameEmail.id,
+    }, 409);
+  }
+
+  const created = await square(config, "/team-members", { method: "POST", body });
+  const member = created.team_member;
+  if (!member?.id) throw new Error("Square answered without a team member");
+
+  // Link it with the caller's own client, so RLS still decides (linking is
+  // admin-only). .select(): a refused write is a 204 with no error. If this
+  // fails the member still exists, carries our reference_id, and can be
+  // picked from the menu — so say so rather than pretending nothing happened.
+  await supabase.from("staff_square_links").delete().eq("user_id", userId);
+  const { data: linked, error: linkError } = await supabase
+    .from("staff_square_links")
+    .insert({ user_id: userId, square_team_member_id: member.id })
+    .select("id");
+  const linkProblem = linkError?.message ?? (linked?.length ? null : "the link was not saved");
+
+  return json({
+    team_member: { id: member.id, given_name: member.given_name, family_name: member.family_name },
+    linked: !linkProblem,
+    link_error: linkProblem,
   });
 }
 

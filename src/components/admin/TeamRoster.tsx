@@ -14,14 +14,16 @@ import { PosterUpload } from '@/components/admin/PosterUpload';
 import { CollapsibleSection } from './CollapsibleSection';
 import { RoleControls } from './RoleControls';
 import { InviteStaffDialog } from './InviteStaffDialog';
+import { CreateSquareMemberDialog, type PossibleMatch } from './CreateSquareMemberDialog';
 import { toast } from 'sonner';
 import {
   UserPlus, Loader2, Link2, AlertTriangle, ArrowUp, ArrowDown, Save, X, Trash2, Unlink, ListOrdered,
-  Image as ImageIcon,
+  Image as ImageIcon, Plus,
 } from 'lucide-react';
 import { byStaffOrder, STAFF_BIO_COLUMNS, type StaffBio } from '@/lib/staffBios';
 import { htmlToPlainText } from '@/lib/richText';
 import { TEAM_ROLES, roleRank, type Role } from '@/lib/roleRules';
+import { SQUARE_STATUS_HELP, squareStatusBadge } from '@/lib/squareTeam';
 
 /**
  * The team, one card per account: roles, the Square Labor link, and the
@@ -39,6 +41,10 @@ import { TEAM_ROLES, roleRank, type Role } from '@/lib/roleRules';
  * Only team roles appear — a past ticket buyer is not a team member. To make
  * one, Invite: `invite-staff` grants the role onto the account they already
  * have rather than creating a second one.
+ *
+ * An account with no Square member can have one made here ("Create in
+ * Square"). That makes the record and the link; it does not invite anyone to
+ * Square — that is finished in Square Dashboard → Team.
  */
 
 interface SquareMember {
@@ -47,6 +53,8 @@ interface SquareMember {
   family_name?: string;
   email?: string;
   status?: string;
+  /** Set to our user id when the member was created from this roster. */
+  reference_id?: string | null;
   wage?: { hourly_rate_cents?: number; title?: string } | null;
 }
 
@@ -84,6 +92,7 @@ export function TeamRoster() {
   const [squareError, setSquareError] = useState<string | null>(null);
   const [wagesError, setWagesError] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [createFor, setCreateFor] = useState<Member | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [reordering, setReordering] = useState(false);
@@ -140,6 +149,20 @@ export function TeamRoster() {
   const unlinkedBios = bios.filter(b => !b.user_id).sort(byStaffOrder);
   const unlinkedSquare = square.filter(m => !links.some(l => l.square_team_member_id === m.id));
   const published = bios.filter(b => b.display_on_about && b.is_active).sort(byStaffOrder);
+
+  /** Square members who may already be this person, so "Create in Square"
+   *  doesn't quietly make a second record for someone who is there. */
+  function possibleMatches(m: Member): PossibleMatch[] {
+    const email = m.email?.trim().toLowerCase();
+    const name = (m.display_name || '').trim().toLowerCase();
+    return square.flatMap(s => {
+      const reason = s.reference_id === m.id ? 'created from this account'
+        : email && s.email?.trim().toLowerCase() === email ? 'same email'
+        : name && squareName(s).toLowerCase() === name ? 'same name'
+        : null;
+      return reason ? [{ id: s.id, name: squareName(s), reason }] : [];
+    });
+  }
 
   // --- Square link ---------------------------------------------------------
 
@@ -362,6 +385,15 @@ export function TeamRoster() {
         </Button>
       </div>
       <InviteStaffDialog open={inviteOpen} onOpenChange={setInviteOpen} onInvited={load} />
+      <CreateSquareMemberDialog
+        account={createFor}
+        matches={createFor ? possibleMatches(createFor) : []}
+        onOpenChange={open => { if (!open) setCreateFor(null); }}
+        onCreated={load}
+      />
+      {!squareError && square.length > 0 && (
+        <p className="font-serif text-xs text-muted-foreground">{SQUARE_STATUS_HELP}</p>
+      )}
 
       {squareError && (
         <Card className="border-destructive/40 bg-destructive/5">
@@ -432,6 +464,9 @@ export function TeamRoster() {
                               return (
                                 <SelectItem key={s.id} value={s.id}>
                                   {squareName(s)}
+                                  {/* Two records can share a name — an old deactivated
+                                      one beside the live one — so say which is which. */}
+                                  {s.status === 'INACTIVE' ? ' — inactive' : ''}
                                   {other ? ` (linked to ${other.display_name || other.email})` : ''}
                                 </SelectItem>
                               );
@@ -441,14 +476,19 @@ export function TeamRoster() {
                       ) : (
                         <span>{sq ? squareName(sq) : <span className="text-muted-foreground">Not linked</span>}</span>
                       )}
+                      {isAdmin && !link && !squareError && (
+                        <Button size="sm" variant="outline" className="h-8" onClick={() => setCreateFor(m)}>
+                          <Plus className="h-3.5 w-3.5 mr-1.5" /> Create in Square
+                        </Button>
+                      )}
                       {sq && (
                         <>
-                          {/* Square's own word for the team member, named as
-                              such: it is whether they are deactivated in the
-                              Square Dashboard, not whether they have ever
-                              signed in here. */}
-                          <Badge variant={sq.status === 'ACTIVE' ? 'default' : 'secondary'} className="text-xs">
-                            {sq.status === 'ACTIVE' ? 'Active in Square' : `${sq.status ? sq.status.toLowerCase() : 'unknown'} in Square`}
+                          {/* The Square *record's* status — deactivated in the
+                              Dashboard or not. Not whether they accepted a
+                              Square invitation (the API doesn't say) and not
+                              whether they have signed in here. */}
+                          <Badge variant={squareStatusBadge(sq.status).variant} className="text-xs" title={SQUARE_STATUS_HELP}>
+                            {squareStatusBadge(sq.status).label}
                           </Badge>
                           <span className="text-xs text-muted-foreground">
                             {sq.wage?.hourly_rate_cents ? `$${(sq.wage.hourly_rate_cents / 100).toFixed(2)}/hr` : 'no hourly rate in Square'}
