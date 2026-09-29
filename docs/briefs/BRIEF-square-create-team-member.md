@@ -1,10 +1,11 @@
 ---
 brief: square-create-team-member
 title: Admins can create a Square team member from the Team roster, and the Square badge stops implying onboarding
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-09-25
+shipped_in: ["#349"]
+shipped_at: 2026-09-29
 verified: true
 findings: FINDINGS-square-team-member-status.md
 ---
