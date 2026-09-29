@@ -105,6 +105,18 @@ const thumbUrl = (path: string, width: number) =>
     transform: { width, resize: 'contain', quality: 70 },
   }).data.publicUrl;
 
+/** Widths the site's other heroes are cut at — see heroSrcSet. */
+const HERO_WIDTHS = [768, 1280, 1920] as const;
+
+/**
+ * The hero at the three widths CalendarHero, RentalsHero and Backstage ship,
+ * so a phone pulls a 768px copy. Those bundle their variants; this photograph
+ * is uploaded per year, so the render endpoint cuts the widths on request —
+ * the same move Backstage makes for the same reason.
+ */
+const heroSrcSet = (path: string) =>
+  HERO_WIDTHS.map(w => `${thumbUrl(path, w)} ${w}w`).join(', ');
+
 /** What a slide is actually fetched at. Kept here so preloading asks for the
  *  identical URL the <img> will ask for — a different width is a different
  *  object and the preload would warm the wrong one. */
@@ -532,14 +544,20 @@ export default function SilentFilmFestival() {
    */
   const titleBlock = (
     <>
-      <h1 className="font-display uppercase text-3xl md:text-5xl tracking-[0.1em] text-foreground">
-        {settings.name}
-      </h1>
+      {/* The year as the gold eyebrow, in the slot CalendarHero gives "What's
+          on the". Only while a year is being sold: between seasons there is no
+          year to name, and the title stands alone. */}
       {festivalYear && (
-        <p className="font-display uppercase tracking-[0.25em] text-sm text-primary mt-3">
+        <p className="font-display uppercase tracking-[0.3em] text-xs sm:text-sm text-accent drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
           {festivalYear}
         </p>
       )}
+      {/* Sizes, leading and shadows are CalendarHero's and Backstage's, so the
+          three mastheads read as one family. The shadows are what keep the
+          line legible over whichever photograph is uploaded next year. */}
+      <h1 className="mt-2 font-display uppercase tracking-wide text-[1.75rem] sm:text-3xl md:text-4xl lg:text-5xl leading-[1] sm:leading-[0.95] text-foreground drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)]">
+        {settings.name}
+      </h1>
     </>
   );
 
@@ -551,43 +569,80 @@ export default function SilentFilmFestival() {
         path="/silent-film-festival"
       />
 
-      <div className="container mx-auto px-4 py-10 md:py-16 max-w-5xl">
-        {/* The room, with the festival's name laid over the foot of it.
-            Wide-cropped on purpose: the photograph is 4:3 and its lower half is
-            mostly empty seating, so keeping its proportions would push everything
-            else off a laptop screen — and cropping to the action leaves the darkest
-            part of the frame exactly where the words go.
-        
-            The scrim is not decoration. The bottom of this photograph is dark but
-            not uniformly so, and a title set straight onto it would be legible in
-            this image and illegible in whichever one replaces it..
+      {/* ------------------------------------------------------ The room */}
+      {heroImage || loading ? (
+        /* The room, with the festival's name laid over the foot of it. Built
+           the way CalendarHero and Backstage are built — full width, the same
+           50/56vh band, object-cover fill, bottom-weighted scrim, gold
+           hairline and bottom-aligned copy — because heroes built different
+           ways drift apart, and this one had: container width, rounded
+           corners, its own height and its own scrim.
 
-            It runs flush to the header: -mt-10/-mt-16 cancels the container's own
-            top padding, which otherwise left a band of page above a photograph that
-            is meant to be the first thing there. Only the bottom corners are
-            rounded — the top edge has nothing left to be rounded against.
-            
-            The heading sits off the bottom edge rather than on it. Removing the gap
-            raised everything by the padding, and the full-height image lowered the
-            title by more than that; the extra bottom padding puts it back roughly
-            where the cropped version had it. */}
-        {heroImage ? (
-          <div className="relative -mx-4 -mt-10 md:-mt-16 mb-8 md:mb-10 md:mx-0 md:rounded-b-lg overflow-hidden">
-            <img
-              src={thumbUrl(heroImage, 1800)}
-              alt=""
-              loading="eager"
-              decoding="async"
-              className="w-full h-[46vh] md:h-[56vh] object-cover"
+           It renders while the rows are still loading, as Backstage's does,
+           so the photograph fills a band already at its final height instead
+           of arriving and shoving the page down. */
+        <section
+          aria-label={settings.name}
+          className="relative overflow-hidden border-b border-accent/25 bg-background min-h-[50vh] lg:min-h-[56vh] flex"
+        >
+          <div className="absolute inset-0">
+            {heroImage && (
+              <img
+                src={thumbUrl(heroImage, 1280)}
+                srcSet={heroSrcSet(heroImage)}
+                sizes="100vw"
+                /* Decorative: a different photograph each year, uploaded with
+                   no alt of its own, and the title over it says what the band
+                   is. */
+                alt=""
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
+                className="h-full w-full object-cover"
+                // Derived from the 2026 photograph (4080×3072, 4:3), the one
+                // there is. object-cover scales it to the band's width and
+                // trims the overflow; the percentage sets where the trim
+                // comes from. The screen's top edge sits at ~24% of the frame
+                // and the orchestra stands end at ~60%, so the visible slice
+                // must start at or above ~22%. That start works out to 41% at
+                // 1280×800, 38% at 1920×1080 and 35% at 1568×765 — a wide,
+                // short window shows the least of the photograph. 35% is the
+                // one value that keeps the whole screen at all three (40% was
+                // tried and cut the top of the screen at 1568×765), with dark
+                // seats left at the foot for the title. A future photograph
+                // composed differently may want its own value.
+                style={{ objectPosition: 'center 35%' }}
+              />
+            )}
+            {/* Bottom-weighted, like the calendar's and Backstage's: the lit
+                screen sits high and stays nearly clear; the seats fill the
+                foot, which is where the title goes. */}
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{
+                background:
+                  'linear-gradient(180deg, hsl(var(--background) / 0.3) 0%, hsl(var(--background) / 0.08) 28%, hsl(var(--background) / 0.4) 62%, hsl(var(--background) / 0.82) 85%, hsl(var(--background) / 0.95) 100%)',
+              }}
             />
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/85 to-transparent pt-20 pb-8 md:pb-12 px-4 md:px-8">
-              {titleBlock}
-            </div>
           </div>
-        ) : null}
+
+          {/* gold hairline at the very top, like a marquee filament */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
+
+          {/* Bottom-aligned: `mt-auto` on the copy pushes it into the seats.
+              Held to the page's own max-w-5xl column so the title lines up
+              with the blurb and sections beneath it. */}
+          <div className="container mx-auto px-4 max-w-5xl relative w-full flex flex-col py-8 sm:py-10 md:py-12">
+            <div className="mt-auto max-w-2xl">{titleBlock}</div>
+          </div>
+        </section>
+      ) : null}
+
+      <div className="container mx-auto px-4 py-10 md:py-16 max-w-5xl">
 
         <header className="mb-12 md:mb-16">
-          {!heroImage && titleBlock}
+          {!heroImage && !loading && titleBlock}
           {/* Words and trailer side by side once there is room for both, and only
               then: the two-column grid is conditional on a trailer existing,
               because splitting the row when nothing fills the other half would
@@ -595,7 +650,7 @@ export default function SilentFilmFestival() {
               keeps its full reading width. */}
           <div
             className={cn(
-              'mt-5',
+              !heroImage && !loading && 'mt-5',
               // items-start, not items-center: the two are meant to begin on the
               // same line. Centring set the shorter one adrift against the taller,
               // which reads as a misalignment rather than as a choice.
