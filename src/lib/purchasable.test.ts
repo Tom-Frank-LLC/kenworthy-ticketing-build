@@ -23,6 +23,7 @@ import {
   showingEndsAt,
   soldOutMessage,
   ticketsSoldHere,
+  counterRefusal,
 } from './purchasable';
 
 const START = '2026-08-19T02:00:00Z'; // 7:00 PM Pacific
@@ -342,5 +343,31 @@ describe('externalTicketLabel', () => {
     expect(externalTicketLabel('movie')).toBe('Get Tickets');
     expect(externalTicketLabel('event')).toBe('RSVP');
     expect(externalTicketLabel('concert')).toBe('RSVP');
+  });
+});
+
+describe('counterRefusal', () => {
+  it('lets the counter sell anything ticketed here, including a row with no mode', () => {
+    expect(counterRefusal('event', { ticket_type: 'ticketed' })).toBeNull();
+    expect(counterRefusal('movie', { ticket_type: null })).toBeNull();
+    expect(counterRefusal('concert', undefined)).toBeNull();
+  });
+
+  it('calls an outside-ticketed film External and an outside-booked event RSVP', () => {
+    expect(counterRefusal('movie', { ticket_type: 'rsvp' })?.short).toBe('External');
+    expect(counterRefusal('event', { ticket_type: 'rsvp' })?.short).toBe('RSVP');
+    expect(counterRefusal('concert', { ticket_type: 'rsvp' })?.short).toBe('RSVP');
+  });
+
+  it('calls an info-only production Info only, whatever it is', () => {
+    for (const kind of ['movie', 'event', 'concert'] as const) {
+      expect(counterRefusal(kind, { ticket_type: 'info_only' })?.short).toBe('Info only');
+    }
+  });
+
+  it('refuses exactly what ticketsSoldHere refuses', () => {
+    for (const ticket_type of ['ticketed', 'rsvp', 'info_only', null]) {
+      expect(counterRefusal('event', { ticket_type }) === null).toBe(ticketsSoldHere({ ticket_type }));
+    }
   });
 });

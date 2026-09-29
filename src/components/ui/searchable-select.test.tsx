@@ -134,3 +134,52 @@ describe('SearchableSelect', () => {
     expect(second.querySelector('.opacity-100')).not.toBeNull();
   });
 });
+
+/**
+ * A listed-but-unchoosable option: the box office shows an RSVP or info-only
+ * show greyed out, with why, rather than hiding it.
+ */
+describe('SearchableSelect — disabled options', () => {
+  const RSVP = {
+    value: 'eeeeeeee-5555-4000-8000-000000000005',
+    label: 'Nosferatu',
+    hint: 'Fri 31 Oct, 7:30 pm · RSVP',
+    disabledReason: 'RSVP — guests book through the RSVP link, so nothing is sold at the box office.',
+  };
+
+  function openWithDisabled() {
+    const view = open({ options: [...OPTIONS, RSVP] });
+    fireEvent.click(screen.getByRole('combobox'));
+    return view;
+  }
+
+  it('lists the option, greyed out and marked disabled', async () => {
+    openWithDisabled();
+    const row = (await screen.findByText('Nosferatu')).closest('[cmdk-item]')!;
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    // The short reason is on the row itself, for a touchscreen with no hover.
+    expect(row).toHaveTextContent('RSVP');
+  });
+
+  it('does not select it when clicked', async () => {
+    const { onChange } = openWithDisabled();
+    fireEvent.click(await screen.findByText('Nosferatu'));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('gives the full reason to screen readers and as a tooltip', async () => {
+    openWithDisabled();
+    const row = (await screen.findByText('Nosferatu')).closest('[cmdk-item]')!;
+    expect(row).toHaveTextContent(RSVP.disabledReason);
+    // Takes the pointer despite being disabled, or the tooltip never opens.
+    expect(row.className).toContain('data-[disabled=true]:pointer-events-auto');
+    fireEvent.focus(row);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(RSVP.disabledReason);
+  });
+
+  it('leaves the other options choosable', async () => {
+    const { onChange } = openWithDisabled();
+    fireEvent.click(await screen.findByText('The Goonies'));
+    expect(onChange).toHaveBeenCalledWith('dddddddd-4444-4000-8000-000000000004');
+  });
+});

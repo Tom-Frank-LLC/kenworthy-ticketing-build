@@ -4,7 +4,7 @@ title: The POS sandbox banner shows only on the sandbox, and the show picker lis
 status: shipped
 track: bug
 date: 2026-09-29
-shipped_in: ["#351"]
+shipped_in: ["#351", "#352"]
 shipped_at: 2026-09-29
 verified: true
 ---
@@ -52,3 +52,18 @@ Both recommended decisions taken: unknown environment → no banner; non-tickete
 - **Picker.** Selectability is `canCarryShowing()` in `ShowingForm.tsx`: any film, or an event/performance for which `ticketsSoldHere()` holds. That existing helper already reads a missing `ticket_type` as ticketed, so the null-safety came free. `SearchableSelect` gained an optional `disabledReason` per option. Disabled rows cancel `CommandItem`'s `opacity-50` and use the solid `muted-foreground` token instead, because a faded reason would fail AA.
 - **Deep link to a non-ticketed event** drops the scope as before, but the toast now names the title, its mode and the fix; the picker then shows the event disabled.
 - **Edit path unchanged on purpose.** `selectedItem` resolves only to a choosable title. Without that, an existing show whose event was later switched to RSVP would enter the film-only "not sold here" branch and retire its tiers on the next save. A test pins this.
+
+## Revised the same day: RSVP and info-only productions take shows
+
+Fix 2 as first shipped (#351) kept the old rule, *only a ticketed event can carry a showing*, and made it visible by greying such events out. Tom corrected the premise: an RSVP or info-only event still needs dated shows on the calendar, just as a film ticketed elsewhere does (#329). The rule dated from an unlabeled 17 Jun commit ("Changes"). Nothing else depended on it:
+
+- the database has no guard on the showing row;
+- `price_ticket_order` already refuses any sale against a showing whose film, event or performance is not ticketed here;
+- the public showing page, event drawer and home feed already render such a show with its RSVP link, or with no ticket link for info-only.
+
+So the follow-up:
+
+- **Showing form:** every event and performance is choosable. RSVP and info-only ones use the "not sold here" mode films already had: no price, tiers, passes or Square item, tiers cleared on save, and the notice worded per kind ("RSVP", "Change that on the event itself"). The #351 greying and the edit-path guard are gone. An existing show whose event is switched to RSVP has its tiers retired on its next save, as a film's already were.
+- **Live Events cards:** the "Add show" button no longer hides for RSVP and info-only events (`AdminDashboard.tsx`, the same old rule).
+- **Box office POS:** a show that cannot be sold at the counter is **listed, greyed out and not selectable**, with a short label on the row ("RSVP", "External", "Info only") and the full reason as a tooltip (Tom's call). The label is there because a tooltip never appears on a touchscreen; the reason is also read to screen readers. The reason comes from `counterRefusal()` in `src/lib/purchasable.ts`, which is the same test as `ticketsSoldHere`. The list also now names event and performance shows; it used to read "Unknown" because it fetched only the film title.
+- `SearchableSelect` supports `disabledReason` again, now as a tooltip. Disabled rows cancel cmdk's `opacity-50` (AA) and `pointer-events-none` (without which the tooltip never opens), and carry their own `TooltipProvider`.
