@@ -11,10 +11,16 @@ Companion to `BRIEF-square-create-team-member.md`. Started 2026-09-28.
 | F3 | **A freshly created member is `status: ACTIVE`** — the same value an old, never-onboarded record has. `status` is the record's state, not onboarding. | Same create. |
 | F4 | **Square can't delete a team member**, only deactivate one. The two sandbox test records ("Tom (staff invite test)", "Dupe Emailtest") are permanent there; the Dupe one was unlinked on staging. | Square Team API has no delete endpoint. |
 
-## Not yet established (needs production)
+## Established in production (2026-09-28, `scripts/square-inspect-team.mjs`, read-only)
 
-- **Does the production token carry `EMPLOYEES_WRITE`?** Required for create in production. Checked by `POST /oauth2/token/status`.
-- **Is there really no invitation/sign-in field on a TeamMember?** Square's docs say none; the badge rewording rests on that. Dump Ben Ramalingam's raw record at the pinned (`2024-01-18`) and a current version and list every key.
-- **Is there more than one Ben record?** Tom reports Square shows Ben *inactive* with an expired invitation, while the roster's linked record reads `ACTIVE`. Either the Dashboard's "inactive" is the invitation state (not `status`), or we are linked to a second, active Ben record. `list_team` filters by location, so a search with no location or status filter is the test.
+| # | Finding |
+|---|---|
+| F5 | **The production token has `EMPLOYEES_WRITE`** (and `EMPLOYEES_READ`). It is a personal access token (no expiry). Create works in production with no Square-side grant. |
+| F6 | **A TeamMember carries no invitation or sign-in field**, at the pinned `2024-01-18` or at `2025-07-16`. The key set across all members: `id, merchant_id, reference_id, is_owner, status, given_name, family_name, email_address, phone_number, created_at, updated_at, assigned_locations, wage_setting`. Nothing appears only at the newer version. The badge rewording stands; there is no signal to surface. |
+| F7 | **The staff member in the brief has exactly one record, `ACTIVE`, untouched since it was created in 2022.** The Dashboard's "inactive / invite expired" is invitation state, which the API does not expose. The roster was linked to the right record and printed `status` faithfully; the old label over-claimed. |
+| F8 | **Two records can share a name** — one person has an old `INACTIVE` record beside their live one. The link menu now marks inactive records "— inactive" so the dead one isn't picked by mistake. |
+| F9 | No production member has a `reference_id`; every one was made in the Dashboard. Members created from the roster will be the first. |
 
-How to answer them: `scripts/square-inspect-team.mjs` (read-only, production by default, needs the token in your own shell), or a temporary admin-only read-only edge function that uses the secret server-side (the labor-testing precedent). Record the answers here.
+Not checked: that the Dashboard token used is byte-identical to the Supabase secret (a digest comparison was offered, not run).
+
+The raw dump holds staff contact details, so it stays outside the repo.

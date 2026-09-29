@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**114 briefs** — 101 shipped, 7 built, 6 open, 0 needs triage, 0 closed.
+**114 briefs** — 101 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -18,6 +18,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
+- `P2` **Admins can create a Square team member from the Team roster, and the Square badge stops implying onboarding**<br>`feature` — [brief](briefs/BRIEF-square-create-team-member.md) · [notes](briefs/FINDINGS-square-team-member-status.md)
 
 ## Open
 
@@ -26,7 +27,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **The Mailchimp campaign has never been able to send, because it queries a column that does not exist**<br>`bug` — [brief](briefs/BRIEF-mailchimp-campaign-dead-column.md)
 - `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)
 - `P2` **Establish whether Section 504 applies to the Kenworthy, and put the record behind it in place**<br>`ops` — [brief](briefs/BRIEF-section-504-compliance.md) · [notes](briefs/../accessibility-audit.md)
-- `P2` **Admins can create a Square team member from the Team roster, and the Square badge stops implying onboarding**<br>`feature` — [brief](briefs/BRIEF-square-create-team-member.md) · [notes](briefs/FINDINGS-square-team-member-status.md)
 
 ## Shipped
 

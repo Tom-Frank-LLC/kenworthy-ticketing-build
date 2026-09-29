@@ -464,6 +464,9 @@ export function TeamRoster() {
                               return (
                                 <SelectItem key={s.id} value={s.id}>
                                   {squareName(s)}
+                                  {/* Two records can share a name — an old deactivated
+                                      one beside the live one — so say which is which. */}
+                                  {s.status === 'INACTIVE' ? ' — inactive' : ''}
                                   {other ? ` (linked to ${other.display_name || other.email})` : ''}
                                 </SelectItem>
                               );
