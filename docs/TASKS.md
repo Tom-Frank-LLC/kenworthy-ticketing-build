@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**113 briefs** — 101 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
+**114 briefs** — 101 shipped, 7 built, 6 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -26,6 +26,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **The Mailchimp campaign has never been able to send, because it queries a column that does not exist**<br>`bug` — [brief](briefs/BRIEF-mailchimp-campaign-dead-column.md)
 - `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)
 - `P2` **Establish whether Section 504 applies to the Kenworthy, and put the record behind it in place**<br>`ops` — [brief](briefs/BRIEF-section-504-compliance.md) · [notes](briefs/../accessibility-audit.md)
+- `P2` **Admins can create a Square team member from the Team roster, and the Square badge stops implying onboarding**<br>`feature` — [brief](briefs/BRIEF-square-create-team-member.md) · [notes](briefs/FINDINGS-square-team-member-status.md)
 
 ## Shipped
 
