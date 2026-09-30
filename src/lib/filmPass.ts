@@ -27,6 +27,8 @@ export interface PassType {
   fine_print: string | null;
   /** Set when the pass belongs to a festival, which gets its own page. */
   festival_slug: string | null;
+  /** Collected at the box office only; the purchase page offers no mailing. */
+  pickup_only: boolean;
 }
 
 /**
@@ -38,7 +40,7 @@ export interface PassType {
  */
 export const PASS_TYPE_COLUMNS =
   'id, name, price, initial_balance, redemption_price, ticket_face_value, ' +
-  'expiration_days, image_path, fine_print, festival_slug';
+  'expiration_days, image_path, fine_print, festival_slug, pickup_only';
 
 /** Up to this many per order; past it, the box office wants a conversation. */
 export const MAX_PASS_QUANTITY = 10;

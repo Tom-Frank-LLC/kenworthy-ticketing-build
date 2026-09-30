@@ -61,7 +61,10 @@ interface FilmPassPurchaseProps {
 
 export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseProps) {
   const [quantity, setQuantity] = useState(1);
-  const [fulfillment, setFulfillment] = useState<Fulfillment>('pickup');
+  const [chosenFulfillment, setFulfillment] = useState<Fulfillment>('pickup');
+  // A pickup-only pass is never posted, whatever the state says: the address
+  // block, its validation and the request body all key off this value.
+  const fulfillment: Fulfillment = pass.pickup_only ? 'pickup' : chosenFulfillment;
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -185,108 +188,128 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
 
         {/* How it reaches them */}
         <div className="space-y-3">
-          {/* A fieldset around real radio inputs, not a row of role="button"
-              cards. The cards were reachable by Tab, but nothing told anyone
-              which delivery method was chosen — no aria-pressed, no
-              aria-checked — and ui/card.tsx has no focus style, so the focus
-              ring was invisible too. A single-select group is a radio group;
-              saying so gets the state, the arrow keys and the grouping for
-              free. The input is sr-only and the card looks exactly as it did. */}
-          <fieldset>
-            <legend className="mb-3">
-              <h2 className="font-display text-lg font-bold">How would you like it?</h2>
-            </legend>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {([
-              { key: 'pickup', icon: Store, title: 'Collect at the box office',
-                blurb: 'Ready when you next visit. We activate it as we hand it over.' },
-              { key: 'mail', icon: Mail, title: 'Ship it to me',
-                blurb: 'Activated before it goes in the envelope, so it works on arrival.' },
-            ] as const).map(opt => {
-              const Icon = opt.icon;
-              return (
-                <label key={opt.key} className="block cursor-pointer">
-                  <input
-                    type="radio"
-                    name="film-pass-fulfillment"
-                    className="peer sr-only"
-                    checked={fulfillment === opt.key}
-                    onChange={() => setFulfillment(opt.key)}
-                  />
-                  <Card
-                    className={`glass h-full transition-shadow peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background ${
-                      fulfillment === opt.key ? 'ring-2 ring-primary' : 'hover:glow-primary'
-                    }`}
-                  >
-                    <CardContent className="p-4">
-                      <p className="font-medium flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-primary" aria-hidden /> {opt.title}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">{opt.blurb}</p>
-                    </CardContent>
-                  </Card>
-                </label>
-              );
-            })}
-          </div>
-
-          {fulfillment === 'mail' && (
-            <div className="grid gap-3 sm:grid-cols-2 pt-1">
-              <div className="sm:col-span-2">
-                <Label htmlFor="addr1" className="text-sm">Street address *</Label>
-                <Input
-                  id="addr1"
-                  value={address.line1}
-                  onChange={e => setAddress(a => ({ ...a, line1: e.target.value }))}
-                  maxLength={120}
-                />
-                {errors.line1 && <p className="text-sm text-destructive mt-1">{errors.line1}</p>}
-              </div>
-              <div className="sm:col-span-2">
-                <Label htmlFor="addr2" className="text-sm">Apartment, suite (optional)</Label>
-                <Input
-                  id="addr2"
-                  value={address.line2}
-                  onChange={e => setAddress(a => ({ ...a, line2: e.target.value }))}
-                  maxLength={120}
-                />
-              </div>
-              <div>
-                <Label htmlFor="addr-city" className="text-sm">City *</Label>
-                <Input
-                  id="addr-city"
-                  value={address.city}
-                  onChange={e => setAddress(a => ({ ...a, city: e.target.value }))}
-                />
-                {errors.city && <p className="text-sm text-destructive mt-1">{errors.city}</p>}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="addr-state" className="text-sm">State *</Label>
-                  <Input
-                    id="addr-state"
-                    value={address.state}
-                    onChange={e => setAddress(a => ({ ...a, state: e.target.value }))}
-                    maxLength={2}
-                  />
-                  {errors.state && <p className="text-sm text-destructive mt-1">{errors.state}</p>}
-                </div>
-                <div>
-                  <Label htmlFor="addr-zip" className="text-sm">ZIP *</Label>
-                  <Input
-                    id="addr-zip"
-                    value={address.postal_code}
-                    onChange={e => setAddress(a => ({ ...a, postal_code: e.target.value }))}
-                    maxLength={10}
-                  />
-                  {errors.postal_code && (
-                    <p className="text-sm text-destructive mt-1">{errors.postal_code}</p>
-                  )}
-                </div>
-              </div>
+          {pass.pickup_only ? (
+            // No choice to make, so no radio group: a lone radio is a control
+            // that does nothing. Said here, where the choice would have been,
+            // so the buyer knows before paying that nothing will be posted.
+            <div>
+              <h2 className="font-display text-lg font-bold mb-3">How you'll get it</h2>
+              <Card className="glass">
+                <CardContent className="p-4">
+                  <p className="font-medium flex items-center gap-2">
+                    <Store className="h-4 w-4 text-primary" aria-hidden /> Pickup only — collect at the box office
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    This pass isn't shipped. It's ready when you next visit, and we activate it
+                    as we hand it over.
+                  </p>
+                </CardContent>
+              </Card>
             </div>
+          ) : (
+            /* A fieldset around real radio inputs, not a row of role="button"
+               cards. The cards were reachable by Tab, but nothing told anyone
+               which delivery method was chosen — no aria-pressed, no
+               aria-checked — and ui/card.tsx has no focus style, so the focus
+               ring was invisible too. A single-select group is a radio group;
+               saying so gets the state, the arrow keys and the grouping for
+               free. The input is sr-only and the card looks exactly as it did. */
+            <fieldset>
+              <legend className="mb-3">
+                <h2 className="font-display text-lg font-bold">How would you like it?</h2>
+              </legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {([
+                { key: 'pickup', icon: Store, title: 'Collect at the box office',
+                  blurb: 'Ready when you next visit. We activate it as we hand it over.' },
+                { key: 'mail', icon: Mail, title: 'Ship it to me',
+                  blurb: 'Activated before it goes in the envelope, so it works on arrival.' },
+              ] as const).map(opt => {
+                const Icon = opt.icon;
+                return (
+                  <label key={opt.key} className="block cursor-pointer">
+                    <input
+                      type="radio"
+                      name="film-pass-fulfillment"
+                      className="peer sr-only"
+                      checked={fulfillment === opt.key}
+                      onChange={() => setFulfillment(opt.key)}
+                    />
+                    <Card
+                      className={`glass h-full transition-shadow peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background ${
+                        fulfillment === opt.key ? 'ring-2 ring-primary' : 'hover:glow-primary'
+                      }`}
+                    >
+                      <CardContent className="p-4">
+                        <p className="font-medium flex items-center gap-2">
+                          <Icon className="h-4 w-4 text-primary" aria-hidden /> {opt.title}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">{opt.blurb}</p>
+                      </CardContent>
+                    </Card>
+                  </label>
+                );
+              })}
+            </div>
+
+            {fulfillment === 'mail' && (
+              <div className="grid gap-3 sm:grid-cols-2 pt-1">
+                <div className="sm:col-span-2">
+                  <Label htmlFor="addr1" className="text-sm">Street address *</Label>
+                  <Input
+                    id="addr1"
+                    value={address.line1}
+                    onChange={e => setAddress(a => ({ ...a, line1: e.target.value }))}
+                    maxLength={120}
+                  />
+                  {errors.line1 && <p className="text-sm text-destructive mt-1">{errors.line1}</p>}
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="addr2" className="text-sm">Apartment, suite (optional)</Label>
+                  <Input
+                    id="addr2"
+                    value={address.line2}
+                    onChange={e => setAddress(a => ({ ...a, line2: e.target.value }))}
+                    maxLength={120}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="addr-city" className="text-sm">City *</Label>
+                  <Input
+                    id="addr-city"
+                    value={address.city}
+                    onChange={e => setAddress(a => ({ ...a, city: e.target.value }))}
+                  />
+                  {errors.city && <p className="text-sm text-destructive mt-1">{errors.city}</p>}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="addr-state" className="text-sm">State *</Label>
+                    <Input
+                      id="addr-state"
+                      value={address.state}
+                      onChange={e => setAddress(a => ({ ...a, state: e.target.value }))}
+                      maxLength={2}
+                    />
+                    {errors.state && <p className="text-sm text-destructive mt-1">{errors.state}</p>}
+                  </div>
+                  <div>
+                    <Label htmlFor="addr-zip" className="text-sm">ZIP *</Label>
+                    <Input
+                      id="addr-zip"
+                      value={address.postal_code}
+                      onChange={e => setAddress(a => ({ ...a, postal_code: e.target.value }))}
+                      maxLength={10}
+                    />
+                    {errors.postal_code && (
+                      <p className="text-sm text-destructive mt-1">{errors.postal_code}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            </fieldset>
           )}
-          </fieldset>
         </div>
 
         {/* Who they are */}

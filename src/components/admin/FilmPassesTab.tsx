@@ -50,6 +50,8 @@ interface FilmPassType {
   image_path: string | null;
   /** Where this pass is and is not valid, printed on the purchase page. */
   fine_print: string | null;
+  /** Buyers cannot choose to have it posted; film-pass-checkout refuses mail. */
+  pickup_only: boolean;
 }
 
 const BLANK_FORM = {
@@ -63,6 +65,7 @@ const BLANK_FORM = {
   is_default_for_movies: true,
   festival_slug: '',
   fine_print: '',
+  pickup_only: false,
 };
 
 /**
@@ -371,6 +374,7 @@ export default function FilmPassesTab() {
       is_default_for_movies: pt.is_default_for_movies,
       festival_slug: pt.festival_slug ?? '',
       fine_print: pt.fine_print ?? '',
+      pickup_only: !!pt.pickup_only,
     });
     setShowForm(true);
   }
@@ -434,6 +438,7 @@ export default function FilmPassesTab() {
       // Empty means the purchase page prints no validity line for this pass,
       // which is safer than inheriting another pass's claim.
       fine_print: form.fine_print.trim() || null,
+      pickup_only: form.pickup_only,
     };
 
 
@@ -820,6 +825,25 @@ export default function FilmPassesTab() {
                 </span>
               </label>
 
+              {/* Only takes the "Ship it to me" choice away from buyers. Orders
+                  already placed for mail stay in the mail queue; this is about
+                  what can be bought from now on. */}
+              <label className="flex items-start gap-2 text-sm cursor-pointer border-t border-border pt-4">
+                <input
+                  type="checkbox"
+                  checked={form.pickup_only}
+                  onChange={e => setForm(f => ({ ...f, pickup_only: e.target.checked }))}
+                  className="rounded mt-0.5"
+                />
+                <span>
+                  <span className="font-semibold">Pickup only (no shipping)</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Buyers collect it at the box office; the purchase page offers no mailing
+                    option. Mail orders already placed are not affected.
+                  </span>
+                </span>
+              </label>
+
               {/* Which festival page, if any, advertises this pass.
                   The page finds its pass by this value rather than by name,
                   because the name is editable here and three duplicate
@@ -920,6 +944,9 @@ export default function FilmPassesTab() {
                       </Badge>
                       {pt.is_default_for_movies && (
                         <Badge variant="secondary" className="text-xs">Standard — auto on new films</Badge>
+                      )}
+                      {pt.pickup_only && (
+                        <Badge variant="secondary" className="text-xs">Pickup only</Badge>
                       )}
                       <Badge variant={pt.is_active ? 'default' : 'secondary'} className="text-xs">
                         {pt.is_active ? 'Active' : 'Inactive'}

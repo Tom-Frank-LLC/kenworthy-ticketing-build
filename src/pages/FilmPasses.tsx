@@ -135,10 +135,19 @@ export default function FilmPasses() {
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground">{passWorthLine(pt)}</p>
-                    {pt.expiration_days && (
-                      <Badge variant="secondary" className="mt-2 text-xs">
-                        Valid {pt.expiration_days} days from activation
-                      </Badge>
+                    {(pt.expiration_days || pt.pickup_only) && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {pt.expiration_days && (
+                          <Badge variant="secondary" className="text-xs">
+                            Valid {pt.expiration_days} days from activation
+                          </Badge>
+                        )}
+                        {pt.pickup_only && (
+                          <Badge variant="secondary" className="text-xs">
+                            Pickup only
+                          </Badge>
+                        )}
+                      </div>
                     )}
                   </div>
                 </CardContent>

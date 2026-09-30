@@ -1163,6 +1163,7 @@ export type Database = {
           is_default_for_movies: boolean
           name: string
           per_showing_use_limit: number | null
+          pickup_only: boolean
           price: number
           redemption_price: number
           square_item_id: string | null
@@ -1182,6 +1183,7 @@ export type Database = {
           is_default_for_movies?: boolean
           name: string
           per_showing_use_limit?: number | null
+          pickup_only?: boolean
           price?: number
           redemption_price?: number
           square_item_id?: string | null
@@ -1201,6 +1203,7 @@ export type Database = {
           is_default_for_movies?: boolean
           name?: string
           per_showing_use_limit?: number | null
+          pickup_only?: boolean
           price?: number
           redemption_price?: number
           square_item_id?: string | null
