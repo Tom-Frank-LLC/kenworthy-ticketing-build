@@ -19,6 +19,7 @@ function pass(overrides: Partial<PassType> = {}): PassType {
     image_path: null,
     fine_print: null,
     festival_slug: null,
+    pickup_only: false,
     ...overrides,
   };
 }

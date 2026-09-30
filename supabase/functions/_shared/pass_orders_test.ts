@@ -20,6 +20,8 @@ import {
   formatAddress,
   fulfillmentLine,
   postedLine,
+  PICKUP_ONLY_REFUSAL,
+  readFulfillment,
   readMailingAddress,
   type PassOrderSummary,
   type PassPostedSummary,
@@ -319,4 +321,20 @@ Deno.test('the posted notice reflects quantity', () => {
   assertStringIncludes(buildPassPostedSubject(o), 'film passes');
   assertStringIncludes(buildPassPostedEmailText(o), '3 × $60 Film Pass');
   assertStringIncludes(buildPassPostedEmailHtml(o), '3 × $60 Film Pass');
+});
+
+Deno.test('readFulfillment keeps a shippable pass exactly as it was', () => {
+  assertEquals(readFulfillment('mail', false), { ok: true, fulfillment: 'mail' });
+  assertEquals(readFulfillment('pickup', false), { ok: true, fulfillment: 'pickup' });
+  // Anything that is not 'mail' has always meant pickup.
+  for (const raw of [undefined, null, '', 'MAIL', 'post', 42]) {
+    assertEquals(readFulfillment(raw, false), { ok: true, fulfillment: 'pickup' });
+  }
+});
+
+Deno.test('readFulfillment refuses to post a pickup-only pass rather than ignoring the address', () => {
+  assertEquals(readFulfillment('mail', true), { ok: false, error: PICKUP_ONLY_REFUSAL });
+  assertStringIncludes(PICKUP_ONLY_REFUSAL, 'pickup only');
+  assertEquals(readFulfillment('pickup', true), { ok: true, fulfillment: 'pickup' });
+  assertEquals(readFulfillment(undefined, true), { ok: true, fulfillment: 'pickup' });
 });

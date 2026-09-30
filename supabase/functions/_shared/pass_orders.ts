@@ -65,6 +65,29 @@ export interface PassOrderSummary {
   finePrint?: string | null;
 }
 
+/** What a buyer is told when they ask to have a pickup-only pass posted. */
+export const PICKUP_ONLY_REFUSAL =
+  "This pass is pickup only and can't be shipped — collect it at the box office instead.";
+
+/**
+ * How the buyer asked for the pass, checked against what the pass allows.
+ *
+ * Anything but 'mail' is pickup, as it always was. A mail request for a
+ * pickup-only pass is refused rather than quietly turned into pickup: the buyer
+ * typed an address, and an order that silently ignores it leaves them waiting
+ * for an envelope that is never coming. The purchase page already hides the
+ * option, so this only fires for a tab opened before staff flipped the switch,
+ * or for a direct call.
+ */
+export function readFulfillment(
+  raw: unknown,
+  pickupOnly: boolean,
+): { ok: true; fulfillment: Fulfillment } | { ok: false; error: string } {
+  const fulfillment: Fulfillment = raw === 'mail' ? 'mail' : 'pickup';
+  if (fulfillment === 'mail' && pickupOnly) return { ok: false, error: PICKUP_ONLY_REFUSAL };
+  return { ok: true, fulfillment };
+}
+
 /**
  * Read a mailing address from a request body.
  *

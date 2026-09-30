@@ -60,6 +60,7 @@ import {
   buildPassPostedEmailHtml,
   buildPassPostedEmailText,
   buildPassPostedSubject,
+  readFulfillment,
   readMailingAddress,
   type Fulfillment,
   type MailingAddress,
@@ -733,7 +734,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: passType } = await admin
     .from('film_pass_types')
-    .select('id, name, price, initial_balance, redemption_price, ticket_face_value, fine_print, expiration_days, is_active, square_variation_id')
+    .select('id, name, price, initial_balance, redemption_price, ticket_face_value, fine_print, expiration_days, is_active, pickup_only, square_variation_id')
     .eq('id', passTypeId)
     .maybeSingle();
 
@@ -756,7 +757,11 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const fulfillment: Fulfillment = body.fulfillment === 'mail' ? 'mail' : 'pickup';
+  // Checked before any money moves: a refusal after Square has charged the card
+  // would leave a paid order nobody can fulfil the way it was asked for.
+  const asked = readFulfillment(body.fulfillment, passType.pickup_only === true);
+  if (!asked.ok) return json({ error: asked.error }, 400);
+  const fulfillment: Fulfillment = asked.fulfillment;
   let mailingAddress: MailingAddress | null = null;
   if (fulfillment === 'mail') {
     const parsed = readMailingAddress(body.mailing_address);
