@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**116 briefs** — 103 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
+**116 briefs** — 104 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -14,7 +14,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P0` **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md) · [notes](briefs/confirmed%20from%20production%20logs%2028%20Aug%202026)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
-- `P2` **A film pass type can be marked pickup only, so buyers cannot have it posted**<br>`feature` — [brief](briefs/BRIEF-film-pass-pickup-only.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
@@ -30,6 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A film pass type can be marked pickup only, so buyers cannot have it posted**<br>`feature` — `#353` — [brief](briefs/BRIEF-film-pass-pickup-only.md)
 - **The POS sandbox banner shows only on the sandbox, and the show picker lists non-ticketed events disabled with a reason**<br>`bug` — `#351`, `#352` — [brief](briefs/BRIEF-pos-sandbox-banner-and-show-picker.md)
 - **Admins can create a Square team member from the Team roster, and the Square badge stops implying onboarding**<br>`feature` — `#349` — [brief](briefs/BRIEF-square-create-team-member.md) · [notes](briefs/FINDINGS-square-team-member-status.md)
 - **A single PDF upload gives the festival page its flip-through, and an admin can put the festival between seasons**<br>`feature` — `#345` — [brief](briefs/BRIEF-festival-pdf-and-offseason.md)

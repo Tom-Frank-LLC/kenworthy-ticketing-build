@@ -1,11 +1,13 @@
 ---
 brief: film-pass-pickup-only
 title: A film pass type can be marked pickup only, so buyers cannot have it posted
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-09-29
-verified: false
+shipped_in: ["#353"]
+shipped_at: 2026-09-29
+verified: true
+evidence: migration 20260929183412 applied on staging and production; film-pass-checkout deployed to both
 ---
 
 # Brief (for Claude Code): Per-pass "pickup only" option (no shipping)
@@ -53,7 +55,7 @@ In `film-pass-checkout`'s create path, the pass type is already loaded (~L735). 
 - The box office POS and the mail/pickup queues still work; existing mail orders are unaffected.
 - `npm run build` + tests pass (add: the buyer UI hides mail when pickup-only; the checkout function rejects mail for a pickup-only type; the migration/default keeps existing passes shippable).
 
-## As built (2026-09-29)
+## As built (2026-09-29) — shipped to staging and production the same day
 
 Decisions taken as recommended: `pickup_only` default **false**; copy "Pickup only — collect at the box office"; a **Pickup only** tag on the listing cards; new orders only.
 
