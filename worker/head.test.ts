@@ -72,7 +72,6 @@ describe('showingJsonLd', () => {
   const base: ShowingRow = {
     id: 'abc',
     start_time: '2026-09-12T02:00:00+00:00',
-    duration_minutes: null,
     ticket_price: '8.00',
     manually_sold_out: false,
     no_ticket_required: false,
@@ -122,7 +121,5 @@ describe('showingJsonLd', () => {
       ({ ...base, movies: null, events: { title: 'Gala', description: null, poster_url: null, duration_minutes } });
     expect(showingJsonLd(evt(90), 'https://k', before)!.endDate).toBe('2026-09-12T03:30:00.000Z');
     expect(showingJsonLd(evt(null), 'https://k', before)!.endDate).toBe('2026-09-12T04:00:00.000Z');
-    // A show's own runtime still wins over the event's.
-    expect(showingJsonLd({ ...evt(90), duration_minutes: 45 }, 'https://k', before)!.endDate).toBe('2026-09-12T02:45:00.000Z');
   });
 });

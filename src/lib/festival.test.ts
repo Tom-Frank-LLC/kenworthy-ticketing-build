@@ -82,6 +82,14 @@ describe('selectFestivalLineup', () => {
       .toEqual(['next-year']);
   });
 
+  it("keeps the last screening listed until its film's runtime is up, not the two-hour default", () => {
+    // Faust starts 02:00Z and runs 150 minutes. At 2h15m in, the default would
+    // call it over and empty the lineup while it is still playing.
+    const longFaust = { ...faust, movies: { duration_minutes: 150 } };
+    expect(selectFestivalLineup([longFaust], at('2026-09-17T04:15:00Z')).map((s) => s.id)).toEqual(['faust']);
+    expect(selectFestivalLineup([longFaust], at('2026-09-17T04:30:00Z'))).toEqual([]);
+  });
+
   it('has nothing to show before a pass has been tagged', () => {
     expect(selectFestivalLineup([], at('2026-08-19T12:00:00Z'))).toEqual([]);
   });

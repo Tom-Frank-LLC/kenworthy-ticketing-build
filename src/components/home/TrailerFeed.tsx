@@ -31,8 +31,8 @@ export interface UpcomingShowing {
   manually_sold_out?: boolean;
   /**
    * How long this date runs, already resolved through
-   * `resolveDurationMinutes` — the showing's own override, then the film's,
-   * then the default. Not the raw column.
+   * `resolveDurationMinutes` — the production's runtime, then the default.
+   * Showings carry no runtime column of their own.
    *
    * Only `isPast` reads it, and only to stop a long night from vanishing from
    * its own list: without it the rule falls back to DEFAULT_SHOWING_MINUTES,

@@ -72,7 +72,6 @@ const MINUTE_MS = 60 * 1000;
 
 export interface ShowingTiming {
   start_time: string | null | undefined;
-  duration_minutes?: number | null;
   is_active?: boolean | null;
   /** See the note on the same field in src/lib/purchasable.ts. */
   manually_sold_out?: boolean | null;
@@ -107,16 +106,9 @@ function positiveMinutes(value: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** showing override → the production's runtime (film, event or performance) → the two-hour default. */
-export function resolveDurationMinutes(
-  showing: ShowingTiming,
-  production?: ProductionRuntime | null,
-): number {
-  return (
-    positiveMinutes(showing?.duration_minutes) ??
-    positiveMinutes(production?.duration_minutes) ??
-    DEFAULT_SHOWING_MINUTES
-  );
+/** The production's runtime (film, event or performance) → the two-hour default. Showings carry none. */
+export function resolveDurationMinutes(production?: ProductionRuntime | null): number {
+  return positiveMinutes(production?.duration_minutes) ?? DEFAULT_SHOWING_MINUTES;
 }
 
 /** The instant the showing is over. */
@@ -125,7 +117,7 @@ export function showingEndsAt(
   production?: ProductionRuntime | null,
 ): number {
   const start = showing?.start_time ? new Date(showing.start_time).getTime() : NaN;
-  return start + resolveDurationMinutes(showing, production) * MINUTE_MS;
+  return start + resolveDurationMinutes(production) * MINUTE_MS;
 }
 
 /**

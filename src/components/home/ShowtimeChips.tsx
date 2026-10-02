@@ -69,10 +69,11 @@ export function ShowtimeChips({
   headingLevel?: 'h2' | 'h3' | 'h4';
   className?: string;
 }) {
-  // duration_minutes is passed through so a long programme still in progress
-  // stays in its own list; absent, the rule uses its own default.
+  // duration_minutes is the production's runtime, carried on each date so a
+  // long programme still in progress stays in its own list; absent, the rule
+  // uses its own default.
   const upcoming = (showings ?? []).filter(
-    (s) => !isPast({ start_time: s.start_time, duration_minutes: s.duration_minutes }),
+    (s) => !isPast({ start_time: s.start_time }, { duration_minutes: s.duration_minutes }),
   );
 
   const others = upcoming.filter((s) => s.id !== currentShowingId);

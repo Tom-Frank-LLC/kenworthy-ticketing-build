@@ -697,7 +697,7 @@ describe('ShowingForm — editing the price tiers of a showing that has sold', (
     state.editShowing = {
       id: SHOWING_ID, movie_id: MOVIE_ID, event_id: null, live_performance_id: null,
       venue_id: VENUE_ID, start_time: '2026-09-26T02:00:00+00:00', ticket_price: 50,
-      duration_minutes: null, requires_seat_selection: false, no_ticket_required: false,
+      requires_seat_selection: false, no_ticket_required: false,
       manually_sold_out: false, max_tickets_per_buyer: 20, sold_out_message: null, is_featured: false,
     };
     state.existingTiers = [
@@ -895,7 +895,7 @@ describe('ShowingForm — an event or performance not ticketed here', () => {
     state.editShowing = {
       id: SHOWING_ID, movie_id: null, event_id: RSVP_EVENT_ID, live_performance_id: null,
       venue_id: VENUE_ID, start_time: '2026-10-31T02:00:00+00:00', ticket_price: 15,
-      duration_minutes: null, requires_seat_selection: false, no_ticket_required: false,
+      requires_seat_selection: false, no_ticket_required: false,
       manually_sold_out: false, max_tickets_per_buyer: 20, sold_out_message: null, is_featured: false,
     };
     state.existingTiers = [
@@ -912,33 +912,33 @@ describe('ShowingForm — an event or performance not ticketed here', () => {
 });
 
 /**
- * An event's runtime is set once on the event; a show inherits it the way a
- * film's show inherits the film's. "Runs For" is the per-show override, and a
- * blank one is stored as null so a later change on the event reaches the show.
+ * A show has no runtime of its own: every show of a production runs the same
+ * length, so the number is set once on the film or event. The show form only
+ * states it, with a way to change it there, and never writes one.
  */
-describe('ShowingForm — a show inherits its event\'s runtime', () => {
-  it("offers the event's runtime as what a blank field means, and stores blank as inherit", async () => {
+describe('ShowingForm — the runtime belongs to the event', () => {
+  it("states the event's runtime, links to the event, and writes no runtime on the show", async () => {
     renderForm(`/admin/showings/new?event=${EVENT_ID}`);
     await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
 
-    const field = screen.getByLabelText('Runs For (minutes)');
-    expect(field).toHaveAttribute('placeholder', '90');
-    expect(screen.getByText(/Leave blank to use this event's runtime \(1h 30m\)/)).toBeTruthy();
+    expect(screen.queryByLabelText(/Runs For/)).toBeNull();
+    expect(screen.getByRole('note')).toHaveTextContent('Runs 1h 30m, set on the event.');
+    expect(screen.getByRole('link', { name: 'Change it on the event' })).toHaveAttribute('href', `/admin/events/${EVENT_ID}`);
 
     fillShowtimes(['2026-09-12T19:30']);
     submit();
 
     await waitFor(() => expect(state.showingInserts).toHaveLength(1));
-    expect(state.showingInserts[0].duration_minutes).toBeNull();
+    expect(state.showingInserts[0]).not.toHaveProperty('duration_minutes');
   });
 
-  it('points at the event form when the event has no runtime yet', async () => {
+  it('says what happens when the event has no runtime, and links to set it', async () => {
     renderForm(`/admin/showings/new?performance=${PERFORMANCE_ID}`);
     await waitFor(() =>
       expect(screen.getByLabelText('Live Performance *')).toHaveTextContent('Palouse Jazz Quartet'),
     );
 
-    expect(screen.getByLabelText('Runs For (minutes)')).toHaveAttribute('placeholder', '120');
-    expect(screen.getByText(/set the runtime once on the event and every show uses it/)).toBeTruthy();
+    expect(screen.getByRole('note')).toHaveTextContent('No runtime is set on this event, so tickets stop selling 2h after the start.');
+    expect(screen.getByRole('link', { name: 'Set it on the event' })).toHaveAttribute('href', `/admin/concerts/${PERFORMANCE_ID}`);
   });
 });

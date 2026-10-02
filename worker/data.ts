@@ -24,7 +24,6 @@ interface ProductionRow {
 export interface ShowingRow {
   id: string;
   start_time: string;
-  duration_minutes: number | null;
   ticket_price: number | string;
   manually_sold_out: boolean;
   no_ticket_required: boolean;
@@ -51,7 +50,7 @@ export interface PassRow {
 }
 
 const SHOWING_SELECT =
-  'id,start_time,duration_minutes,ticket_price,manually_sold_out,no_ticket_required,is_active,created_at,updated_at,' +
+  'id,start_time,ticket_price,manually_sold_out,no_ticket_required,is_active,created_at,updated_at,' +
   'movies(title,description,poster_url,duration_minutes),events(title,description,poster_url,duration_minutes),' +
   'live_performances(title,description,poster_url,duration_minutes),venues(name),showing_price_tiers(price,is_active)';
 

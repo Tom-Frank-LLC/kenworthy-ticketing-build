@@ -59,7 +59,7 @@ export async function fetchSiblingShowings(
   const since = new Date(Date.now() - LOOKBACK_MS).toISOString();
   const { data, error } = await supabase
     .from('showings')
-    .select('id,start_time,ticket_price,duration_minutes,no_ticket_required,manually_sold_out,venues(name)')
+    .select('id,start_time,ticket_price,no_ticket_required,manually_sold_out,venues(name)')
     .eq(key.column, key.id)
     .eq('is_active', true)
     .gte('start_time', since)
@@ -81,7 +81,7 @@ export async function fetchSiblingShowings(
       // isPast again at render, and it has no production row to fall back
       // through — handed the bare column, a long film with no per-showing
       // override would survive the filter here and be dropped there.
-      duration_minutes: resolveDurationMinutes(s, runtime),
+      duration_minutes: resolveDurationMinutes(runtime),
       no_ticket_required: s.no_ticket_required === true,
       manually_sold_out: s.manually_sold_out === true,
       venue_name: s.venues?.name ?? null,

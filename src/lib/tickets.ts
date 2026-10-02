@@ -27,7 +27,7 @@ export interface PublicOrder {
   start_time: string;
   start_time_display: string;
   venue: string | null;
-  /** How long the showing runs (show → production → two-hour default); null when unknown. */
+  /** How long the showing runs (production → two-hour default); null when unknown. */
   duration_minutes: number | null;
   tickets: PublicOrderTicket[];
   total: number;
