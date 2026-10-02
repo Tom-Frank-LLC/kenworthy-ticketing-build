@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**117 briefs** — 104 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
+**117 briefs** — 105 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -17,7 +17,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
-- `P2` **Films and events carry a runtime set once on the title, which every show inherits and which can be hidden from the public page**<br>`feature` — [brief](briefs/BRIEF-production-runtime.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open
@@ -30,6 +29,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Films and events carry a runtime set once on the title, which every show inherits and which can be hidden from the public page**<br>`feature` — `#354` — [brief](briefs/BRIEF-production-runtime.md)
 - **A film pass type can be marked pickup only, so buyers cannot have it posted**<br>`feature` — `#353` — [brief](briefs/BRIEF-film-pass-pickup-only.md)
 - **The POS sandbox banner shows only on the sandbox, and the show picker lists non-ticketed events disabled with a reason**<br>`bug` — `#351`, `#352` — [brief](briefs/BRIEF-pos-sandbox-banner-and-show-picker.md)
 - **Admins can create a Square team member from the Team roster, and the Square badge stops implying onboarding**<br>`feature` — `#349` — [brief](briefs/BRIEF-square-create-team-member.md) · [notes](briefs/FINDINGS-square-team-member-status.md)

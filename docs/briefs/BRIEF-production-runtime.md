@@ -1,17 +1,18 @@
 ---
 brief: production-runtime
 title: Films and events carry a runtime set once on the title, which every show inherits and which can be hidden from the public page
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-02
-verified: false
-evidence: migration 20261002195410_production_runtime.sql (tested on postgres:15); displayedRuntime() in src/components/ProductionMedia.tsx; PR #354
+shipped_in: ["#354"]
+shipped_at: 2026-10-02
+verified: true
+evidence: migration 20261002195410_production_runtime.sql applied on staging and production (tested on postgres:15 first); ticket-access + send-ticket-confirmation deployed to both; displayedRuntime() in src/components/ProductionMedia.tsx; PR #354
 ---
 
 # Brief (for Claude Code): Show/hide-runtime checkbox for movies (and the events question)
 
-**Status:** Built, both halves (PR #354). Decision 1 was answered by Tom: events *do* have a runtime today, but only per show (the "Runs For" field, blank = 120), so it had to be typed into every show. Fix that: events get a runtime of their own, set once, which shows inherit, plus the same show/hide toggle.
+**Status:** Shipped, both halves (PR #354), 2026-10-02. Decision 1 was answered by Tom: events *do* have a runtime today, but only per show (the "Runs For" field, blank = 120), so it had to be typed into every show. Fix that: events get a runtime of their own, set once, which shows inherit, plus the same show/hide toggle.
 **Date:** October 2, 2026
 **Requested by:** Tom asked for a backend checkbox to show or hide the runtime on movies and events, and for an event's runtime to be set on the event rather than on each show.
 
