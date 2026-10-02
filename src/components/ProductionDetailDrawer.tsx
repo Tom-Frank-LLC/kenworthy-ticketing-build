@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, X } from 'lucide-react';
 import { format } from 'date-fns';
-import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
+import { ProductionMedia, ProductionMetaBadges, displayedRuntime } from '@/components/ProductionMedia';
 import { formatShowtime } from '@/lib/datetime';
 import { externalTicketLabel, isPast, ticketsSoldHere } from '@/lib/purchasable';
 import { RichText } from '@/components/RichText';
@@ -24,6 +24,7 @@ interface ProductionDetail {
   rating: string | null;
   genre: string | null;
   duration_minutes?: number;
+  show_runtime?: boolean;
   ticket_type?: string;
   rsvp_url?: string | null;
   showings: ShowingInfo[];
@@ -91,7 +92,7 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
             <ProductionMetaBadges
               rating={production.rating}
               genre={production.genre}
-              durationMinutes={production.duration_minutes}
+              durationMinutes={displayedRuntime(production)}
             />
             <SheetTitle className="font-display text-2xl">{production.title}</SheetTitle>
           </SheetHeader>

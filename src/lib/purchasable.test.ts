@@ -72,6 +72,19 @@ describe('isPast', () => {
     expect(isPast({ start_time: START }, { duration_minutes: 118 }, startMs + min(118))).toBe(true);
   });
 
+  it('ignores show_runtime — a film with its runtime hidden still ends on its runtime', () => {
+    // show_runtime is display only. The page passes the whole movie row here,
+    // so pin that the flag cannot reach the clock: hidden or shown, a 118-minute
+    // film is running at 117 minutes and over at 118, not at the 2-hour default.
+    const hidden = { duration_minutes: 118, show_runtime: false };
+    const shown = { duration_minutes: 118, show_runtime: true };
+    for (const film of [hidden, shown]) {
+      expect(isPast({ start_time: START }, film, startMs + min(117))).toBe(false);
+      expect(isPast({ start_time: START }, film, startMs + min(118))).toBe(true);
+      expect(showingEndsAt({ start_time: START }, film).getTime()).toBe(startMs + min(118));
+    }
+  });
+
   it('uses the two-hour default for an event with no runtime anywhere', () => {
     expect(isPast({ start_time: START }, null, startMs + min(119))).toBe(false);
     expect(isPast({ start_time: START }, null, startMs + min(120))).toBe(true);

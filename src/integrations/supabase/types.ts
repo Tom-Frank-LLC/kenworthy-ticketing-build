@@ -1651,6 +1651,7 @@ export type Database = {
           release_label: string | null
           release_year: number | null
           rsvp_url: string | null
+          show_runtime: boolean
           square_item_id: string | null
           ticket_type: Database["public"]["Enums"]["event_ticket_type"]
           terms_percent: number | null
@@ -1674,6 +1675,7 @@ export type Database = {
           release_label?: string | null
           release_year?: number | null
           rsvp_url?: string | null
+          show_runtime?: boolean
           square_item_id?: string | null
           ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
           terms_percent?: number | null
@@ -1697,6 +1699,7 @@ export type Database = {
           release_label?: string | null
           release_year?: number | null
           rsvp_url?: string | null
+          show_runtime?: boolean
           square_item_id?: string | null
           ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
           terms_percent?: number | null

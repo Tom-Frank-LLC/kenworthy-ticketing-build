@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { formatRuntime } from '@/lib/datetime';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { PosterUpload } from '@/components/admin/PosterUpload';
 import { GenreInput } from '@/components/admin/GenreInput';
@@ -28,6 +29,9 @@ export default function MovieForm() {
   const [description, setDescription] = useState('');
   const [posterUrl, setPosterUrl] = useState('');
   const [duration, setDuration] = useState(90);
+  // Whether the public page prints the runtime. Display only: the duration
+  // above still ends the showing on time whichever way this is set.
+  const [showRuntime, setShowRuntime] = useState(true);
   const [rating, setRating] = useState('');
   const [genres, setGenres] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
@@ -55,6 +59,7 @@ export default function MovieForm() {
           setDescription(data.description || '');
           setPosterUrl(data.poster_url || '');
           setDuration(data.duration_minutes);
+          setShowRuntime((data as any).show_runtime !== false);
           setRating(data.rating || '');
           setGenres(parseGenres(data.genre));
           setIsActive(data.is_active);
@@ -83,6 +88,7 @@ export default function MovieForm() {
         description: description || null,
         poster_url: posterUrl || null,
         duration_minutes: duration,
+        show_runtime: showRuntime,
         rating: rating || null,
         genre: formatGenres(genres),
         is_active: isActive,
@@ -187,6 +193,19 @@ export default function MovieForm() {
               <div className="space-y-2">
                 <Label>Rating</Label>
                 <Input value={rating} onChange={e => setRating(e.target.value)} placeholder="PG-13" />
+              </div>
+              <div className="col-span-full flex items-start gap-3">
+                <Checkbox
+                  id="movie-show-runtime"
+                  checked={showRuntime}
+                  onCheckedChange={(checked) => setShowRuntime(checked === true)}
+                />
+                <div>
+                  <Label htmlFor="movie-show-runtime" className="cursor-pointer">Show runtime on the public page</Label>
+                  <p className="font-serif text-xs text-muted-foreground mt-1">
+                    Hiding it changes only what patrons see. The duration still decides when the showing ends and stops selling.
+                  </p>
+                </div>
               </div>
               <div className="space-y-2 col-span-full">
                 <Label htmlFor="movie-genre">Genre</Label>

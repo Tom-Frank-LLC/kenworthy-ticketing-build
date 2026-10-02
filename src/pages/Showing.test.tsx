@@ -185,3 +185,35 @@ describe('Showing: a film whose tickets are not sold here', () => {
     expect(screen.queryByRole('link', { name: /get tickets/i })).toBeNull();
   });
 });
+
+/**
+ * "Show runtime on the public page" (movies.show_runtime) is display only. The
+ * badge row loses the runtime; the clock that decides "this showing has passed"
+ * does not.
+ */
+describe('Showing: a film with its runtime hidden', () => {
+  const upcoming = { ...pastShowing, id: 'showing-soon', start_time: iso(3 * DAY), is_active: true };
+
+  it('prints the runtime by default — what every existing film does', async () => {
+    tables = { showings: [upcoming], movies: [{ ...movie, show_runtime: true }] };
+    renderShowing('showing-soon');
+
+    expect(await screen.findByText('1h 35m')).toBeTruthy();
+  });
+
+  it('leaves the runtime off the page when unticked', async () => {
+    tables = { showings: [upcoming], movies: [{ ...movie, show_runtime: false }] };
+    renderShowing('showing-soon');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'The Gold Rush' })).toBeTruthy();
+    expect(screen.queryByText('1h 35m')).toBeNull();
+    expect(screen.queryByText('1 hour 35 minutes')).toBeNull();
+  });
+
+  it('still calls a finished showing passed', async () => {
+    tables = { showings: [pastShowing], movies: [{ ...movie, show_runtime: false }] };
+    renderShowing('showing-past');
+
+    expect(await screen.findByText('This showing has passed.')).toBeTruthy();
+  });
+});

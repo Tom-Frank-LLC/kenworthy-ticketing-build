@@ -20,7 +20,7 @@ import { type Seat, type PriceTier } from '@/lib/booking';
 import { useOrderQuote } from '@/lib/quote';
 import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
 import type { DiscountRule } from '@/lib/discounts';
-import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
+import { ProductionMedia, ProductionMetaBadges, displayedRuntime } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
@@ -1136,7 +1136,7 @@ export default function Showing() {
             <ProductionMetaBadges
               rating={production?.rating}
               genre={production?.genre}
-              durationMinutes={production?.duration_minutes}
+              durationMinutes={displayedRuntime(production)}
               className="mt-2"
             />
             <RichText

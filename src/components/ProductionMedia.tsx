@@ -88,6 +88,18 @@ export function ProductionMedia({
   );
 }
 
+/**
+ * The runtime the public badge row should print: the film's duration, unless
+ * an admin unticked "Show runtime" (`movies.show_runtime`). Display only —
+ * never feed this to isPast / showingEndsAt, which must keep using the stored
+ * duration so a film with its runtime hidden still ends on time.
+ */
+export function displayedRuntime(
+  production?: { duration_minutes?: number | null; show_runtime?: boolean | null } | null,
+): number | null | undefined {
+  return production?.show_runtime === false ? null : production?.duration_minutes;
+}
+
 interface ProductionMetaBadgesProps {
   rating?: string | null;
   genre?: string | null;
