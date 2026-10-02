@@ -234,3 +234,66 @@ describe('EventForm — where it goes after saving', () => {
     expect(await screen.findByTestId('admin')).toHaveTextContent(/^admin dashboard\?tab=live-events$/);
   });
 });
+
+/**
+ * An event's runtime is set once, here, and every show inherits it — the way a
+ * film's does. Before, it lived only on each show ("Runs For"), so a run of
+ * twelve performances needed it typed twelve times. Blank is the two-hour
+ * default, and "Show runtime" only governs the public badge.
+ */
+describe('EventForm — runtime, set once for every show', () => {
+  it('writes a new event with no runtime (the two-hour default) and the runtime shown', async () => {
+    renderForm('/admin/events/new');
+
+    fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'Palouse Jazz' } });
+    await choose('Type *', 'Concert');
+    expect(screen.getByLabelText('Show runtime on the public page')).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Create Event' }));
+
+    await waitFor(() => expect(state.writes).toHaveLength(1));
+    expect(state.writes[0].payload).toMatchObject({ duration_minutes: null, show_runtime: true });
+  });
+
+  it('stores a runtime and a hidden badge together', async () => {
+    renderForm('/admin/events/new');
+
+    fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'Nutcracker' } });
+    await choose('Type *', 'Concert');
+    fireEvent.change(screen.getByLabelText('Runtime (min)'), { target: { value: '150' } });
+    expect(screen.getByText('2h 30m')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Show runtime on the public page'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Event' }));
+
+    await waitFor(() => expect(state.writes).toHaveLength(1));
+    expect(state.writes[0].payload).toMatchObject({ duration_minutes: 150, show_runtime: false });
+  });
+
+  it('refuses a runtime that is not a whole number of minutes', async () => {
+    renderForm('/admin/events/new');
+
+    fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'Nutcracker' } });
+    await choose('Type *', 'Concert');
+    fireEvent.change(screen.getByLabelText('Runtime (min)'), { target: { value: '90.5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Event' }));
+
+    // The field's step stops the browser submitting at all; the form's own
+    // check is the backstop behind it. Either way, nothing is written.
+    await new Promise(r => setTimeout(r, 50));
+    expect(state.writes).toHaveLength(0);
+  });
+
+  it('loads a legacy performance with its runtime and hidden badge, and keeps both on save', async () => {
+    state.rows.live_performances = {
+      id: PERF_ID, title: 'Giant Palouse Earthworm', subcategory: 'concert',
+      ticket_type: 'ticketed', is_active: true, duration_minutes: 75, show_runtime: false,
+    };
+    renderForm(`/admin/concerts/${PERF_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Runtime (min)')).toHaveValue(75));
+    expect(screen.getByLabelText('Show runtime on the public page')).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Update Event' }));
+
+    await waitFor(() => expect(state.writes).toHaveLength(1));
+    expect(state.writes[0]).toMatchObject({ table: 'live_performances', payload: { duration_minutes: 75, show_runtime: false } });
+  });
+});

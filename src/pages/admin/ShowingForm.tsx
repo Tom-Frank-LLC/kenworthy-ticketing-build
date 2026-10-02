@@ -220,8 +220,8 @@ export default function ShowingForm() {
       ),
       // events and live_performances are ~200 and ~0 rows, well under the
       // ceiling; they would need the same treatment before they approach it.
-      supabase.from('events').select('id, title, ticket_type, rsvp_url, is_active').order('title'),
-      supabase.from('live_performances').select('id, title, ticket_type, rsvp_url, is_active').order('title'),
+      supabase.from('events').select('id, title, ticket_type, rsvp_url, is_active, duration_minutes').order('title'),
+      supabase.from('live_performances').select('id, title, ticket_type, rsvp_url, is_active, duration_minutes').order('title'),
       supabase.from('venues').select('id, name, has_assigned_seating, total_seats').order('name'),
       fetchPassTypes().catch(() => [] as PassTypeOption[]),
     ]).then(([moviesRes, eventsRes, concertsRes, venuesRes, types]) => {
@@ -367,15 +367,14 @@ export default function ShowingForm() {
   const venueHasSeatMap = !!selectedVenue?.has_assigned_seating;
 
   // What a blank duration field will actually mean. Mirrors the fallback chain
-  // in showing_ends_at() and in resolveDurationMinutes(): the film's own
-  // runtime if there is one, otherwise the default. Shown as the placeholder
-  // so the admin can see the assumption rather than having to know it.
-  const selectedMovieRuntime =
-    category === 'movie'
-      ? Number(movies.find((m: any) => m.id === itemId)?.duration_minutes) || null
-      : null;
-  const durationInheritedFrom: 'movie' | 'default' = selectedMovieRuntime ? 'movie' : 'default';
-  const inheritedDuration = selectedMovieRuntime ?? DEFAULT_SHOWING_MINUTES;
+  // in showing_ends_at() and in resolveDurationMinutes(): the production's own
+  // runtime if there is one — a film's, or an event's set once on the event —
+  // otherwise the default. Shown as the placeholder so the admin can see the
+  // assumption rather than having to know it.
+  const productionRows = category === 'movie' ? movies : category === 'event' ? events : category === 'concert' ? concerts : [];
+  const selectedProductionRuntime =
+    Number(productionRows.find((p: any) => p.id === itemId)?.duration_minutes) || null;
+  const inheritedDuration = selectedProductionRuntime ?? DEFAULT_SHOWING_MINUTES;
 
   // The field takes a total because that is what the column stores, but the
   // listing reads it back as hours + minutes. Echoing the patron-facing string
@@ -1317,10 +1316,10 @@ export default function ShowingForm() {
             )}
             {/* Duration decides when this showing stops being sellable: the
                 rule is that sales close when the show ends, so something has
-                to say when that is. A film answers for itself. An event or a
-                live performance has no runtime column anywhere in the schema,
-                so leaving this blank gives it the two-hour default — fine for
-                most, worth setting for a festival or a double bill. */}
+                to say when that is. The production answers for itself: a film's
+                runtime, or an event's set once on the event. This field is the
+                per-show override, for a double bill or a Q&A after; blank
+                inherits, and with nothing to inherit it is two hours. */}
             <div className="space-y-2">
               <Label htmlFor="showing-duration">Runs For (minutes)</Label>
               <Input
@@ -1335,9 +1334,11 @@ export default function ShowingForm() {
               />
               <p id="showing-duration-help" className="text-xs text-muted-foreground">
                 {durationEcho ? <>Shows as <strong>{durationEcho}</strong> on the site. </> : null}
-                {durationInheritedFrom === 'movie'
-                  ? `Leave blank to use this film's runtime (${formatRuntime(inheritedDuration)}). Set it for a double bill, an intermission, or a Q&A after.`
-                  : `Leave blank to assume ${formatRuntime(inheritedDuration)}. Tickets stop being sold once the showing ends.`}
+                {selectedProductionRuntime
+                  ? `Leave blank to use this ${category === 'movie' ? "film's" : "event's"} runtime (${formatRuntime(inheritedDuration)}). Set it only for this show — a double bill, an intermission, a Q&A after.`
+                  : category === 'movie'
+                    ? `Leave blank to assume ${formatRuntime(inheritedDuration)}. Tickets stop being sold once the showing ends.`
+                    : `Leave blank to assume ${formatRuntime(inheritedDuration)}, or set the runtime once on the event and every show uses it. Tickets stop being sold once the showing ends.`}
               </p>
             </div>
 

@@ -33,9 +33,9 @@
  * How long a showing runs when nothing says otherwise.
  *
  * The chain is: the showing's own `duration_minutes` (set per showing in the
- * admin form) → the film's `movies.duration_minutes` → this. Events and live
- * performances have no duration column of their own at all, so without a
- * per-showing value they land here. Two hours is deliberately generous: the
+ * admin form) → the production's own `duration_minutes` (a film's, or an
+ * event's or performance's, set once on the title) → this. An event with no
+ * runtime set and no per-showing value lands here. Two hours is deliberately generous: the
  * cost of being too long is a few extra minutes of a purchasable page, and the
  * cost of being too short is refusing a real sale during a real show.
  */
@@ -123,7 +123,7 @@ export interface ShowingTiming {
 }
 
 export interface ProductionRuntime {
-  /** `movies.duration_minutes`. Events and live performances have none. */
+  /** The production's `duration_minutes`: movies, events or live_performances (nullable on the last two). */
   duration_minutes?: number | null;
 }
 

@@ -9,6 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { formatRuntime } from '@/lib/datetime';
+import { DEFAULT_SHOWING_MINUTES } from '@/lib/purchasable';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { PosterUpload } from '@/components/admin/PosterUpload';
@@ -72,6 +75,13 @@ export default function EventForm() {
   const [isActive, setIsActive] = useState(false);
   const [trailerUrl, setTrailerUrl] = useState('');
   const [isFeatured, setIsFeatured] = useState(false);
+  // The runtime of every show of this event, set once here rather than typed
+  // into each show. Blank means the two-hour default. A show can still set its
+  // own ("Runs For" in the show form) and that wins, the way a film's does.
+  const [duration, setDuration] = useState('');
+  // Whether the public page prints it. Display only: the runtime still ends
+  // each show on time whichever way this is set.
+  const [showRuntime, setShowRuntime] = useState(true);
   const [saving, setSaving] = useState(false);
 
   // A legacy performance row's own enum only knows the four art forms, so
@@ -100,6 +110,8 @@ export default function EventForm() {
       setIsActive(row.is_active);
       setTrailerUrl(row.trailer_url || '');
       setIsFeatured(!!row.is_featured);
+      setDuration(row.duration_minutes ? String(row.duration_minutes) : '');
+      setShowRuntime(row.show_runtime !== false);
     });
   }, [id, isEdit, isAdmin, authLoading, navigate, table]);
 
@@ -108,6 +120,11 @@ export default function EventForm() {
     if (!eventType) { toast.error('Choose what kind of event this is'); return; }
     const linkError = rsvpUrlError(ticketType, rsvpUrl);
     if (linkError) { toast.error(linkError); return; }
+    const runtime = duration.trim() === '' ? null : Number(duration);
+    if (runtime !== null && !(Number.isInteger(runtime) && runtime > 0)) {
+      toast.error('Runtime must be a whole number of minutes, or blank for the two-hour default');
+      return;
+    }
     setSaving(true);
 
     const eventData = {
@@ -124,6 +141,8 @@ export default function EventForm() {
       is_active: isActive,
       trailer_url: trailerUrl || null,
       is_featured: isFeatured,
+      duration_minutes: runtime,
+      show_runtime: showRuntime,
     };
 
     // .select() so an RLS-filtered write (204, no error) can't pass as saved.
@@ -206,8 +225,38 @@ export default function EventForm() {
                 <GenreInput id="event-genre" kind="live" value={genres} onChange={setGenres} />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="event-duration">Runtime (min)</Label>
+                <Input
+                  id="event-duration"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder={String(DEFAULT_SHOWING_MINUTES)}
+                  value={duration}
+                  aria-describedby="event-duration-help"
+                  onChange={e => setDuration(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="event-rating">Rating</Label>
                 <Input id="event-rating" value={rating} onChange={e => setRating(e.target.value)} placeholder="NR" />
+              </div>
+              <p id="event-duration-help" className="col-span-full -mt-2 text-xs text-muted-foreground">
+                {formatRuntime(Number(duration)) ? <>Shows as <strong>{formatRuntime(Number(duration))}</strong>. </> : null}
+                Every show of this event runs this long unless that show sets its own. Blank assumes {formatRuntime(DEFAULT_SHOWING_MINUTES)}. Tickets stop being sold once a show ends.
+              </p>
+              <div className="col-span-full flex items-start gap-3">
+                <Checkbox
+                  id="event-show-runtime"
+                  checked={showRuntime}
+                  onCheckedChange={(checked) => setShowRuntime(checked === true)}
+                />
+                <div>
+                  <Label htmlFor="event-show-runtime" className="cursor-pointer">Show runtime on the public page</Label>
+                  <p className="font-serif text-xs text-muted-foreground mt-1">
+                    Hiding it changes only what patrons see. The runtime still decides when each show ends and stops selling.
+                  </p>
+                </div>
               </div>
             </div>
             <div className="space-y-2">

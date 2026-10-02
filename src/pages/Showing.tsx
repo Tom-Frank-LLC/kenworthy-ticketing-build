@@ -1023,7 +1023,7 @@ export default function Showing() {
 
   // Whether this page can still sell anything. Computed after the loading
   // guard above so the film's runtime is in hand: the cutoff is the end of the
-  // show, and for a film that end depends on production.duration_minutes.
+  // show, and that end falls back to production.duration_minutes (film or event).
   const hasPassed = isPast(showing, production);
   // Free and open: no purchase panel at all. Read from the showing row rather
   // than inferred from a $0 price — a $0 showing with this false is still

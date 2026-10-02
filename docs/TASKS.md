@@ -15,9 +15,9 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
-- `P2` **An admin can hide a film's runtime from the public page without changing when its showings end**<br>`feature` — [brief](briefs/BRIEF-movie-show-runtime.md)
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
+- `P2` **Films and events carry a runtime set once on the title, which every show inherits and which can be hidden from the public page**<br>`feature` — [brief](briefs/BRIEF-production-runtime.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open

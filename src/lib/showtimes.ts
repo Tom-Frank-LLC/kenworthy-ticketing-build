@@ -37,11 +37,10 @@ export function productionKey(
  *
  * Includes the showing passed in when it has not ended — the ticketing page
  * marks it as the current one rather than leaving a hole in its own run.
- * `production` is the movie row, only so that a film's `duration_minutes` can
- * stand in where a showing has none; events and live performances have no such
- * column and pass nothing. It may be handed in as a promise, so the caller can
- * start this query and the production query together rather than waiting for
- * one to name the other.
+ * `production` is the film, event or performance row, only so that its
+ * `duration_minutes` can stand in where a showing has none. It may be handed
+ * in as a promise, so the caller can start this query and the production query
+ * together rather than waiting for one to name the other.
  *
  * Returns [] rather than throwing on any failure. This list is an extra beside
  * a working purchase flow, and a page that renders no chips is a smaller

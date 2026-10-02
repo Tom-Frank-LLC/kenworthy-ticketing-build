@@ -9,7 +9,7 @@
 // exists to prevent.
 
 import { assertEquals, assertNotEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { formatShowtime, describeSeat, formatMoney, renderQrPng, ticketPageUrl, ticketQrUrl, type OrderTicket } from './tickets.ts';
+import { formatShowtime, describeSeat, formatMoney, loadOrder, renderQrPng, ticketPageUrl, ticketQrUrl, type OrderTicket } from './tickets.ts';
 import { toE164, buildSmsBody, esc, buildSubject, buildEmailHtml, buildEmailText } from './notify.ts';
 
 const ticket = (over: Partial<OrderTicket> = {}): OrderTicket => ({
@@ -411,4 +411,28 @@ Deno.test('a discount label is escaped like everything else a person typed', () 
   const html = buildEmailHtml(nasty, { ticketUrl: 'https://example.com/t/tok', name: 'Tom', qrUrlFor: (id: string) => `https://example.com/qr/${id}` });
   assertEquals(html.includes('<b>Friends</b>'), false);
   assertEquals(html.includes('&lt;b&gt;Friends&lt;/b&gt; &amp; family'), true);
+});
+
+// The calendar entry for an order ends when the showing does, by the same
+// chain as the sale cutoff: the show's own runtime → the production's (film,
+// event or performance) → two hours. It used to read only the film's, so an
+// event — and any show with its own override — got the calendar fallback.
+function adminReturning(showings: unknown) {
+  const rows = [{ id: 't1', qr_code: 'q', status: 'paid', total_price: 10, purchased_at: '2026-01-01T00:00:00Z', showings }];
+  const q: any = {};
+  for (const m of ['select', 'eq', 'not']) q[m] = () => q;
+  q.order = () => Promise.resolve({ data: rows, error: null });
+  return { from: () => q };
+}
+
+Deno.test("loadOrder resolves the calendar runtime through the show, then the production", async () => {
+  const at = '2026-01-01T19:00:00Z';
+  const event = (duration_minutes: number | null, own: number | null = null) =>
+    adminReturning({ start_time: at, duration_minutes: own, movies: null, events: { title: 'Gala', duration_minutes }, live_performances: null });
+
+  assertEquals((await loadOrder(event(90), 'tok'))!.duration_minutes, 90);
+  assertEquals((await loadOrder(event(null), 'tok'))!.duration_minutes, 120);
+  assertEquals((await loadOrder(event(90, 45), 'tok'))!.duration_minutes, 45);
+  const film = adminReturning({ start_time: at, duration_minutes: null, movies: { title: 'Film', duration_minutes: 95 }, events: null, live_performances: null });
+  assertEquals((await loadOrder(film, 'tok'))!.duration_minutes, 95);
 });

@@ -32,8 +32,8 @@ export interface ShowingRow {
   created_at: string | null;
   updated_at: string | null;
   movies: (ProductionRow & { duration_minutes: number | null }) | null;
-  events: ProductionRow | null;
-  live_performances: ProductionRow | null;
+  events: (ProductionRow & { duration_minutes: number | null }) | null;
+  live_performances: (ProductionRow & { duration_minutes: number | null }) | null;
   venues: { name: string } | null;
   showing_price_tiers: Array<{ price: number | string; is_active: boolean }> | null;
 }
@@ -52,8 +52,8 @@ export interface PassRow {
 
 const SHOWING_SELECT =
   'id,start_time,duration_minutes,ticket_price,manually_sold_out,no_ticket_required,is_active,created_at,updated_at,' +
-  'movies(title,description,poster_url,duration_minutes),events(title,description,poster_url),' +
-  'live_performances(title,description,poster_url),venues(name),showing_price_tiers(price,is_active)';
+  'movies(title,description,poster_url,duration_minutes),events(title,description,poster_url,duration_minutes),' +
+  'live_performances(title,description,poster_url,duration_minutes),venues(name),showing_price_tiers(price,is_active)';
 
 const PASS_SELECT = 'id,name,price,initial_balance,redemption_price,ticket_face_value,image_path,fine_print,updated_at';
 

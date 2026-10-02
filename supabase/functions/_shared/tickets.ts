@@ -17,6 +17,7 @@ declare const Deno: any;
 // below against Web APIs only (CompressionStream), which the edge runtime does
 // support.
 import qrcodeGenerator from 'https://esm.sh/qrcode-generator@1.4.4';
+import { resolveDurationMinutes } from './purchasable.ts';
 
 // The Kenworthy is in Moscow, Idaho — Pacific time. Showtimes are stored as
 // timestamptz, so they must be rendered in the venue's zone, not the server's
@@ -53,7 +54,11 @@ export interface Order {
   start_time: string;
   start_time_display: string;
   venue: string | null;
-  /** Movie runtime in minutes when known; null for events/live performances. */
+  /**
+   * How long the showing runs, resolved the way its sale cutoff is: the show's
+   * own → the production's (film, event or performance) → the two-hour
+   * default. Null only when the showing itself could not be read.
+   */
   duration_minutes: number | null;
   tickets: OrderTicket[];
   total: number;
@@ -121,10 +126,11 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
       showing_price_tiers(tier_name),
       showings(
         start_time,
+        duration_minutes,
         venues(name),
         movies(title, duration_minutes),
-        events(title),
-        live_performances(title)
+        events(title, duration_minutes),
+        live_performances(title, duration_minutes)
       )
     `)
     .eq('order_token', token)
@@ -172,7 +178,12 @@ export async function loadOrder(admin: any, token: string): Promise<Order | null
     start_time: showing?.start_time ?? '',
     start_time_display: showing?.start_time ? formatShowtime(showing.start_time) : '',
     venue: showing?.venues?.name ?? null,
-    duration_minutes: showing?.movies?.duration_minutes ?? null,
+    // The calendar entry should end when the sale does. This read only the
+    // film's runtime, so a show's own override and every event fell to the
+    // calendar's fallback.
+    duration_minutes: showing
+      ? resolveDurationMinutes(showing, showing.movies ?? showing.events ?? showing.live_performances)
+      : null,
     tickets,
     // In cents: 6.56 + 6.56 + 6.55 + 6.56 is 26.229999999999997 in doubles.
     total: tickets.reduce((sum, t) => sum + Math.round(t.total_price * 100), 0) / 100,

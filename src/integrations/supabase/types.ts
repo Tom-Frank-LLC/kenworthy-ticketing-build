@@ -727,6 +727,7 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          duration_minutes: number | null
           genre: string | null
           id: string
           is_active: boolean
@@ -735,6 +736,7 @@ export type Database = {
           poster_url: string | null
           rating: string | null
           rsvp_url: string | null
+          show_runtime: boolean
           square_item_id: string | null
           subcategory: Database["public"]["Enums"]["live_event_type"] | null
           ticket_type: Database["public"]["Enums"]["event_ticket_type"]
@@ -745,6 +747,7 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          duration_minutes?: number | null
           genre?: string | null
           id?: string
           is_active?: boolean
@@ -753,6 +756,7 @@ export type Database = {
           poster_url?: string | null
           rating?: string | null
           rsvp_url?: string | null
+          show_runtime?: boolean
           square_item_id?: string | null
           subcategory?: Database["public"]["Enums"]["live_event_type"] | null
           ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
@@ -763,6 +767,7 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          duration_minutes?: number | null
           genre?: string | null
           id?: string
           is_active?: boolean
@@ -771,6 +776,7 @@ export type Database = {
           poster_url?: string | null
           rating?: string | null
           rsvp_url?: string | null
+          show_runtime?: boolean
           square_item_id?: string | null
           subcategory?: Database["public"]["Enums"]["live_event_type"] | null
           ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
@@ -1581,6 +1587,7 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          duration_minutes: number | null
           genre: string | null
           id: string
           is_active: boolean
@@ -1589,6 +1596,7 @@ export type Database = {
           poster_url: string | null
           rating: string | null
           rsvp_url: string | null
+          show_runtime: boolean
           square_item_id: string | null
           subcategory: Database["public"]["Enums"]["live_performance_subcategory"]
           ticket_type: Database["public"]["Enums"]["event_ticket_type"]
@@ -1599,6 +1607,7 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          duration_minutes?: number | null
           genre?: string | null
           id?: string
           is_active?: boolean
@@ -1607,6 +1616,7 @@ export type Database = {
           poster_url?: string | null
           rating?: string | null
           rsvp_url?: string | null
+          show_runtime?: boolean
           square_item_id?: string | null
           subcategory?: Database["public"]["Enums"]["live_performance_subcategory"]
           ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
@@ -1617,6 +1627,7 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          duration_minutes?: number | null
           genre?: string | null
           id?: string
           is_active?: boolean
@@ -1625,6 +1636,7 @@ export type Database = {
           poster_url?: string | null
           rating?: string | null
           rsvp_url?: string | null
+          show_runtime?: boolean
           square_item_id?: string | null
           subcategory?: Database["public"]["Enums"]["live_performance_subcategory"]
           ticket_type?: Database["public"]["Enums"]["event_ticket_type"]
