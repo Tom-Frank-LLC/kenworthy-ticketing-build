@@ -146,7 +146,7 @@ export function ShowingPreview({
                   get the reader to a date they can actually buy, so a past
                   preview is a readable panel rather than a dead button. The
                   rule is src/lib/purchasable.ts. */}
-              {item.showingId && !isPast({ start_time: item.startTime }) && (
+              {item.showingId && !isPast({ start_time: item.startTime }, { duration_minutes: item.durationMinutes }) && (
                 <Button
                   asChild
                   variant={item.manuallySoldOut ? 'secondary' : 'default'}

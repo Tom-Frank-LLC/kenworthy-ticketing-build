@@ -155,7 +155,6 @@ export default function ShowingForm() {
   // How long this showing runs. Blank means "ask the production", which is the
   // right answer for almost every film and no answer at all for an event — see
   // the field itself, below, and showing_ends_at() in the database.
-  const [durationMinutes, setDurationMinutes] = useState('');
   // Which passes may be redeemed at the door for this screening.
   //
   // This used to be one boolean that could only speak for every pass at once,
@@ -306,7 +305,6 @@ export default function ShowingForm() {
           // late — and saving then wrote that wrong hour back.
           setStartTime(instantToVenueLocalInput(data.start_time));
           setTicketPrice(String(data.ticket_price));
-          setDurationMinutes(data.duration_minutes ? String(data.duration_minutes) : '');
           setRequiresSeatSelection(data.requires_seat_selection ?? false);
           setNoTicketRequired(data.no_ticket_required ?? false);
           setManuallySoldOut(data.manually_sold_out ?? false);
@@ -366,22 +364,19 @@ export default function ShowingForm() {
   const selectedVenue = venues.find((v: any) => v.id === venueId);
   const venueHasSeatMap = !!selectedVenue?.has_assigned_seating;
 
-  // What a blank duration field will actually mean. Mirrors the fallback chain
-  // in showing_ends_at() and in resolveDurationMinutes(): the production's own
-  // runtime if there is one — a film's, or an event's set once on the event —
-  // otherwise the default. Shown as the placeholder so the admin can see the
-  // assumption rather than having to know it.
+  // How long this show runs. Not set here: every show of a production runs the
+  // same length, so the runtime lives on the film or event and this form only
+  // states it. Same rule as showing_ends_at() and resolveDurationMinutes().
   const productionRows = category === 'movie' ? movies : category === 'event' ? events : category === 'concert' ? concerts : [];
   const selectedProductionRuntime =
     Number(productionRows.find((p: any) => p.id === itemId)?.duration_minutes) || null;
-  const inheritedDuration = selectedProductionRuntime ?? DEFAULT_SHOWING_MINUTES;
-
-  // The field takes a total because that is what the column stores, but the
-  // listing reads it back as hours + minutes. Echoing the patron-facing string
-  // is what turns a slipped digit into something visible at entry rather than
-  // on the live site. Empty while the field is blank, which is the state that
-  // means "inherit" — the sentence below explains that case instead.
-  const durationEcho = formatRuntime(Number(durationMinutes));
+  const productionEditPath =
+    !itemId ? null
+    : category === 'movie' ? `/admin/movies/${itemId}`
+    : category === 'event' ? `/admin/events/${itemId}`
+    : category === 'concert' ? `/admin/concerts/${itemId}`
+    : null;
+  const productionNoun = category === 'movie' ? 'film' : 'event';
 
   /**
    * Editing the price re-applies the pass default for a movie.
@@ -602,10 +597,6 @@ export default function ShowingForm() {
     // cleared the box: the two fields state one decision, and letting them
     // disagree turns a deliberate choice into a save that fails.
     ticket_price: noTicket ? 0 : parseFloat(ticketPrice),
-    // Blank clears the override rather than storing 0 — NULL is what makes
-    // showing_ends_at() fall through to the film's own runtime, and the
-    // column's CHECK constraint refuses a zero or negative anyway.
-    duration_minutes: durationMinutes.trim() === '' ? null : parseInt(durationMinutes, 10),
     // Only claim reserved seating when there is a seat map to reserve from.
     // A showing flagged reserved with no seats behind it renders an empty
     // picker the buyer cannot get past.
@@ -1246,7 +1237,7 @@ export default function ShowingForm() {
               <div className="space-y-2">
                 <Label>Showtimes *</Label>
                 <p className="text-xs text-muted-foreground">
-                  Every other setting on this form — the title, venue, price, runtime,
+                  Every other setting on this form — the title, venue, price,
                   passes{venueHasSeatMap ? ' and seating' : ''} — applies to every showtime
                   listed here.
                 </p>
@@ -1314,33 +1305,24 @@ export default function ShowingForm() {
                 </p>
               </div>
             )}
-            {/* Duration decides when this showing stops being sellable: the
-                rule is that sales close when the show ends, so something has
-                to say when that is. The production answers for itself: a film's
-                runtime, or an event's set once on the event. This field is the
-                per-show override, for a double bill or a Q&A after; blank
-                inherits, and with nothing to inherit it is two hours. */}
-            <div className="space-y-2">
-              <Label htmlFor="showing-duration">Runs For (minutes)</Label>
-              <Input
-                id="showing-duration"
-                type="number"
-                min="1"
-                step="1"
-                placeholder={String(inheritedDuration)}
-                value={durationMinutes}
-                aria-describedby="showing-duration-help"
-                onChange={e => setDurationMinutes(e.target.value)}
-              />
-              <p id="showing-duration-help" className="text-xs text-muted-foreground">
-                {durationEcho ? <>Shows as <strong>{durationEcho}</strong> on the site. </> : null}
-                {selectedProductionRuntime
-                  ? `Leave blank to use this ${category === 'movie' ? "film's" : "event's"} runtime (${formatRuntime(inheritedDuration)}). Set it only for this show — a double bill, an intermission, a Q&A after.`
-                  : category === 'movie'
-                    ? `Leave blank to assume ${formatRuntime(inheritedDuration)}. Tickets stop being sold once the showing ends.`
-                    : `Leave blank to assume ${formatRuntime(inheritedDuration)}, or set the runtime once on the event and every show uses it. Tickets stop being sold once the showing ends.`}
-              </p>
-            </div>
+            {/* Runtime decides when this showing stops being sellable: sales
+                close when the show ends. It is set once on the film or event,
+                never per show, and stated here so the admin can see it. */}
+            {itemId && (
+              <div className="space-y-1" role="note">
+                <p className="text-sm font-medium">Runtime</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedProductionRuntime
+                    ? <>Runs <strong>{formatRuntime(selectedProductionRuntime)}</strong>, set on the {productionNoun}. </>
+                    : <>No runtime is set on this {productionNoun}, so tickets stop selling {formatRuntime(DEFAULT_SHOWING_MINUTES)} after the start. </>}
+                  {productionEditPath && (
+                    <Link to={productionEditPath} className="underline underline-offset-2">
+                      {selectedProductionRuntime ? `Change it on the ${productionNoun}` : `Set it on the ${productionNoun}`}
+                    </Link>
+                  )}
+                </p>
+              </div>
+            )}
 
             {/* Not ticketed here. Everything from the price down describes a
                 sale, and this production's sale happens on somebody else's site
@@ -1373,7 +1355,7 @@ export default function ShowingForm() {
 
             {!notSoldHere && (
             <div className="space-y-2">
-              {/* Labelled the way the runtime field beside it is: the <Label>
+              {/* Labelled like the fields around it: the <Label>
                   was rendering unattached, so a screen reader announced the
                   price box as an unnamed number field. */}
               <Label htmlFor="showing-price">Base Ticket Price ($)</Label>

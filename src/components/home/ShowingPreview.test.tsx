@@ -310,3 +310,31 @@ describe('ShowingPreview and a manually sold-out showing', () => {
     expect(first.upcomingShowings?.[0].manually_sold_out).toBe(true);
   });
 });
+
+/**
+ * The buttons and chips end with the production's runtime, not a flat two
+ * hours. A 150-minute show is still sellable 2h10m in; a 60-minute one is
+ * over at 90 minutes. Before, both hid at two hours.
+ */
+describe("ShowingPreview and the production's runtime", () => {
+  const MIN = 60 * 1000;
+
+  it('keeps Get Tickets on a long show still playing past two hours', () => {
+    renderPreview(item({ startTime: iso(-130 * MIN), durationMinutes: 150 }));
+    expect(screen.getByRole('link', { name: /^Get Tickets$/i })).toBeTruthy();
+  });
+
+  it('drops Get Tickets once a short show has ended, before two hours', () => {
+    renderPreview(item({ startTime: iso(-90 * MIN), durationMinutes: 60 }));
+    expect(screen.queryByRole('link', { name: /^Get Tickets$/i })).toBeNull();
+  });
+
+  it('keeps a chip for a long show still playing, carried through attachUpcomingShowings', () => {
+    const playing = item({ id: 'p', showingId: 'showing-a', startTime: iso(-130 * MIN), durationMinutes: 150 });
+    const later = item({ id: 'l', showingId: 'showing-b', startTime: iso(48 * HOUR), durationMinutes: 150 });
+    const [withRun] = attachUpcomingShowings([playing, later]);
+    renderPreview({ ...withRun, showingId: 'showing-b', startTime: later.startTime });
+    // The still-playing date is offered as another date to buy into.
+    expect(screen.getByRole('link', { name: /Get tickets for/i }).getAttribute('href')).toBe('/showing/showing-a');
+  });
+});

@@ -323,12 +323,11 @@ function Pick({
   const hasNote = !isRichTextEmpty(item.curatorNote);
   const hasPoster = Boolean(item.posterUrl);
 
-  // useFeed filters past showings out at query time, so this only bites in a
-  // tab left open across a start time — which is the one case where the page
-  // would otherwise sell a finished screening. The rule is
-  // src/lib/purchasable.ts.
+  // useFeed drops finished showings when it loads, so this only bites in a
+  // tab left open across an end — which is the one case where the page would
+  // otherwise sell a finished screening. The rule is src/lib/purchasable.ts.
   const cta =
-    item.showingId && !isPast({ start_time: item.startTime }) ? (
+    item.showingId && !isPast({ start_time: item.startTime }, { duration_minutes: item.durationMinutes }) ? (
       // A pick that has since sold out is still worth showing — it is the
       // curator's note that earned the slot, and the date and venue are still
       // worth reading. What goes is the green button and the promise in it.

@@ -32,11 +32,12 @@
 /**
  * How long a showing runs when nothing says otherwise.
  *
- * The chain is: the showing's own `duration_minutes` (set per showing in the
- * admin form) → the production's own `duration_minutes` (a film's, or an
- * event's or performance's, set once on the title) → this. An event with no
- * runtime set and no per-showing value lands here. Two hours is deliberately generous: the
- * cost of being too long is a few extra minutes of a purchasable page, and the
+ * The chain is: the production's `duration_minutes` (a film's, an event's or
+ * a performance's, set once on the title) → this. Showings carry no runtime of
+ * their own: every show of a production runs the same length, so the number
+ * lives in one place (20261002224512 moved the few per-show values up and
+ * dropped the column). Two hours is deliberately generous: the cost of being
+ * too long is a few extra minutes of a purchasable page, and the
  * cost of being too short is refusing a real sale during a real show.
  */
 export const DEFAULT_SHOWING_MINUTES = 120;
@@ -100,8 +101,6 @@ const MINUTE_MS = 60 * 1000;
 
 export interface ShowingTiming {
   start_time: string | Date | null | undefined;
-  /** Per-showing override, in minutes. Null on every showing created before this rule existed. */
-  duration_minutes?: number | null;
   is_active?: boolean | null;
   /**
    * `showings.no_ticket_required`. Optional because most callers pass a bare
@@ -123,7 +122,7 @@ export interface ShowingTiming {
 }
 
 export interface ProductionRuntime {
-  /** The production's `duration_minutes`: movies, events or live_performances (nullable on the last two). */
+  /** The production's `duration_minutes`: movies, events or live_performances (nullable on the last two; 0 on a film means unknown). */
   duration_minutes?: number | null;
 }
 
@@ -206,21 +205,13 @@ function positiveMinutes(value: unknown): number | null {
 }
 
 /**
- * How many minutes this showing is expected to run.
+ * How many minutes a showing of this production runs.
  *
- * Kept separate from `showingEndsAt` because the admin form wants to show the
- * resolved number as a placeholder — "leave blank and we'll assume 118" is a
- * more useful field than an empty box.
+ * Kept separate from `showingEndsAt` because the show form states the number
+ * ("Runs 2h 30m, set on the event") rather than leaving it implicit.
  */
-export function resolveDurationMinutes(
-  showing: ShowingTiming,
-  production?: ProductionRuntime | null,
-): number {
-  return (
-    positiveMinutes(showing?.duration_minutes) ??
-    positiveMinutes(production?.duration_minutes) ??
-    DEFAULT_SHOWING_MINUTES
-  );
+export function resolveDurationMinutes(production?: ProductionRuntime | null): number {
+  return positiveMinutes(production?.duration_minutes) ?? DEFAULT_SHOWING_MINUTES;
 }
 
 /** The instant the showing is over, and with it the last moment it can be sold. */
@@ -228,7 +219,7 @@ export function showingEndsAt(
   showing: ShowingTiming,
   production?: ProductionRuntime | null,
 ): Date {
-  return new Date(startMs(showing) + resolveDurationMinutes(showing, production) * MINUTE_MS);
+  return new Date(startMs(showing) + resolveDurationMinutes(production) * MINUTE_MS);
 }
 
 /** The instant staff can no longer admit at the door. See DOOR_GRACE_MINUTES. */

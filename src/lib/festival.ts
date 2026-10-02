@@ -1,4 +1,4 @@
-import { isPast, type ShowingTiming } from '@/lib/purchasable';
+import { isPast, type ProductionRuntime, type ShowingTiming } from '@/lib/purchasable';
 import { htmlToPlainText } from '@/lib/richText';
 
 /**
@@ -65,6 +65,10 @@ export function groupProgramsByYear(programs: FestivalProgram[]): ProgramYear[] 
 export interface FestivalScreening extends ShowingTiming {
   id: string;
   start_time: string;
+  /** The production, whose runtime decides when a screening has ended. */
+  movies?: ProductionRuntime | null;
+  events?: ProductionRuntime | null;
+  live_performances?: ProductionRuntime | null;
 }
 
 /**
@@ -98,7 +102,7 @@ export function selectFestivalLineup<T extends FestivalScreening>(
   now: number = Date.now(),
 ): T[] {
   const upcoming = screenings
-    .filter((s) => !isPast(s, null, now))
+    .filter((s) => !isPast(s, s.movies ?? s.events ?? s.live_performances ?? null, now))
     .sort((a, b) => festivalTime(a) - festivalTime(b));
 
   const anchor = upcoming[0];

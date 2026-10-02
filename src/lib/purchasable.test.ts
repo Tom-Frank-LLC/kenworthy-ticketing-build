@@ -31,23 +31,26 @@ const startMs = new Date(START).getTime();
 const min = (n: number) => n * 60 * 1000;
 
 describe('resolveDurationMinutes', () => {
-  it("prefers the showing's own override", () => {
-    expect(resolveDurationMinutes({ start_time: START, duration_minutes: 200 }, { duration_minutes: 118 }))
-      .toBe(200);
+  // Showings carry no runtime: every show of a production runs the same
+  // length, so the production's number is the only one there is.
+  it("uses the production's runtime — a film's or an event's", () => {
+    expect(resolveDurationMinutes({ duration_minutes: 118 })).toBe(118);
   });
 
-  it("falls back to the film's runtime", () => {
-    expect(resolveDurationMinutes({ start_time: START }, { duration_minutes: 118 })).toBe(118);
-  });
-
-  it('falls back to the default when nothing knows — an event or a live performance', () => {
-    expect(resolveDurationMinutes({ start_time: START })).toBe(DEFAULT_SHOWING_MINUTES);
+  it('falls back to the default when the production has none', () => {
+    expect(resolveDurationMinutes(null)).toBe(DEFAULT_SHOWING_MINUTES);
+    expect(resolveDurationMinutes({ duration_minutes: null })).toBe(DEFAULT_SHOWING_MINUTES);
   });
 
   it('treats zero and negative durations as absent rather than as an instant end', () => {
-    expect(resolveDurationMinutes({ start_time: START, duration_minutes: 0 }, { duration_minutes: 118 }))
-      .toBe(118);
-    expect(resolveDurationMinutes({ start_time: START, duration_minutes: -30 })).toBe(DEFAULT_SHOWING_MINUTES);
+    // A film's NOT NULL column holds 0 for "unknown".
+    expect(resolveDurationMinutes({ duration_minutes: 0 })).toBe(DEFAULT_SHOWING_MINUTES);
+    expect(resolveDurationMinutes({ duration_minutes: -30 })).toBe(DEFAULT_SHOWING_MINUTES);
+  });
+
+  it('ignores a runtime on the showing row — an old cached row cannot override the production', () => {
+    const staleRow = { start_time: START, duration_minutes: 300 } as unknown as { start_time: string };
+    expect(showingEndsAt(staleRow, { duration_minutes: 118 }).getTime()).toBe(startMs + min(118));
   });
 });
 

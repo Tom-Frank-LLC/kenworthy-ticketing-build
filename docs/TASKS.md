@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**117 briefs** — 105 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
+**118 briefs** — 106 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -30,6 +30,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Shipped
 
 - **Films and events carry a runtime set once on the title, which every show inherits and which can be hidden from the public page**<br>`feature` — `#354` — [brief](briefs/BRIEF-production-runtime.md)
+- **A runtime is set only on the film or event; showings carry none, and the listing and calendar keep a show until it ends**<br>`data` — `#355` — [brief](briefs/BRIEF-runtime-production-only.md)
 - **A film pass type can be marked pickup only, so buyers cannot have it posted**<br>`feature` — `#353` — [brief](briefs/BRIEF-film-pass-pickup-only.md)
 - **The POS sandbox banner shows only on the sandbox, and the show picker lists non-ticketed events disabled with a reason**<br>`bug` — `#351`, `#352` — [brief](briefs/BRIEF-pos-sandbox-banner-and-show-picker.md)
 - **Admins can create a Square team member from the Team roster, and the Square badge stops implying onboarding**<br>`feature` — `#349` — [brief](briefs/BRIEF-square-create-team-member.md) · [notes](briefs/FINDINGS-square-team-member-status.md)

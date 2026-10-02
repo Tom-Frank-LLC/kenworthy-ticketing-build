@@ -31,8 +31,8 @@ export interface UpcomingShowing {
   manually_sold_out?: boolean;
   /**
    * How long this date runs, already resolved through
-   * `resolveDurationMinutes` — the showing's own override, then the film's,
-   * then the default. Not the raw column.
+   * `resolveDurationMinutes` — the production's runtime, then the default.
+   * Showings carry no runtime column of their own.
    *
    * Only `isPast` reads it, and only to stop a long night from vanishing from
    * its own list: without it the rule falls back to DEFAULT_SHOWING_MINUTES,
@@ -61,6 +61,12 @@ export interface FeedItem {
   trailerUrl: string | null;
   startTime: string;          // ISO
   showingId: string | null;   // null when no purchasable showing yet
+  /**
+   * The production's runtime (film or event), so the listing can tell when a
+   * showing has *ended* — it stays listed while it plays, and its buttons go
+   * when it is over. Null means none is set: the two-hour default applies.
+   */
+  durationMinutes?: number | null;
   type: 'movie' | 'event' | 'concert';
   ticketType?: string;        // event_ticket_type, on every production since 20260922203433
   rsvpUrl?: string | null;
@@ -293,7 +299,7 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                       gives it a far-future placeholder), so it is never past.
                       One attached to a showing that has finished has nothing
                       left to RSVP to. */}
-                  {item.ticketType === 'rsvp' && item.rsvpUrl && !isPast({ start_time: item.startTime }) ? (
+                  {item.ticketType === 'rsvp' && item.rsvpUrl && !isPast({ start_time: item.startTime }, { duration_minutes: item.durationMinutes }) ? (
                     <Button asChild size="lg" className="h-12">
                       <a href={item.rsvpUrl} target="_blank" rel="noopener noreferrer">
                         <Calendar className="h-4 w-4 mr-1" /> {externalTicketLabel(item.type)}
@@ -308,11 +314,11 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                     >
                       Learn More
                     </Button>
-                  ) : item.showingId && !isPast({ start_time: item.startTime }) ? (
-                    // The feed excludes past showings at query time, so this
-                    // only bites in a tab left open across one — the case that
-                    // would otherwise sell a finished screening. The rule is
-                    // src/lib/purchasable.ts.
+                  ) : item.showingId && !isPast({ start_time: item.startTime }, { duration_minutes: item.durationMinutes }) ? (
+                    // The feed drops finished showings when it loads, so this
+                    // only bites in a tab left open across an end — the case
+                    // that would otherwise sell a finished screening. The rule
+                    // is src/lib/purchasable.ts.
                     //
                     // Still a link on a walk-in night, and deliberately: the
                     // showing page is where the time, the venue and the

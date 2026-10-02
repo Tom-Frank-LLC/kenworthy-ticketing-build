@@ -75,7 +75,6 @@ interface Production {
 interface Screening {
   id: string;
   start_time: string;
-  duration_minutes: number | null;
   is_active: boolean | null;
   no_ticket_required: boolean | null;
   manually_sold_out: boolean | null;
@@ -393,10 +392,10 @@ export default function SilentFilmFestival() {
         const { data: tagged } = await supabase
           .from('pass_type_showings')
           .select(
-            'showings(id, start_time, duration_minutes, is_active, no_ticket_required, manually_sold_out, ' +
+            'showings(id, start_time, is_active, no_ticket_required, manually_sold_out, ' +
               'movies(title, description, poster_url, duration_minutes), ' +
-              'events(title, description), ' +
-              'live_performances(title, description))',
+              'events(title, description, duration_minutes), ' +
+              'live_performances(title, description, duration_minutes))',
           )
           .eq('pass_type_id', passRow.id);
 

@@ -3,9 +3,10 @@
  *
  * Two sources feed it, and they are not equally trustworthy:
  *
- *  - **Programmed showings** carry `start_time` (a real instant) and
- *    `duration_minutes`, so their hour span is known exactly. They are already
- *    public — the same rows render on the listings page.
+ *  - **Programmed showings** carry `start_time` (a real instant), and their
+ *    film's or event's `duration_minutes` gives the length (two hours when
+ *    none is set), so their hour span is known. They are already public — the
+ *    same rows render on the listings page.
  *
  *  - **Approved rentals** carry `arrival_time` / `departure_time` as `text`.
  *    Every value written through /rental-request comes from an

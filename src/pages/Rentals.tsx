@@ -94,7 +94,7 @@ export default function Rentals() {
       const [showingsResult, rentalsResult] = await Promise.all([
         supabase
           .from('showings')
-          .select('id, start_time, duration_minutes, movie:movies(title,duration_minutes), event:events(title,duration_minutes), live_performance:live_performances(title,duration_minutes)')
+          .select('id, start_time, movie:movies(title,duration_minutes), event:events(title,duration_minutes), live_performance:live_performances(title,duration_minutes)')
           .gte('start_time', today.toISOString())
           .lt('start_time', horizon.toISOString())
           .eq('is_active', true),
@@ -120,11 +120,9 @@ export default function Rentals() {
         // Showings carry a real instant, so their hours are known exactly —
         // read in the venue's zone, never the viewer's.
         const startMinutes = parseClockMinutes(formatShowtime(s.start_time, 'HH:mm'));
-        // The same chain as the sale cutoff: the show's own runtime, else the
-        // production's, else the default. It read only the show's, so a film
-        // or an event with its runtime set on the title held the room for the
-        // default two hours whatever it actually ran.
-        const runtime = resolveDurationMinutes(s, s.movie ?? s.event ?? s.live_performance);
+        // The same rule as the sale cutoff: the production's runtime, else the
+        // default.
+        const runtime = resolveDurationMinutes(s.movie ?? s.event ?? s.live_performance);
         next.push({
           dayKey: venueDayKey(s.start_time),
           startMinutes,

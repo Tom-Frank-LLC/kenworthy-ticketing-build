@@ -12,6 +12,8 @@ evidence: migration 20261002195410_production_runtime.sql applied on staging and
 
 # Brief (for Claude Code): Show/hide-runtime checkbox for movies (and the events question)
 
+> **Later (2026-10-02):** the per-show override described below was removed by [BRIEF-runtime-production-only](BRIEF-runtime-production-only.md). A runtime now lives only on the film or event.
+
 **Status:** Shipped, both halves (PR #354), 2026-10-02. Decision 1 was answered by Tom: events *do* have a runtime today, but only per show (the "Runs For" field, blank = 120), so it had to be typed into every show. Fix that: events get a runtime of their own, set once, which shows inherit, plus the same show/hide toggle.
 **Date:** October 2, 2026
 **Requested by:** Tom asked for a backend checkbox to show or hide the runtime on movies and events, and for an event's runtime to be set on the event rather than on each show.

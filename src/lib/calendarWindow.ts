@@ -14,10 +14,11 @@ import {
 /**
  * View math for the month grid.
  *
- * The grid opens **week-anchored**: `useFeed` fetches showings with
- * `.gte('start_time', now)`, so every day before this week is guaranteed empty,
- * and a month-anchored grid opened on up to four dead rows before the first
- * useful one.
+ * The grid opens **week-anchored**: `useFeed` lists only showings that have
+ * not ended, so every day before this week is empty — barring a show still
+ * playing past midnight, which `calendarStart` accounts for — and a
+ * month-anchored grid opened on up to four dead rows before the first useful
+ * one.
  *
  * The moment the reader pages, it switches to **month-anchored** and navigates
  * a month at a time from the 1st, which is the familiar calendar metaphor and
@@ -42,8 +43,25 @@ export function weekStart(day: Date): Date {
   return startOfWeek(day, { weekStartsOn: WEEK_STARTS_ON });
 }
 
-/** The earliest month the reader may page back to. Everything before the
- *  current month holds no showings at all. */
+/**
+ * The day the calendar treats as "today": today, or the day of a showing that
+ * started earlier and is still playing — a Saturday 11 PM film is still on at
+ * 12:30 AM Sunday, and it sits in Saturday's cell, which a grid opened on
+ * Sunday's week (or month) would not show. The feed only lists showings that
+ * have not ended, so its earliest day is never further back than that.
+ */
+export function calendarStart(itemDayKeys: Iterable<string>, now: Date = new Date()): Date {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let earliest: Date | null = null;
+  for (const key of itemDayKeys) {
+    const d = parseDayKey(key);
+    if (d && (earliest === null || d < earliest)) earliest = d;
+  }
+  return earliest && earliest < today ? earliest : today;
+}
+
+/** The earliest month the reader may page back to: the month of
+ *  `calendarStart`. Nothing before it holds a showing still to come. */
 export function monthFloor(today: Date): Date {
   return startOfMonth(today);
 }
@@ -182,12 +200,19 @@ function parseDayKey(key: string): Date | null {
  * November show would otherwise render an empty grid with no hint of where the
  * match is. Never moves behind the floor, and never changes mode: a reader who
  * has switched to month navigation stays in it.
+ *
+ * The week view is only ever the opening view (paging switches to months), so
+ * it is also moved back to `start`'s week when a showing still playing from an
+ * earlier day would otherwise sit just off its top edge.
  */
 export function anchorView(
   view: CalendarView,
   itemDayKeys: Iterable<string>,
   floor: Date,
+  start: Date = new Date(),
 ): CalendarView {
+  const weekFloor = weekStart(start);
+  if (view.mode === 'week' && view.start > weekFloor) view = { mode: 'week', start: weekFloor };
   const visible = new Set(viewDays(view).map((d) => format(d, 'yyyy-MM-dd')));
   let earliest: string | null = null;
   for (const key of itemDayKeys) {
@@ -202,6 +227,5 @@ export function anchorView(
     return { mode: 'month', start: target < floor ? floor : target };
   }
   const target = weekStart(parsed);
-  const weekFloor = weekStart(new Date());
   return { mode: 'week', start: target < weekFloor ? weekFloor : target };
 }
