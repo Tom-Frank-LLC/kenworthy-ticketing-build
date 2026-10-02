@@ -5,6 +5,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { SEO } from '@/components/SEO';
 import { venueDayKey, formatShowtime } from '@/lib/datetime';
+import { resolveDurationMinutes } from '@/lib/purchasable';
 import { Building2, Mail, Sparkles, Tag, CalendarDays } from 'lucide-react';
 import { RentalsHero } from '@/components/rentals/RentalsHero';
 import { MarqueeBookingForm } from '@/components/rentals/MarqueeBookingForm';
@@ -32,9 +33,6 @@ const DISCOUNTS = [
   { title: 'Nonprofit', detail: '20% off the base rental. Must be state-registered with proof of standing. Some limitations apply.' },
   { title: 'Consecutive days', detail: '10% off the base rental for three or more consecutive days. Some limitations apply.' },
 ];
-
-/** A showing with no recorded duration still occupies the room for an evening. */
-const DEFAULT_SHOWING_MINUTES = 120;
 
 // Annual black-out dates (holidays / staff dark days). A date that has already
 // passed this year rolls forward to next year, so the calendar never paints a
@@ -96,7 +94,7 @@ export default function Rentals() {
       const [showingsResult, rentalsResult] = await Promise.all([
         supabase
           .from('showings')
-          .select('id, start_time, duration_minutes, movie:movies(title), event:events(title), live_performance:live_performances(title)')
+          .select('id, start_time, duration_minutes, movie:movies(title,duration_minutes), event:events(title,duration_minutes), live_performance:live_performances(title,duration_minutes)')
           .gte('start_time', today.toISOString())
           .lt('start_time', horizon.toISOString())
           .eq('is_active', true),
@@ -122,7 +120,11 @@ export default function Rentals() {
         // Showings carry a real instant, so their hours are known exactly —
         // read in the venue's zone, never the viewer's.
         const startMinutes = parseClockMinutes(formatShowtime(s.start_time, 'HH:mm'));
-        const runtime = s.duration_minutes ?? DEFAULT_SHOWING_MINUTES;
+        // The same chain as the sale cutoff: the show's own runtime, else the
+        // production's, else the default. It read only the show's, so a film
+        // or an event with its runtime set on the title held the room for the
+        // default two hours whatever it actually ran.
+        const runtime = resolveDurationMinutes(s, s.movie ?? s.event ?? s.live_performance);
         next.push({
           dayKey: venueDayKey(s.start_time),
           startMinutes,

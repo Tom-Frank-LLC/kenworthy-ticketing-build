@@ -20,7 +20,7 @@ import { type Seat, type PriceTier } from '@/lib/booking';
 import { useOrderQuote } from '@/lib/quote';
 import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
 import type { DiscountRule } from '@/lib/discounts';
-import { ProductionMedia, ProductionMetaBadges } from '@/components/ProductionMedia';
+import { ProductionMedia, ProductionMetaBadges, displayedRuntime } from '@/components/ProductionMedia';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
@@ -1023,7 +1023,7 @@ export default function Showing() {
 
   // Whether this page can still sell anything. Computed after the loading
   // guard above so the film's runtime is in hand: the cutoff is the end of the
-  // show, and for a film that end depends on production.duration_minutes.
+  // show, and that end falls back to production.duration_minutes (film or event).
   const hasPassed = isPast(showing, production);
   // Free and open: no purchase panel at all. Read from the showing row rather
   // than inferred from a $0 price — a $0 showing with this false is still
@@ -1136,7 +1136,7 @@ export default function Showing() {
             <ProductionMetaBadges
               rating={production?.rating}
               genre={production?.genre}
-              durationMinutes={production?.duration_minutes}
+              durationMinutes={displayedRuntime(production)}
               className="mt-2"
             />
             <RichText

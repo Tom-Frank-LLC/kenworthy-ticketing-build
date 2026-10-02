@@ -185,3 +185,57 @@ describe('Showing: a film whose tickets are not sold here', () => {
     expect(screen.queryByRole('link', { name: /get tickets/i })).toBeNull();
   });
 });
+
+/**
+ * "Show runtime on the public page" (movies.show_runtime) is display only. The
+ * badge row loses the runtime; the clock that decides "this showing has passed"
+ * does not.
+ */
+describe('Showing: a film with its runtime hidden', () => {
+  const upcoming = { ...pastShowing, id: 'showing-soon', start_time: iso(3 * DAY), is_active: true };
+
+  it('prints the runtime by default — what every existing film does', async () => {
+    tables = { showings: [upcoming], movies: [{ ...movie, show_runtime: true }] };
+    renderShowing('showing-soon');
+
+    expect(await screen.findByText('1h 35m')).toBeTruthy();
+  });
+
+  it('leaves the runtime off the page when unticked', async () => {
+    tables = { showings: [upcoming], movies: [{ ...movie, show_runtime: false }] };
+    renderShowing('showing-soon');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'The Gold Rush' })).toBeTruthy();
+    expect(screen.queryByText('1h 35m')).toBeNull();
+    expect(screen.queryByText('1 hour 35 minutes')).toBeNull();
+  });
+
+  it('still calls a finished showing passed', async () => {
+    tables = { showings: [pastShowing], movies: [{ ...movie, show_runtime: false }] };
+    renderShowing('showing-past');
+
+    expect(await screen.findByText('This showing has passed.')).toBeTruthy();
+  });
+});
+
+/** An event's runtime, set once on the event, shows the same way — and hides the same way. */
+describe('Showing: an event with its own runtime', () => {
+  const gala = { id: 'event-1', title: 'Gala Night', is_active: true, ticket_type: 'ticketed', poster_url: null };
+  const show = {
+    ...pastShowing, id: 'showing-gala', movie_id: null, event_id: 'event-1',
+    start_time: iso(3 * DAY), is_active: true,
+  };
+
+  it('prints it when set', async () => {
+    tables = { showings: [show], events: [{ ...gala, duration_minutes: 90, show_runtime: true }] };
+    renderShowing('showing-gala');
+    expect(await screen.findByText('1h 30m')).toBeTruthy();
+  });
+
+  it('leaves it off when unticked', async () => {
+    tables = { showings: [show], events: [{ ...gala, duration_minutes: 90, show_runtime: false }] };
+    renderShowing('showing-gala');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Gala Night' })).toBeTruthy();
+    expect(screen.queryByText('1h 30m')).toBeNull();
+  });
+});

@@ -107,7 +107,7 @@ function positiveMinutes(value: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** showing override → film runtime → the two-hour default. */
+/** showing override → the production's runtime (film, event or performance) → the two-hour default. */
 export function resolveDurationMinutes(
   showing: ShowingTiming,
   production?: ProductionRuntime | null,

@@ -12,4 +12,4 @@
  * anon, it goes here and nowhere else.
  */
 export const MOVIE_PUBLIC_COLUMNS =
-  'id,title,description,poster_url,duration_minutes,rating,genre,is_active,created_at,updated_at,trailer_url,is_featured,release_year,release_label,pass_processing_fee,ticket_type,rsvp_url';
+  'id,title,description,poster_url,duration_minutes,rating,genre,is_active,created_at,updated_at,trailer_url,is_featured,release_year,release_label,pass_processing_fee,ticket_type,rsvp_url,show_runtime';

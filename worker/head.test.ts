@@ -111,8 +111,18 @@ describe('showingJsonLd', () => {
   });
 
   it('types live performances and events differently', () => {
-    const concert = showingJsonLd({ ...base, movies: null, live_performances: { title: 'Band', description: null, poster_url: null } }, 'https://k', before)!;
+    const concert = showingJsonLd({ ...base, movies: null, live_performances: { title: 'Band', description: null, poster_url: null, duration_minutes: null } }, 'https://k', before)!;
     expect(concert['@type']).toBe('MusicEvent');
     expect(concert.workPresented).toBeUndefined();
+  });
+
+  it("ends an event on the event's own runtime, and on two hours when it has none", () => {
+    // 02:00Z start. A 90-minute event set once on the event, no per-show value.
+    const evt = (duration_minutes: number | null): ShowingRow =>
+      ({ ...base, movies: null, events: { title: 'Gala', description: null, poster_url: null, duration_minutes } });
+    expect(showingJsonLd(evt(90), 'https://k', before)!.endDate).toBe('2026-09-12T03:30:00.000Z');
+    expect(showingJsonLd(evt(null), 'https://k', before)!.endDate).toBe('2026-09-12T04:00:00.000Z');
+    // A show's own runtime still wins over the event's.
+    expect(showingJsonLd({ ...evt(90), duration_minutes: 45 }, 'https://k', before)!.endDate).toBe('2026-09-12T02:45:00.000Z');
   });
 });

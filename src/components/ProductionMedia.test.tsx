@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ProductionMetaBadges } from './ProductionMedia';
+import { ProductionMetaBadges, displayedRuntime } from './ProductionMedia';
 
 /**
  * This badge is the only place a run time reaches a patron's eye — the showing
@@ -62,5 +62,31 @@ describe('ProductionMetaBadges', () => {
     // an empty badge, or a whole row for a production with no real meta.
     const { container } = render(<ProductionMetaBadges genre=", ," durationMinutes={0} />);
     expect(container.firstChild).toBeNull();
+  });
+});
+
+/**
+ * "Show runtime on the public page" (movies.show_runtime). Unticked, the badge
+ * row takes its existing no-runtime path — rating and genre stay, the clock
+ * goes. Only `false` hides it: a row read before the column existed, or one
+ * the select did not name, carries `undefined` and must look as it always did.
+ */
+describe('displayedRuntime', () => {
+  it('passes the duration through when the runtime is shown, or the flag is absent', () => {
+    expect(displayedRuntime({ duration_minutes: 108, show_runtime: true })).toBe(108);
+    expect(displayedRuntime({ duration_minutes: 108 })).toBe(108);
+    expect(displayedRuntime(null)).toBeUndefined();
+  });
+
+  it('drops the runtime from the badge row, and only the runtime, when hidden', () => {
+    const film = { rating: 'PG', genre: 'Drama', duration_minutes: 108, show_runtime: false };
+    const { container } = render(
+      <ProductionMetaBadges rating={film.rating} genre={film.genre} durationMinutes={displayedRuntime(film)} />,
+    );
+
+    expect(screen.getByText('PG')).toBeTruthy();
+    expect(screen.getByText('Drama')).toBeTruthy();
+    expect(screen.queryByText('1h 48m')).toBeNull();
+    expect(container.textContent).not.toMatch(/minute/);
   });
 });

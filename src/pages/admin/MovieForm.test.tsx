@@ -237,3 +237,41 @@ describe('MovieForm — the word is External, not RSVP', () => {
     expect(screen.queryByRole('option', { name: 'RSVP' })).toBeNull();
   });
 });
+
+describe('MovieForm — show runtime on the public page', () => {
+  it('writes a new film with its runtime shown, which is what every existing film does', async () => {
+    renderForm('/admin/movies/new');
+
+    fireEvent.change(await screen.findByLabelText('Title *'), { target: { value: 'The Gold Rush' } });
+    expect(screen.getByLabelText('Show runtime on the public page')).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Create Movie' }));
+
+    await waitFor(() => expect(state.writes).toHaveLength(1));
+    expect(state.writes[0].payload).toMatchObject({ show_runtime: true, duration_minutes: 90 });
+  });
+
+  it('loads a hidden runtime unticked, and keeps the duration when saving it hidden', async () => {
+    state.rows.movies = { id: MOVIE_ID, title: 'The Gold Rush', duration_minutes: 95, is_active: true, show_runtime: false };
+    renderForm(`/admin/movies/${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Title *')).toHaveValue('The Gold Rush'));
+    expect(screen.getByLabelText('Show runtime on the public page')).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Update Movie' }));
+
+    await waitFor(() => expect(state.writes).toHaveLength(1));
+    // The duration still ends the showing, so hiding it must not drop it.
+    expect(state.writes[0].payload).toMatchObject({ show_runtime: false, duration_minutes: 95 });
+  });
+
+  it('can be unticked', async () => {
+    state.rows.movies = { id: MOVIE_ID, title: 'The Gold Rush', duration_minutes: 95, is_active: true, show_runtime: true };
+    renderForm(`/admin/movies/${MOVIE_ID}`);
+
+    await waitFor(() => expect(screen.getByLabelText('Show runtime on the public page')).toBeChecked());
+    fireEvent.click(screen.getByLabelText('Show runtime on the public page'));
+    fireEvent.click(screen.getByRole('button', { name: 'Update Movie' }));
+
+    await waitFor(() => expect(state.writes).toHaveLength(1));
+    expect(state.writes[0].payload).toMatchObject({ show_runtime: false });
+  });
+});

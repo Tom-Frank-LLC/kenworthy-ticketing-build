@@ -39,10 +39,10 @@ export type ProductionKind = 'movie' | 'event' | 'concert';
 
 export function productionOf(showing: ShowingRow): { kind: ProductionKind; title: string; description: string | null; poster: string | null; duration: number | null } | null {
   if (showing.events) {
-    return { kind: 'event', title: showing.events.title, description: showing.events.description, poster: showing.events.poster_url, duration: null };
+    return { kind: 'event', title: showing.events.title, description: showing.events.description, poster: showing.events.poster_url, duration: showing.events.duration_minutes ?? null };
   }
   if (showing.live_performances) {
-    return { kind: 'concert', title: showing.live_performances.title, description: showing.live_performances.description, poster: showing.live_performances.poster_url, duration: null };
+    return { kind: 'concert', title: showing.live_performances.title, description: showing.live_performances.description, poster: showing.live_performances.poster_url, duration: showing.live_performances.duration_minutes ?? null };
   }
   if (showing.movies) {
     return { kind: 'movie', title: showing.movies.title, description: showing.movies.description, poster: showing.movies.poster_url, duration: showing.movies.duration_minutes };

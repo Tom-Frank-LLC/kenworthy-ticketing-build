@@ -126,7 +126,7 @@ vi.mock('@/integrations/supabase/client', () => {
     if (table === 'showing_price_tiers') return state.existingTiers;
     if (table === 'events') {
       return [
-        { id: EVENT_ID, title: 'Gala Night', ticket_type: 'ticketed', is_active: true },
+        { id: EVENT_ID, title: 'Gala Night', ticket_type: 'ticketed', is_active: true, duration_minutes: 90 },
         // Booked elsewhere: takes a show, but the show sells nothing here.
         { id: RSVP_EVENT_ID, title: 'Community Potluck', ticket_type: 'rsvp', rsvp_url: 'https://potluck.example/rsvp', is_active: true },
         // No ticketing mode at all: reads as ticketed, as every row did before
@@ -908,5 +908,37 @@ describe('ShowingForm — an event or performance not ticketed here', () => {
     await waitFor(() => expect(state.tierWrites).toHaveLength(1));
     expect(state.tierWrites[0].tiers).toEqual([]);
     expect(state.tierTableWrites).toEqual([]);
+  });
+});
+
+/**
+ * An event's runtime is set once on the event; a show inherits it the way a
+ * film's show inherits the film's. "Runs For" is the per-show override, and a
+ * blank one is stored as null so a later change on the event reaches the show.
+ */
+describe('ShowingForm — a show inherits its event\'s runtime', () => {
+  it("offers the event's runtime as what a blank field means, and stores blank as inherit", async () => {
+    renderForm(`/admin/showings/new?event=${EVENT_ID}`);
+    await waitFor(() => expect(screen.getByLabelText('Event *')).toHaveTextContent('Gala Night'));
+
+    const field = screen.getByLabelText('Runs For (minutes)');
+    expect(field).toHaveAttribute('placeholder', '90');
+    expect(screen.getByText(/Leave blank to use this event's runtime \(1h 30m\)/)).toBeTruthy();
+
+    fillShowtimes(['2026-09-12T19:30']);
+    submit();
+
+    await waitFor(() => expect(state.showingInserts).toHaveLength(1));
+    expect(state.showingInserts[0].duration_minutes).toBeNull();
+  });
+
+  it('points at the event form when the event has no runtime yet', async () => {
+    renderForm(`/admin/showings/new?performance=${PERFORMANCE_ID}`);
+    await waitFor(() =>
+      expect(screen.getByLabelText('Live Performance *')).toHaveTextContent('Palouse Jazz Quartet'),
+    );
+
+    expect(screen.getByLabelText('Runs For (minutes)')).toHaveAttribute('placeholder', '120');
+    expect(screen.getByText(/set the runtime once on the event and every show uses it/)).toBeTruthy();
   });
 });
