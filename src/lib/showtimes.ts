@@ -9,9 +9,9 @@ import { isPast, resolveDurationMinutes } from './purchasable';
  * database as `start_time >= now` — that drops a programme that began an hour
  * ago and is still selling, including, on the ticketing page, the very date
  * the reader is looking at. The database cannot answer the real question
- * either: the end depends on `duration_minutes` falling back to the film's,
- * falling back to a default, which is src/lib/purchasable.ts's chain and not
- * something to restate in a filter.
+ * either: the end depends on the production's `duration_minutes`, falling
+ * back to a default, which is src/lib/purchasable.ts's rule and not something
+ * to restate in a filter.
  *
  * So the query casts one bounded net backwards and `isPast` decides. Twelve
  * hours is well past the longest thing this house programmes (a silent-film
@@ -19,7 +19,7 @@ import { isPast, resolveDurationMinutes } from './purchasable';
  * no lower bound at all, would pull a hundred years of screenings to display
  * a week of them.
  */
-const LOOKBACK_MS = 12 * 60 * 60 * 1000;
+export const LOOKBACK_MS = 12 * 60 * 60 * 1000;
 
 /** Which column ties a showing to its production. Exactly one is ever set. */
 export function productionKey(

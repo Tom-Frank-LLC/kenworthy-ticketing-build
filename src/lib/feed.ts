@@ -10,10 +10,11 @@ import type { FeedItem, UpcomingShowing } from '@/components/home/TrailerFeed';
  * they opened the drawer. This is that reassembly, done once at feed-build
  * time so the two pages cannot drift.
  *
- * "Upcoming" is already true of everything here: both builders query
- * `start_time >= now`. The live check against a tab left open across a showtime
- * belongs at render, next to the button it hides — see `ShowingPreview`, which
- * asks `isPast` per chip.
+ * "Upcoming" — not yet ended — is already true of everything here: the feed
+ * drops finished showings when it loads. Each chip carries its production's
+ * runtime so the live check against a tab left open across an end, which
+ * belongs at render next to the button it hides, knows when that end is — see
+ * `ShowtimeChips`, which asks `isPast` per chip.
  *
  * Items with no showing of their own (standalone RSVP / info-only events) get
  * an empty list rather than being skipped, so callers never have to null-check.
@@ -34,6 +35,7 @@ export function attachUpcomingShowings(items: FeedItem[]): FeedItem[] {
       ticket_price: item.ticketPrice ?? 0,
       no_ticket_required: item.noTicketRequired ?? false,
       manually_sold_out: item.manuallySoldOut ?? false,
+      duration_minutes: item.durationMinutes ?? null,
     });
     byProduction.set(key, list);
   }

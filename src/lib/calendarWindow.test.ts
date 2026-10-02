@@ -4,6 +4,7 @@ import {
   WEEKS_IN_VIEW,
   type CalendarView,
   anchorView,
+  calendarStart,
   canStepBack,
   isShadedMonth,
   monthDividers,
@@ -221,5 +222,38 @@ describe('anchorView', () => {
 
   it('ignores a malformed key rather than jumping somewhere absurd', () => {
     expect(key(anchorView(WEEK_VIEW, ['not-a-date'], FLOOR).start)).toBe('2026-08-23');
+  });
+});
+
+/**
+ * The feed lists a showing until it ends, so just after midnight a Saturday
+ * 11 PM film can still be playing while "today" is Sunday. Its cell is
+ * Saturday's, which a grid opened on Sunday's week would not show.
+ */
+describe('calendarStart', () => {
+  // 2026-08-30 is a Sunday; 00:30 the night after Saturday 2026-08-29.
+  const SUN_0030 = new Date(2026, 7, 30, 0, 30);
+
+  it('is today when nothing earlier is still playing', () => {
+    expect(key(calendarStart(['2026-08-30', '2026-09-02'], SUN_0030))).toBe('2026-08-30');
+    expect(key(calendarStart([], SUN_0030))).toBe('2026-08-30');
+  });
+
+  it("is yesterday when last night's show is still on", () => {
+    expect(key(calendarStart(['2026-08-29', '2026-09-02'], SUN_0030))).toBe('2026-08-29');
+  });
+
+  it("opens the week view on that show's week, and the arrows can reach its month", () => {
+    const start = calendarStart(['2026-08-29', '2026-08-30'], SUN_0030);
+    // Opened on Sunday's own week (2026-08-30), the Saturday cell is off the top.
+    const opened = anchorView({ mode: 'week', start: weekStart(SUN_0030) }, ['2026-08-29', '2026-08-30'], monthFloor(start), start);
+    expect(key(opened.start)).toBe('2026-08-23');
+    expect(viewDays(opened).map(key)).toContain('2026-08-29');
+  });
+
+  it("lets month navigation reach last month when the show crossed into the 1st", () => {
+    // 00:30 on Tuesday 2026-09-01, a 2026-08-31 show still playing.
+    const start = calendarStart(['2026-08-31'], new Date(2026, 8, 1, 0, 30));
+    expect(key(monthFloor(start))).toBe('2026-08-01');
   });
 });

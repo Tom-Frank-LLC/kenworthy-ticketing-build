@@ -4,6 +4,8 @@ import type { FeedItem } from '@/components/home/TrailerFeed';
 import { attachUpcomingShowings } from '@/lib/feed';
 import { htmlToPlainText } from '@/lib/richText';
 import { MOVIE_PUBLIC_COLUMNS } from '@/lib/movieColumns';
+import { isPast } from '@/lib/purchasable';
+import { LOOKBACK_MS } from '@/lib/showtimes';
 
 type ProductionType = 'movie' | 'event' | 'concert';
 
@@ -18,6 +20,8 @@ export interface FullProduction {
   is_featured?: boolean;
   ticket_type?: string;
   rsvp_url?: string | null;
+  /** Runtime in minutes: when this production's showings end. Null/0 → the two-hour default. */
+  duration_minutes?: number | null;
   type: ProductionType;
 }
 
@@ -55,7 +59,13 @@ export const FEED_QUERY_KEY = ['feed'] as const;
 export const FEED_STALE_MS = 60_000;
 
 export async function fetchFeed(): Promise<FeedData> {
-  const now = new Date().toISOString();
+  // A showing stays listed until it *ends*, not until it starts: someone
+  // checking what is on at 7:40 should still find the 7:00 film, and can
+  // still buy into it. The end is the production's runtime (or the default),
+  // which the database cannot filter on without restating the rule, so the
+  // query casts the same bounded net backwards the showing page's date list
+  // does and isPast decides below.
+  const since = new Date(Date.now() - LOOKBACK_MS).toISOString();
   const [moviesRes, eventsRes, concertsRes, showingsRes] = await Promise.all([
     supabase
       .from('movies')
@@ -67,7 +77,7 @@ export async function fetchFeed(): Promise<FeedData> {
       .from('showings')
       .select(SHOWING_FEED_COLUMNS)
       .eq('is_active', true)
-      .gte('start_time', now)
+      .gte('start_time', since)
       .order('start_time'),
   ]);
 
@@ -87,6 +97,7 @@ export async function fetchFeed(): Promise<FeedData> {
     if (!type || !prodId) continue;
     const prod = byId.get(`${type}:${prodId}`);
     if (!prod) continue;
+    if (isPast(s, prod)) continue;
     items.push({
       id: `${type}-${prodId}-${s.id}`,
       productionId: prodId,
@@ -95,6 +106,7 @@ export async function fetchFeed(): Promise<FeedData> {
       trailerUrl: prod.trailer_url,
       startTime: s.start_time,
       showingId: s.id,
+      durationMinutes: prod.duration_minutes ?? null,
       type,
       ticketType: prod.ticket_type,
       rsvpUrl: prod.rsvp_url,

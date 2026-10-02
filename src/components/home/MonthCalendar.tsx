@@ -7,6 +7,7 @@ import { formatShowtime, venueDayKey } from '@/lib/datetime';
 import {
   type CalendarView,
   anchorView,
+  calendarStart,
   canStepBack,
   isShadedMonth,
   monthDividers,
@@ -131,19 +132,20 @@ export function MonthCalendar({
     return map;
   }, [items]);
 
-  // The earliest month the arrows reach. `useFeed` fetches showings with
-  // `.gte('start_time', now)`, so everything before the current month is
-  // guaranteed empty and there is nothing back there to page to.
-  const floor = useMemo(() => monthFloor(new Date()), []);
-
   const dayKeys = useMemo(() => [...byDay.keys()].sort(), [byDay]);
+
+  // "Today" for the grid: today, or the day of a showing still playing from
+  // before midnight. `useFeed` lists only showings that have not ended, so
+  // nothing earlier holds anything, and the arrows stop at its month.
+  const start = useMemo(() => calendarStart(dayKeys), [dayKeys]);
+  const floor = useMemo(() => monthFloor(start), [start]);
 
   // Opens week-anchored on the current week, then switches to month navigation
   // the moment the reader pages. `anchorView` only moves off the current week
   // if the next six weeks are completely empty, which for a venue that
   // programmes weekly means it opens on the current week in every real case.
   const [view, setView] = useState<CalendarView>(() =>
-    anchorView({ mode: 'week', start: weekStart(new Date()) }, dayKeys, floor),
+    anchorView({ mode: 'week', start: weekStart(start) }, dayKeys, floor, start),
   );
 
   // Opens on today so the panel beside the grid is populated on a night we
@@ -176,10 +178,10 @@ export function MonthCalendar({
     if (lastSignature.current === dayKeySignature) return;
     lastSignature.current = dayKeySignature;
     setView((current) => {
-      const next = anchorView(current, dayKeys, floor);
+      const next = anchorView(current, dayKeys, floor, start);
       return isSameDay(next.start, current.start) && next.mode === current.mode ? current : next;
     });
-  }, [dayKeySignature, dayKeys, floor]);
+  }, [dayKeySignature, dayKeys, floor, start]);
 
   const days = useMemo(() => viewDays(view), [view]);
   const dividers = useMemo(() => monthDividers(days, view), [days, view]);

@@ -1,6 +1,6 @@
 ---
 brief: runtime-production-only
-title: A runtime is set only on the film or event; showings no longer carry one
+title: A runtime is set only on the film or event; showings carry none, and the listing and calendar keep a show until it ends
 status: built
 track: data
 severity: P2
@@ -45,6 +45,16 @@ So moving each value up to its production changes no show's end time. Staging he
   - `ShowtimeChips` passes its carried runtime as the production's.
 - **Festival lineup:** `selectFestivalLineup` used `isPast(s, null)`, so a screening ended on its show-level value or at 2h, ignoring the film's runtime. It now resolves through the screening's film or event, like the card beside it already did.
 
+## Listing and calendar: until the show ends (Tom, 2026-10-02)
+Asked while checking the wiring. Before this, the listing and calendar never used a runtime:
+- `useFeed` fetched `start_time >= now`, so a show vanished the moment it started.
+- In an open tab, every buy button and chip hid at start + 2h, whatever the show ran.
+
+Tom's decision: keep a show listed until it ends, and use the runtime in the buttons and chips.
+- `useFeed` fetches from `now − LOOKBACK_MS` (12h, shared with `showtimes.ts`). It drops each showing for which `isPast(s, production)`. Production's longest runtime is 310 min. Anon RLS on `showings` allows started rows (`is_active OR start_time < now()`), the same on both projects.
+- `FeedItem.durationMinutes` carries the production's runtime. `attachUpcomingShowings` puts it on each chip. TrailerFeed, BoothNote and ShowingPreview pass it to `isPast`.
+- Calendar: a show still playing after midnight sits in yesterday's cell. `calendarStart()` makes that day the grid's "today", so the opening week and the month floor include it (Saturday 11 PM → Sunday 12:30 AM; the 31st → the 1st).
+
 ## Deploy order: two stages, per environment
 The code live before this change selects `showings.duration_minutes` by name, and PostgREST fails a select naming a missing column. So the column is dropped only after code that no longer reads it is live:
 1. `db push` with **only 20261002222321** in the tree (hold 20261002224512 back). This is safe with the old code still live: the old chain reads the same values from the show or the production.
@@ -63,3 +73,12 @@ Between steps 2 and 3, a staff browser still running the old bundle (service-wor
 - `ShowingForm.test.tsx`: no Runs For field. The note states the event's runtime and links to it, the no-runtime note links to set it, and the insert carries no `duration_minutes`.
 - Worker JSON-LD and `loadOrder` read the production only.
 - Pricing harness: 106/106 against the updated stub.
+- `useFeed.test.tsx`:
+  - A 150-minute show 2h10m in stays; a 60-minute one 90 minutes in goes.
+  - A show with no runtime gets the default.
+  - Items and chips carry the runtime, and the query reaches back 12h.
+- `ShowingPreview.test.tsx`:
+  - Get Tickets stays on the long show and goes on the short one.
+  - A still-playing date stays as a chip.
+- Mutation check: dropping the runtime from the button and from `feed.ts` fails all four new tests.
+- `calendarWindow.test.ts`: `calendarStart` is today, or yesterday when last night's show is still on. The opening week includes Saturday at Sunday 00:30, and the floor reaches August from 1 September.
