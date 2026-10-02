@@ -1,12 +1,13 @@
 ---
 brief: runtime-production-only
 title: A runtime is set only on the film or event; showings carry none, and the listing and calendar keep a show until it ends
-status: built
+status: shipped
 track: data
-severity: P2
 date: 2026-10-02
-verified: false
-evidence: migrations 20261002222321 (move per-show values up, showing_ends_at reads the production) and 20261002224512 (drop showings.duration_minutes), both tested on postgres:15
+shipped_in: ["#355"]
+shipped_at: 2026-10-02
+verified: true
+evidence: migrations 20261002222321 and 20261002224512 applied on staging and production in two stages (tested on postgres:15 first); ticket-access + send-ticket-confirmation and the Worker deployed to both between them; every reader re-queried after the drop
 ---
 
 # Runtime lives on the production only
