@@ -172,3 +172,69 @@ export function buildAuthEmailText(opts: {
 }
 
 export { COPY as AUTH_EMAIL_COPY };
+
+// ---------------------------------------------------------------------------
+// Who may be sent a way in.
+//
+// Tom's decision, 2026-10-06 (security audit H1): an account holding no staff,
+// host, admin or superadmin role must not be able to sign in. Checkout makes a
+// confirmed account for every guest buyer, and before this the hook mailed any
+// of them a recovery or magic link on request — a real session for anyone who
+// had ever bought a ticket.
+//
+// So for a role-less account the hook delivers only what cannot sign anybody
+// in. Everything else is dropped *and answered exactly as if sent*, because
+// GoTrue answers a request for an unknown address with the same 200: a refusal
+// the requester could see would tell them which addresses hold accounts.
+// ---------------------------------------------------------------------------
+
+/** The roles that may sign in. `regular_user` (every buyer) is not one. */
+export const SIGN_IN_ROLES = ['staff', 'host', 'admin', 'superadmin'] as const;
+
+/**
+ * Whether an email of this action type may go to an account with no sign-in
+ * role.
+ *
+ *   invite         yes. invite-staff calls inviteUserByEmail first and grants
+ *                  the role a moment later, so at hook time a real invitee has
+ *                  no role yet. An invite only ever goes to an address an admin
+ *                  just typed, to an account inviteUserByEmail just created.
+ *   *_notification yes. Supabase's security notices ("your password changed")
+ *                  carry no token and sign nobody in.
+ *   anything else  no: recovery, magiclink, signup, email_change*,
+ *                  reauthentication, and any type added later — unknown types
+ *                  are refused, not waved through.
+ */
+export function deliverableWithoutRole(action: string): boolean {
+  return action === 'invite' || /_notification$/.test(action);
+}
+
+/**
+ * Whether the user holds a sign-in role, read as service_role through
+ * PostgREST (this hook has no supabase-js client, like _shared/audit.ts).
+ * Returns null if the lookup failed, so the caller can fail closed with a
+ * retryable error rather than guess.
+ */
+export async function holdsSignInRole(
+  userId: string,
+  env: { url: string; serviceKey: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean | null> {
+  if (!userId || !env.url || !env.serviceKey) return null;
+  const qs = new URLSearchParams({
+    select: 'role',
+    user_id: `eq.${userId}`,
+    role: `in.(${SIGN_IN_ROLES.join(',')})`,
+    limit: '1',
+  });
+  try {
+    const res = await fetchImpl(`${env.url.replace(/\/+$/, '')}/rest/v1/user_roles?${qs}`, {
+      headers: { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` },
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return Array.isArray(rows) ? rows.length > 0 : null;
+  } catch {
+    return null;
+  }
+}

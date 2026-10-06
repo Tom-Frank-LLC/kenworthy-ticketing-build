@@ -12,7 +12,7 @@
 // else's address.
 
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { isOperator, overridesFor } from './confirmation_auth.ts';
+import { flagsFor, isOperator, overridesFor } from './confirmation_auth.ts';
 
 const SERVICE = { isServiceRole: true, isStaff: false };
 const STAFF = { isServiceRole: false, isStaff: true };
@@ -61,4 +61,25 @@ Deno.test('a missing override is an empty string, not "undefined"', () => {
     phone: '',
     name: '',
   });
+});
+
+Deno.test('M1: a patron cannot force a resend or claim an account was created', () => {
+  assertEquals(flagsFor(PATRON, { force: true, account_created: true }), {
+    force: false,
+    accountCreated: false,
+  });
+});
+
+Deno.test('operators keep force and account_created', () => {
+  for (const op of [SERVICE, STAFF]) {
+    assertEquals(flagsFor(op, { force: true, account_created: true }), {
+      force: true,
+      accountCreated: true,
+    });
+    // Truthy is not true: only a literal boolean counts.
+    assertEquals(flagsFor(op, { force: 'yes', account_created: 1 }), {
+      force: false,
+      accountCreated: false,
+    });
+  }
 });

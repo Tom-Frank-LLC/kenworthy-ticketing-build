@@ -49,3 +49,26 @@ export function overridesFor(
     name: String(body.name || ''),
   };
 }
+
+/** The resend flags, as a request body carries them. */
+export interface FlagBody {
+  force?: unknown;
+  account_created?: unknown;
+}
+
+/**
+ * Read the delivery flags a caller is allowed to set.
+ *
+ * `force` re-sends an order that already went out, and each send can be a text
+ * at Twilio's price; `account_created` asserts something only the checkout
+ * server knows. Both are operator-only. A patron resending their own order
+ * gets exactly one delivery — the `already_sent` guard in deliver.ts is the
+ * rate limit, and `force` was the only way around it (security audit M1).
+ */
+export function flagsFor(
+  caller: CallerClass,
+  body: FlagBody,
+): { force: boolean; accountCreated: boolean } {
+  if (!isOperator(caller)) return { force: false, accountCreated: false };
+  return { force: body.force === true, accountCreated: body.account_created === true };
+}

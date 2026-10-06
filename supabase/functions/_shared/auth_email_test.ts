@@ -13,7 +13,9 @@ import {
   buildAuthEmailHtml,
   buildAuthEmailText,
   copyFor,
+  deliverableWithoutRole,
   esc,
+  holdsSignInRole,
 } from './auth-email.ts';
 
 // A real-looking secret: 24 random bytes, base64. Not a live credential.
@@ -153,4 +155,54 @@ Deno.test('escaping neutralises markup in interpolated values', () => {
   assertEquals(esc('<b>&"'), '&lt;b&gt;&amp;&quot;');
   const html = buildAuthEmailHtml({ action: 'recovery', verifyUrl: 'https://x.test/"><script>alert(1)</script>' });
   assertEquals(html.includes('<script>alert(1)</script>'), false);
+});
+
+// ---------------------------------------------------------------------------
+// H1: no way in for an account without a sign-in role.
+// ---------------------------------------------------------------------------
+
+Deno.test('H1: a role-less account is sent nothing that signs in', () => {
+  for (const action of [
+    'recovery', 'magiclink', 'signup', 'email_change', 'email_change_current',
+    'email_change_new', 'reauthentication', 'email', 'some_future_type',
+  ]) {
+    assertEquals(deliverableWithoutRole(action), false, action);
+  }
+});
+
+Deno.test('H1: invites and token-less notices still go to a role-less account', () => {
+  // invite-staff grants the role only after inviteUserByEmail returns.
+  assertEquals(deliverableWithoutRole('invite'), true);
+  assertEquals(deliverableWithoutRole('password_changed_notification'), true);
+});
+
+function rolesStub(status: number, rows: unknown) {
+  const urls: string[] = [];
+  const impl = ((url: string) => {
+    urls.push(url);
+    return Promise.resolve(new Response(JSON.stringify(rows), { status }));
+  }) as unknown as typeof fetch;
+  return { urls, impl };
+}
+
+const ENV = { url: 'https://p.example/', serviceKey: 'svc' };
+
+Deno.test('holdsSignInRole asks only for the sign-in roles', async () => {
+  const s = rolesStub(200, [{ role: 'staff' }]);
+  assertEquals(await holdsSignInRole('u1', ENV, s.impl), true);
+  const u = new URL(s.urls[0]);
+  assertEquals(u.pathname, '/rest/v1/user_roles');
+  assertEquals(u.searchParams.get('user_id'), 'eq.u1');
+  assertEquals(u.searchParams.get('role'), 'in.(staff,host,admin,superadmin)');
+});
+
+Deno.test('a buyer (regular_user only) holds no sign-in role', async () => {
+  assertEquals(await holdsSignInRole('u1', ENV, rolesStub(200, []).impl), false);
+});
+
+Deno.test('a failed lookup is null — the hook fails closed, not open', async () => {
+  assertEquals(await holdsSignInRole('u1', ENV, rolesStub(500, { message: 'x' }).impl), null);
+  const throwing = (() => Promise.reject(new Error('down'))) as unknown as typeof fetch;
+  assertEquals(await holdsSignInRole('u1', ENV, throwing), null);
+  assertEquals(await holdsSignInRole('', ENV, rolesStub(200, []).impl), null);
 });

@@ -12,7 +12,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
 import { loadOrder } from '../_shared/tickets.ts';
 import { deliverConfirmation } from '../_shared/deliver.ts';
-import { isOperator as callerIsOperator, overridesFor } from '../_shared/confirmation_auth.ts';
+import { flagsFor, isOperator as callerIsOperator, overridesFor } from '../_shared/confirmation_auth.ts';
+import { callerHasRole, verifyServiceRoleCaller } from '../_shared/callers.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -20,25 +21,6 @@ declare const Deno: any;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-
-/**
- * Read the payload of an already-verified JWT.
- *
- * No signature check here on purpose — the edge gateway performs it before the
- * function is invoked (verify_jwt = true). Never call this on a token that has
- * not been through the gateway.
- */
-function decodeJwtPayload(token: string): { role?: string; sub?: string } | null {
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  try {
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -61,8 +43,10 @@ Deno.serve(async (req: Request) => {
     //                     address at the counter, so it can only deliver by
     //                     overriding the recipient. Trusted the same as the
     //                     service role: any order, overrides honoured.
-    //   signed-in user -- the authenticated checkout path in Showing.tsx.
-    //                     Allowed only for their own order, overrides ignored.
+    //   signed-in user -- anyone else with a session: a host, or a buyer who
+    //                     still holds one from before patron sign-in was
+    //                     refused. Allowed only for their own order, once:
+    //                     overrides, force and account_created are ignored.
     //
     // "Operator" below is the first two. The staff gate is `has_role(.., 'staff')`
     // — the same test as `isStaff` in src/lib/auth.tsx and the same one
@@ -77,19 +61,15 @@ Deno.serve(async (req: Request) => {
     // otherwise trigger a resend and redirect the ticket to an address of
     // their choosing.
     //
-    // Identity comes from the token's role claim, not from string-comparing
-    // the bearer against SUPABASE_SERVICE_ROLE_KEY — the gateway does not
-    // reliably hand the function back the value the caller sent. The literal
-    // comparison is kept as a second accepted path for when it does.
+    // Service-role identity is proved, not read off the token's role claim
+    // (security audit L9): `verifyServiceRoleCaller` compares the presented
+    // key against this environment's service keys in constant time, and puts
+    // any other token claiming service_role to auth for verification. Claims
+    // alone would have made this function's safety depend on verify_jwt staying
+    // on — and a forged service-role token here can mail any order's QR codes
+    // anywhere.
     const authHeader = req.headers.get('Authorization') ?? '';
-    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
-    const apiKeyHeader = (req.headers.get('apikey') ?? '').trim();
-
-    const claims = decodeJwtPayload(bearer);
-    const isServiceRole =
-      claims?.role === 'service_role' ||
-      (bearer.length > 0 && bearer === SERVICE_ROLE_KEY) ||
-      (apiKeyHeader.length > 0 && apiKeyHeader === SERVICE_ROLE_KEY);
+    const isServiceRole = await verifyServiceRoleCaller(req);
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -107,17 +87,14 @@ Deno.serve(async (req: Request) => {
       // DEFINER, but user_roles is not readable by every signed-in user, and a
       // role check that can be starved by RLS is a role check that fails open
       // in the wrong direction.
-      const { data: hasStaff, error: roleError } = await admin.rpc('has_role', {
-        _user_id: callerId,
-        _role: 'staff',
-      });
-      if (roleError) {
+      const hasStaff = await callerHasRole(admin, callerId, 'staff');
+      if (hasStaff === null) {
         // Never silently demote a staff caller to the own-order path — that is
         // exactly the case that would mail the patron's ticket to the counter.
-        console.error('[send-ticket-confirmation] role lookup failed', roleError);
+        console.error('[send-ticket-confirmation] role lookup failed');
         return json({ error: 'Could not verify your access. Try again.' }, 503);
       }
-      isStaff = hasStaff === true;
+      isStaff = hasStaff;
     }
 
     // Service role and staff are both operators here. The rule itself lives in
@@ -153,8 +130,9 @@ Deno.serve(async (req: Request) => {
       // point it somewhere else.
       ...overridesFor(caller, body),
       smsConsent,
-      accountCreated: body.account_created === true,
-      force: body.force === true,
+      // force and account_created are operator-only, like the overrides: a
+      // patron's own-order resend is one delivery, no more (security audit M1).
+      ...flagsFor(caller, body),
     });
 
     switch (result.status) {
