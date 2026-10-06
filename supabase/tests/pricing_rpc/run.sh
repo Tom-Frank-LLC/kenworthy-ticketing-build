@@ -23,6 +23,10 @@ run < supabase/migrations/20260922161316_pricing_rpc_untiered_fix.sql
 run < supabase/migrations/20260922162659_drop_order_totals_tripwire.sql
 run < supabase/migrations/20260922170258_comps_through_pricing.sql
 run < supabase/migrations/20260922203433_movies_external_ticketing.sql
+# Baseline the old pricing function on production's shapes, then apply the
+# tier-required rule (audit H2); §9 of the test compares the two.
+run < $T/pricing_rpc/tier_required_before.sql
+run < supabase/migrations/20261006225325_price_ticket_order_requires_tier.sql
 docker cp supabase/functions/_shared/pricing_vectors.json pgrpc:/tmp/pricing_vectors.json
 { echo "\\set doc \`cat /tmp/pricing_vectors.json\`"; cat $T/pricing_rpc/pricing_rpc_test.sql; } | run
 [ -n "$KEEP" ] || docker rm -f pgrpc >/dev/null
