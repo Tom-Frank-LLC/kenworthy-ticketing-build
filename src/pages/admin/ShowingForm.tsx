@@ -20,6 +20,7 @@ import {
 } from '@/lib/datetime';
 import { DEFAULT_SHOWING_MINUTES, ticketsSoldHere } from '@/lib/purchasable';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { safeHttpUrl } from '@/lib/safeUrl';
 import { squareSaveOutcome } from '@/lib/squareLink';
 import { setShowingPriceTiers } from '@/lib/priceTiers';
 import {
@@ -1339,7 +1340,7 @@ export default function ShowingForm() {
                   {selectedItem?.ticket_type === 'rsvp' && selectedItem.rsvp_url ? (
                     <>
                       The site lists this date and sends people to{' '}
-                      <a href={selectedItem.rsvp_url} target="_blank" rel="noopener noreferrer" className="underline">
+                      <a href={safeHttpUrl(selectedItem.rsvp_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="underline">
                         {selectedItem.rsvp_url}
                       </a>{' '}
                       for tickets.

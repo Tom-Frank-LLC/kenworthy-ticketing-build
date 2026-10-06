@@ -15,6 +15,7 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { formatShowtime } from '@/lib/datetime';
+import { trailerUrlError } from '@/lib/trailer';
 
 interface Assignment {
   id: string;
@@ -272,6 +273,8 @@ function DetailsEditor({ production, onChanged }: { production: ProductionRecord
   const [saving, setSaving] = useState(false);
 
   async function save() {
+    const trailerError = trailerUrlError(trailerUrl);
+    if (trailerError) { toast.error(trailerError); return; }
     setSaving(true);
     // .select() so an RLS-filtered write (204, no error) can't pass as saved.
     const { data, error } = await supabase
@@ -279,7 +282,7 @@ function DetailsEditor({ production, onChanged }: { production: ProductionRecord
       .update({
         description: description || null,
         poster_url: posterUrl || null,
-        trailer_url: trailerUrl || null,
+        trailer_url: trailerUrl.trim() || null,
         pass_processing_fee: passFee,
       })
       .eq('id', production.id)

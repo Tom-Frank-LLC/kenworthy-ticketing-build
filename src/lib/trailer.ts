@@ -93,3 +93,21 @@ export function resolveTrailer(
 
   return null;
 }
+/**
+ * What an admin or host form says about a trailer link before saving, or null
+ * when it may be saved. Blank is fine (no trailer). Anything else must be an
+ * https URL: the database refuses the rest (20261006230005_url_column_checks),
+ * and its raw constraint message is no help to the person typing.
+ */
+export function trailerUrlError(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return 'The trailer link is not a valid URL. It should start with https://';
+  }
+  if (parsed.protocol !== 'https:') return 'The trailer link must start with https://';
+  return null;
+}

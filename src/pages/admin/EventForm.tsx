@@ -26,6 +26,7 @@ import {
   type LiveEventType,
   type TicketingMode,
 } from '@/lib/liveEventTypes';
+import { trailerUrlError } from '@/lib/trailer';
 
 /**
  * The one form for a live event.
@@ -120,6 +121,8 @@ export default function EventForm() {
     if (!eventType) { toast.error('Choose what kind of event this is'); return; }
     const linkError = rsvpUrlError(ticketType, rsvpUrl);
     if (linkError) { toast.error(linkError); return; }
+    const trailerError = trailerUrlError(trailerUrl);
+    if (trailerError) { toast.error(trailerError); return; }
     const runtime = duration.trim() === '' ? null : Number(duration);
     if (runtime !== null && !(Number.isInteger(runtime) && runtime > 0)) {
       toast.error('Runtime must be a whole number of minutes, or blank for the two-hour default');
@@ -139,7 +142,7 @@ export default function EventForm() {
       // leave a stale link behind that the site would still render.
       rsvp_url: ticketType === 'rsvp' ? rsvpUrl.trim() : null,
       is_active: isActive,
-      trailer_url: trailerUrl || null,
+      trailer_url: trailerUrl.trim() || null,
       is_featured: isFeatured,
       duration_minutes: runtime,
       show_runtime: showRuntime,

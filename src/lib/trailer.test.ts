@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTrailer } from './trailer';
+import { resolveTrailer, trailerUrlError } from './trailer';
 
 describe('resolveTrailer', () => {
   it('recognises the URL forms an admin actually pastes', () => {
@@ -102,5 +102,23 @@ describe('resolveTrailer: nothing unchecked reaches a src', () => {
       kind: 'file',
       src: 'https://cdn.example.com/trailer.mp4',
     });
+  });
+});
+
+describe('trailerUrlError', () => {
+  it('lets a blank or whitespace-only field save as no trailer', () => {
+    expect(trailerUrlError('')).toBeNull();
+    expect(trailerUrlError('   ')).toBeNull();
+  });
+
+  it('accepts https links, with the whitespace forms save untrimmed', () => {
+    expect(trailerUrlError('https://www.youtube.com/watch?v=abc')).toBeNull();
+    expect(trailerUrlError('  https://vimeo.com/123 ')).toBeNull();
+  });
+
+  it('refuses what the database constraint refuses', () => {
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'http://example.com/t.mp4', 'youtube.com/watch?v=abc']) {
+      expect(trailerUrlError(bad)).not.toBeNull();
+    }
   });
 });
