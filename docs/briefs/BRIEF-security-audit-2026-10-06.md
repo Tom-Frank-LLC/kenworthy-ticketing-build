@@ -7,7 +7,7 @@ severity: P0
 date: 2026-10-06
 shipped_in: ["#356"]
 verified: true
-evidence: docs/AUDIT-security-2026-10-06.md delivered; the one Critical (C1) is fixed in #356, merged and deployed to staging and production on 2026-10-06
+evidence: docs/AUDIT-security-2026-10-06.md delivered; C1 fixed (#356) and the six follow-up clusters (#358–#363) shipped to both projects on 2026-10-06; see the report's Remediation status table
 findings: ../AUDIT-security-2026-10-06.md
 ---
 

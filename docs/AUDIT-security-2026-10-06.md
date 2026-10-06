@@ -82,6 +82,54 @@ code in depth.
 
 ---
 
+## Remediation status (updated 2026-10-06, same day)
+
+Every fix below shipped to **staging and production** the same day. Each one
+was verified live after deploy; the cluster briefs (`docs/briefs/BRIEF-sec-*.md`)
+hold the evidence and rollback ids.
+
+| Finding | Status | Where |
+| --- | --- | --- |
+| C1 `source_id: "CASH"` | **Fixed** | #356 |
+| H1 `profiles.email` as identity | **Fixed.** Production showed no sign it was ever used. | #360 |
+| H2 tier-less ticket at base price | **Fixed.** 3 exposed showings on production, now refused. | #358 |
+| M1 "authenticated" treated as staff | **Fixed** for the four named sites. Patron sign-in is blocked at the email hook; the access-token hook is installed but not enabled. A full sweep of every `authenticated` grant has not been done. | #360 |
+| M2 checkout bot/rate controls | **Fixed** (Turnstile + limits) | #361 |
+| M3 movie terms anon-readable | **Fixed** (plus 3 more column grants found in the sweep) | #362 |
+| M4 broad host policies | **Fixed** | #362 |
+| M5 sign-in open redirect | **Fixed** in code; the react-router bump is in wave 2 | #359 |
+| M6 payroll to staff | **Fixed** | #363 |
+| M7 Mailchimp overwrite | **Fixed** | #360 |
+| M8 unescaped staff email | **Fixed** | #359 |
+| M9 no MFA | **Deferred** to its own brief (Tom, 2026-10-06) | — |
+| M10 `audit_bulk_*` grants | **Fixed.** It was not live on either project. | #362 |
+| M11 unattributed staff actions | **Fixed** | #363 |
+| L1 unverified staff payments | **Fixed** except `square-donation` `record_in_person` (wave 2) | #363 |
+| L2 multi-pass fulfilment | **Fixed** | #358 |
+| L3 refund races | **Fixed** | #363 |
+| L4 qbo-sync | Wave 2 (not deployed anywhere) | — |
+| L5 vulnerable npm deps | Wave 2 | — |
+| L6 floating Deno imports | Wave 2 | — |
+| L7 secret scanning off | **Fixed** (GitHub settings; 0 alerts) | — |
+| L8 rotation runbook | Wave 2 | — |
+| L9 unverified service-role claim | **Fixed** | #360 |
+| L10 internal error text | **Fixed** | #361, #360 |
+| L11 debug probes in repo | Wave 2 | — |
+| L12 sign-out fallback | **Fixed** | #359 |
+| L13 unchecked stored URLs | **Fixed** (plus DB constraints) | #359 |
+| L14 audit-log integrity | **Fixed** | #363 |
+| L15 PII in logs | **Fixed** for logs. **Open** for full-row audit snapshots, which need a retention decision. | #363, #360 |
+| L16 tribute email text | **Fixed** | #361 |
+| L17 rental token `SELECT *` | **Fixed** | #362 |
+| L18 listable buckets | **Fixed** | #362 |
+| L19 anon reconnaissance | **Fixed.** `has_role` stays anon-executable on purpose, because 17 anon policies need it. | #362 |
+
+**New standing check:** `supabase/tests/anon_surface/`. Run `surface.sql`
+read-only against a live project with `supabase db query --linked -f`. It
+should return only `rls_auto_enable()`, which is inert and being allowlisted.
+
+---
+
 ## Findings
 
 ### C1 · Critical · Confirmed · `source_id: "CASH"` stands in for payment on every public money path — **fixed, #356, deployed 2026-10-06**

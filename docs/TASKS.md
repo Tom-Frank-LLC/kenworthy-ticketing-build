@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**119 briefs** — 106 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
+**125 briefs** — 112 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -30,6 +30,12 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Public checkouts and the donation form are rate limited and behind Turnstile, create no account for a refused request, and say nothing internal**<br>`security` — `#361`, `67b1259` — [brief](briefs/BRIEF-sec-checkout-abuse.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
+- **Sign-in redirect stays on the site, sign-out clears the device, email preheaders are escaped, stored URLs are http(s) only**<br>`security` — `#359`, `de88e39` — [brief](briefs/BRIEF-sec-client-hygiene.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
+- **Identity is auth.users and a session is not a role — buyers cannot sign in, edit their identity, or pass as staff**<br>`security` — `#360`, `0d9cf1a` — [brief](briefs/BRIEF-sec-identity.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
+- **A tiered showing refuses a ticket with no tier, and a multi-pass order is fulfilled by its last sticker, not its first**<br>`security` — `#358`, `eeebe93` — [brief](briefs/BRIEF-sec-pricing.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
+- **Anon can no longer read film terms, staff ids, promo codes or bucket listings, or call the audit switches; sold showings cannot be deleted**<br>`security` — `#362`, `2f6512c` — [brief](briefs/BRIEF-sec-rls-regressions.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
+- **Staff can no longer read payroll, book unpaid card sales, double-refund, or write the audit log in someone else's name**<br>`security` — `#363`, `b927dba` — [brief](briefs/BRIEF-sec-staff-boundaries.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - **Films and events carry a runtime set once on the title, which every show inherits and which can be hidden from the public page**<br>`feature` — `#354` — [brief](briefs/BRIEF-production-runtime.md)
 - **A runtime is set only on the film or event; showings carry none, and the listing and calendar keep a show until it ends**<br>`data` — `#355` — [brief](briefs/BRIEF-runtime-production-only.md)
 - **A film pass type can be marked pickup only, so buyers cannot have it posted**<br>`feature` — `#353` — [brief](briefs/BRIEF-film-pass-pickup-only.md)

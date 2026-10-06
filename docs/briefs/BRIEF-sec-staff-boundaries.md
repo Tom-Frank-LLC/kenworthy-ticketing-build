@@ -1,12 +1,14 @@
 ---
 brief: sec-staff-boundaries
 title: Staff can no longer read payroll, book unpaid card sales, double-refund, or write the audit log in someone else's name
-status: built
+status: shipped
 track: security
-severity: P1
 date: 2026-10-06
-verified: false
+verified: true
 findings: ../AUDIT-security-2026-10-06.md
+shipped_in: ["#363", "b927dba"]
+shipped_at: 2026-10-06
+evidence: "migrations 20261006225712/225810 applied with --include-all on both; 12 functions on both; Worker prod 13a3f3a6 (rollback 9eefed04)"
 ---
 
 # Staff boundaries and insider integrity

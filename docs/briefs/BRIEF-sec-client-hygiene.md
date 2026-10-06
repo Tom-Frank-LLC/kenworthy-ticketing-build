@@ -1,12 +1,14 @@
 ---
 brief: sec-client-hygiene
 title: Sign-in redirect stays on the site, sign-out clears the device, email preheaders are escaped, stored URLs are http(s) only
-status: built
+status: shipped
 track: security
-severity: P1
 date: 2026-10-06
-verified: false
+verified: true
 findings: ../AUDIT-security-2026-10-06.md
+shipped_in: ["#359", "de88e39"]
+shipped_at: 2026-10-06
+evidence: "migration 20261006230005 on both (0 violators, all constraints validated); 7 functions on both; Worker prod fe2e750b (rollback a87c782f)"
 ---
 
 # Client-side security hygiene: M5, L12, M8, L13

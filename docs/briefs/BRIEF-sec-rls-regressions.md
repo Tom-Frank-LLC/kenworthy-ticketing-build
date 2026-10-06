@@ -1,12 +1,14 @@
 ---
 brief: sec-rls-regressions
 title: Anon can no longer read film terms, staff ids, promo codes or bucket listings, or call the audit switches; sold showings cannot be deleted
-status: built
+status: shipped
 track: security
-severity: P1
 date: 2026-10-06
-verified: false
+verified: true
 findings: ../AUDIT-security-2026-10-06.md
+shipped_in: ["#362", "2f6512c"]
+shipped_at: 2026-10-06
+evidence: "migrations 20261006225932–225937 on both; anon_surface/surface.sql 77 → 1 (rls_auto_enable, inert) on both; Worker prod 9eefed04 (rollback 0a00ae85)"
 ---
 
 # RLS and grant regressions (audit 2026-10-06 M3, M4, M10, L17, L18, L19)
