@@ -62,6 +62,18 @@ Deno.test('a production not ticketed here is refused with the sentence the page 
   await assertRejects(() => priceTicketOrder(admin, 's', [{}]), PricingError, NOT_SOLD_HERE_MESSAGE);
 });
 
+Deno.test('a tiered showing asked for a ticket with no tier is refused, not priced at the base', async () => {
+  // The rule is in price_ticket_order (20261006225325, audit H2) and is
+  // exercised by the SQL harness; this pins that checkout turns it into a 400
+  // with the database's sentence, before any charge.
+  const admin = fakeAdmin(() => ({ data: null, error: { code: 'PT400', message: 'Choose a ticket type for each ticket.' } }));
+  await assertRejects(() => priceTicketOrder(admin, 's', [{}, {}]), PricingError, 'Choose a ticket type for each ticket.');
+  const made = await createTicketOrder(admin, {
+    showingId: 's', descriptors: [{}], paymentMethod: 'online', userId: 'u', orderToken: 't', status: 'pending',
+  });
+  assert('refused' in made && made.refused.message === 'Choose a ticket type for each ticket.');
+});
+
 Deno.test('any other database error is not a pricing refusal', async () => {
   const admin = fakeAdmin(() => ({ data: null, error: { code: '57014', message: 'canceling statement' } }));
   const err = await assertRejects(() => priceTicketOrder(admin, 's', [{}]));

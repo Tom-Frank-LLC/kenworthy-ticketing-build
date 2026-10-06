@@ -255,6 +255,75 @@ SELECT public.expect('an admin can', public.try_sql($q$
   INSERT INTO public.ticket_discounts (showing_id, type, value, label) VALUES ('00000000-0000-0000-0000-0000000000f1', 'percent', 5, 'admin made')$q$), 'ok');
 RESET ROLE;
 
+-- 9. A tiered showing refuses a ticket that names no tier (20261006225325,
+--    audit H2). tier_required_before.sql recorded what the OLD function said
+--    for every shape; the new one must say exactly the same, except for the
+--    shapes marked `changes`, which priced at the base and are now refused.
+SELECT set_config('test.authrole', 'service_role', false);
+SELECT set_config('test.role', '', false);
+SELECT public.shape_snapshot('after');
+INSERT INTO public.results (name, pass, detail)
+SELECT 'unchanged: ' || c.label, a.result = b.result AND a.result NOT LIKE 'PT400: Choose%', b.result || '  =>  ' || a.result
+FROM public.shape_cases c
+JOIN public.shape_results b ON b.label = c.label AND b.phase = 'before'
+JOIN public.shape_results a ON a.label = c.label AND a.phase = 'after'
+WHERE NOT c.changes;
+INSERT INTO public.results (name, pass, detail)
+SELECT 'refused now: ' || c.label,
+       b.result NOT LIKE 'PT%' AND a.result = 'PT400: Choose a ticket type for each ticket.',
+       b.result || '  =>  ' || a.result
+FROM public.shape_cases c
+JOIN public.shape_results b ON b.label = c.label AND b.phase = 'before'
+JOIN public.shape_results a ON a.label = c.label AND a.phase = 'after'
+WHERE c.changes;
+-- The audit's own numbers, so the "before" really was the hole: four $55/$40
+-- seats for $0.00, and a $40 seat for $8.48.
+INSERT INTO public.results (name, pass, detail)
+SELECT 'before the fix, 4 bare tickets at the base-0 gala cost 0.00', result LIKE '%| 0.00 0.00 0.00 0.00 0.00', result
+FROM public.shape_results WHERE label = 'H2: gala base 0, 4 x {}' AND phase = 'before';
+INSERT INTO public.results (name, pass, detail)
+SELECT 'before the fix, a bare ticket at the base-8 gala cost 8.48', result LIKE '%| 8.00 0.00 0.48 0.00 8.48', result
+FROM public.shape_results WHERE label = 'H2: gala base 8, {}' AND phase = 'before';
+INSERT INTO public.results (name, pass, detail)
+SELECT 'every shape was asked both times', count(*) = 2 * (SELECT count(*) FROM public.shape_cases), count(*)::text
+FROM public.shape_results;
+
+-- The doors that write rows, on the same shapes.
+DO $$
+DECLARE got text; n int;
+BEGIN
+  -- Box office cash, staff, no tier on a tiered showing: refused.
+  PERFORM set_config('test.authrole', 'authenticated', false); PERFORM set_config('test.role', 'staff', false);
+  PERFORM set_config('test.uid', '00000000-0000-0000-0000-000000000002', false);
+  got := public.try_sql($q$SELECT * FROM public.create_ticket_order('00000000-0000-0000-0000-00000000b009', '[{},{}]', 'cash', '00000000-0000-0000-0000-000000000002', 'h2-cash')$q$);
+  PERFORM public.expect('box office cash with no tier on a tiered showing is refused', got, 'PT400: Choose a ticket type');
+  SELECT count(*) INTO n FROM public.tickets WHERE order_token = 'h2-cash';
+  INSERT INTO public.results (name, pass, detail) VALUES ('...and writes no row', n = 0, n::text);
+  -- ...with the tier, it sells.
+  got := public.try_sql($q$SELECT * FROM public.create_ticket_order('00000000-0000-0000-0000-00000000b009', '[{"tier_id":"00000000-0000-0000-0000-00000000e902"}]', 'cash', '00000000-0000-0000-0000-000000000002', 'h2-cash-ok')$q$);
+  PERFORM public.expect('box office cash naming the tier sells', got, 'ok');
+  SELECT count(*) INTO n FROM public.tickets WHERE order_token = 'h2-cash-ok' AND price = 7 AND total_price = 7.42;
+  INSERT INTO public.results (name, pass, detail) VALUES ('...at the tier price, $7 + tax', n = 1, n::text);
+  -- Box office cash on an untiered showing: unchanged.
+  got := public.try_sql($q$SELECT * FROM public.create_ticket_order('00000000-0000-0000-0000-00000000b001', '[{},{}]', 'cash', '00000000-0000-0000-0000-000000000002', 'h2-untiered')$q$);
+  PERFORM public.expect('box office cash on an untiered showing still sells', got, 'ok');
+  SELECT count(*) INTO n FROM public.tickets WHERE order_token = 'h2-untiered' AND price = 8 AND tier_id IS NULL;
+  INSERT INTO public.results (name, pass, detail) VALUES ('...two $8 rows', n = 2, n::text);
+  -- A comp names no tier and is not priced: still issued on a tiered showing.
+  got := public.try_sql($q$SELECT * FROM public.create_ticket_order('00000000-0000-0000-0000-00000000b007', '[{},{}]', 'comp', '00000000-0000-0000-0000-000000000002', 'h2-comp', 'confirmed', NULL, NULL, NULL, 'Gala Guest', NULL)$q$);
+  PERFORM public.expect('a comp with no tier at a tiered showing is still issued', got, 'ok');
+  SELECT count(*) INTO n FROM public.tickets WHERE order_token = 'h2-comp' AND total_price = 0;
+  INSERT INTO public.results (name, pass, detail) VALUES ('...two $0 comp rows', n = 2, n::text);
+  -- Online (ticket-checkout's createTicketOrder, as the service role).
+  PERFORM set_config('test.authrole', 'service_role', false); PERFORM set_config('test.role', '', false); PERFORM set_config('test.uid', '', false);
+  got := public.try_sql($q$SELECT * FROM public.create_ticket_order('00000000-0000-0000-0000-00000000b007', '[{},{},{},{}]', 'online', NULL, 'h2-online', 'pending')$q$);
+  PERFORM public.expect('online with no tier at the gala is refused', got, 'PT400: Choose a ticket type');
+  got := public.try_sql($q$SELECT * FROM public.create_ticket_order('00000000-0000-0000-0000-00000000b007', '[{"tier_id":"00000000-0000-0000-0000-00000000e702"}]', 'online', NULL, 'h2-online-ok', 'pending')$q$);
+  PERFORM public.expect('online naming the GA tier writes its row', got, 'ok');
+  SELECT count(*) INTO n FROM public.tickets WHERE order_token = 'h2-online-ok' AND price = 40 AND total_price = 42.40;
+  INSERT INTO public.results (name, pass, detail) VALUES ('...at $40 + tax = $42.40', n = 1, n::text);
+END $$;
+
 SELECT n, CASE WHEN pass THEN 'ok  ' ELSE 'FAIL' END AS verdict, name, detail FROM public.results WHERE NOT pass ORDER BY n;
 SELECT count(*) FILTER (WHERE pass) AS passed, count(*) FILTER (WHERE NOT pass) AS failed FROM public.results;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM public.results WHERE NOT pass) THEN RAISE EXCEPTION 'pricing_rpc tests failed'; END IF; END $$;
