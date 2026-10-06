@@ -164,10 +164,38 @@ export function squareErrorMessage(data: any, fallback = 'Card was declined'): s
 }
 
 /**
+ * Square source ids that record a payment without moving any money: a CASH
+ * tender says "the buyer handed us notes", an EXTERNAL one "they paid some
+ * other way". Square completes either on our word alone.
+ *
+ * A browser must never be able to name one. Between 19 Aug and 6 Oct 2026
+ * `createPayment` switched to a cash tender whenever `sourceId === 'CASH'`, and
+ * the three public checkouts passed the request body's `source_id` straight
+ * through — so posting `"CASH"` bought confirmed tickets, a paid film-pass
+ * order, or a receipted donation without a card. See
+ * docs/AUDIT-security-2026-10-06.md.
+ */
+const MONEYLESS_SOURCES = new Set(['CASH', 'EXTERNAL']);
+
+/**
+ * Whether a client-supplied `source_id` may be charged: a token from the
+ * Square Web Payments SDK, never one of Square's money-less sources. Every
+ * public checkout checks this before doing anything else with the request.
+ */
+export function isChargeableSource(sourceId: unknown): sourceId is string {
+  return typeof sourceId === 'string' &&
+    sourceId.trim() !== '' &&
+    !MONEYLESS_SOURCES.has(sourceId.trim().toUpperCase());
+}
+
+/**
  * Charge a card token.
  *
  * `amountCents` is always the server's number — no caller passes a
- * client-supplied amount through here.
+ * client-supplied amount through here. `sourceId` is the client's, which is
+ * why this refuses a money-less source outright rather than trusting each
+ * caller to have checked: cash belongs to `createCashPayment`, which no public
+ * function imports.
  */
 export async function createPayment(
   config: SquareConfig,
@@ -187,11 +215,11 @@ export async function createPayment(
      * docs/SQUARE-TRANSACTION-CONVENTIONS.md.
      */
     orderId?: string;
-    /** CASH tenders need the amount the buyer handed over. */
-    cashBuyerSuppliedCents?: number;
   },
 ) {
-  const isCash = params.sourceId === 'CASH';
+  if (!isChargeableSource(params.sourceId)) {
+    throw new Error('createPayment refuses a source that is not a card token');
+  }
   return await squareFetch(config, '/payments', {
     method: 'POST',
     body: {
@@ -201,19 +229,43 @@ export async function createPayment(
       location_id: config.locationId,
       autocomplete: true,
       order_id: params.orderId,
-      ...(isCash
-        ? {
-          cash_details: {
-            buyer_supplied_money: {
-              amount: params.cashBuyerSuppliedCents ?? params.amountCents,
-              currency: 'USD',
-            },
-          },
-        }
-        : {}),
       reference_id: params.referenceId?.slice(0, 40),
       note: params.note?.slice(0, 500),
       buyer_email_address: params.buyerEmail || undefined,
+      statement_description_identifier: 'KENWORTHY',
+    },
+  });
+}
+
+/**
+ * Record notes taken at the counter as a CASH tender on a Square order.
+ *
+ * Staff only: the one caller is `square-cash-sale`, behind its staff gate.
+ * Kept apart from `createPayment` so that no value in a request body can
+ * reach it.
+ */
+export async function createCashPayment(
+  config: SquareConfig,
+  params: {
+    amountCents: number;
+    idempotencyKey: string;
+    orderId: string;
+    referenceId?: string;
+  },
+) {
+  return await squareFetch(config, '/payments', {
+    method: 'POST',
+    body: {
+      idempotency_key: params.idempotencyKey,
+      source_id: 'CASH',
+      amount_money: { amount: params.amountCents, currency: 'USD' },
+      cash_details: {
+        buyer_supplied_money: { amount: params.amountCents, currency: 'USD' },
+      },
+      location_id: config.locationId,
+      autocomplete: true,
+      order_id: params.orderId,
+      reference_id: params.referenceId?.slice(0, 40),
       statement_description_identifier: 'KENWORTHY',
     },
   });

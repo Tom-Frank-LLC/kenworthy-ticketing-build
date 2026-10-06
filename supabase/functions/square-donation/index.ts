@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/http.ts";
 import {
   createPayment,
+  isChargeableSource,
   squareFetch,
   loadSquareConfig,
   publishableConfig,
@@ -88,6 +89,9 @@ Deno.serve(async (req) => {
   const message = (body.message as string)?.trim() || null;
 
   if (!sourceId) return json({ error: "Missing payment source" }, 400);
+  // A card token only — never "CASH" or "EXTERNAL", which Square completes
+  // without a card. See isChargeableSource.
+  if (!isChargeableSource(sourceId)) return json({ error: "Invalid payment source" }, 400);
   if (!Number.isInteger(amountCents) || amountCents < 100 || amountCents > 10_000_000) {
     return json({ error: "Amount must be between $1 and $100,000" }, 400);
   }
