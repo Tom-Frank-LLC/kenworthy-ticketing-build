@@ -96,7 +96,11 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      {/* react-router 7 wraps every navigation in startTransition by default,
+          which keeps the old page on screen while a lazy route loads instead
+          of showing its Suspense fallback. Off, so navigation behaves exactly
+          as it did on 6.x; turning it on is a UX decision of its own. */}
+      <BrowserRouter useTransitions={false}>
         <AuthProvider>
           {/* Above Layout so the footer link and the sign-in card can both
               reach it, and so its overrides land on <html> before first paint.
