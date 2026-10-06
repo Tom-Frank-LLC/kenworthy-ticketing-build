@@ -1,12 +1,14 @@
 ---
 brief: sec-pricing
 title: A tiered showing refuses a ticket with no tier, and a multi-pass order is fulfilled by its last sticker, not its first
-status: built
+status: shipped
 track: security
-severity: P1
 date: 2026-10-06
-verified: false
+verified: true
 findings: ../AUDIT-security-2026-10-06.md
+shipped_in: ["#358", "eeebe93"]
+shipped_at: 2026-10-06
+evidence: "migrations 20261006225325/225347 on both; production refused the 3 exposed showings (Celtic Christmas $0 base, Gem State Flyers) after deploy; untiered showings price unchanged; Worker prod 4be74067 (rollback dbdd85bb)"
 ---
 
 # Brief: pricing completeness (audit H2 and L2)

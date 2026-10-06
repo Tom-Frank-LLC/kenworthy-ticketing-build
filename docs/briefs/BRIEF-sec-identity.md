@@ -1,12 +1,14 @@
 ---
 brief: sec-identity
 title: Identity is auth.users and a session is not a role — buyers cannot sign in, edit their identity, or pass as staff
-status: built
+status: shipped
 track: security
-severity: P1
 date: 2026-10-06
-verified: false
+verified: true
 findings: ../AUDIT-security-2026-10-06.md
+shipped_in: ["#360", "0d9cf1a"]
+shipped_at: 2026-10-06
+evidence: "migration 20261006225756 on both (unique index created; 0 drifted profiles, 0 role-less sign-ins, 0 mismatched invite reuse on production beforehand); 7 functions on both; Worker prod 0a00ae85 (rollback 4be74067); access-token hook installed, NOT enabled"
 ---
 
 # Identity is auth.users, and a session is not a role

@@ -1,12 +1,14 @@
 ---
 brief: sec-checkout-abuse
 title: Public checkouts and the donation form are rate limited and behind Turnstile, create no account for a refused request, and say nothing internal
-status: built
+status: shipped
 track: security
-severity: P1
 date: 2026-10-06
-verified: false
+verified: true
 findings: ../AUDIT-security-2026-10-06.md
+shipped_in: ["#361", "67b1259"]
+shipped_at: 2026-10-06
+evidence: "Worker prod a87c782f (rollback 13a3f3a6); functions ticket-checkout, film-pass-checkout, square-donation, rental-request on both projects; probes 403 without a Turnstile token; widget seen solving on staging /donate"
 ---
 
 # Public checkout abuse controls (M2, L10 public paths, L16)
