@@ -27,6 +27,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/http.ts';
 import {
   createPayment,
+  isChargeableSource,
   loadSquareConfig,
   publishableConfig,
   squareErrorMessage,
@@ -115,6 +116,14 @@ Deno.serve(async (req: Request) => {
   const showingId = String(body.showing_id ?? '').trim();
   const descriptors: TicketDescriptor[] = Array.isArray(body.tickets) ? body.tickets : [];
   const sourceId = typeof body.source_id === 'string' ? body.source_id : '';
+
+  // A source, when there is one, must be a card token. "CASH" and "EXTERNAL"
+  // are real Square source ids that complete a payment without moving money;
+  // only the staff counter may record those. Refused before anything is
+  // written, alongside the other request-shape checks.
+  if (sourceId && !isChargeableSource(sourceId)) {
+    return json({ error: 'Invalid payment source' }, 400);
+  }
 
   // A film pass is a physical object redeemed at the door by a staff scan. It
   // is not stored value and it cannot buy a ticket on the web — that is the

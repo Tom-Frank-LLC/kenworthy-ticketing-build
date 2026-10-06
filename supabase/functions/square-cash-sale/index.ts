@@ -19,7 +19,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { json, preflight } from '../_shared/http.ts';
 import {
-  createPayment,
+  createCashPayment,
   loadSquareConfig,
   squareErrorMessage,
   squareFetch,
@@ -156,13 +156,11 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Square totalled the sale differently; not recording it.' }, 502);
   }
 
-  const payment = await createPayment(square.config, {
-    sourceId: 'CASH',
+  const payment = await createCashPayment(square.config, {
     amountCents: chargeCents,
     idempotencyKey: `cash-pay-${orderToken}`,
     orderId: created.data.order.id,
     referenceId: orderToken,
-    cashBuyerSuppliedCents: chargeCents,
   });
   if (!payment.ok || !payment.data?.payment?.id) {
     console.error('[square-cash-sale] cash tender failed', payment.status, JSON.stringify(payment.data));
