@@ -5,12 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**118 briefs** — 106 shipped, 7 built, 5 open, 0 needs triage, 0 closed.
+**119 briefs** — 106 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
+- `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - `P0` **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md) · [notes](briefs/confirmed%20from%20production%20logs%2028%20Aug%202026)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
