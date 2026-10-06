@@ -40,6 +40,7 @@ import {
   ticketsSoldHere,
 } from '@/lib/purchasable';
 import { showingTitle } from '@/lib/showingTitle';
+import { safeHttpUrl } from '@/lib/safeUrl';
 import { fetchSiblingShowings } from '@/lib/showtimes';
 import { ShowtimeChips } from '@/components/home/ShowtimeChips';
 import type { UpcomingShowing } from '@/components/home/TrailerFeed';
@@ -187,7 +188,7 @@ function ExternalTicketingPanel({
           </p>
           <div className="mt-4">
             <Button size="lg" asChild>
-              <a href={production.rsvp_url!} target="_blank" rel="noopener noreferrer">
+              <a href={safeHttpUrl(production.rsvp_url) ?? undefined} target="_blank" rel="noopener noreferrer">
                 {externalTicketLabel(productionType)} <ExternalLink className="h-4 w-4 ml-1" aria-hidden="true" />
                 <span className="sr-only">(opens in a new tab)</span>
               </a>

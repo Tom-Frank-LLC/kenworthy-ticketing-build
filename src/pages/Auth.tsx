@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { useColorLab } from '@/components/colorlab/ColorLabProvider';
 import { subscribeToMailchimp } from '@/lib/mailchimp';
 import { COLOR_LAB_ENABLED, MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
+import { safeRedirectPath } from '@/lib/safeUrl';
 
 /**
  * The sign-in door.
@@ -35,7 +36,9 @@ export default function Auth() {
   const [searchParams] = useSearchParams();
   const defaultTab =
     MEMBER_ACCOUNTS_ENABLED && searchParams.get('tab') === 'signup' ? 'signup' : 'signin';
-  const redirectTo = searchParams.get('redirect') || '/';
+  // Only a path on this site: `?redirect=//evil.example` would otherwise sign a
+  // staff member in here and hand them to someone else's page. See safeUrl.ts.
+  const redirectTo = safeRedirectPath(searchParams.get('redirect'));
   const navigate = useNavigate();
   const { signIn, signUp } = useAuth();
   const colorLab = useColorLab();

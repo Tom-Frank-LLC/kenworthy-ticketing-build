@@ -213,7 +213,7 @@ export function buildEmailHtml(
 
   return emailLayout({
     title: buildSubject(order),
-    preheader: `${esc(order.title)} — ${esc(order.start_time_display)}. Your QR code${
+    preheader: `${order.title} — ${order.start_time_display}. Your QR code${
       order.tickets.length === 1 ? ' is' : 's are'
     } inside.`,
     contentHtml: content,

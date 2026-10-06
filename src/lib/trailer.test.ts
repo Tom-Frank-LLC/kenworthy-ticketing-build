@@ -69,3 +69,38 @@ describe('resolveTrailer', () => {
     expect(resolveTrailer('https://vimeo.com/123456789')!.src).not.toContain('texttrack');
   });
 });
+
+/**
+ * A trailer URL is written by admins and by hosts — outside organisers — and
+ * what this returns goes straight into an iframe or video `src`. The embeds are
+ * built from a parsed id, so only the direct-file branch carries the admin's
+ * own string, and that branch is held to http(s) (audit 2026-10-06, L13).
+ */
+describe('resolveTrailer: nothing unchecked reaches a src', () => {
+  it('refuses a script or data URL dressed as a video file', () => {
+    expect(resolveTrailer('javascript:alert(1)//x.mp4')).toBeNull();
+    expect(resolveTrailer('data:text/html,<script>alert(1)</script>#.mp4')).toBeNull();
+    expect(resolveTrailer('JAVASCRIPT:alert(1);x.webm')).toBeNull();
+  });
+
+  it('builds YouTube and Vimeo embeds on their own hosts, whatever the input wraps them in', () => {
+    const yt = resolveTrailer('javascript:alert(1)//youtube.com/watch?v=dQw4w9WgXcQ')!;
+    expect(new URL(yt.src).origin).toBe('https://www.youtube.com');
+    const vm = resolveTrailer('data:,vimeo.com/123456789')!;
+    expect(new URL(vm.src).origin).toBe('https://player.vimeo.com');
+  });
+
+  it('recognises a youtube-nocookie embed, the one form the old raw-iframe fallback used to carry', () => {
+    expect(resolveTrailer('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')).toMatchObject({
+      kind: 'youtube',
+      id: 'dQw4w9WgXcQ',
+    });
+  });
+
+  it('keeps a direct file as the http(s) URL it was', () => {
+    expect(resolveTrailer('https://cdn.example.com/trailer.mp4')).toEqual({
+      kind: 'file',
+      src: 'https://cdn.example.com/trailer.mp4',
+    });
+  });
+});

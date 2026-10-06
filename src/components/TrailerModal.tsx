@@ -48,8 +48,6 @@ export function TrailerModal({
   /** The button that opens it. Wrapped in `DialogTrigger asChild`. */
   children: ReactNode;
 }) {
-  if (!trailerUrl) return null;
-
   // Sound on, controls on, no loop. Autoplay because the reader clicked a
   // button that says "Watch trailer" — this is the explicit request, not
   // ambient motion, which is why it is not gated on prefers-reduced-motion the
@@ -64,6 +62,8 @@ export function TrailerModal({
     controls: true,
     loop: false,
   });
+  // An unrecognised URL counts as no trailer, button and all. See below.
+  if (!trailer) return null;
 
   return (
     <Dialog>
@@ -102,7 +102,7 @@ export function TrailerModal({
           {/* Unmounted when closed, which is what stops the audio — and what
               keeps a page of listings from opening an embed per production. */}
           <div className="aspect-video w-full overflow-hidden rounded-lg bg-black shadow-2xl">
-            {trailer?.kind === 'file' ? (
+            {trailer.kind === 'file' ? (
               <video
                 src={trailer.src}
                 poster={posterUrl ?? undefined}
@@ -112,11 +112,13 @@ export function TrailerModal({
                 className="h-full w-full object-contain"
               />
             ) : (
-              // An unrecognised URL still gets an iframe attempt, matching
-              // ProductionMedia — an admin pasting a host we do not parse yet
-              // should see their embed, not an empty box.
+              // Only an embed resolveTrailer built from a parsed id. There used
+              // to be a fallback to the raw trailer_url here, for hosts we do
+              // not parse yet — but the CSP's frame-src admits only YouTube and
+              // Vimeo, so it never showed anything, and it put a host-written
+              // string straight into an iframe src (audit 2026-10-06, L13).
               <iframe
-                src={trailer?.src ?? trailerUrl}
+                src={trailer.src}
                 title={`${title} trailer`}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen

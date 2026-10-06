@@ -48,15 +48,19 @@ export function ProductionMedia({
   // drawer's old inline regexes did — youtu.be, /shorts/, .mov, .m4v.
   const trailer = resolveTrailer(trailerUrl, { controls: true, loop: false });
 
-  if (trailerUrl) {
+  // Only a trailer resolveTrailer recognised. An unrecognised URL used to get
+  // an iframe of its own raw value; now it gets the poster. The CSP's
+  // frame-src only admits YouTube and Vimeo anyway, so the raw fallback never
+  // showed anything those two parsers miss — it was only ever a way to put an
+  // unchecked, host-written string into a src.
+  if (trailer) {
     return (
       <div className={`aspect-video w-full bg-black ${className ?? ''}`}>
-        {trailer?.kind === 'file' ? (
+        {trailer.kind === 'file' ? (
           <video src={trailer.src} controls className="w-full h-full object-contain" />
         ) : (
-          // An unrecognised URL still gets an iframe attempt — same as before.
           <iframe
-            src={trailer?.src ?? trailerUrl}
+            src={trailer.src}
             className="w-full h-full"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen

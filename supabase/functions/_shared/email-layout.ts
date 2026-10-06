@@ -108,7 +108,14 @@ export function row(innerHtml: string, padding = '22px 28px 0'): string {
 export interface EmailLayoutOptions {
   /** Document title, and what a client shows as the message name. */
   title: string;
-  /** Hidden preview text — what shows next to the subject in the inbox list. */
+  /**
+   * Hidden preview text — what shows next to the subject in the inbox list.
+   *
+   * Plain text, escaped here. Pass it unescaped: escaping it at the call site
+   * as well would show `&amp;` in the inbox. It is escaped in the shell rather
+   * than trusted from the caller because one template once forgot, and a
+   * public form's name field landed in staff email as live markup.
+   */
   preheader?: string;
   /** The body: a sequence of `<tr>` rows, usually built with `row()`. */
   contentHtml: string;
@@ -139,7 +146,7 @@ export function emailLayout(opts: EmailLayoutOptions): string {
   const logo = emailLockup(opts.siteUrl ?? SITE_URL);
 
   const preheader = opts.preheader
-    ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${opts.preheader}</div>`
+    ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(opts.preheader)}</div>`
     : '';
 
   return `<!doctype html>

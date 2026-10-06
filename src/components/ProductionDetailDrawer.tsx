@@ -8,6 +8,7 @@ import { ProductionMedia, ProductionMetaBadges, displayedRuntime } from '@/compo
 import { formatShowtime } from '@/lib/datetime';
 import { externalTicketLabel, isPast, ticketsSoldHere } from '@/lib/purchasable';
 import { RichText } from '@/components/RichText';
+import { safeHttpUrl } from '@/lib/safeUrl';
 
 interface ShowingInfo {
   id: string;
@@ -105,8 +106,9 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
               <p className="text-sm text-muted-foreground">This event has passed.</p>
             ) : (
               <div>
+                {/* Hosts write rsvp_url; only http(s) becomes a link. See safeUrl.ts. */}
                 <Button size="lg" className="w-full" asChild>
-                  <a href={production.rsvp_url!} target="_blank" rel="noopener noreferrer">
+                  <a href={safeHttpUrl(production.rsvp_url) ?? undefined} target="_blank" rel="noopener noreferrer">
                     {externalTicketLabel(production.type)}
                   </a>
                 </Button>

@@ -1,7 +1,17 @@
+import { safeHttpUrl } from './safeUrl';
+
 /**
  * Resolve a user-supplied trailer URL into something we can embed.
- * Supports: YouTube (watch, youtu.be, shorts), Vimeo, and direct mp4/webm files.
+ * Supports: YouTube (watch, youtu.be, shorts, embed, youtube-nocookie embed),
+ * Vimeo, and direct mp4/webm/mov/m4v files over http(s).
  * Returns null when the URL isn't recognized.
+ *
+ * Null means "no trailer", and callers show the poster. They used to fall back
+ * to putting the raw value in an iframe `src` — on page load, from a column
+ * that hosts (outside organisers) can write — with only the CSP between a
+ * `javascript:` or `data:` URL and the page (audit 2026-10-06, L13). Every
+ * embed this returns is a URL built here from a parsed id, or a file URL that
+ * passed safeHttpUrl, so nothing an admin typed reaches a src unchecked.
  */
 export type TrailerEmbed =
   | { kind: 'youtube'; id: string; src: string }
@@ -29,7 +39,7 @@ export function resolveTrailer(
 
   // YouTube
   const yt =
-    trimmed.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/i);
+    trimmed.match(/(?:youtube(?:-nocookie)?\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/i);
   if (yt) {
     const id = yt[1];
     const params = new URLSearchParams({
@@ -74,9 +84,11 @@ export function resolveTrailer(
     return { kind: 'vimeo', id, src: `https://player.vimeo.com/video/${id}?${params.toString()}` };
   }
 
-  // Direct file
+  // Direct file. The one kind whose src is the admin's own string, so it has
+  // to be http(s) — `javascript:x.mp4` ends in .mp4 too.
   if (/\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(trimmed)) {
-    return { kind: 'file', src: trimmed };
+    const src = safeHttpUrl(trimmed);
+    return src ? { kind: 'file', src } : null;
   }
 
   return null;

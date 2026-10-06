@@ -409,7 +409,7 @@ export function buildReceiptHtml(d: DonationSummary): string {
 
   return emailLayout({
     title: buildReceiptSubject(d),
-    preheader: `Your receipt for a ${esc(formatMoney(d.amountCents))} tax-deductible gift to the ${esc(VENUE_SHORT)}.`,
+    preheader: `Your receipt for a ${formatMoney(d.amountCents)} tax-deductible gift to the ${VENUE_SHORT}.`,
     contentHtml: content,
   });
 }
@@ -500,7 +500,7 @@ export function buildTributeHtml(d: DonationSummary): string {
 
   return emailLayout({
     title: buildTributeSubject(d),
-    preheader: `${esc(donorLabel(d))} made a gift to the ${esc(VENUE_SHORT)} ${inWhat} of ${who}.`,
+    preheader: `${donorLabel(d)} made a gift to the ${VENUE_SHORT} ${inWhat} of ${d.dedicateTo?.trim() || 'someone dear to them'}.`,
     contentHtml: content,
     footerNote: 'With gratitude,',
   });

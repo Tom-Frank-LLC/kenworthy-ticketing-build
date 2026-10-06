@@ -368,6 +368,8 @@ export function buildRentalRequestNotification(
 
   const html = emailLayout({
     title: subject,
+    // Plain text from a public form; emailLayout escapes it. This line once
+    // sent it into the shell raw, which is why the shell does the escaping now.
     preheader: `${who} — ${when}`,
     contentHtml: content,
   });

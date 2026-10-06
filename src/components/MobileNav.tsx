@@ -16,6 +16,8 @@ import {
   Building2,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { SIGN_OUT_FAILED } from '@/lib/signOutDevice';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -114,7 +116,13 @@ export function MobileNav() {
     try {
       await signOut();
     } catch (err) {
+      // The session is still stored on this device (signOut clears it locally
+      // even when the server is unreachable, and throws only when it could
+      // not). Moving to /auth now would look signed out while the next person
+      // at this screen inherits the account, so stay put and say so.
       console.error('Sign out error:', err);
+      toast.error(SIGN_OUT_FAILED);
+      return;
     }
     // Matches Layout: direct location change for cross-browser reliability.
     window.location.href = '/auth';
