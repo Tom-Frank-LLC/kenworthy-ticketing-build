@@ -109,6 +109,29 @@ describe('safeRedirectPath', () => {
     },
   );
 
+  // The other half: the router fix itself. GHSA-9jcx-v3wj-wh4m (`//host`) was
+  // fixed in 6.30.2, but its backslash bypass GHSA-wrjc-x8rr-h8h6 (`/\host`) only
+  // in 7.18.0 — 6.30.6 still leaves the site for `/\host`, which this test
+  // caught. 7.18 refuses both by throwing from navigate(). Defence in depth
+  // only: the guard above is what the sign-in page relies on, because these
+  // advisories have already been bypassed once. A downgrade should go red.
+  it.runIf(routerPkg.version !== '6.30.1')(
+    `the installed router (${routerPkg.version}) keeps even an unguarded //host or /\\host on this site`,
+    () => {
+      // jsdom prints the refusal ("External navigation is not allowed") to
+      // stderr as an uncaught error. That is this test passing, not a fault.
+      for (const raw of ['//evil.example/phish', '/\\evil.example/phish']) {
+        let visited: string[] = [];
+        try {
+          visited = attempt(raw);
+        } catch {
+          // Refusing to navigate at all is also staying on the site.
+        }
+        expect(offSite(visited), raw).toEqual([]);
+      }
+    },
+  );
+
   it.each(HOSTILE)('through the installed router, %j guarded stays on this site', raw => {
     const visited = attempt(safeRedirectPath(raw));
     expect(offSite(visited)).toEqual([]);

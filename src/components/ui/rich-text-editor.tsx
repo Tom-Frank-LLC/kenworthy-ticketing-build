@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
 import {
   Bold,
   Italic,
@@ -201,20 +200,30 @@ export function RichTextEditor({
         // Marks with no toolbar button and no place on the render allowlist.
         // Leaving them enabled means a pasted `~~strike~~` or a stray Ctrl+E
         // produces formatting that vanishes the moment the page renders.
+        // TipTap 3 added Underline to the kit, so it is off for the same reason.
         code: false,
         codeBlock: false,
         strike: false,
+        underline: false,
+        // TipTap 3 also appends an empty paragraph after a trailing heading,
+        // list or divider. Off, so the HTML this stores stays what the author
+        // typed and an unedited field does not read as changed.
+        trailingNode: false,
         heading: { levels: [HEADING_LEVEL] },
-      }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        // The real enforcement is the sanitiser at render; this only keeps the
-        // editor's own markup consistent with what will eventually be printed.
-        protocols: ['http', 'https', 'mailto', 'tel'],
-        HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+        link: {
+          openOnClick: false,
+          autolink: true,
+          // The real enforcement is the sanitiser at render; this only keeps the
+          // editor's own markup consistent with what will eventually be printed.
+          protocols: ['http', 'https', 'mailto', 'tel'],
+          HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+        },
       }),
     ],
+    // TipTap 3 stopped re-rendering on every transaction. The toolbar reads
+    // `isActive()` during render, so without this the Bold button would not
+    // light up (or announce `aria-pressed`) as the cursor moves into bold text.
+    shouldRerenderOnTransaction: true,
     content: toRichHtml(value),
     editorProps: {
       attributes: {
@@ -245,7 +254,7 @@ export function RichTextEditor({
     if (value === emitted.current) return;
     const next = toRichHtml(value);
     if (next === editor.getHTML()) return;
-    editor.commands.setContent(next, false);
+    editor.commands.setContent(next, { emitUpdate: false });
     emitted.current = value;
   }, [editor, value]);
 
