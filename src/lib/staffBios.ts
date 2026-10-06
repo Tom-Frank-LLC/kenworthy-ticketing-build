@@ -23,9 +23,18 @@ export interface StaffBio {
   user_id: string | null;
 }
 
-/** The columns both screens select. Kept in one place so they cannot diverge. */
+/** The columns the admin roster selects. */
 export const STAFF_BIO_COLUMNS =
   'id, name, title, bio, headshot_url, display_on_about, sort_order, is_active, user_id';
+
+/**
+ * The columns /about selects: the same, without `user_id`. Anon is granted
+ * these columns and not the account id (20261006225932) — a public bio must
+ * not hand out the auth uuid of the staff member it describes. A select naming
+ * `user_id` as anon fails outright, and /about hides the section on error.
+ */
+export const STAFF_BIO_PUBLIC_COLUMNS =
+  'id, name, title, bio, headshot_url, display_on_about, sort_order, is_active';
 
 /**
  * Lowest sort_order first, name breaking ties.
