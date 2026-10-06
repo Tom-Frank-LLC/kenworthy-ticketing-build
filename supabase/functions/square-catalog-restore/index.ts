@@ -20,6 +20,7 @@
 // and are referenced by orders, so resurrecting them is a separate decision
 // with a different risk profile. This does not touch them.
 
+import { auditedHandler, type StaffAuditContext } from "../_shared/audit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   loadSquareConfig,
@@ -114,7 +115,9 @@ const textLen = (o: any) =>
   ((o?.item_data?.description ?? "") || (o?.item_data?.description_html ?? "")).length;
 const imgCount = (o: any) => (o?.item_data?.image_ids ?? []).length;
 
-Deno.serve(async (req: Request) => {
+// auditedHandler: a real write is logged with the verified admin and its
+// outcome (security audit 2026-10-06, M11). Dry runs and reads are not.
+Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const admin = createClient(
@@ -175,6 +178,10 @@ Deno.serve(async (req: Request) => {
     const dryRun = payload.dry_run !== false;
     if (!dryRun && payload.confirm !== "RESTORE") {
       return json({ error: 'a real write requires confirm:"RESTORE"' }, 400);
+    }
+    if (!dryRun) {
+      audit.actor = { id: user.id, email: user.email };
+      audit.action = "square_catalog.restore";
     }
     const maxBatch = Number(payload.max_batch ?? 25);
     if (ids.length > maxBatch) {
@@ -271,4 +278,4 @@ Deno.serve(async (req: Request) => {
     console.error("square-catalog-restore", e);
     return json({ error: e.message ?? String(e) }, 500);
   }
-});
+}));

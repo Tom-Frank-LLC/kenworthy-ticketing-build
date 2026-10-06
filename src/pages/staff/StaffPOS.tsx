@@ -26,6 +26,7 @@ import { FilmPassPOS } from '@/components/pos/FilmPassPOS';
 import { PosTodayStats } from '@/components/pos/PosTodayStats';
 import { TodaysPresales } from '@/components/pos/TodaysPresales';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
+import { releaseCardSale } from '@/lib/posRelease';
 import { TerminalReaderPicker } from '@/components/pos/TerminalReaderPicker';
 import { useTerminalReader } from '@/lib/terminalReader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -631,6 +632,23 @@ export default function StaffPOS() {
   };
 
   /**
+   * Put a card sale's held seats back on sale: the reader was never reached,
+   * or the sale was cancelled on it. See @/lib/posRelease for why this is a
+   * function call with a counted answer and not a direct update (RLS-9).
+   */
+  const releaseHeldSale = useCallback(async (orderToken: string, ticketIds: string[], reason: string) => {
+    const { problem } = await releaseCardSale(supabase as any, orderToken, ticketIds.length, reason);
+    if (problem) {
+      console.error('[StaffPOS] card sale not released', problem);
+      toast.warning(
+        `The ${ticketIds.length} held seat(s) from that sale could not be released (${problem}). ` +
+        'They go back on sale on their own in about 15 minutes; tell a manager if they do not.',
+        { duration: 12000 },
+      );
+    }
+  }, []);
+
+  /**
    * A card sale, the way an online sale works: rows first (pending), then the
    * reader, then confirm. The server reads the amount from the rows and
    * confirms them only after Square reports the checkout complete for that
@@ -671,7 +689,7 @@ export default function StaffPOS() {
       // seats go back on sale. If it was reached, they stay pending for the
       // confirm to find.
       if (orderToken && ticketIds.length > 0 && !readerReached) {
-        await supabase.from('tickets').update({ status: 'failed', payment_error: String(err?.message ?? 'card sale failed').slice(0, 500) }).in('id', ticketIds);
+        await releaseHeldSale(orderToken, ticketIds, String(err?.message ?? 'card sale failed'));
       }
     } finally {
       setSelling(false);
@@ -704,7 +722,7 @@ export default function StaffPOS() {
         if (data.status === 'CANCELED' || data.status === 'CANCEL_REQUESTED') {
           setPaymentStatus('failed');
           toast.error('Payment was canceled on the terminal.');
-          await supabase.from('tickets').update({ status: 'failed', payment_error: 'Canceled on the terminal' }).in('id', ticketIds);
+          await releaseHeldSale(orderToken, ticketIds, 'Canceled on the terminal');
           return;
         }
         if (attempt < maxAttempts) {
@@ -724,7 +742,7 @@ export default function StaffPOS() {
     };
 
     poll();
-  }, [addTransaction, resetForm, refreshAfterSale, recordDonation, deliverPos]);
+  }, [addTransaction, resetForm, refreshAfterSale, recordDonation, deliverPos, releaseHeldSale]);
 
   const handleSell = () => {
     if (!selectedShowingId || ticketCount === 0) {

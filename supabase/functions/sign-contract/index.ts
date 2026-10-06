@@ -3,6 +3,7 @@
 // local Deno, so the failure only shows up once deployed. guest-checkout has
 // always used these exact specifiers and boots, which makes it the reference.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { actorHeaders } from '../_shared/audit.ts';
 import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
 
@@ -146,7 +147,9 @@ Deno.serve(async (req: Request) => {
     }
     const userId = userData.user.id;
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    // Names the verified admin to the audit trigger on rental_requests and
+    // signing_keys (_shared/audit.ts); otherwise a signed contract is nobody's.
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { global: { headers: actorHeaders(userId) } });
     const { data: roleCheck } = await admin.rpc('has_role', { _user_id: userId, _role: 'admin' });
     if (!roleCheck) {
       return new Response(JSON.stringify({ error: 'Admin role required to sign contracts' }), {

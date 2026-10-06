@@ -117,6 +117,122 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Staff actions taken through the service role
+// ---------------------------------------------------------------------------
+//
+// A staff-gated function verifies its caller and then writes with the service
+// role, because RLS would refuse the write from the caller's own session. The
+// log_audit_event trigger records those row changes with actor = auth.uid(),
+// which for the service role is NULL — so a refund, a Square catalog write or a
+// signed contract read "by nobody" (security audit 2026-10-06, M11).
+//
+// Two halves, both needed:
+//
+//   actorHeaders  rides on every PostgREST request a function makes as the
+//                 service role. The BEFORE INSERT guard on admin_audit_log
+//                 (migration 20261006225810_audit_log_integrity) fills a NULL actor
+//                 from it, so every trigger-written row is attributed without
+//                 each call site remembering. The header is honoured only when
+//                 the request's JWT role is service_role: a browser that sends
+//                 it is ignored, because only a key holder can make that claim.
+//   logStaffAction  for what is not a row change at all: a Square refund's
+//                 amount and payment, a catalog write, an invoice sent. These
+//                 never touch an audited table, so the header has nothing to
+//                 attribute.
+
+/** The request header carrying the verified caller's id. Lower-case, because
+ *  PostgREST lower-cases header names in `request.headers`. */
+export const ACTOR_HEADER = 'x-kw-actor-id';
+
+/** Headers for a service-role client acting for a verified caller. Pass as
+ *  `createClient(url, serviceKey, { global: { headers: actorHeaders(user.id) } })`. */
+export function actorHeaders(actorId: string | null | undefined): Record<string, string> {
+  return actorId ? { [ACTOR_HEADER]: actorId } : {};
+}
+
+/** Log something a verified staff caller did that is not a row change.
+ *  Never throws, like logAudit. */
+export async function logStaffAction(
+  actor: { id: string; email?: string | null },
+  action: string,
+  entityType: string,
+  details: Record<string, unknown> = {},
+  entityId: string | null = null,
+): Promise<void> {
+  await logAudit({
+    action,
+    entityType,
+    entityId,
+    details,
+    actorId: actor.id,
+    actorEmail: actor.email ?? null,
+  });
+}
+
+/** Set by a handler once it knows who is asking and that the request writes. */
+export interface StaffAuditContext {
+  actor?: { id: string; email?: string | null };
+  /** e.g. 'square_catalog.event_write'. Unset means nothing worth logging
+   *  (a dry run, a read, a refusal before the caller was known). */
+  action?: string;
+  entityType?: string;
+  entityId?: string | null;
+}
+
+const SUMMARY_LIST_MAX = 25;
+
+/**
+ * The part of a JSON response worth keeping in the log.
+ *
+ * Top-level scalars and small objects (ok, error, dry_run, tally) as they are;
+ * lists cut to their length plus the scalar fields of the first 25 entries, so
+ * a catalog run records which items it touched and how each ended without
+ * copying whole Square objects into a table every admin reads.
+ */
+export function summariseResponse(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return {};
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
+    if (Array.isArray(v)) {
+      out[`${k}_count`] = v.length;
+      out[k] = v.slice(0, SUMMARY_LIST_MAX).map((e) =>
+        e && typeof e === 'object'
+          ? Object.fromEntries(Object.entries(e as Record<string, unknown>).filter(([, x]) => x === null || typeof x !== 'object'))
+          : e
+      );
+    } else if (v === null || typeof v !== 'object') {
+      out[k] = v;
+    } else if (JSON.stringify(v).length <= 500) {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+/**
+ * Wrap a staff-gated handler so that a write it marks in `ctx` is logged with
+ * the verified actor and the outcome, whichever of its return paths it took.
+ * The log write never changes the response.
+ */
+export function auditedHandler(
+  handler: (req: Request, ctx: StaffAuditContext) => Promise<Response>,
+): (req: Request) => Promise<Response> {
+  return async (req: Request) => {
+    const ctx: StaffAuditContext = {};
+    const res = await handler(req, ctx);
+    if (ctx.actor && ctx.action) {
+      let body: unknown = null;
+      try { body = await res.clone().json(); } catch { /* not JSON */ }
+      await logStaffAction(ctx.actor, ctx.action, ctx.entityType ?? 'integration', {
+        status: res.status,
+        ...summariseResponse(body),
+      }, ctx.entityId ?? null);
+    }
+    return res;
+  };
+}
+
 /**
  * Pause per-row logging on `tables` and record that the pause started.
  *

@@ -31,6 +31,8 @@ import {
   loadTicketGroups,
 } from '../_shared/square-order.ts';
 import { canonicalTier, variationName } from '../_shared/square-catalog.ts';
+import { MAX_BUNDLED_DONATION_CENTS } from '../_shared/pricing.ts';
+import { actorHeaders, logStaffAction } from '../_shared/audit.ts';
 
 declare const Deno: any;
 
@@ -64,6 +66,15 @@ Deno.serve(async (req: Request) => {
   const donationCents = Number.isInteger(body.donation_cents) && body.donation_cents > 0
     ? Number(body.donation_cents)
     : 0;
+  // The ceiling the POS's donation box already enforces (DonationPrompt). With
+  // none here, any staff session could post an arbitrary "cash gift" into
+  // Square's takings (security audit 2026-10-06, L1).
+  if (donationCents > MAX_BUNDLED_DONATION_CENTS) {
+    return json({ error: `A counter gift is capped at $${MAX_BUNDLED_DONATION_CENTS / 100}. Take a larger gift through Donations.` }, 400);
+  }
+
+  // Writes name the verified caller to the audit trigger (_shared/audit.ts).
+  const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { global: { headers: actorHeaders(user.id) } });
 
   const square = loadSquareConfig();
   if (!square.ok) return json({ error: square.error }, 500);
@@ -123,7 +134,7 @@ Deno.serve(async (req: Request) => {
   const built = buildTicketOrder(groups);
   if (built.expectedTotalCents + feeCents !== chargeCents) {
     console.error(
-      `[square-cash-sale] built ${built.expectedTotalCents} + fee ${feeCents} != ${chargeCents} for ${orderToken}`,
+      `[square-cash-sale] built ${built.expectedTotalCents} + fee ${feeCents} != ${chargeCents} for ${orderToken.slice(0, 8)}…`,
     );
     return json({ error: 'The sale does not add up; not recording it in Square.' }, 500);
   }
@@ -171,13 +182,21 @@ Deno.serve(async (req: Request) => {
 
   // Stamp the rows so a refund can find the tender, and so a retry sees this as
   // already recorded rather than posting the takings again.
-  const { error: stampErr } = await admin
+  const { error: stampErr } = await db
     .from('tickets')
     .update({ square_payment_id: paymentId })
     .in('id', cash.map((t: any) => t.id));
   if (stampErr) {
     console.error('[square-cash-sale] recorded in Square but could not stamp tickets', stampErr);
   }
+
+  await logStaffAction(user, 'tickets.cash_sale_recorded', 'tickets', {
+    ticket_ids: cash.map((t: any) => t.id),
+    square_order_id: created.data.order.id,
+    square_payment_id: paymentId,
+    amount_cents: chargeCents,
+    donation_cents: donationCents,
+  });
 
   return json({
     ok: true,
