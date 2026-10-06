@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { SEO } from '@/components/SEO';
 import { Building2, Target, Users } from 'lucide-react';
-import { publishedStaff, STAFF_BIO_COLUMNS, type StaffBio } from '@/lib/staffBios';
+import { publishedStaff, STAFF_BIO_PUBLIC_COLUMNS, type StaffBio } from '@/lib/staffBios';
 
 import imgToday from '@/assets/optimized/history/kenworthy-today-marquee-night.webp';
 import { RichText } from '@/components/RichText';
@@ -66,7 +66,7 @@ export default function About() {
       // drafts on the public page and think they were live.
       const { data, error } = await (supabase as any)
         .from('staff_bios')
-        .select(STAFF_BIO_COLUMNS)
+        .select(STAFF_BIO_PUBLIC_COLUMNS)
         .eq('display_on_about', true)
         .eq('is_active', true)
         .order('sort_order', { ascending: true })
