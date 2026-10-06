@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { logAuthEvent, logFailedLogin } from '@/lib/auditClient';
+import { signOutDevice } from '@/lib/signOutDevice';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -116,8 +117,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Before signOut, not after: the INSERT policy needs a session, and there
     // is none a moment later.
     if (user && isStaff) await logAuthEvent('auth.logout', { id: user.id, email: user.email });
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    // Clears this device even when the server can't be reached, and throws
+    // only if the session is still stored — so a caller that shows "signed
+    // out" after this resolves is telling the truth. See signOutDevice.ts.
+    await signOutDevice(supabase.auth);
   };
 
   return (

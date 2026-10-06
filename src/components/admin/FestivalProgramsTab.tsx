@@ -22,6 +22,7 @@ import {
   type FestivalProgram,
 } from '@/lib/festival';
 import { renderPdfPages, type RenderedPage } from '@/lib/pdfPages';
+import { trailerUrlError } from '@/lib/trailer';
 
 const BUCKET = 'festival-programs';
 
@@ -144,6 +145,8 @@ export default function FestivalProgramsTab() {
   const saveYear = async (year: number) => {
     const url = (trailerDraft[year] ?? '').trim();
     const blurb = (blurbDraft[year] ?? '').trim();
+    const trailerError = trailerUrlError(url);
+    if (trailerError) { toast.error(trailerError); return; }
     setSavingYear(year);
     try {
       // The photograph first, so the row never points at an object that has not

@@ -18,6 +18,7 @@ import { formatGenres, parseGenres } from '@/lib/genres';
 import { SeatTierEditor } from '@/components/admin/SeatTierEditor';
 import { TicketingModeFields } from '@/components/admin/TicketingModeFields';
 import { rsvpUrlError, type TicketingMode } from '@/lib/liveEventTypes';
+import { trailerUrlError } from '@/lib/trailer';
 
 export default function MovieForm() {
   const { id } = useParams();
@@ -81,6 +82,8 @@ export default function MovieForm() {
     e.preventDefault();
     const linkError = rsvpUrlError(ticketType, rsvpUrl, 'film');
     if (linkError) { toast.error(linkError); return; }
+    const trailerError = trailerUrlError(trailerUrl);
+    if (trailerError) { toast.error(trailerError); return; }
     setSaving(true);
     try {
       const movieData = {
@@ -92,7 +95,7 @@ export default function MovieForm() {
         rating: rating || null,
         genre: formatGenres(genres),
         is_active: isActive,
-        trailer_url: trailerUrl || null,
+        trailer_url: trailerUrl.trim() || null,
         is_featured: isFeatured,
         distributor: distributor || null,
         circuit: circuit || null,

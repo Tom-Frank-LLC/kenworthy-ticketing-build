@@ -10,6 +10,7 @@ import { resolveTrailer } from '@/lib/trailer';
 import { formatShowtime } from '@/lib/datetime';
 import { externalTicketLabel, isPast } from '@/lib/purchasable';
 import { htmlToPlainText } from '@/lib/richText';
+import { safeHttpUrl } from '@/lib/safeUrl';
 
 /** One purchasable date on a production, as the listings render it. */
 export interface UpcomingShowing {
@@ -299,9 +300,9 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
                       gives it a far-future placeholder), so it is never past.
                       One attached to a showing that has finished has nothing
                       left to RSVP to. */}
-                  {item.ticketType === 'rsvp' && item.rsvpUrl && !isPast({ start_time: item.startTime }, { duration_minutes: item.durationMinutes }) ? (
+                  {item.ticketType === 'rsvp' && safeHttpUrl(item.rsvpUrl) && !isPast({ start_time: item.startTime }, { duration_minutes: item.durationMinutes }) ? (
                     <Button asChild size="lg" className="h-12">
-                      <a href={item.rsvpUrl} target="_blank" rel="noopener noreferrer">
+                      <a href={safeHttpUrl(item.rsvpUrl) ?? undefined} target="_blank" rel="noopener noreferrer">
                         <Calendar className="h-4 w-4 mr-1" /> {externalTicketLabel(item.type)}
                       </a>
                     </Button>

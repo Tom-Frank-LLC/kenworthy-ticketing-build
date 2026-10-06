@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
+import { SIGN_OUT_FAILED } from '@/lib/signOutDevice';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Ticket, LogOut, Shield, ShieldCheck, User, CreditCard, Home, MapPin, Mail, Phone, Heart, Building2, ChevronDown, Store } from 'lucide-react';
 import {
@@ -85,7 +87,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     try {
       await signOut();
     } catch (err) {
+      // The session is still stored on this device (signOut clears it locally
+      // even when the server is unreachable, and throws only when it could
+      // not). Moving to /auth now would look signed out while the next person
+      // at this screen inherits the account, so stay put and say so.
       console.error('Sign out error:', err);
+      toast.error(SIGN_OUT_FAILED);
+      return;
     }
     // Use direct location change for cross-browser reliability (Firefox races navigate + reload)
     window.location.href = '/auth';

@@ -149,7 +149,7 @@ export function buildAuthEmailHtml(opts: {
 
   return emailLayout({
     title: c.subject,
-    preheader: esc(c.body),
+    preheader: c.body,
     contentHtml: content,
     footerNote: NOT_YOU,
     // Narrower than the ticket email: this is one heading, one sentence and one

@@ -26,35 +26,11 @@ export interface PressArticle {
 export const MAX_FEATURED = 2;
 
 /**
- * Normalise a staff-entered link, or reject it.
- *
- * Two jobs. The first is a courtesy — someone pasting `kenworthy.org/story`
- * without a scheme gets https:// rather than a link that resolves relative to
- * our own domain. The second is not: an `<a href>` accepts `javascript:` and
- * `data:` URLs and will run them, so a href that reaches the public page has
- * to be proved http(s) first. Admin-entered content is not the same as
- * trusted content — the account could be someone else's tomorrow.
- *
- * Returns null when there is nothing safe to link to; callers render a plain
- * card instead of a broken or dangerous link.
+ * Normalise a staff-entered link, or reject it. The rule lives in safeUrl.ts,
+ * shared with every other stored URL that reaches an href; it is re-exported
+ * here because the Press page and its admin tab import it from this module.
  */
-export function safeHttpUrl(raw: string | null | undefined): string | null {
-  const trimmed = raw?.trim();
-  if (!trimmed) return null;
-
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    try {
-      parsed = new URL(`https://${trimmed}`);
-    } catch {
-      return null;
-    }
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-  return parsed.toString();
-}
+export { safeHttpUrl } from './safeUrl';
 
 /** Newest first; undated coverage sorts to the end rather than the top. */
 function byPublishedDesc(a: PressArticle, b: PressArticle): number {

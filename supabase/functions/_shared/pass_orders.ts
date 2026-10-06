@@ -335,7 +335,7 @@ export function buildPassPostedEmailHtml(order: PassPostedSummary): string {
 
   return emailLayout({
     title: buildPassPostedSubject(order),
-    preheader: `${esc(order.passTypeName)} posted today. Activated and ready to use — no QR code needed.`,
+    preheader: `${order.passTypeName} posted today. Activated and ready to use — no QR code needed.`,
     contentHtml: content,
     footerNote: NOTHING_TO_PRINT,
   });
@@ -370,7 +370,7 @@ export function buildPassOrderEmailHtml(order: PassOrderSummary): string {
 
   return emailLayout({
     title: buildPassOrderSubject(order),
-    preheader: `${esc(order.passTypeName)} — ${
+    preheader: `${order.passTypeName} — ${
       order.fulfillment === 'pickup' ? 'ready at the box office' : 'posting to you'
     }. No QR code needed.`,
     contentHtml: content,

@@ -73,6 +73,11 @@ function world(over: {
       : undefined,
     (c) => is(c, 'GET', '/rest/v1/tickets') ? rows(c, []) : undefined,
     (c) => is(c, 'GET', '/rest/v1/profiles') ? rows(c, over.profiles ?? []) : undefined,
+    // Since #360 an account is found in auth.users through this RPC, not by
+    // reading profiles; `profiles` here stands in for the accounts that exist.
+    (c) => rpc('auth_user_id_by_email')(c)
+      ? jsonResponse((over.profiles?.[0] as { id?: string } | undefined)?.id ?? null)
+      : undefined,
     (c) => is(c, 'GET', '/auth/v1/admin/users') ? jsonResponse({ users: [], aud: 'authenticated' }) : undefined,
     over.createUser ?? ((c) => createdUser(c)
       ? jsonResponse({ id: 'new-user-1', email: 'guest@example.com', aud: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: '' })
