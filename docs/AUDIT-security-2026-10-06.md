@@ -43,14 +43,14 @@ code in depth.
   - Clean RLS on PII tables.
   - Production running exactly `main`.
 - Two breaks and two pricing/RLS gaps matter:
-  - **C1:** a payment-method shortcut that let anyone get tickets free. **Fixed in PR #356, pending deploy.**
+  - **C1:** a payment-method shortcut that let anyone get tickets free. **Fixed in PR #356, deployed to staging and production on 2026-10-06.**
   - **H1:** an identity assumption ("`authenticated` means staff") that stopped being true.
   - A pricing gap (H2).
   - An RLS regression the August fix missed (M3).
 
 | Severity | Count |
 | --- | --- |
-| Critical | 1 (fix open as PR #356) |
+| Critical | 1 (fixed and deployed, #356) |
 | High | 2 |
 | Medium | 11 |
 | Low | 19 |
@@ -61,7 +61,7 @@ code in depth.
    - Live in production from 19 Aug until the fix deploys.
    - It covers tickets, film passes and donations. A donation also triggers a
      real tax receipt and an LGL gift.
-   - Fixed in **PR #356**; deploy it today.
+   - Fixed in **PR #356**, deployed to both projects on 2026-10-06.
    - Then check production Square for CASH payments that carry an online
      order reference, to learn whether it was ever used.
 2. **H1 — any ticket buyer can hold a signed-in session and rewrite their own
@@ -84,7 +84,7 @@ code in depth.
 
 ## Findings
 
-### C1 · Critical · Confirmed · `source_id: "CASH"` stands in for payment on every public money path — **fix in PR #356**
+### C1 · Critical · Confirmed · `source_id: "CASH"` stands in for payment on every public money path — **fixed, #356, deployed 2026-10-06**
 
 **Location:**
 - `supabase/functions/_shared/square.ts:194-213`: the `createPayment` cash branch.
@@ -122,8 +122,17 @@ with `{"showing_id":…, "tickets":[…], "source_id":"CASH", "email":…}` and 
 - Cash moves to `createCashPayment`, imported only by staff-gated
   `square-cash-sale`.
 - Six new tests.
+- **Deployed 2026-10-06** to staging, then production. Production versions
+  went ticket-checkout 54→55, film-pass-checkout 41→42, square-donation 38→39,
+  square-cash-sale 7→8. Verified live: `CASH` and `EXTERNAL` return
+  `400 Invalid payment source`, a card token passes on to normal validation,
+  and the deployed `square.ts` is byte-identical to `main`. Every shared file
+  the old bundles carried traced to `main`'s own history, so production was
+  behind `main`, not ahead, and the deploy reverted nobody's work.
+- **Not exercised:** a real card purchase or a counter cash sale after the
+  deploy. The card path changed only by the added guard. Do one of each at
+  the next opportunity.
 - **Still to do:**
-  - Deploy the four functions (commands are in the PR).
   - Read-only, search production Square for `source_type = CASH` payments
     from 19 Aug on whose `reference_id` is an online order token, pass order
     id or donation id. That answers whether this was used. Cross-check

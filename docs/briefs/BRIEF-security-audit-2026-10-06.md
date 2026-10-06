@@ -7,7 +7,7 @@ severity: P0
 date: 2026-10-06
 shipped_in: ["#356"]
 verified: true
-evidence: docs/AUDIT-security-2026-10-06.md delivered; the one Critical (C1) is fixed in #356, which is open (not yet merged or deployed)
+evidence: docs/AUDIT-security-2026-10-06.md delivered; the one Critical (C1) is fixed in #356, merged and deployed to staging and production on 2026-10-06
 findings: ../AUDIT-security-2026-10-06.md
 ---
 
@@ -16,12 +16,12 @@ findings: ../AUDIT-security-2026-10-06.md
 **Status:** 🟡 Audit delivered: `docs/AUDIT-security-2026-10-06.md`.
 - **Result:** 1 Critical, 2 High, 11 Medium, 19 Low.
 - **Critical:** C1 (`source_id: "CASH"`) was fixed in #356 at Tom's direction
-  once it was confirmed live. **The fix is not deployed until the four
-  functions in that PR are.**
+  once it was confirmed live, and deployed to staging and production on
+  2026-10-06.
 - **High and Medium:** these become follow-up briefs once Tom triages, grouped
   as in the report's *Remediation roadmap*.
-- **Done means:** this brief moves to `shipped` when #356 is deployed and the
-  production Square check for prior use of C1 has been run.
+- **Done means:** this brief moves to `shipped` when the production Square
+  check for prior use of C1 has been run.
 
 **Date:** October 6, 2026
 **Requested by:** Tom — run an end-to-end security audit of the platform.
