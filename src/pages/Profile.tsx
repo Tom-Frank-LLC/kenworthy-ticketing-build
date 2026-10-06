@@ -41,7 +41,10 @@ export default function Profile() {
     setSaving(true);
     const { error } = await supabase
       .from('profiles')
-      .update({ display_name: displayName, phone, marketing_opt_in: marketingOptIn })
+      // Not phone (or email): those are contact-of-record, and a column grant
+      // now refuses them from the client (security audit H1). Asking for them
+      // here would fail the whole save.
+      .update({ display_name: displayName, marketing_opt_in: marketingOptIn })
       .eq('id', user!.id);
 
     if (error) toast.error(error.message);
@@ -87,7 +90,8 @@ export default function Profile() {
             </div>
             <div className="space-y-2">
               <Label>Phone</Label>
-              <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="(208) 555-0123" />
+              <Input value={phone} disabled />
+              <p className="text-sm text-muted-foreground">To change your phone number, ask the box office.</p>
             </div>
             <label className="flex items-start gap-2 text-sm text-muted-foreground cursor-pointer pt-2 border-t border-border/40">
               <Checkbox

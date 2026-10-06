@@ -7,9 +7,11 @@
 // Rules:
 //   * A valid JWT wins. If the request carries a signed-in user, the purchase
 //     is theirs regardless of what the body claims.
-//   * Otherwise the buyer is identified by email, then phone, and an account is
-//     created only if neither matches. That silent account is what makes the
-//     ticket retrievable later.
+//   * Otherwise the buyer is identified by email — or, only when they gave no
+//     email, by phone — against auth.users, and an account is created if
+//     nothing matches. That silent account is what makes the ticket
+//     retrievable later. profiles is never consulted for identity: a session
+//     could write it (security audit H1).
 
 // Deno globals
 declare const Deno: any;
@@ -59,36 +61,37 @@ export async function authenticatedUser(
 /**
  * The auth user id for an email address, or null.
  *
- * `listUsers()` with no arguments returns **the first page only** — 50 users.
- * Everyone registered after that is invisible to it, so the lookup reports "no
- * such user", `findOrCreateBuyer` tries to create one, and Supabase refuses with
- * *"A user with this email address has already been registered"*. Checkout then
- * dies on the last step, after the buyer has typed a card number.
+ * Identity is `auth.users`, never `profiles`. Until 2026-10-06 this asked
+ * `profiles.email` first, "because it is one indexed lookup" — and any signed-in
+ * buyer could rewrite their own `profiles.email`. Setting it to a patron's
+ * address captured that patron's next purchase (QR codes included), and setting
+ * it to an address an admin was about to invite captured the invite's role
+ * (security audit H1). `profiles.email` is now a display copy kept in step with
+ * auth by a trigger, and nothing here reads it.
  *
- * That is not hypothetical: it took down a real purchase on kenworthy.org on
- * 2026-09-03, and it had been failing every returning customer past the 50th
- * account for as long as there have been more than fifty.
+ * The property worth keeping from the old lookup is *one round trip*: the
+ * `auth_user_id_by_email` RPC (service_role only, migration
+ * 20261006225756) reads `auth.users` directly.
  *
- * `profiles` first because it is one indexed lookup and the
- * `on_auth_user_created` trigger fills `email` for every user it creates. The
- * paged `listUsers` scan behind it covers accounts that predate that trigger.
+ * The paged `listUsers` scan is the fallback for when the RPC is unavailable —
+ * the migration not yet applied, or a transient error. It is also auth-sourced,
+ * just slower. Its history matters: `listUsers()` with no arguments returns
+ * **the first page only** — 50 users — and that took down a real purchase on
+ * kenworthy.org on 2026-09-03, failing every returning customer past the 50th
+ * account. So the scan names its pages and stops at a short one.
  *
- * This is the canonical implementation. `invite-staff` grew its own correct
- * copy of it in July while this one stayed broken, which is exactly how one bug
- * gets fixed in one place and left standing in another — so it now imports this
- * rather than keeping a twin.
+ * This is the canonical implementation; `invite-staff` imports it rather than
+ * keeping a twin.
  */
 export async function findUserIdByEmail(admin: any, email: string): Promise<string | null> {
   const normalised = email.trim().toLowerCase();
   if (!normalised) return null;
 
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('id')
-    .eq('email', normalised)
-    .limit(1)
-    .maybeSingle();
-  if (profile?.id) return profile.id;
+  const { data: rpcId, error: rpcError } = await admin.rpc('auth_user_id_by_email', {
+    p_email: normalised,
+  });
+  if (!rpcError) return (rpcId as string | null) ?? null;
+  console.warn('[buyers] auth_user_id_by_email unavailable, scanning auth users:', rpcError.message);
 
   const PER_PAGE = 200;
   for (let page = 1; page <= 50; page++) {
@@ -104,28 +107,53 @@ export async function findUserIdByEmail(admin: any, email: string): Promise<stri
   return null;
 }
 
-/** Find an existing account by email, then phone. Returns null if neither hits. */
+/**
+ * The auth user id for a phone number, or null — narrowly.
+ *
+ * A phone number is not a verified identity. Anyone can type any number at
+ * checkout, and the first checkout to use a number owns it in auth. So the
+ * database side (`auth_user_id_by_phone`) matches `auth.users.phone` only, never
+ * `profiles.phone`, and never returns an account holding staff, host, admin or
+ * superadmin: those accounts can sign in, and a stranger's order attached to one
+ * would hand its QR codes to whoever holds it.
+ *
+ * No fallback: if the RPC is unavailable the answer is "no match", which costs
+ * a returning phone-only buyer a second account and nothing worse.
+ */
+export async function findUserIdByPhone(admin: any, phone: string): Promise<string | null> {
+  if (!phone.replace(/\D/g, '')) return null;
+  const { data, error } = await admin.rpc('auth_user_id_by_phone', { p_phone: phone });
+  if (error) {
+    console.warn('[buyers] auth_user_id_by_phone unavailable:', error.message);
+    return null;
+  }
+  return (data as string | null) ?? null;
+}
+
+/**
+ * Find an existing account by email, else — only when there is no email — by
+ * phone. Returns null if nothing matches.
+ *
+ * A buyer who gave an email is identified by it. Falling through to the phone
+ * when the email matched nobody used to attach that purchase to whichever
+ * account held the number, under a different address; now it makes a new
+ * account for the address instead (and `findOrCreateBuyer` copes with the
+ * number already being taken).
+ */
 export async function findUserByContact(
   admin: any,
   email: string | null,
   phone: string | null,
 ): Promise<string | null> {
-  if (email) {
-    const existing = await findUserIdByEmail(admin, email);
-    if (existing) return existing;
-  }
-
-  if (phone) {
-    const { data: profileData } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('phone', phone)
-      .limit(1)
-      .maybeSingle();
-    if (profileData) return profileData.id;
-  }
-
+  if (email) return await findUserIdByEmail(admin, email);
+  if (phone) return await findUserIdByPhone(admin, phone);
   return null;
+}
+
+/** GoTrue's answer when the phone, not the email, is what already exists. */
+function isPhoneTaken(error: any): boolean {
+  if (error?.code === 'phone_exists') return true;
+  return /phone/i.test(error?.message ?? '') && /already|exist|regist/i.test(error?.message ?? '');
 }
 
 /**
@@ -159,7 +187,17 @@ export async function findOrCreateBuyer(
   if (contact.email) createPayload.email = contact.email.toLowerCase();
   if (contact.phone) createPayload.phone = contact.phone;
 
-  const { data: newUser, error } = await admin.auth.admin.createUser(createPayload);
+  let { data: newUser, error } = await admin.auth.admin.createUser(createPayload);
+
+  // The number already belongs to another account, which the lookup did not
+  // hand us — either because the buyer gave an email (so the phone is not how
+  // they are identified) or because that account holds a staff/host role.
+  // Phone is unique in auth, so create the account without it; the number is
+  // still kept on the profile below, where delivery reads it.
+  if (error && contact.phone && isPhoneTaken(error)) {
+    delete createPayload.phone;
+    ({ data: newUser, error } = await admin.auth.admin.createUser(createPayload));
+  }
 
   if (error || !newUser?.user) {
     const message = error?.message ?? 'unknown error';

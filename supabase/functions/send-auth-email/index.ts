@@ -11,6 +11,12 @@
 //   verify_jwt = false        (Supabase calls this without a JWT; see below)
 //   SEND_EMAIL_HOOK_SECRET    the `v1,whsec_...` secret from Auth -> Hooks
 //   RESEND_API_KEY
+//   SUPABASE_SERVICE_ROLE_KEY (injected) -- to read user_roles
+//
+// Only accounts holding a sign-in role (staff, host, admin, superadmin) are
+// sent anything that signs them in; see deliverableWithoutRole in
+// _shared/auth-email.ts. A buyer's account gets an invite or a notice, never a
+// recovery or magic link.
 //
 // verify_jwt is off because the caller is Supabase's auth service, which
 // authenticates with a Standard Webhooks signature rather than a bearer token.
@@ -20,13 +26,21 @@
 
 import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
 import { verifyStandardWebhook } from '../_shared/webhook.ts';
-import { buildAuthEmailHtml, buildAuthEmailText, buildVerifyUrl, copyFor } from '../_shared/auth-email.ts';
+import {
+  buildAuthEmailHtml,
+  buildAuthEmailText,
+  buildVerifyUrl,
+  copyFor,
+  deliverableWithoutRole,
+  holdsSignInRole,
+} from '../_shared/auth-email.ts';
 import { logAudit } from '../_shared/audit.ts';
 
 // Deno globals
 declare const Deno: any;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const HOOK_SECRET = Deno.env.get('SEND_EMAIL_HOOK_SECRET') || '';
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
 const FROM_EMAIL = Deno.env.get('TICKET_FROM_EMAIL') || 'Kenworthy <tickets@kenworthy.org>';
@@ -84,6 +98,34 @@ Deno.serve(async (req: Request) => {
   if (!email) {
     console.error('[send-auth-email] payload had no user email');
     return hookError('No recipient address in hook payload', 400);
+  }
+
+  // No way in for an account without a sign-in role (security audit H1).
+  // Answered exactly as a sent email is, so /recover cannot be used to learn
+  // which addresses belong to buyers: GoTrue gives an unknown address the same
+  // 200. A failed lookup is a hook error instead -- it does not depend on who
+  // the user is, and guessing either way would be worse.
+  const userId: string = payload?.user?.id ?? '';
+  if (!deliverableWithoutRole(action)) {
+    const hasRole = await holdsSignInRole(userId, { url: SUPABASE_URL, serviceKey: SERVICE_ROLE_KEY });
+    if (hasRole === null) {
+      console.error('[send-auth-email] role lookup failed; not sending', action);
+      return hookError('Could not check this account. Try again shortly.', 503);
+    }
+    if (!hasRole) {
+      const maskedSkip = email.replace(/(.).*(@.*)/, '$1***$2');
+      console.log(`[send-auth-email] suppressed ${action} to ${maskedSkip}: no sign-in role`);
+      await logAudit({
+        action: `auth.email_suppressed.${action}`,
+        entityType: 'auth',
+        entityId: userId || null,
+        details: { email: maskedSkip, email_action_type: action, reason: 'no_sign_in_role' },
+      });
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   // An email change sends two messages — one to the old address, one to the

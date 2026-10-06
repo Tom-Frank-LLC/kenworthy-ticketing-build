@@ -37,6 +37,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { EMAIL_RE, findUserIdByEmail } from '../_shared/buyers.ts';
 import { SITE_URL } from '../_shared/brand.ts';
 import { logAudit } from '../_shared/audit.ts';
+import { inviteTargetMatches } from './target.ts';
 import {
   type CallerTier,
   INVITABLE_ROLES,
@@ -119,6 +120,18 @@ Deno.serve(async (req: Request) => {
     let created = false;
 
     if (userId) {
+      // The resolved account must be the address that was invited, as auth
+      // knows it. findUserIdByEmail reads auth.users now, but this grant is
+      // where a wrong answer becomes an admin, so it is checked again at the
+      // point of use rather than trusted from the lookup (security audit H1:
+      // the lookup used to read profiles.email, which its owner could rewrite
+      // to an address an admin was about to invite).
+      const { data: found, error: foundError } = await admin.auth.admin.getUserById(userId);
+      if (!inviteTargetMatches(email, found, foundError)) {
+        console.error('[invite-staff] resolved account does not carry the invited address; refusing');
+        return json({ error: 'That address could not be matched to a single account. Nothing was granted.' }, 409);
+      }
+
       // An existing account may be a protected one. This is the check RLS
       // would have made for a client-side grant; service_role has to make it
       // itself. Read with the service client — the caller's own SELECT policy
@@ -187,12 +200,27 @@ Deno.serve(async (req: Request) => {
       action: 'user_roles.invite',
       entityType: 'user_roles',
       entityId: userId,
-      details: { role, created, invited_email: email, caller_tier: tier },
+      details: { role, created, reused_existing_account: !created, invited_email: email, caller_tier: tier },
       actorId: user.id,
       actorEmail: user.email ?? null,
     });
 
-    return json({ ok: true, created, userId, email, role });
+    // Reuse is said out loud. A reused account gets no invitation email (it
+    // already exists), so the person has to take "Forgot password?" on /auth to
+    // set a password -- which works now that they hold a role.
+    return json({
+      ok: true,
+      created,
+      reused_existing_account: !created,
+      ...(created ? {} : {
+        notice: 'This address already had an account (usually from a ticket purchase). ' +
+          'The role was added to it and no invitation email was sent: they should use ' +
+          '"Forgot password?" on the staff sign-in page to set a password.',
+      }),
+      userId,
+      email,
+      role,
+    });
   } catch (e) {
     // Generic on the wire, specific in the logs.
     console.error('[invite-staff] unhandled:', e instanceof Error ? e.message : String(e));
