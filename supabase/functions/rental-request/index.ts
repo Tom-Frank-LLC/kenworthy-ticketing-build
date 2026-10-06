@@ -33,9 +33,11 @@
 // Staged rollout, deliberately
 // ---------------------------------------------------------------------------
 //
-// TURNSTILE_SECRET_KEY is not set yet — the widget has to be created in the
-// Cloudflare dashboard first, which is a human step. Until it is set, this
-// function does everything else and skips the bot check.
+// TURNSTILE_SECRET_KEY was not set when this shipped — the widget had to be
+// created in the Cloudflare dashboard first, which is a human step. Until it
+// is set, this function does everything else and skips the bot check. (It is
+// set on staging and production now; the posture is kept for any environment
+// where it is not.)
 //
 // That is a considered choice, not an oversight. The alternative — refuse every
 // submission until the key exists — takes the rental form offline the moment
@@ -44,21 +46,23 @@
 // text, one chokepoint) lands immediately is the better trade, and setting one
 // secret arms the rest.
 //
+// The checkouts and the donation form make the opposite choice and fail closed;
+// the reasoning for both lives in _shared/turnstile.ts, which this shares.
+//
 // It is logged loudly on every call so "we'll set that later" cannot become
 // "nobody remembered".
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/http.ts';
 import { notifyStaffOfRentalRequest } from '../_shared/staff_notifications.ts';
+import { callerIp } from '../_shared/rate_limit.ts';
+import { verifyTurnstile } from '../_shared/turnstile.ts';
 
 // Deno globals
 declare const Deno: any;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const TURNSTILE_SECRET = Deno.env.get('TURNSTILE_SECRET_KEY') || '';
-
-const VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
 /**
  * Columns the public form may set, with the cap on each free-text field.
@@ -112,46 +116,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** ISO date (YYYY-MM-DD), which is what <input type="date"> submits. */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * Ask Cloudflare whether this token is real, single-use, and ours.
- *
- * Returns true when the check is not configured — see the header comment.
- */
-async function passesBotCheck(token: string, ip: string | null): Promise<boolean> {
-  if (!TURNSTILE_SECRET) {
-    console.warn(
-      '[rental-request] TURNSTILE_SECRET_KEY is not set — accepting without a bot check. ' +
-        'Create the widget in Cloudflare and set the secret to arm this.',
-    );
-    return true;
-  }
-
-  if (!token) return false;
-
-  try {
-    const body = new FormData();
-    body.append('secret', TURNSTILE_SECRET);
-    body.append('response', token);
-    // Cloudflare uses this to bind the token to the client that solved it.
-    if (ip) body.append('remoteip', ip);
-
-    const res = await fetch(VERIFY_URL, { method: 'POST', body });
-    const outcome = await res.json().catch(() => ({}));
-    if (!outcome?.success) {
-      console.warn('[rental-request] turnstile rejected:', JSON.stringify(outcome?.['error-codes'] ?? []));
-      return false;
-    }
-    return true;
-  } catch (err) {
-    // A verification that could not be performed is not a verification that
-    // passed. Cloudflare being unreachable takes the form down rather than
-    // opening it — the opposite of the unconfigured case above, because here
-    // somebody *has* decided the check should happen.
-    console.error('[rental-request] turnstile verification threw', err);
-    return false;
-  }
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return preflight();
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -163,12 +127,12 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const ip =
-    req.headers.get('cf-connecting-ip') ||
-    (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() ||
-    null;
-
-  if (!(await passesBotCheck(String(body.turnstile_token ?? ''), ip))) {
+  // Fails open when the secret is unset — see the header comment.
+  const bot = await verifyTurnstile(body.turnstile_token, callerIp(req), {
+    whenUnset: 'allow',
+    label: 'rental-request',
+  });
+  if (!bot.ok) {
     return json(
       { error: "We couldn't verify that you're a person. Please reload the page and try again." },
       403,

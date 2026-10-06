@@ -8,6 +8,8 @@ import { Check, CreditCard, Loader2, Mail, Minus, Plus, Store } from 'lucide-rea
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 import { RichText } from '@/components/RichText';
 import { SalesFinalNote } from '@/components/SalesFinalNote';
+import { CheckoutTurnstile } from '@/components/CheckoutTurnstile';
+import { useTurnstileGate } from '@/hooks/useTurnstileGate';
 import { invokeFunction } from '@/lib/functions';
 import { COLLECT_PHONE } from '@/lib/flags';
 import {
@@ -82,6 +84,9 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
   // the order it already made rather than charging twice; replaced after a
   // failure, or Square replays the old decline at a corrected card.
   const idempotencyKeyRef = useRef(crypto.randomUUID());
+  // The bot check. Its token is single-use, so it is replaced after any
+  // attempt that reached the server and failed — see useTurnstileGate.
+  const turnstile = useTurnstileGate();
 
   const { subtotal, taxDue, total } = passOrderTotals(pass, quantity);
 
@@ -103,6 +108,7 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
   }
 
   async function handleBuy() {
+    if (turnstile.waiting) return;
     if (!validate()) return;
     if (!cardRef.current) {
       setErrors({ card: 'The card form is not ready yet. Give it a moment, or reload the page.' });
@@ -110,8 +116,10 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
     }
 
     setPurchasing(true);
+    let sent = false;
     try {
       const sourceId = await cardRef.current.tokenize();
+      sent = true;
 
       // The server prices this from film_pass_types and records the order only
       // once Square has taken the money. Nothing here is trusted.
@@ -134,6 +142,7 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
         email: email.trim(),
         phone: COLLECT_PHONE ? (phone.trim() || undefined) : undefined,
         idempotency_key: idempotencyKeyRef.current,
+        turnstile_token: turnstile.token,
       });
 
       onPlaced({
@@ -146,6 +155,9 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
       idempotencyKeyRef.current = crypto.randomUUID();
     } catch (err: any) {
       idempotencyKeyRef.current = crypto.randomUUID();
+      // A card the form could not tokenize never reached the server, so its
+      // token is still good; anything that did reach it spent the token.
+      if (sent) turnstile.refresh();
       toast.error(err.message || 'Could not complete your purchase');
     } finally {
       setPurchasing(false);
@@ -395,14 +407,18 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
             {errors.card && <p className="text-sm text-destructive mt-1">{errors.card}</p>}
           </div>
 
+          <CheckoutTurnstile gate={turnstile} />
+
           <Button
             className="w-full"
             size="lg"
             onClick={handleBuy}
-            disabled={purchasing || !cardReady}
+            disabled={purchasing || !cardReady || turnstile.waiting}
           >
             {purchasing ? (
               <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Processing…</>
+            ) : turnstile.waitLabel ? (
+              turnstile.waitLabel
             ) : (
               <><Check className="h-4 w-4 mr-1" /> Pay {money(total)}</>
             )}

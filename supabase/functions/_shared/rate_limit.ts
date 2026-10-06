@@ -9,7 +9,8 @@
 // scripted abuse from one address. It does not stop a distributed attempt, and
 // it cannot tell a library behind one NAT from one determined script — so the
 // thresholds sit well above anything a person plausibly does, and this is a
-// speed bump. Turnstile is the wall.
+// speed bump. Turnstile is the wall (_shared/turnstile.ts), and every public
+// path that moves money or books seats carries both.
 
 // Deno globals
 declare const Deno: any;
@@ -128,4 +129,38 @@ export const LIMITS = {
    * addresses from one browser in ten minutes.
    */
   mailchimpSubscribe: { bucket: 'mailchimp-subscribe', limit: 10, windowSeconds: 600 },
+
+  /**
+   * Online ticket checkout, paid and free alike — counted per attempt, so a
+   * declined card and its retry are two.
+   *
+   * The highest of the four because one address is most often many people
+   * here. A family buying on one phone uses two or three attempts. The case
+   * that sets the number is a crowd behind one NAT: patrons on the lobby Wi-Fi
+   * buying for tonight's show, a campus network ahead of a popular screening,
+   * a phone carrier's CGNAT. Sixty in ten minutes is one attempt every ten
+   * seconds, sustained — well past any of those — while a single-address card
+   * tester is held to a few hundred an hour instead of thousands. The box
+   * office never comes through here (the counter uses square-terminal and
+   * square-cash-sale), so a busy night at the till cannot trip it.
+   *
+   * Turnstile is the control that actually stops scripted checkouts; this
+   * bounds what one address can cost us if it gets past it.
+   */
+  ticketCheckout: { bucket: 'ticket-checkout', limit: 60, windowSeconds: 600 },
+
+  /**
+   * Online film-pass orders. A pass is a once-a-season purchase with up to ten
+   * on one order, so even a household buying gifts on separate cards makes a
+   * handful of attempts. Twenty leaves room for declines and a shared address
+   * without giving a card tester a useful rate.
+   */
+  filmPassOrder: { bucket: 'film-pass-order', limit: 20, windowSeconds: 600 },
 } as const;
+
+/**
+ * What a refused caller is told. One sentence for every public money path, with
+ * a way to finish the purchase that does not depend on waiting.
+ */
+export const RATE_LIMIT_REFUSAL =
+  'That is a lot of attempts in a short time. Please wait a few minutes and try again, or call the box office on 208-882-4127.';

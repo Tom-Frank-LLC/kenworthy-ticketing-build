@@ -53,6 +53,9 @@ import {
   readContact,
   type BuyerContact,
 } from '../_shared/buyers.ts';
+import { LIMITS, RATE_LIMIT_REFUSAL, callerIp, checkRateLimit } from '../_shared/rate_limit.ts';
+import { BOT_CHECK_REFUSAL, verifyTurnstile } from '../_shared/turnstile.ts';
+import { NOT_CHARGED_FAILURE, PAYMENTS_UNAVAILABLE, publicDeclineMessage } from '../_shared/public_errors.ts';
 import { sendTransactionalEmail } from '../_shared/deliver.ts';
 import {
   buildPassOrderEmailHtml,
@@ -103,7 +106,11 @@ Deno.serve(async (req: Request) => {
   const action = String(body.action ?? 'order');
 
   if (action === 'get_config') {
-    if (!square.ok) return json({ error: square.error }, 500);
+    if (!square.ok) {
+      // The detail names environment variables; it is for the log, not the page.
+      console.error('[film-pass-checkout] get_config:', square.error);
+      return json({ error: PAYMENTS_UNAVAILABLE }, 500);
+    }
     return json(publishableConfig(square.config));
   }
 
@@ -733,6 +740,78 @@ Deno.serve(async (req: Request) => {
   const passTypeId = String(body.pass_type_id ?? '').trim();
   if (!passTypeId) return json({ error: 'Choose a pass' }, 400);
 
+  const quantity = Math.trunc(Number(body.quantity ?? 1));
+  if (!Number.isFinite(quantity) || quantity < 1) {
+    return json({ error: 'How many passes?' }, 400);
+  }
+  if (quantity > MAX_PASSES_PER_ORDER) {
+    return json(
+      { error: `Up to ${MAX_PASSES_PER_ORDER} passes per order — call the box office for more.` },
+      400,
+    );
+  }
+
+  if (!body.source_id || typeof body.source_id !== 'string') {
+    return json({ error: 'Missing payment source' }, 400);
+  }
+  // A card token only — never "CASH" or "EXTERNAL", which Square completes
+  // without a card. See isChargeableSource.
+  if (!isChargeableSource(body.source_id)) {
+    return json({ error: 'Invalid payment source' }, 400);
+  }
+
+  const idempotencyKey = normaliseKey(body.idempotency_key);
+
+  // -------------------------------------------------------------------------
+  // Who is buying — the contact only. Nobody is created yet.
+  // -------------------------------------------------------------------------
+  //
+  // Same rule as ticket checkout: a signed-in buyer wins, and everyone else is
+  // matched on contact or given a silent account. Patrons do not sign in any
+  // more, so in practice this is always the guest path — the account exists so
+  // the order has an owner and the pass has somewhere to attach at activation,
+  // not because anyone will ever log into it.
+  //
+  // The account is made last, after every check below, and before the pending
+  // row that needs it as owner (ticket-checkout explains why not after the
+  // charge). It used to be made here, before the pass was read or the source
+  // checked, so a refused request still left an auth user behind (audit M2).
+  let contact: BuyerContact = readContact(body);
+
+  if (signedIn) {
+    contact = await contactForUser(admin, signedIn.id, contact);
+  } else {
+    if (!contact.name) return json({ error: 'Name is required' }, 400);
+    if (!contact.email) {
+      return json({ error: 'Email is required so we can confirm your order' }, 400);
+    }
+    if (!EMAIL_RE.test(contact.email)) return json({ error: 'Invalid email format' }, 400);
+    // Far above the form's own limits (100 / 255 / 20); here so one request
+    // cannot put kilobytes into an auth account and a confirmation email.
+    if (contact.name.length > 200 || contact.email.length > 320 || (contact.phone ?? '').length > 40) {
+      return json({ error: 'That name, email or phone number is too long.' }, 400);
+    }
+  }
+
+  // Per caller. Shape refusals above cost nothing and are not counted.
+  const rl = await checkRateLimit(
+    admin, req,
+    LIMITS.filmPassOrder.bucket, LIMITS.filmPassOrder.limit, LIMITS.filmPassOrder.windowSeconds,
+  );
+  if (!rl.allowed) return json({ error: RATE_LIMIT_REFUSAL }, 429);
+
+  // A retry of an order already paid for returns it. Before the bot check: the
+  // token that attempt carried is spent, and a replay writes nothing.
+  const replay = await findExistingOrder(admin, idempotencyKey, signedIn?.id ?? null, contact);
+  if (replay) return json(replay);
+
+  // Fails closed — see _shared/turnstile.ts.
+  const bot = await verifyTurnstile(body.turnstile_token, callerIp(req), {
+    whenUnset: 'refuse',
+    label: 'film-pass-checkout',
+  });
+  if (!bot.ok) return json({ error: BOT_CHECK_REFUSAL }, 403);
+
   const { data: passType } = await admin
     .from('film_pass_types')
     .select('id, name, price, initial_balance, redemption_price, ticket_face_value, fine_print, expiration_days, is_active, pickup_only, square_variation_id')
@@ -745,17 +824,6 @@ Deno.serve(async (req: Request) => {
   const unitPrice = Number(passType.price);
   if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
     return json({ error: 'That pass has no valid price configured' }, 400);
-  }
-
-  const quantity = Math.trunc(Number(body.quantity ?? 1));
-  if (!Number.isFinite(quantity) || quantity < 1) {
-    return json({ error: 'How many passes?' }, 400);
-  }
-  if (quantity > MAX_PASSES_PER_ORDER) {
-    return json(
-      { error: `Up to ${MAX_PASSES_PER_ORDER} passes per order — call the box office for more.` },
-      400,
-    );
   }
 
   // Checked before any money moves: a refusal after Square has charged the card
@@ -785,47 +853,19 @@ Deno.serve(async (req: Request) => {
   const unitTaxCents = Math.round(unitPriceCents * FILM_PASS_TAX_RATE);
   const amountCents = (unitPriceCents + unitTaxCents) * quantity;
   const total = amountCents / 100;
-  const idempotencyKey = normaliseKey(body.idempotency_key);
 
-  // -------------------------------------------------------------------------
-  // Who is buying
-  // -------------------------------------------------------------------------
-  //
-  // Same rule as ticket checkout: a signed-in buyer wins, and everyone else is
-  // matched on contact or given a silent account. Patrons do not sign in any
-  // more, so in practice this is always the guest path — the account exists so
-  // the order has an owner and the pass has somewhere to attach at activation,
-  // not because anyone will ever log into it.
-  let contact: BuyerContact = readContact(body);
+  // Every check has passed. Only now does a guest get an account.
   let userId: string;
-
   if (signedIn) {
     userId = signedIn.id;
-    contact = await contactForUser(admin, userId, contact);
   } else {
-    if (!contact.name) return json({ error: 'Name is required' }, 400);
-    if (!contact.email) {
-      return json({ error: 'Email is required so we can confirm your order' }, 400);
-    }
-    if (!EMAIL_RE.test(contact.email)) return json({ error: 'Invalid email format' }, 400);
     try {
       userId = (await findOrCreateBuyer(admin, contact)).userId;
     } catch (err) {
+      // GoTrue's own sentence goes to the log, not the page.
       console.error('[film-pass-checkout] buyer resolution failed', err);
-      return json({ error: err instanceof Error ? err.message : 'Could not create account' }, 500);
+      return json({ error: NOT_CHARGED_FAILURE }, 500);
     }
-  }
-
-  const replay = await findExistingOrder(admin, idempotencyKey, userId);
-  if (replay) return json(replay);
-
-  if (!body.source_id || typeof body.source_id !== 'string') {
-    return json({ error: 'Missing payment source' }, 400);
-  }
-  // A card token only — never "CASH" or "EXTERNAL", which Square completes
-  // without a card. See isChargeableSource.
-  if (!isChargeableSource(body.source_id)) {
-    return json({ error: 'Invalid payment source' }, 400);
   }
 
   // -------------------------------------------------------------------------
@@ -871,8 +911,9 @@ Deno.serve(async (req: Request) => {
   };
 
   if (!square.ok) {
+    console.error('[film-pass-checkout]', square.error);
     await fail(square.error);
-    return json({ error: 'Payments are not configured. Please contact the box office.' }, 500);
+    return json({ error: PAYMENTS_UNAVAILABLE }, 500);
   }
 
   let paymentId: string | null = null;
@@ -940,10 +981,11 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!result.ok || !result.data?.payment) {
-      const message = squareErrorMessage(result.data);
+      // Square's detail stays on the order for staff; the buyer gets a sentence
+      // they can act on (see _shared/public_errors.ts).
       console.error('[film-pass-checkout] Square declined', JSON.stringify(result.data));
-      await fail(message);
-      return json({ error: message }, 400);
+      await fail(squareErrorMessage(result.data));
+      return json({ error: publicDeclineMessage(result.data) }, 400);
     }
 
     const payment = result.data.payment;
@@ -1110,19 +1152,33 @@ function activationMessage(verdict: Record<string, any>): string {
   }
 }
 
-/** The order this key already created, if the buyer is retrying. */
-async function findExistingOrder(admin: any, idempotencyKey: string, userId: string) {
+/**
+ * The order this key already created, if the buyer is retrying.
+ *
+ * By key first, then matched to the caller: the contact lookup runs only when a
+ * paid order with this key exists, so requests that are not retries never pay
+ * for it. Same shape as ticket-checkout's.
+ */
+async function findExistingOrder(
+  admin: any,
+  idempotencyKey: string,
+  signedInId: string | null,
+  contact: BuyerContact,
+) {
   const { data } = await admin
     .from('film_pass_orders')
     .select(
-      'id, quantity, fulfillment, amount_paid, status, square_payment_id, square_receipt_url, film_pass_types!film_pass_orders_pass_type_id_fkey(name, initial_balance, redemption_price)',
+      'id, user_id, quantity, fulfillment, amount_paid, status, square_payment_id, square_receipt_url, film_pass_types!film_pass_orders_pass_type_id_fkey(name, initial_balance, redemption_price)',
     )
     .eq('checkout_idempotency_key', idempotencyKey)
-    .eq('user_id', userId)
     .in('status', ['paid', 'fulfilled'])
+    .limit(1)
     .maybeSingle();
 
-  if (!data) return null;
+  if (!data?.user_id) return null;
+  const callerId = signedInId ?? (await findUserByContact(admin, contact.email, contact.phone));
+  if (callerId !== data.user_id) return null;
+  const userId: string = data.user_id;
 
   return {
     success: true,

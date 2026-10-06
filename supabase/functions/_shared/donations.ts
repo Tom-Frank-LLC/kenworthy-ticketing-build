@@ -108,6 +108,148 @@ export function dedicationPhrase(
 }
 
 // ---------------------------------------------------------------------------
+// Donor-supplied text — bounded, and never a link
+// ---------------------------------------------------------------------------
+//
+// The tribute notice goes to whatever address the donor typed, from the
+// theatre's own verified sender, carrying the donor's own words. That is the
+// point of it, and it is also a phishing kit for a dollar (audit L16): "<name>
+// … Their message: claim your refund at evil.example". The HTML is escaped, so
+// there is no markup injection, but mail clients turn plain-text addresses
+// into links on their own.
+//
+// The decision is to REFUSE links at the form, not to strip or defang them:
+//
+//   * Stripping silently edits someone's tribute — possibly a message about a
+//     person who has died — and sends the edited version in their name. They
+//     are at the form, and can be asked instead.
+//   * Defanging ("evil[.]example") keeps the attack. The lure is the text; a
+//     reader who has been told to visit an address will type it.
+//   * Nothing an honest tribute needs is lost: it is a note to a person, not a
+//     place to send them.
+//
+// And at render, any link that is somehow in a stored row (a gift recorded
+// before this rule, or written by a path that skipped it) is replaced rather
+// than sent. Both emails, every free-text field: the receipt goes to an
+// address the requester chose too.
+//
+// What this does not stop: a lure spelled out ("evil dot example") is still
+// text a person could follow. The length caps bound how much of it there is.
+
+/** Caps on every free-text field of a public gift. Far above any real one. */
+export const DONATION_TEXT_CAPS = {
+  donorName: 200,
+  dedicateTo: 200,
+  notifyName: 200,
+  message: 1000,
+  email: 320,
+  phone: 40,
+} as const;
+
+/**
+ * The top-level domains a bare `name.tld` is matched against: every two-letter
+ * country code (`[a-z]{2}`), the punycode form, and the generic ones in common
+ * — or abusive — use. Mail clients autolink against the real TLD list, so a
+ * bare word after a dot ("J.Smith", "St.Louis") is not a link to them and
+ * should not be one to us; matching any letters after a dot refused real names.
+ */
+const GENERIC_TLDS =
+  'com|net|org|edu|gov|mil|int|info|biz|name|pro|mobi|asia|xyz|top|site|online|club|shop|store|' +
+  'app|dev|page|link|click|live|life|love|art|blog|news|email|zip|mov|icu|buzz|cyou|work|fun|' +
+  'space|website|tech|today|world|vip|win|bid|loan|money|support|help|services|digital|cloud|host';
+
+/**
+ * Anything a mail client would turn into a link: a scheme or `www.` address,
+ * or a bare `name.tld` (which also catches the domain of an email address).
+ * Errs towards matching — a false positive costs the donor one retyped word,
+ * and the refusal quotes the word so they can see which.
+ */
+const LINK_RE = new RegExp(
+  String.raw`(?:\b[a-z][a-z0-9+.-]*:\/\/|\bwww\.)[^\s<>"']+` +
+    String.raw`|\b[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*` +
+    String.raw`\.(?:[a-z]{2}|xn--[a-z0-9-]{1,59}|` + GENERIC_TLDS + String.raw`)\b(?:\/[^\s<>"']*)?`,
+  'i',
+);
+
+/** The first thing in `text` that would render as a link, or null. */
+export function findLink(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const m = LINK_RE.exec(text);
+  return m ? m[0] : null;
+}
+
+/** `text` with every link-like run replaced. For rendering stored rows. */
+export function withoutLinks(text: string | null): string | null {
+  if (!text) return text;
+  return text.replace(new RegExp(LINK_RE.source, 'gi'), '[link removed]');
+}
+
+export interface DonorText {
+  donorName: string | null;
+  donorEmail: string | null;
+  donorPhone: string | null;
+  dedicateTo: string | null;
+  notifyName: string | null;
+  notifyEmail: string | null;
+  message: string | null;
+}
+
+/**
+ * Why this gift's text may not be accepted, as a sentence for the donor, or
+ * null. The public donation path calls this before anything is written.
+ */
+export function donorTextError(t: DonorText): string | null {
+  const tooLong: Array<[string | null, number, string]> = [
+    [t.donorName, DONATION_TEXT_CAPS.donorName, 'Your name'],
+    [t.donorEmail, DONATION_TEXT_CAPS.email, 'Your email'],
+    [t.donorPhone, DONATION_TEXT_CAPS.phone, 'Your phone number'],
+    [t.dedicateTo, DONATION_TEXT_CAPS.dedicateTo, 'The name this gift honors'],
+    [t.notifyName, DONATION_TEXT_CAPS.notifyName, 'The name to notify'],
+    [t.notifyEmail, DONATION_TEXT_CAPS.email, 'The email to notify'],
+    [t.message, DONATION_TEXT_CAPS.message, 'The message'],
+  ];
+  for (const [value, cap, label] of tooLong) {
+    if (value && value.length > cap) return `${label} is too long — please keep it under ${cap} characters.`;
+  }
+
+  // Emails are fields that legitimately contain a domain; everything that
+  // reaches an email body as prose must not.
+  const prose: Array<[string | null, string]> = [
+    [t.donorName, 'your name'],
+    [t.dedicateTo, 'the name this gift honors'],
+    [t.notifyName, 'the name to notify'],
+    [t.message, 'the message'],
+  ];
+  for (const [value, label] of prose) {
+    const link = findLink(value);
+    if (link) {
+      return `Please leave web and email addresses out of ${label} — "${link}" looks like one. We send this text by email, and links in it are not allowed.`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The emails' view of a stored donation row. Every donor-typed field passes
+ * through `withoutLinks` here, once, so neither email can carry a link whatever
+ * path wrote the row.
+ */
+export function donationSummaryFromRow(d: Record<string, any>): DonationSummary {
+  return {
+    amountCents: Number(d.amount_cents) || 0,
+    donorName: withoutLinks(d.donor_name ?? null),
+    dedicationType: (d.dedication_type as DedicationType | null) ?? null,
+    dedicateTo: withoutLinks(d.dedicate_to ?? null),
+    notifyName: withoutLinks(d.notify_name ?? null),
+    notifyEmail: d.notify_email ?? null,
+    message: withoutLinks(d.message ?? null),
+    receiptUrl: d.square_receipt_url ?? null,
+    createdAt: d.created_at,
+    bundled: d.source === 'ticket_checkout' || d.source === 'staff_pos',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Donor receipt
 // ---------------------------------------------------------------------------
 
@@ -409,18 +551,7 @@ export async function deliverDonationEmails(
     return result;
   }
 
-  const summary: DonationSummary = {
-    amountCents: Number(d.amount_cents) || 0,
-    donorName: d.donor_name ?? null,
-    dedicationType: (d.dedication_type as DedicationType | null) ?? null,
-    dedicateTo: d.dedicate_to ?? null,
-    notifyName: d.notify_name ?? null,
-    notifyEmail: d.notify_email ?? null,
-    message: d.message ?? null,
-    receiptUrl: d.square_receipt_url ?? null,
-    createdAt: d.created_at,
-    bundled: d.source === 'ticket_checkout' || d.source === 'staff_pos',
-  };
+  const summary = donationSummaryFromRow(d);
 
   // ---- Donor receipt ------------------------------------------------------
   if (d.donor_email && (!d.confirmation_sent_at || opts.force)) {

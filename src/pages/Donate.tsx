@@ -8,6 +8,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Heart, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
+import { CheckoutTurnstile } from '@/components/CheckoutTurnstile';
+import { useTurnstileGate } from '@/hooks/useTurnstileGate';
+
+/**
+ * The server's caps (DONATION_TEXT_CAPS in supabase/functions/_shared/
+ * donations.ts), mirrored as maxLength so nobody types past one and is refused
+ * after pressing Donate. The server is the authority; these only save a trip.
+ */
+const CAPS = { name: 200, email: 320, phone: 40, message: 1000 } as const;
 
 const TIERS = [25, 50, 100, 250];
 
@@ -34,6 +43,9 @@ export default function Donate() {
   const [message, setMessage] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
+  // The bot check. Single-use token, replaced after any attempt that reached
+  // the server — see useTurnstileGate.
+  const turnstile = useTurnstileGate();
   const [done, setDone] = useState<{ receiptUrl: string | null; amount: number } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,8 +68,10 @@ export default function Donate() {
       toast.error('Card form is not ready yet — give it a moment.');
       return;
     }
+    if (turnstile.waiting) return;
 
     setSubmitting(true);
+    let sent = false;
     try {
       let token: string;
       try {
@@ -67,8 +81,9 @@ export default function Donate() {
         return;
       }
 
-      // invokeFunction unwraps the decline reason Square gave; supabase-js
-      // otherwise reports every 4xx as "non-2xx status code".
+      // invokeFunction unwraps the server's own sentence for a refusal;
+      // supabase-js otherwise reports every 4xx as "non-2xx status code".
+      sent = true;
       const data = await invokeFunction<{ success: boolean; receiptUrl: string | null }>(
         'square-donation',
         {
@@ -83,6 +98,7 @@ export default function Donate() {
           notifyName: dedicationType ? notifyName.trim() : null,
           notifyEmail: dedicationType ? notifyEmail.trim() : null,
           message: message.trim() || null,
+          turnstile_token: turnstile.token,
         },
       );
 
@@ -101,6 +117,7 @@ export default function Donate() {
       } catch { /* noop */ }
     } catch (err) {
       console.error('Donation submit error:', err);
+      if (sent) turnstile.refresh();
       toast.error(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setSubmitting(false);
@@ -239,15 +256,15 @@ export default function Donate() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <Label htmlFor="d-name">Full Name</Label>
-              <Input id="d-name" required value={name} onChange={(e) => setName(e.target.value)} />
+              <Input id="d-name" required maxLength={CAPS.name} value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div>
               <Label htmlFor="d-email">Email (for receipt)</Label>
-              <Input id="d-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input id="d-email" type="email" required maxLength={CAPS.email} value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div>
               <Label htmlFor="d-phone">Phone (optional)</Label>
-              <Input id="d-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input id="d-phone" type="tel" maxLength={CAPS.phone} value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
           </div>
 
@@ -282,21 +299,34 @@ export default function Donate() {
               <div className="space-y-3">
                 <div>
                   <Label htmlFor="d-to">In honor / memory of</Label>
-                  <Input id="d-to" value={dedicateTo} onChange={(e) => setDedicateTo(e.target.value)} />
+                  <Input id="d-to" maxLength={CAPS.name} value={dedicateTo} onChange={(e) => setDedicateTo(e.target.value)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="d-notify-name">Notify (name)</Label>
-                    <Input id="d-notify-name" value={notifyName} onChange={(e) => setNotifyName(e.target.value)} />
+                    <Input id="d-notify-name" maxLength={CAPS.name} value={notifyName} onChange={(e) => setNotifyName(e.target.value)} />
                   </div>
                   <div>
                     <Label htmlFor="d-notify-email">Notify (email)</Label>
-                    <Input id="d-notify-email" type="email" value={notifyEmail} onChange={(e) => setNotifyEmail(e.target.value)} />
+                    <Input id="d-notify-email" type="email" maxLength={CAPS.email} value={notifyEmail} onChange={(e) => setNotifyEmail(e.target.value)} />
                   </div>
                 </div>
                 <div>
                   <Label htmlFor="d-message">A short message (optional)</Label>
-                  <Textarea id="d-message" rows={2} value={message} onChange={(e) => setMessage(e.target.value)} />
+                  <Textarea
+                    id="d-message"
+                    rows={2}
+                    maxLength={CAPS.message}
+                    aria-describedby="d-message-hint"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  />
+                  {/* Said before they type, not after they press Donate. The
+                      message is emailed from the theatre's own address, so
+                      links are refused (see donations.ts for why). */}
+                  <p id="d-message-hint" className="text-sm text-muted-foreground mt-1">
+                    Sent by email with the notice. Please leave out web and email addresses.
+                  </p>
                 </div>
               </div>
             )}
@@ -312,13 +342,17 @@ export default function Donate() {
             <SquareCardForm ref={cardRef} source="square-donation" onReadyChange={setCardReady} />
           </div>
 
+          <CheckoutTurnstile gate={turnstile} />
+
           <Button
             type="submit"
-            disabled={submitting || !cardReady}
+            disabled={submitting || !cardReady || turnstile.waiting}
             className="w-full h-12 text-base font-display uppercase tracking-wider"
           >
             {submitting ? (
               <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing…</>
+            ) : turnstile.waitLabel ? (
+              turnstile.waitLabel
             ) : (
               <><Heart className="h-4 w-4 mr-2" /> Donate ${amount > 0 ? amount.toFixed(0) : ''}</>
             )}

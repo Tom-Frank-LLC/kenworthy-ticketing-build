@@ -18,10 +18,16 @@ import {
   buildTributeSubject,
   buildTributeText,
   dedicationPhrase,
+  DONATION_TEXT_CAPS,
+  donationSummaryFromRow,
+  donorTextError,
+  findLink,
   formatGiftDate,
   formatMoney,
   TAX_ID,
+  withoutLinks,
   type DonationSummary,
+  type DonorText,
 } from './donations.ts';
 
 const gift = (over: Partial<DonationSummary> = {}): DonationSummary => ({
@@ -194,4 +200,95 @@ Deno.test('the receipt says who was told, and only when someone was', () => {
 
   // An ordinary gift never mentions it.
   assertEquals(buildReceiptText(gift()).includes('We will also notify'), false);
+});
+
+// ---------------------------------------------------------------------------
+// Donor-supplied text: caps and links (audit L16)
+// ---------------------------------------------------------------------------
+
+const text = (over: Partial<DonorText> = {}): DonorText => ({
+  donorName: 'Ada Lovelace',
+  donorEmail: 'ada@example.com',
+  donorPhone: null,
+  dedicateTo: 'Charles Babbage',
+  notifyName: 'Charles',
+  notifyEmail: 'charles@example.com',
+  message: 'Thinking of you today — see you at the next silent film.',
+  ...over,
+});
+
+Deno.test('an ordinary tribute passes, emails included', () => {
+  assertEquals(donorTextError(text()), null);
+});
+
+Deno.test('every way a mail client would make a link is found', () => {
+  for (const lure of [
+    'claim your refund at https://evil.example/r',
+    'go to http://x.co',
+    'visit www.kenworthy-refunds.net now',
+    'see refunds-kenworthy.com/claim',
+    'bit.ly/abc123',
+    'write to support@evil.org',
+    'EVIL.COM',
+    'xn--80ak6aa92e.xn--p1ai',
+  ]) {
+    assert(findLink(lure), `should find a link in: ${lure}`);
+  }
+});
+
+Deno.test('names and ordinary punctuation are not links', () => {
+  for (const ok of [
+    'J.Smith',
+    'St.Louis',
+    'Dr. Ada Lovelace, Ph.D.',
+    'e.g. the 1926 projector',
+    'Mr. & Mrs. J.R.R. Tolkien',
+    'We loved it... thank you',
+    'In memory of Mary-Jo, 1950-2026',
+  ]) {
+    assertEquals(findLink(ok), null, ok);
+  }
+});
+
+Deno.test('a link anywhere that reaches an email as prose is refused, quoting it', () => {
+  for (const field of ['message', 'donorName', 'dedicateTo', 'notifyName'] as const) {
+    const err = donorTextError(text({ [field]: 'Claim at evil.example.com today' }));
+    assert(err, field);
+    assertStringIncludes(err!, '"evil.example.com"');
+  }
+});
+
+Deno.test('every field has a cap, and a long one is refused by name', () => {
+  assertEquals(donorTextError(text({ message: 'a'.repeat(DONATION_TEXT_CAPS.message) })), null);
+  assertStringIncludes(donorTextError(text({ message: 'a'.repeat(DONATION_TEXT_CAPS.message + 1) }))!, 'message');
+  assertStringIncludes(donorTextError(text({ donorName: 'a'.repeat(201) }))!, 'Your name');
+  assertStringIncludes(donorTextError(text({ dedicateTo: 'a'.repeat(201) }))!, 'honors');
+  assertStringIncludes(donorTextError(text({ notifyName: 'a'.repeat(201) }))!, 'notify');
+  assert(donorTextError(text({ notifyEmail: `${'a'.repeat(320)}@x.com` })));
+  assert(donorTextError(text({ donorPhone: '1'.repeat(41) })));
+});
+
+Deno.test('a stored row cannot carry a link into either email, whatever wrote it', () => {
+  const summary = donationSummaryFromRow({
+    amount_cents: 100,
+    donor_name: 'Refunds at evil.com',
+    dedication_type: 'in_honor',
+    dedicate_to: 'see www.evil.net',
+    notify_name: 'Pat',
+    notify_email: 'pat@example.com',
+    message: 'Your refund: https://evil.example/claim — act now',
+    square_receipt_url: 'https://squareup.com/receipt/preview/abc',
+    created_at: '2026-10-06T12:00:00.000Z',
+    source: 'donate_page',
+  });
+  for (const html of [buildTributeHtml(summary), buildReceiptHtml(summary)]) {
+    assert(!html.includes('evil'), 'no lure in the rendered email');
+  }
+  for (const body of [buildTributeText(summary), buildReceiptText(summary)]) {
+    assert(!body.includes('evil'), 'no lure in the plain-text email');
+  }
+  assertStringIncludes(buildTributeText(summary), '[link removed]');
+  // Our own links are not donor text and are untouched.
+  assertEquals(summary.receiptUrl, 'https://squareup.com/receipt/preview/abc');
+  assertEquals(withoutLinks(null), null);
 });
