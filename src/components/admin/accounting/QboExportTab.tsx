@@ -106,7 +106,7 @@ export default function QboExportTab() {
       //
       // Every status but the unsold ones counts: filtering on 'active' alone
       // would drop a pass sold and spent to nothing inside the same period.
-      supabase.from('user_film_passes').select('id,pass_type_id,price_paid,tax_paid,purchased_at,status').in('status', ['active', 'depleted', 'expired', 'void', 'refunded']).gte('purchased_at', fromIso).lt('purchased_at', toIso),
+      supabase.from('user_film_passes').select('id,pass_type_id,price_paid,tax_paid,purchased_at,status,film_pass_order_id').in('status', ['active', 'depleted', 'expired', 'void', 'refunded']).gte('purchased_at', fromIso).lt('purchased_at', toIso),
       supabase.from('film_pass_orders').select('pass_id,pass_type_id,amount_paid,tax_amount,quantity,created_at,status').in('status', ['paid', 'fulfilled']).gte('created_at', fromIso).lt('created_at', toIso),
       supabase.from('film_pass_types').select('id,name,price'),
       // Paged: there are ~1,800 showings and this is the map that decides which
@@ -211,10 +211,13 @@ export default function QboExportTab() {
     }
 
     // Counter sales: booked at activation, which is when the cash arrived.
-    // A pass that discharged an online order is already counted above.
+    // A pass that discharged an online order was paid for by that order, which
+    // is booked above (or in the period it was paid). `film_pass_order_id`
+    // names the order for every pass it covers; `pass_id` names only the
+    // first, so on its own it would book a 3-pass order's other two again.
     const orderedPassIds = new Set(passOrders.map(o => o.pass_id).filter(Boolean));
     for (const p of (passRes.data as any[]) || []) {
-      if (orderedPassIds.has(p.id)) continue;
+      if (p.film_pass_order_id || orderedPassIds.has(p.id)) continue;
       const pt: any = ptypes.get(p.pass_type_id);
       // price_paid is what this pass actually sold for; the type's current
       // price is only a fallback for rows predating that column.
