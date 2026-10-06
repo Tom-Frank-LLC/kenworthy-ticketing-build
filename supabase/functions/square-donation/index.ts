@@ -9,8 +9,12 @@ import {
   squareErrorMessage,
 } from "../_shared/square.ts";
 import { buildTicketOrder, orderRequestBody } from "../_shared/square-order.ts";
-import { settleDonation } from "../_shared/donations.ts";
-import { LIMITS, checkRateLimit } from "../_shared/rate_limit.ts";
+import { donorTextError, settleDonation } from "../_shared/donations.ts";
+import { LIMITS, RATE_LIMIT_REFUSAL, callerIp, checkRateLimit } from "../_shared/rate_limit.ts";
+import { BOT_CHECK_REFUSAL, verifyTurnstile } from "../_shared/turnstile.ts";
+import { PAYMENTS_UNAVAILABLE, BOX_OFFICE_PHONE, publicDeclineMessage } from "../_shared/public_errors.ts";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -32,7 +36,11 @@ Deno.serve(async (req) => {
 
   // Public: return the publishable IDs the browser SDK needs
   if (action === "get_config") {
-    if (!square.ok) return json({ error: square.error }, 500);
+    if (!square.ok) {
+      // The detail names environment variables; it is for the log, not the page.
+      console.error("[square-donation] get_config:", square.error);
+      return json({ error: PAYMENTS_UNAVAILABLE }, 500);
+    }
     return json(publishableConfig(square.config));
   }
 
@@ -45,35 +53,32 @@ Deno.serve(async (req) => {
     return await recordInPersonDonation(req, body);
   }
 
-  if (!square.ok) return json({ error: square.error }, 500);
-
   if (action !== "create_payment") {
     return json({ error: `Unknown action: ${action}` }, 400);
   }
 
-  // The public card path, and the only unauthenticated one that moves money.
-  // Checked before validation so a flood costs us one indexed upsert rather
-  // than a Square round trip each. Fifteen in ten minutes is far above a donor
-  // retrying a declined card, and far below anything worth scripting.
+  if (!square.ok) {
+    console.error("[square-donation]", square.error);
+    return json({ error: PAYMENTS_UNAVAILABLE }, 500);
+  }
+
+  // The public card path. Rate limit first, so a flood costs one indexed upsert
+  // rather than a Square round trip each. Fifteen in ten minutes is far above a
+  // donor retrying a declined card, and far below anything worth scripting.
   //
-  // This is a speed bump, not the control: it bounds cost and nuisance from one
-  // address and does nothing about a distributed attempt. Turnstile — already
-  // on the rental form — is what would actually close this endpoint, and it is
-  // the obvious next thing for the page that takes money.
+  // A speed bump, not the control: it bounds cost and nuisance from one
+  // address and does nothing about a distributed attempt. Turnstile, below, is
+  // the control.
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
   {
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
     const rl = await checkRateLimit(
       admin, req,
       LIMITS.donation.bucket, LIMITS.donation.limit, LIMITS.donation.windowSeconds,
     );
-    if (!rl.allowed) {
-      return json({
-        error: "That is a lot of attempts in a short time. Please wait a minute and try again, or call the box office on 208-882-4127.",
-      }, 429);
-    }
+    if (!rl.allowed) return json({ error: RATE_LIMIT_REFUSAL }, 429);
   }
 
   // Validate donation payload
@@ -96,12 +101,31 @@ Deno.serve(async (req) => {
     return json({ error: "Amount must be between $1 and $100,000" }, 400);
   }
   if (!donorName || donorName.length < 2) return json({ error: "Donor name required" }, 400);
-  if (!donorEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(donorEmail)) {
+  if (!donorEmail || !EMAIL_RE.test(donorEmail)) {
     return json({ error: "Valid donor email required" }, 400);
   }
   if (dedicationType && !["in_honor", "in_memory"].includes(dedicationType)) {
     return json({ error: "Invalid dedication type" }, 400);
   }
+  // The tribute notice is sent to this address from the theatre's sender, so
+  // it has to be an address — it was stored unchecked before.
+  if (notifyEmail && !EMAIL_RE.test(notifyEmail)) {
+    return json({ error: "The email to notify is not a valid address" }, 400);
+  }
+  // Length caps and no links in anything that reaches an email as prose. The
+  // reasoning — refuse rather than strip — is in _shared/donations.ts.
+  const textError = donorTextError({
+    donorName, donorEmail, donorPhone, dedicateTo, notifyName, notifyEmail, message,
+  });
+  if (textError) return json({ error: textError }, 400);
+
+  // Fails closed — see _shared/turnstile.ts. After the free checks, so a typo
+  // the donor can fix does not spend their token; before any row or charge.
+  const bot = await verifyTurnstile(body.turnstile_token, callerIp(req), {
+    whenUnset: "refuse",
+    label: "square-donation",
+  });
+  if (!bot.ok) return json({ error: BOT_CHECK_REFUSAL }, 403);
 
   // Optional auth — if a JWT is present, link the donation to that user
   let userId: string | null = null;
@@ -121,8 +145,6 @@ Deno.serve(async (req) => {
       // ignore — donations are allowed for guests
     }
   }
-
-  const admin = createClient(supabaseUrl, serviceKey);
 
   // Insert a pending row so we always have a record, even if Square errors
   const idempotencyKey = crypto.randomUUID();
@@ -235,12 +257,12 @@ Deno.serve(async (req) => {
     });
 
     if (!sqResult.ok || !sqResult.data?.payment) {
-      console.error("Square payment error:", JSON.stringify(sqResult.data));
+      console.error("Square payment error:", squareErrorMessage(sqResult.data), JSON.stringify(sqResult.data));
       await admin
         .from("donations")
         .update({ status: "failed" })
         .eq("id", pending.id);
-      return json({ error: squareErrorMessage(sqResult.data) }, 400);
+      return json({ error: publicDeclineMessage(sqResult.data) }, 400);
     }
 
     const payment = sqResult.data.payment;
@@ -313,7 +335,11 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("Donation processing error:", err);
     await admin.from("donations").update({ status: "failed" }).eq("id", pending.id);
-    return json({ error: err instanceof Error ? err.message : "Payment failed" }, 500);
+    // The exception's own text goes to the log. Not "your card was not
+    // charged": this catch also covers the steps after the charge.
+    return json({
+      error: `Something went wrong while processing your donation. Please check your email for a receipt before trying again, or call the box office on ${BOX_OFFICE_PHONE}.`,
+    }, 500);
   }
 });
 

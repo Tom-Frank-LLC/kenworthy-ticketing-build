@@ -57,9 +57,13 @@ import {
   authenticatedUser,
   contactForUser,
   findOrCreateBuyer,
+  findUserByContact,
   readContact,
   type BuyerContact,
 } from '../_shared/buyers.ts';
+import { LIMITS, RATE_LIMIT_REFUSAL, callerIp, checkRateLimit } from '../_shared/rate_limit.ts';
+import { BOT_CHECK_REFUSAL, verifyTurnstile } from '../_shared/turnstile.ts';
+import { NOT_CHARGED_FAILURE, PAYMENTS_UNAVAILABLE, publicDeclineMessage } from '../_shared/public_errors.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -79,6 +83,14 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
  * this window a pending row is treated as abandoned: it holds nothing.
  */
 const PENDING_HOLD_MS = 15 * 60 * 1000;
+
+/**
+ * Caps on the contact a guest types. Far above any real name or address — the
+ * form itself stops at 100 / 255 / 20 — and here so one request cannot put
+ * kilobytes of text into an auth account, a confirmation email and a donor
+ * record. Same figures as the rental form's allowlist.
+ */
+const CONTACT_CAPS = { name: 200, email: 320, phone: 40 } as const;
 const HELD_STATUSES = ['confirmed', 'pending'];
 
 function isHeld(row: { status: string; purchased_at: string }): boolean {
@@ -100,7 +112,11 @@ Deno.serve(async (req: Request) => {
 
   // The browser needs the publishable ids before it can render the card form.
   if (body.action === 'get_config') {
-    if (!square.ok) return json({ error: square.error }, 500);
+    if (!square.ok) {
+      // The detail names environment variables; it is for the log, not the page.
+      console.error('[ticket-checkout] get_config:', square.error);
+      return json({ error: PAYMENTS_UNAVAILABLE }, 500);
+    }
     return json(publishableConfig(square.config));
   }
 
@@ -165,24 +181,49 @@ Deno.serve(async (req: Request) => {
   const idempotencyKey = normaliseKey(body.idempotency_key);
 
   // -------------------------------------------------------------------------
-  // Who is buying
+  // The order of everything below, and why
+  // -------------------------------------------------------------------------
+  //
+  //   shape checks (above)  ->  rate limit  ->  replay  ->  Turnstile
+  //     ->  price  ->  availability  ->  per-buyer limit
+  //     ->  create the buyer's account, if they have none  ->  pending rows
+  //     ->  charge  ->  confirm
+  //
+  // Every refusal that costs nothing comes first, and every refusal at all
+  // comes before an account is made. The account used to be created right
+  // here, before pricing, so a request that was going to be refused — a bad
+  // tier, a sold-out house, a junk body — still left an `email_confirm: true`
+  // auth user behind (audit M2, feeding H1). Now a request that fails any check
+  // creates nothing.
+  //
+  // Why the account is still made before the charge, not after it: the pending
+  // rows are written before money moves (header), and they carry the owner.
+  // `tickets.user_id` is nullable, so the rows *could* be written ownerless and
+  // claimed after the charge — but then a paid order whose account creation
+  // fails is a paid order with no owner, the replay lookup cannot find it, and
+  // delivery reads the owner to address the email. Those are failures that
+  // land on someone who has paid. What the later ordering would buy is no
+  // account for a declined card, and by this point a declined card has already
+  // passed the rate limit, Turnstile and every pricing and availability check —
+  // the same bar a successful free reservation clears, and that creates an
+  // account legitimately. Not worth a paid order without an owner.
+
+  // Per caller, before anything that costs a round trip. Paid and free alike:
+  // a free showing has no card step, which makes it the cheaper one to script.
+  const rl = await checkRateLimit(
+    admin, req,
+    LIMITS.ticketCheckout.bucket, LIMITS.ticketCheckout.limit, LIMITS.ticketCheckout.windowSeconds,
+  );
+  if (!rl.allowed) return json({ error: RATE_LIMIT_REFUSAL }, 429);
+
+  // -------------------------------------------------------------------------
+  // Who is asking — read only. Nobody is created here.
   // -------------------------------------------------------------------------
   const signedIn = await authenticatedUser(createClient, req);
   let contact: BuyerContact = readContact(body);
-  let userId: string;
-  // Whether this purchase silently created an account. The confirmation email
-  // uses it to decide whether to offer a password-set link, so a returning
-  // customer is not told an account was made for them.
-  let accountCreated = false;
 
   if (signedIn) {
-    userId = signedIn.id;
-    contact = await contactForUser(admin, userId, contact);
-    // A gift is not a ticket — see bundledDonationEmailError. Checked on both
-    // branches rather than once below, because the guest branch creates an
-    // account as a side effect and a refused order should not leave one behind.
-    const giftContactError = bundledDonationEmailError(contact.email, donationCents);
-    if (giftContactError) return json({ error: giftContactError }, 400);
+    contact = await contactForUser(admin, signedIn.id, contact);
   } else {
     // No name check. It used to be required here and on the form, and it was
     // never worth a rejected purchase — a name is a courtesy for the receipt
@@ -196,27 +237,39 @@ Deno.serve(async (req: Request) => {
     if (contact.email && !EMAIL_RE.test(contact.email)) {
       return json({ error: 'Invalid email format' }, 400);
     }
-    // The authoritative half of the donation rule. GuestCheckoutForm asks for
-    // the address before the pay button so nobody meets this message, but a
-    // stale tab or a direct call has to be refused here — same discipline as
-    // every other purchase rule on this path, which is priced from the database
-    // and never from the request.
-    const giftContactError = bundledDonationEmailError(contact.email, donationCents);
-    if (giftContactError) return json({ error: giftContactError }, 400);
-    try {
-      const buyer = await findOrCreateBuyer(admin, contact);
-      userId = buyer.userId;
-      accountCreated = buyer.created;
-    } catch (err) {
-      console.error('[ticket-checkout] buyer resolution failed', err);
-      return json({ error: err instanceof Error ? err.message : 'Could not create account' }, 500);
+    if (
+      contact.name.length > CONTACT_CAPS.name ||
+      (contact.email ?? '').length > CONTACT_CAPS.email ||
+      (contact.phone ?? '').length > CONTACT_CAPS.phone
+    ) {
+      return json({ error: 'That name, email or phone number is too long.' }, 400);
     }
   }
+  // A gift is not a ticket — see bundledDonationEmailError. The authoritative
+  // half of the donation rule: GuestCheckoutForm asks for the address before
+  // the pay button so nobody meets this message, but a stale tab or a direct
+  // call has to be refused here — same discipline as every other purchase rule
+  // on this path, which is priced from the database and never from the request.
+  const giftContactError = bundledDonationEmailError(contact.email, donationCents);
+  if (giftContactError) return json({ error: giftContactError }, 400);
 
-  // A resubmitted attempt returns the order it already made. Matching on the
-  // buyer as well as the key means a guessed key reveals nothing.
-  const replay = await findExistingOrder(admin, idempotencyKey, userId);
+  // A resubmitted attempt returns the order it already made — before the bot
+  // check, because the token that attempt carried has been spent and a replay
+  // writes nothing. Matching on the buyer as well as the key means a guessed
+  // key reveals nothing.
+  const replay = await findExistingOrder(admin, idempotencyKey, signedIn?.id ?? null, contact);
   if (replay) return json(replay);
+
+  // -------------------------------------------------------------------------
+  // Bot check — fails closed. See _shared/turnstile.ts.
+  // -------------------------------------------------------------------------
+  // Signed-in callers too: a session is not proof of a person (any buyer can
+  // hold one — audit H1), and the page renders the widget either way.
+  const bot = await verifyTurnstile(body.turnstile_token, callerIp(req), {
+    whenUnset: 'refuse',
+    label: 'ticket-checkout',
+  });
+  if (!bot.ok) return json({ error: BOT_CHECK_REFUSAL }, 403);
 
   // -------------------------------------------------------------------------
   // Price it — from the database, never from the request
@@ -276,20 +329,66 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const { data: ownRows } = await admin
-    .from('tickets')
-    .select('id, status, purchased_at')
-    .eq('showing_id', showingId)
-    .eq('user_id', userId)
-    .in('status', HELD_STATUSES);
+  // -------------------------------------------------------------------------
+  // The per-buyer limit, then — only now — the buyer's account
+  // -------------------------------------------------------------------------
+  // Checked against the account the contact already has, if any. A buyer with
+  // no account holds nothing, so their limit check needs no account to exist —
+  // which is what lets the refusal come before anything is created.
+  const existingUserId = signedIn
+    ? signedIn.id
+    : await findUserByContact(admin, contact.email, contact.phone);
 
-  const alreadyHeld = (ownRows || []).filter(isHeld).length;
+  const heldBy = async (ownerId: string | null) => {
+    if (!ownerId) return 0;
+    const { data: ownRows } = await admin
+      .from('tickets')
+      .select('id, status, purchased_at')
+      .eq('showing_id', showingId)
+      .eq('user_id', ownerId)
+      .in('status', HELD_STATUSES);
+    return (ownRows || []).filter(isHeld).length;
+  };
+
   const limitError = ticketLimitError(
     order.showing.max_tickets_per_buyer,
-    alreadyHeld,
+    await heldBy(existingUserId),
     order.tickets.length,
   );
   if (limitError) return json({ error: limitError }, 400);
+
+  let userId: string;
+  // Whether this purchase silently created an account. The confirmation email
+  // uses it to decide whether to offer a password-set link, so a returning
+  // customer is not told an account was made for them.
+  let accountCreated = false;
+
+  if (existingUserId) {
+    userId = existingUserId;
+  } else {
+    try {
+      const buyer = await findOrCreateBuyer(admin, contact);
+      userId = buyer.userId;
+      accountCreated = buyer.created;
+    } catch (err) {
+      // GoTrue's own sentence ("A user with this phone number has already been
+      // registered", …) goes to the log. The buyer has not been charged.
+      console.error('[ticket-checkout] buyer resolution failed', err);
+      return json({ error: NOT_CHARGED_FAILURE }, 500);
+    }
+
+    // findOrCreateBuyer looks again before it creates, and can find an account
+    // the first lookup missed (one made a moment ago by a parallel request). An
+    // account it found rather than made may hold tickets already.
+    if (!accountCreated) {
+      const raced = ticketLimitError(
+        order.showing.max_tickets_per_buyer,
+        await heldBy(userId),
+        order.tickets.length,
+      );
+      if (raced) return json({ error: raced }, 400);
+    }
+  }
 
   // -------------------------------------------------------------------------
   // Write the order as pending
@@ -408,8 +507,9 @@ Deno.serve(async (req: Request) => {
     // paymentId/receiptUrl stay null, exactly as they would for a comp.
   } else {
     if (!square.ok) {
+      console.error('[ticket-checkout]', square.error);
       await failOrder(square.error);
-      return json({ error: 'Payments are not configured. Please contact the box office.' }, 500);
+      return json({ error: PAYMENTS_UNAVAILABLE }, 500);
     }
 
     // -----------------------------------------------------------------------
@@ -502,10 +602,11 @@ Deno.serve(async (req: Request) => {
       });
 
       if (!result.ok || !result.data?.payment) {
-        const message = squareErrorMessage(result.data);
+        // Square's own detail is kept on the rows for staff; the buyer gets a
+        // sentence they can act on (see _shared/public_errors.ts).
         console.error('[ticket-checkout] Square declined', JSON.stringify(result.data));
-        await failOrder(message);
-        return json({ error: message }, 400);
+        await failOrder(squareErrorMessage(result.data));
+        return json({ error: publicDeclineMessage(result.data) }, 400);
       }
 
       const payment = result.data.payment;
@@ -662,22 +763,44 @@ function normaliseKey(raw: unknown): string {
   return key.length >= 8 && key.length <= 45 ? key : crypto.randomUUID();
 }
 
-/** The order this key already created, if the buyer is retrying. */
-async function findExistingOrder(admin: any, idempotencyKey: string, userId: string) {
+/**
+ * The order this key already created, if the buyer is retrying.
+ *
+ * Looked up by key first — an indexed read that finds nothing for every request
+ * that is not a retry — and only then matched to the caller. A guest proves
+ * ownership with the contact they typed, resolved the same way the original
+ * attempt resolved it; that lookup runs only when a confirmed order with this
+ * key actually exists, so a stream of fresh keys never pays for it.
+ */
+async function findExistingOrder(
+  admin: any,
+  idempotencyKey: string,
+  signedInId: string | null,
+  contact: BuyerContact,
+) {
   const { data } = await admin
     .from('tickets')
-    .select('id, qr_code, price, total_price, seat_id, tier_id, order_token, status, square_payment_id, square_receipt_url')
+    .select('id, qr_code, price, total_price, seat_id, tier_id, order_token, status, user_id, square_payment_id, square_receipt_url')
     .eq('checkout_idempotency_key', idempotencyKey)
-    .eq('user_id', userId);
+    .eq('status', 'confirmed');
 
-  const rows = (data || []).filter((t: any) => t.status === 'confirmed');
-  if (rows.length === 0) return null;
+  const found = data || [];
+  if (found.length === 0) return null;
+
+  const ownerId: string | null = found[0].user_id ?? null;
+  if (!ownerId) return null;
+  const callerId = signedInId ?? (await findUserByContact(admin, contact.email, contact.phone));
+  if (callerId !== ownerId) return null;
+
+  const rows = found
+    .filter((t: any) => t.user_id === ownerId)
+    .map(({ user_id: _owner, ...t }: any) => t);
 
   return {
     success: true,
     replayed: true,
     order_token: rows[0].order_token,
-    user_id: userId,
+    user_id: ownerId,
     tickets: rows,
     ticket_count: rows.length,
     receipt_url: rows[0].square_receipt_url ?? null,

@@ -15,6 +15,8 @@ import { Film, Calendar, Clock, Check, Minus, Plus, MapPin, Sparkles, Music, Cre
 import { SeatMap } from '@/components/SeatMap';
 import { SalesFinalNote } from '@/components/SalesFinalNote';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
+import { CheckoutTurnstile } from '@/components/CheckoutTurnstile';
+import { useTurnstileGate } from '@/hooks/useTurnstileGate';
 import { DonationPrompt } from '@/components/DonationPrompt';
 import { type Seat, type PriceTier } from '@/lib/booking';
 import { useOrderQuote } from '@/lib/quote';
@@ -239,6 +241,7 @@ function FreeAdmissionPanel({
   const [donorEmail, setDonorEmail] = useState(defaultEmail ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [thankedCents, setThankedCents] = useState<number | null>(null);
+  const turnstile = useTurnstileGate();
 
   const giving = donationCents > 0;
   const amount = (donationCents / 100).toFixed(2);
@@ -252,8 +255,12 @@ function FreeAdmissionPanel({
       toast.error('Card form is not ready yet — give it a moment.');
       return;
     }
+    if (turnstile.waiting) return;
 
     setSubmitting(true);
+    // Set once a request has actually gone out — only then is the bot-check
+    // token spent and in need of replacing.
+    let sent = false;
     try {
       let token: string;
       try {
@@ -263,6 +270,7 @@ function FreeAdmissionPanel({
         return;
       }
 
+      sent = true;
       const data = await invokeFunction<{ success: boolean; receiptUrl: string | null }>(
         'square-donation',
         {
@@ -277,6 +285,7 @@ function FreeAdmissionPanel({
           notifyName: null,
           notifyEmail: null,
           message: null,
+          turnstile_token: turnstile.token,
         },
       );
 
@@ -293,6 +302,9 @@ function FreeAdmissionPanel({
       toast.error(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setSubmitting(false);
+      // Success or failure, the token went with the request and is spent. A
+      // second gift from this panel, or a retry after a decline, needs a new one.
+      if (sent) turnstile.refresh();
     }
   };
 
@@ -418,14 +430,17 @@ function FreeAdmissionPanel({
                     />
                   </div>
                 </div>
+                <CheckoutTurnstile gate={turnstile} />
                 <Button
                   className="w-full"
                   size="lg"
                   onClick={handleDonate}
-                  disabled={submitting || !cardReady}
+                  disabled={submitting || !cardReady || turnstile.waiting}
                 >
                   <Check className="h-4 w-4 mr-1" />
-                  {submitting ? 'Processing...' : `Donate $${amount}`}
+                  {submitting
+                    ? 'Processing...'
+                    : turnstile.waitLabel ?? `Donate $${amount}`}
                 </Button>
                 <p className="text-sm text-muted-foreground text-center">
                   Payments are processed securely by Square. Your card details never reach
@@ -808,6 +823,11 @@ export default function Showing() {
   // — which would mean a corrected card getting the old decline back.
   const idempotencyKeyRef = useRef(crypto.randomUUID());
 
+  // The bot check, for both the guest form and the signed-in button below.
+  // Owned here because this is what submits, and a failed attempt has to ask
+  // the widget for a fresh token — the one it sent is spent either way.
+  const turnstile = useTurnstileGate();
+
   const submitPurchase = async (opts: {
     sourceId?: string;
     guest?: {
@@ -860,6 +880,7 @@ export default function Showing() {
         donation_cents: donationCents,
         source_id: opts.sourceId,
         idempotency_key: idempotencyKeyRef.current,
+        turnstile_token: turnstile.token,
         name: opts.guest?.name,
         email: opts.guest?.email || undefined,
         phone: opts.guest?.phone || undefined,
@@ -937,8 +958,11 @@ export default function Showing() {
       // page the confirmation email links to.
       if (data.order_token) navigate(ticketPagePath(data.order_token));
     } catch (err: any) {
-      // A failed attempt must not reuse its key.
+      // A failed attempt must not reuse its key — nor its bot-check token,
+      // which the server has already spent. Only the widget is reset; what the
+      // buyer typed and picked stays as it was.
       idempotencyKeyRef.current = crypto.randomUUID();
+      turnstile.refresh();
       toast.error(err.message || 'Failed to purchase tickets');
 
       // Every rejection on availability grounds — a seat taken a moment ago, or
@@ -994,6 +1018,7 @@ export default function Showing() {
   const handlePurchase = async () => {
     if (!user) { navigate('/auth?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)); return; }
     if (ticketCount === 0) { toast.error('Please select at least one ticket'); return; }
+    if (turnstile.waiting) return;
 
     if (isFree) { await submitPurchase({}); return; }
 
@@ -1546,19 +1571,22 @@ export default function Showing() {
                           <SquareCardForm ref={cardRef} source="ticket-checkout" onReadyChange={setCardReady} />
                         </div>
                       )}
+                      <CheckoutTurnstile gate={turnstile} />
                       <Button
                         className="w-full"
                         size="lg"
                         onClick={handlePurchase}
                         // Not while a quote is in flight: the button names the
                         // amount, and it must be the amount for THIS selection.
-                        disabled={purchasing || quoting || !!quoteError || (!isFree && !cardReady)}
+                        disabled={purchasing || quoting || !!quoteError || (!isFree && !cardReady) || turnstile.waiting}
                       >
                         <Check className="h-4 w-4 mr-1" />
                         {purchasing
                           ? 'Processing...'
                           : quoting
                             ? 'Pricing…'
+                          : turnstile.waitLabel
+                            ? turnstile.waitLabel
                           : isFree
                             ? `Reserve ${ticketCount} Ticket(s)`
                             : `Pay $${chargeTotal.toFixed(2)}`}
@@ -1576,6 +1604,7 @@ export default function Showing() {
                       total={chargeTotal}
                       purchasing={purchasing}
                       donationCents={donationCents}
+                      turnstile={turnstile}
                       onPurchase={handleGuestPurchase}
                     />
                   )}

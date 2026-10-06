@@ -3,6 +3,7 @@ import { render as rtlRender, screen, fireEvent, waitFor, within } from '@testin
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { GuestCheckoutForm } from './GuestCheckoutForm';
+import type { TurnstileGate } from '@/hooks/useTurnstileGate';
 import { COLLECT_PHONE, SMS_DELIVERY_LIVE } from '@/lib/flags';
 
 /**
@@ -55,6 +56,21 @@ function fillContactDetails() {
 
 const optIn = () => screen.getByRole('checkbox', { name: /Email me about/i });
 
+/**
+ * A bot-check gate with nothing to wait for — what the page hands the form
+ * when no site key is configured, which is the case under vitest.
+ */
+const gate = (over: Partial<TurnstileGate> = {}): TurnstileGate => ({
+  token: null,
+  waiting: false,
+  waitLabel: null,
+  refresh: vi.fn(),
+  widgetKey: 0,
+  onToken: vi.fn(),
+  onInteractive: vi.fn(),
+  ...over,
+});
+
 describe('GuestCheckoutForm', () => {
   beforeEach(() => {
     tokenizeCard.mockReset();
@@ -64,7 +80,7 @@ describe('GuestCheckoutForm', () => {
   it('tokenises the card and hands the token to the purchase handler', async () => {
     const onPurchase = vi.fn();
     render(
-      <GuestCheckoutForm ticketCount={2} total={16.96} purchasing={false} onPurchase={onPurchase} />,
+      <GuestCheckoutForm turnstile={gate()} ticketCount={2} total={16.96} purchasing={false} onPurchase={onPurchase} />,
     );
 
     const payButton = await screen.findByRole('button', { name: /Pay \$16\.96/ });
@@ -99,7 +115,7 @@ describe('GuestCheckoutForm', () => {
   it('carries a cleared opt-in through to the purchase handler', async () => {
     const onPurchase = vi.fn();
     render(
-      <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+      <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
     );
 
     const payButton = await screen.findByRole('button', { name: /Pay \$8\.48/ });
@@ -121,7 +137,7 @@ describe('GuestCheckoutForm', () => {
     tokenizeCard.mockRejectedValue(new Error('Card expiration date is invalid'));
     const onPurchase = vi.fn();
     render(
-      <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+      <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
     );
 
     const payButton = await screen.findByRole('button', { name: /Pay \$8\.48/ });
@@ -143,7 +159,7 @@ describe('GuestCheckoutForm', () => {
   it('will not submit without a way to reach the buyer', async () => {
     const onPurchase = vi.fn();
     render(
-      <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+      <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
     );
 
     const payButton = await screen.findByRole('button', { name: /Pay/ });
@@ -176,7 +192,7 @@ describe('GuestCheckoutForm', () => {
   it('takes a purchase with no name at all', async () => {
     const onPurchase = vi.fn();
     render(
-      <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+      <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
     );
 
     const payButton = await screen.findByRole('button', { name: /Pay/ });
@@ -202,7 +218,7 @@ describe('GuestCheckoutForm', () => {
   describe.skipIf(COLLECT_PHONE)('with the phone field hidden', () => {
     it('does not ask for a phone number it is not collecting', async () => {
       render(
-        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={vi.fn()} />,
+        <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={vi.fn()} />,
       );
 
       await screen.findByRole('button', { name: /Pay/ });
@@ -213,7 +229,7 @@ describe('GuestCheckoutForm', () => {
   describe.skipIf(!COLLECT_PHONE)('with the phone field shown', () => {
     it('asks for a phone number and discloses what texting it means', async () => {
       render(
-        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={vi.fn()} />,
+        <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={vi.fn()} />,
       );
 
       await screen.findByRole('button', { name: /Pay/ });
@@ -241,7 +257,7 @@ describe('GuestCheckoutForm', () => {
     it('leaves SMS consent unticked, and lets the purchase go through without it', async () => {
       const onPurchase = vi.fn();
       render(
-        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+        <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
       );
 
       const payButton = await screen.findByRole('button', { name: /Pay/ });
@@ -261,7 +277,7 @@ describe('GuestCheckoutForm', () => {
     it('reports consent only when the box is ticked and a number was given', async () => {
       const onPurchase = vi.fn();
       render(
-        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+        <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
       );
 
       const payButton = await screen.findByRole('button', { name: /Pay/ });
@@ -297,7 +313,7 @@ describe('GuestCheckoutForm', () => {
     it('refuses a purchase with no email, rather than taking money and sending nothing', async () => {
       const onPurchase = vi.fn();
       render(
-        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+        <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
       );
 
       const payButton = await screen.findByRole('button', { name: /Pay/ });
@@ -324,7 +340,7 @@ describe('GuestCheckoutForm', () => {
     it('takes a phone-only purchase and passes the number through as typed', async () => {
       const onPurchase = vi.fn();
       render(
-        <GuestCheckoutForm ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
+        <GuestCheckoutForm turnstile={gate()} ticketCount={1} total={8.48} purchasing={false} onPurchase={onPurchase} />,
       );
 
       const payButton = await screen.findByRole('button', { name: /Pay/ });
@@ -368,6 +384,7 @@ describe('GuestCheckoutForm', () => {
       const onPurchase = vi.fn();
       render(
         <GuestCheckoutForm
+          turnstile={gate()}
           ticketCount={1}
           total={9.48}
           purchasing={false}
@@ -396,6 +413,7 @@ describe('GuestCheckoutForm', () => {
     it('marks the email field required and says why', async () => {
       render(
         <GuestCheckoutForm
+          turnstile={gate()}
           ticketCount={1}
           total={9.48}
           purchasing={false}
@@ -413,6 +431,7 @@ describe('GuestCheckoutForm', () => {
       const onPurchase = vi.fn();
       render(
         <GuestCheckoutForm
+          turnstile={gate()}
           ticketCount={1}
           total={9.48}
           purchasing={false}
@@ -441,6 +460,7 @@ describe('GuestCheckoutForm', () => {
       const onPurchase = vi.fn();
       render(
         <GuestCheckoutForm
+          turnstile={gate()}
           ticketCount={1}
           total={8.48}
           purchasing={false}
@@ -452,6 +472,57 @@ describe('GuestCheckoutForm', () => {
       const payButton = await screen.findByRole('button', { name: /Pay/ });
       await waitFor(() => expect(payButton).toBeEnabled());
       expect(screen.getByLabelText(SMS_DELIVERY_LIVE ? /^Email$/ : /^Email \*$/)).toBeInTheDocument();
+    });
+  });
+
+  describe('the bot check', () => {
+    it('holds the submit while the check is unsolved, and says it is checking', async () => {
+      const onPurchase = vi.fn();
+      render(
+        <GuestCheckoutForm
+          turnstile={gate({ waiting: true, waitLabel: 'Checking your browser…' })}
+          ticketCount={2}
+          total={0}
+          purchasing={false}
+          onPurchase={onPurchase}
+        />,
+      );
+      fillContactDetails();
+      const button = screen.getByRole('button', { name: 'Checking your browser…' });
+      expect(button).toBeDisabled();
+      // Enter in a field is the other way to submit; it must not get through either.
+      fireEvent.submit(button.closest('form')!);
+      expect(onPurchase).not.toHaveBeenCalled();
+    });
+
+    it('tells the buyer to tick the box when the check wants a click (#278)', () => {
+      render(
+        <GuestCheckoutForm
+          turnstile={gate({ waiting: true, waitLabel: 'Tick the box above to continue' })}
+          ticketCount={1}
+          total={0}
+          purchasing={false}
+          onPurchase={vi.fn()}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Tick the box above to continue' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: /Checking your browser/ })).toBeNull();
+    });
+
+    it('a free reservation is gated too — it has no card step to slow a script', async () => {
+      const onPurchase = vi.fn();
+      render(
+        <GuestCheckoutForm
+          turnstile={gate({ token: 'tok', waiting: false })}
+          ticketCount={2}
+          total={0}
+          purchasing={false}
+          onPurchase={onPurchase}
+        />,
+      );
+      fillContactDetails();
+      fireEvent.click(screen.getByRole('button', { name: /Reserve 2/ }));
+      await waitFor(() => expect(onPurchase).toHaveBeenCalled());
     });
   });
 });

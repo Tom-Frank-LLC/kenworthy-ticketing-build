@@ -8,6 +8,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 import { COLLECT_PHONE, SMS_DELIVERY_LIVE } from '@/lib/flags';
 import { SalesFinalNote } from '@/components/SalesFinalNote';
+import { CheckoutTurnstile } from '@/components/CheckoutTurnstile';
+import type { TurnstileGate } from '@/hooks/useTurnstileGate';
 
 interface GuestCheckoutFormProps {
   ticketCount: number;
@@ -18,6 +20,12 @@ interface GuestCheckoutFormProps {
    * required — see the contact rule in `validate` below.
    */
   donationCents?: number;
+  /**
+   * The bot check, owned by the page because the page is what submits — and
+   * what has to ask for a fresh token when an attempt fails. Free reservations
+   * carry it too: with no card step, they are the cheaper thing to script.
+   */
+  turnstile: TurnstileGate;
   /**
    * Receives the buyer's details plus a single-use Square card token.
    *
@@ -59,6 +67,7 @@ export function GuestCheckoutForm({
   total,
   purchasing,
   donationCents = 0,
+  turnstile,
   onPurchase,
 }: GuestCheckoutFormProps) {
   const [name, setName] = useState('');
@@ -144,6 +153,8 @@ export function GuestCheckoutForm({
   const smsOptIn = COLLECT_PHONE && smsConsent && contactPhone.length > 0;
 
   const handleSubmit = async () => {
+    // The button is disabled while this holds; Enter in a field is the other way in.
+    if (turnstile.waiting) return;
     if (!validate()) {
       // Bumped even when the same field fails twice, so a repeat submit
       // still moves focus to the summary rather than silently doing
@@ -335,14 +346,18 @@ export function GuestCheckoutForm({
         </div>
       )}
 
+      <CheckoutTurnstile gate={turnstile} />
+
       <Button
         type="submit"
         className="w-full"
         size="lg"
-        disabled={busy || (!isFree && !cardReady)}
+        disabled={busy || (!isFree && !cardReady) || turnstile.waiting}
       >
         {busy ? (
           <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Processing…</>
+        ) : turnstile.waitLabel ? (
+          turnstile.waitLabel
         ) : isFree ? (
           <><Check className="h-4 w-4 mr-1" /> Reserve {ticketCount} Ticket(s)</>
         ) : (

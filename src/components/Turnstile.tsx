@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 /**
  * Cloudflare Turnstile — the bot check on public write forms.
@@ -78,8 +78,16 @@ function loadScript(): Promise<void> {
 export function Turnstile({
   onToken,
   onInteractive,
+  fallback,
 }: {
   onToken: (token: string | null) => void;
+  /**
+   * What to tell someone whose browser cannot run the check, after "allow
+   * challenges.cloudflare.com and reload". Defaults to the rental form's
+   * events@ address; a checkout passes the box office instead, because that is
+   * where a person who cannot pay online can still buy.
+   */
+  fallback?: ReactNode;
   /**
    * Called with `true` when Turnstile decides to put a checkbox in front of the
    * visitor, and `false` when that is done with.
@@ -170,10 +178,14 @@ export function Turnstile({
     return (
       <p className="text-sm text-muted-foreground">
         The verification check could not run — a content blocker or a strict network will do this.
-        Please allow <code>challenges.cloudflare.com</code> for this page and reload, or send your
-        request to{' '}
-        <a className="underline" href="mailto:events@kenworthy.org">events@kenworthy.org</a> and we
-        will take it from there.
+        Please allow <code>challenges.cloudflare.com</code> for this page and reload, or{' '}
+        {fallback ?? (
+          <>
+            send your request to{' '}
+            <a className="underline" href="mailto:events@kenworthy.org">events@kenworthy.org</a> and we
+            will take it from there.
+          </>
+        )}
       </p>
     );
   }
