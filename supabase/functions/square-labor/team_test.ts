@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { ADMIN_ACTIONS, createTeamMemberBody } from "./team.ts";
+import { ADMIN_ACTIONS, createTeamMemberBody, OWN_SHIFT_ACTIONS, pathId, shiftAccessError } from "./team.ts";
 
 Deno.test("creating a Square team member is admin-only", () => {
   assert(ADMIN_ACTIONS.has("create_team_member"));
@@ -11,10 +11,41 @@ Deno.test("the existing write actions stay admin-only", () => {
   }
 });
 
-Deno.test("staff keep their own clock and the reads", () => {
-  for (const a of ["list_team", "clock_in", "clock_out", "start_break", "end_break", "current_shift", "my_upcoming_shifts"]) {
+Deno.test("staff keep their own clock and their own schedule", () => {
+  for (const a of ["clock_in", "clock_out", "start_break", "end_break", "current_shift", "my_upcoming_shifts"]) {
     assert(!ADMIN_ACTIONS.has(a), a);
   }
+});
+
+Deno.test("the payroll and schedule reads are admin-only (M6)", () => {
+  for (const a of ["list_team", "list_shifts", "list_scheduled_shifts", "labor_summary"]) {
+    assert(ADMIN_ACTIONS.has(a), a);
+  }
+});
+
+Deno.test("every staff shift mutation is ownership-checked", () => {
+  for (const a of ["clock_out", "start_break", "end_break"]) {
+    assert(OWN_SHIFT_ACTIONS.has(a), a);
+  }
+  // force_close_shift is the admin path and is not ownership-checked.
+  assert(!OWN_SHIFT_ACTIONS.has("force_close_shift"));
+});
+
+Deno.test("a staffer may change only their own shift", () => {
+  assertEquals(shiftAccessError({ team_member_id: "TM1" }, "TM1", false), null);
+  assert(shiftAccessError({ team_member_id: "TM2" }, "TM1", false));
+  assert(shiftAccessError({ team_member_id: "TM1" }, null, false));
+  assert(shiftAccessError(null, "TM1", false));
+  assert(shiftAccessError({}, "TM1", false));
+});
+
+Deno.test("an admin may change anyone's shift", () => {
+  assertEquals(shiftAccessError({ team_member_id: "TM2" }, null, true), null);
+});
+
+Deno.test("ids are one path segment", () => {
+  assertEquals(pathId("ABC123"), "ABC123");
+  assertEquals(pathId("../team-members/X?y=1"), "..%2Fteam-members%2FX%3Fy%3D1");
 });
 
 Deno.test("the create body ties the member to the account and the location", () => {

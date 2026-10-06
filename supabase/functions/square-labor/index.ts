@@ -30,7 +30,14 @@ import {
   squareFetch,
   type SquareConfig,
 } from "../_shared/square.ts";
-import { ADMIN_ACTIONS, createTeamMemberBody, type CreateTeamMemberInput } from "./team.ts";
+import {
+  ADMIN_ACTIONS,
+  createTeamMemberBody,
+  type CreateTeamMemberInput,
+  OWN_SHIFT_ACTIONS,
+  pathId,
+  shiftAccessError,
+} from "./team.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -176,6 +183,14 @@ Deno.serve(async (req) => {
     const { action, ...params } = body as { action: string; [k: string]: unknown };
     if (ADMIN_ACTIONS.has(action) && !hasAdmin) return json({ error: "Admin required" }, 403);
 
+    // Staff change only their own timecard. Resolved once here, for the three
+    // actions that take a shift_id, and checked against the shift Square
+    // returns inside mutateShift before anything is written.
+    const callerTeamMemberId = OWN_SHIFT_ACTIONS.has(action) && !hasAdmin
+      ? await linkedTeamMemberId(supabase, user.id)
+      : null;
+    const owner: ShiftGuard = (shift) => shiftAccessError(shift, callerTeamMemberId, !!hasAdmin);
+
     switch (action) {
       case "list_team":
         return await listTeam(config);
@@ -186,13 +201,14 @@ Deno.serve(async (req) => {
       case "clock_in":
         return await clockIn(config, supabase, user.id);
       case "clock_out":
-        return await clockOut(config, params as { shift_id: string });
+        return await clockOut(config, params as { shift_id: string }, owner);
       case "start_break":
-        return await startBreak(config, params as { shift_id: string });
+        return await startBreak(config, params as { shift_id: string }, owner);
       case "end_break":
-        return await endBreak(config, params as { shift_id: string });
+        return await endBreak(config, params as { shift_id: string }, owner);
       case "force_close_shift":
-        return await clockOut(config, params as { shift_id: string });
+        // Admin-only (ADMIN_ACTIONS), so the guard always passes.
+        return await clockOut(config, params as { shift_id: string }, owner);
       case "list_scheduled_shifts":
         return await listScheduledShifts(config, params as { begin?: string; end?: string });
       case "upsert_scheduled_shift":
@@ -379,33 +395,41 @@ async function clockIn(config: SquareConfig, supabase: any, userId: string) {
   return json({ shift: data.shift });
 }
 
+/** Returns why the caller may not change this shift, or null. */
+type ShiftGuard = (shift: any) => string | null;
+
 /** Square's UpdateShift replaces the whole shift, so every mutation below
- *  reads the current one first and puts it back changed. */
+ *  reads the current one first and puts it back changed. The read is also
+ *  where ownership is checked: the shift's team_member_id comes from Square,
+ *  not from the request. */
 async function mutateShift(
   config: SquareConfig,
   shiftId: string,
   change: (shift: any) => any,
+  guard: ShiftGuard,
 ) {
-  const current = await square(config, `/labor/shifts/${shiftId}`);
+  const current = await square(config, `/labor/shifts/${pathId(shiftId)}`);
+  const refused = guard(current.shift);
+  if (refused) return json({ error: refused }, 403);
   const updated = change({ ...current.shift });
   delete updated.created_at;
   delete updated.updated_at;
-  const data = await square(config, `/labor/shifts/${shiftId}`, {
+  const data = await square(config, `/labor/shifts/${pathId(shiftId)}`, {
     method: "PUT",
     body: { shift: updated },
   });
   return json({ shift: data.shift });
 }
 
-async function clockOut(config: SquareConfig, params: { shift_id: string }) {
+async function clockOut(config: SquareConfig, params: { shift_id: string }, guard: ShiftGuard) {
   if (!params.shift_id) return json({ error: "shift_id required" }, 400);
   return await mutateShift(config, params.shift_id, (shift) => ({
     ...shift,
     end_at: new Date().toISOString(),
-  }));
+  }), guard);
 }
 
-async function startBreak(config: SquareConfig, params: { shift_id: string }) {
+async function startBreak(config: SquareConfig, params: { shift_id: string }, guard: ShiftGuard) {
   if (!params.shift_id) return json({ error: "shift_id required" }, 400);
 
   // A break must reference a BreakType the merchant has configured; inventing
@@ -433,17 +457,17 @@ async function startBreak(config: SquareConfig, params: { shift_id: string }) {
         is_paid: breakType.is_paid ?? false,
       },
     ],
-  }));
+  }), guard);
 }
 
-async function endBreak(config: SquareConfig, params: { shift_id: string }) {
+async function endBreak(config: SquareConfig, params: { shift_id: string }, guard: ShiftGuard) {
   if (!params.shift_id) return json({ error: "shift_id required" }, 400);
   return await mutateShift(config, params.shift_id, (shift) => ({
     ...shift,
     breaks: (shift.breaks || []).map((b: Record<string, unknown>) =>
       b.end_at ? b : { ...b, end_at: new Date().toISOString() }
     ),
-  }));
+  }), guard);
 }
 
 async function listShifts(config: SquareConfig, params: { begin?: string; end?: string }) {
@@ -539,7 +563,7 @@ async function upsertScheduledShift(config: SquareConfig, params: Record<string,
   };
 
   const data = id
-    ? await square(config, `/labor/scheduled-shifts/${id}`, {
+    ? await square(config, `/labor/scheduled-shifts/${pathId(id)}`, {
       method: "PUT",
       body: { scheduled_shift: { draft_shift_details: details } },
     })
@@ -617,7 +641,7 @@ async function deleteScheduledShift(config: SquareConfig, params: Record<string,
     is_deleted: true,
   };
 
-  await square(config, `/labor/scheduled-shifts/${id}`, {
+  await square(config, `/labor/scheduled-shifts/${pathId(id)}`, {
     method: "PUT",
     body: { scheduled_shift: { draft_shift_details: details } },
   });

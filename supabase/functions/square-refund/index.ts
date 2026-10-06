@@ -6,21 +6,26 @@
 // "you've been refunded" while their card is never credited — the theatre's
 // books say refunded, Square says paid, and the customer is out the money.
 //
-// This function issues the Square refund first and only marks the ticket
-// refunded if Square accepted it. Same discipline as checkout, in reverse:
-// the money moves, then the record changes.
+// This function claims the tickets (a conditional flip to refunded, so two
+// overlapping refunds cannot both hold one ticket), issues the Square refund,
+// and releases the claim if Square refuses. The money moves, or the record
+// goes back the way it was.
 //
-// Three kinds of ticket arrive here:
-//   card      — has square_payment_id: refunded through the Square Refunds API
-//   film pass — the deducted balance is returned to the pass it came from
-//   cash/comp — nothing to refund electronically; marked refunded and reported
-//               back as such, so staff know to open the till
+// Four kinds of ticket arrive here, told apart by payment_method (plan.ts):
+//   card/online — refunded through the Square Refunds API to the card
+//   cash        — the till pays it back; a CASH tender recorded by
+//                 square-cash-sale is reversed in Square for the books
+//   film pass   — the deducted balance goes back on the pass, unless the pass
+//                 is void or expired (refund_film_pass_redemption)
+//   comp        — nothing was paid
 //
 // Staff or admin only, checked server-side against user_roles.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { json, preflight } from '../_shared/http.ts';
 import { loadSquareConfig, refundPayment, squareErrorMessage } from '../_shared/square.ts';
+import { actorHeaders, logStaffAction } from '../_shared/audit.ts';
+import { centsOf, type ClaimedTicket, planRefund, refundKey } from './plan.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -55,6 +60,12 @@ Deno.serve(async (req: Request) => {
 
   const { data: isStaff } = await admin.rpc('has_role', { _user_id: user.id, _role: 'staff' });
   if (!isStaff) return json({ error: 'Staff access required' }, 403);
+
+  // Every write below goes through `db`, which names the verified caller to
+  // the audit trigger (_shared/audit.ts, actorHeaders).
+  const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    global: { headers: actorHeaders(user.id) },
+  });
 
   // Which tickets
   const ticketIds: string[] = Array.isArray(body.ticket_ids)
@@ -92,138 +103,178 @@ Deno.serve(async (req: Request) => {
   // but it should be a decision somebody knows they made, not a side effect.
   // The refund itself is untouched: each ticket returns exactly what it paid.
   for (const note of await partialDiscountNotes(admin, tickets ?? [])) warnings.push(note);
-  const squareRefunds: { payment_id: string; refund_id: string; amount_cents: number }[] = [];
-  const refundedIds: string[] = [];
-  let refundedTotal = 0;
 
   // ---------------------------------------------------------------------
-  // Card refunds, grouped by the payment that paid for them
+  // Claim the tickets before any money moves
   // ---------------------------------------------------------------------
-  const byPayment = new Map<string, any[]>();
-  const noPayment: any[] = [];
-
-  for (const t of refundable) {
-    if (t.square_payment_id) {
-      const list = byPayment.get(t.square_payment_id) ?? [];
-      list.push(t);
-      byPayment.set(t.square_payment_id, list);
-    } else {
-      noPayment.push(t);
-    }
+  //
+  // One conditional UPDATE: only rows still `confirmed` flip, and the rows it
+  // returns are the only ones this request may refund. Two overlapping
+  // requests (ticket A, and the whole order A+B) used to both read A as
+  // confirmed and both refund it, under different idempotency keys; now one of
+  // them gets A and the other gets only B (security audit 2026-10-06, L3).
+  //
+  // The flip comes first, so for the moments a Square call is in flight the
+  // ticket reads refunded. If Square refuses, the claim is released below.
+  const refundedAt = new Date().toISOString();
+  const { data: claimedRows, error: claimErr } = await db
+    .from('tickets')
+    .update({ status: 'refunded', refunded_at: refundedAt })
+    .in('id', refundable.map((t: any) => t.id))
+    .eq('status', 'confirmed')
+    .select('id, total_price, processing_fee, payment_method, square_payment_id');
+  if (claimErr) {
+    console.error('[square-refund] could not claim tickets', claimErr);
+    return json({ error: 'Could not start the refund' }, 500);
+  }
+  const claimed = (claimedRows ?? []) as ClaimedTicket[];
+  if (claimed.length === 0) {
+    return json({ error: 'Those tickets were refunded a moment ago — reload before trying again.' }, 409);
+  }
+  if (claimed.length < refundable.length) {
+    warnings.push(`${refundable.length - claimed.length} of those tickets were already being refunded elsewhere and were skipped.`);
   }
 
-  if (byPayment.size > 0) {
-    const square = loadSquareConfig();
-    if (!square.ok) return json({ error: square.error }, 500);
-
-    for (const [paymentId, rows] of byPayment) {
-      // The buyer paid ticket total plus any grossed-up surcharge; refund both.
-      const amount = round2(
-        rows.reduce(
-          (sum, t) => sum + Number(t.total_price || 0) + Number(t.processing_fee || 0),
-          0,
-        ),
-      );
-      const amountCents = Math.round(amount * 100);
-      if (amountCents <= 0) {
-        noPayment.push(...rows);
-        continue;
-      }
-
-      // Deterministic key: retrying the same refund of the same tickets is the
-      // same operation to Square, so a double-click cannot refund twice.
-      const idempotencyKey = await refundKey(paymentId, rows.map((r) => r.id));
-
-      const result = await refundPayment(square.config, {
-        paymentId,
-        amountCents,
-        idempotencyKey,
-        reason,
-      });
-
-      const refund = result.data?.refund;
-      if (!result.ok || !refund) {
-        const message = squareErrorMessage(result.data, 'Square refused the refund');
-        console.error('[square-refund] refund failed', paymentId, JSON.stringify(result.data));
-        // Leave these tickets confirmed. A ticket marked refunded without the
-        // money going back is the exact failure this function exists to stop.
-        warnings.push(`Square refund failed for payment ${paymentId}: ${message}`);
-        continue;
-      }
-
-      const { error: updateErr } = await admin
-        .from('tickets')
-        .update({
-          status: 'refunded',
-          square_refund_id: refund.id ?? null,
-          refunded_at: new Date().toISOString(),
-        })
-        .in('id', rows.map((r) => r.id));
-
-      if (updateErr) {
-        console.error('[square-refund] refunded at Square but DB update failed', updateErr);
-        warnings.push(
-          `Payment ${paymentId} was refunded at Square but the tickets could not be marked refunded. Do not retry — correct it in the admin.`,
-        );
-        continue;
-      }
-
-      squareRefunds.push({ payment_id: paymentId, refund_id: refund.id, amount_cents: amountCents });
-      refundedIds.push(...rows.map((r) => r.id));
-      refundedTotal = round2(refundedTotal + amount);
-    }
-  }
-
-  // ---------------------------------------------------------------------
-  // Non-card tickets
-  // ---------------------------------------------------------------------
-  for (const t of noPayment) {
-    if (t.payment_method === 'film_pass') {
-      // Put the balance back where it came from, then drop the redemption so
-      // the pass's history matches its balance.
-      const { data: redemptions } = await admin
-        .from('film_pass_redemptions')
-        .select('id, pass_id, amount_deducted')
-        .eq('ticket_id', t.id);
-
-      for (const r of redemptions || []) {
-        const { data: pass } = await admin
-          .from('user_film_passes')
-          .select('id, remaining_balance')
-          .eq('id', r.pass_id)
-          .maybeSingle();
-        if (!pass) {
-          warnings.push(`Could not find the film pass behind ticket ${t.id} to credit it back.`);
-          continue;
-        }
-        await admin
-          .from('user_film_passes')
-          .update({
-            remaining_balance: round2(Number(pass.remaining_balance) + Number(r.amount_deducted)),
-          })
-          .eq('id', pass.id);
-        await admin.from('film_pass_redemptions').delete().eq('id', r.id);
-      }
-    } else if (t.payment_method !== 'comp') {
-      warnings.push(
-        `Ticket paid by ${t.payment_method} — refund the customer from the till; no card was charged.`,
-      );
-    }
-
-    const { error: updateErr } = await admin
+  /** Put tickets back to confirmed when their money did not move. */
+  const release = async (ids: string[]) => {
+    const { error } = await db
       .from('tickets')
-      .update({ status: 'refunded', refunded_at: new Date().toISOString() })
-      .eq('id', t.id);
+      .update({ status: 'confirmed', refunded_at: null })
+      .in('id', ids)
+      .eq('status', 'refunded')
+      .is('square_refund_id', null);
+    if (error) console.error('[square-refund] could not release claim', error, ids);
+  };
 
-    if (updateErr) {
-      warnings.push(`Could not mark ticket ${t.id} refunded.`);
+  const plan = planRefund(claimed);
+  const squareRefunds: { payment_id: string; refund_id: string; amount_cents: number; tender: 'card' | 'cash' }[] = [];
+  const refundedIds: string[] = [];
+  let refundedCents = 0;
+  const done = (rows: ClaimedTicket[]) => {
+    refundedIds.push(...rows.map((r) => r.id));
+    refundedCents += centsOf(rows);
+  };
+
+  const needsSquare = plan.card.size > 0 || [...plan.cash.keys()].some((k) => k);
+  const square = needsSquare ? loadSquareConfig() : null;
+  if (square && !square.ok) {
+    await release(claimed.map((t) => t.id));
+    return json({ error: square.error }, 500);
+  }
+
+  // ---------------------------------------------------------------------
+  // Card: the money goes back to the card, and only then is it refunded
+  // ---------------------------------------------------------------------
+  for (const [paymentId, rows] of plan.card) {
+    const amountCents = centsOf(rows);
+    const result = await refundPayment(square!.config as any, {
+      paymentId,
+      amountCents,
+      // Deterministic: retrying the same refund of the same tickets is the
+      // same operation to Square, so a double-click cannot refund twice.
+      idempotencyKey: await refundKey(paymentId, rows.map((r) => r.id)),
+      reason,
+    });
+    const refund = result.data?.refund;
+    if (!result.ok || !refund) {
+      const message = squareErrorMessage(result.data, 'Square refused the refund');
+      console.error('[square-refund] refund failed', paymentId, result.status);
+      // Back to confirmed. A ticket marked refunded without the money going
+      // back is the exact failure this function exists to stop.
+      await release(rows.map((r) => r.id));
+      warnings.push(`Square refund failed for payment ${paymentId}: ${message}`);
       continue;
     }
-    refundedIds.push(t.id);
-    refundedTotal = round2(
-      refundedTotal + Number(t.total_price || 0) + Number(t.processing_fee || 0),
-    );
+    const { error: stampErr } = await db
+      .from('tickets')
+      .update({ square_refund_id: refund.id ?? null })
+      .in('id', rows.map((r) => r.id));
+    if (stampErr) {
+      console.error('[square-refund] refunded at Square but could not record the refund id', stampErr);
+      warnings.push(`Payment ${paymentId} was refunded at Square (refund ${refund.id}) but the refund id could not be saved on the tickets.`);
+    }
+    squareRefunds.push({ payment_id: paymentId, refund_id: refund.id, amount_cents: amountCents, tender: 'card' });
+    done(rows);
   }
+
+  // ---------------------------------------------------------------------
+  // Counter cash: the money comes out of the till
+  // ---------------------------------------------------------------------
+  for (const [paymentId, rows] of plan.cash) {
+    const amountCents = centsOf(rows);
+    warnings.push(
+      `$${(amountCents / 100).toFixed(2)} was paid in cash — refund the customer from the till; no card was charged.`,
+    );
+    // square-cash-sale recorded the sale in Square as a CASH tender. Record its
+    // reversal there too, so the dashboard and the till agree. No money moves
+    // either way, so a refusal here does not undo the refund: it is a note.
+    if (paymentId && amountCents > 0) {
+      const result = await refundPayment(square!.config as any, {
+        paymentId,
+        amountCents,
+        idempotencyKey: await refundKey(paymentId, rows.map((r) => r.id)),
+        reason,
+      });
+      const refund = result.data?.refund;
+      if (result.ok && refund) {
+        await db.from('tickets').update({ square_refund_id: refund.id ?? null }).in('id', rows.map((r) => r.id));
+        squareRefunds.push({ payment_id: paymentId, refund_id: refund.id, amount_cents: amountCents, tender: 'cash' });
+      } else {
+        console.error('[square-refund] cash refund not recorded in Square', paymentId, result.status);
+        warnings.push(
+          `The cash refund was not recorded in Square (${squareErrorMessage(result.data, 'refused')}). Tell a manager so the day's takings reconcile.`,
+        );
+      }
+    }
+    done(rows);
+  }
+
+  // ---------------------------------------------------------------------
+  // Film pass: the balance goes back on the pass, in one locked statement
+  // ---------------------------------------------------------------------
+  for (const t of plan.filmPass) {
+    const { data: redemptions } = await db
+      .from('film_pass_redemptions')
+      .select('id')
+      .eq('ticket_id', t.id);
+    for (const r of redemptions || []) {
+      const { data: verdict, error } = await db.rpc('refund_film_pass_redemption', { p_redemption_id: r.id });
+      if (error) {
+        console.error('[square-refund] pass credit failed', r.id, error);
+        warnings.push(`Could not credit the film pass behind ticket ${t.id}. Check the pass balance by hand.`);
+      } else if (verdict?.result === 'pass_not_creditable') {
+        warnings.push(
+          `The film pass behind ticket ${t.id} is ${verdict.status}, so $${Number(verdict.amount).toFixed(2)} was not put back on it. A manager decides whether to make that good another way.`,
+        );
+      } else if (verdict?.result === 'no_pass') {
+        warnings.push(`Could not find the film pass behind ticket ${t.id} to credit it back.`);
+      }
+    }
+    done([t]);
+  }
+
+  for (const t of plan.manual) {
+    warnings.push(
+      `Ticket paid by ${t.payment_method} has no Square payment on file — refund the customer by hand; nothing was sent to a card.`,
+    );
+    done([t]);
+  }
+  done(plan.comp);
+
+  const refundedTotal = round2(refundedCents / 100);
+
+  // Who refunded what. The ticket rows are attributed by the actor header on
+  // `db`; this entry carries what the rows cannot — the money and where it
+  // went (security audit 2026-10-06, M11).
+  await logStaffAction(user, 'tickets.refund', 'tickets', {
+    reason,
+    order_token: orderToken || null,
+    requested: ticketIds.length || null,
+    refunded_ticket_ids: refundedIds,
+    refunded_total: refundedTotal,
+    square_refunds: squareRefunds,
+    warnings,
+  });
 
   if (refundedIds.length === 0) {
     return json({ error: warnings[0] ?? 'Nothing could be refunded', warnings }, 400);
@@ -239,16 +290,6 @@ Deno.serve(async (req: Request) => {
 });
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
-
-/** Stable 40-char key for "refund exactly these tickets of this payment". */
-async function refundKey(paymentId: string, ticketIds: string[]): Promise<string> {
-  const material = `${paymentId}:${[...ticketIds].sort().join(',')}`;
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-    .slice(0, 40);
-}
 
 /**
  * One sentence per discounted order that this refund only partly covers.

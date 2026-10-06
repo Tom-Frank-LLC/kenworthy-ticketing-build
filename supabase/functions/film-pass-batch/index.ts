@@ -17,6 +17,7 @@
 // at the activation screen.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { actorHeaders, logStaffAction } from '../_shared/audit.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { authenticatedUser } from '../_shared/buyers.ts';
 
@@ -178,7 +179,10 @@ Deno.serve(async (req: Request) => {
   // default, so the sequence is the only thing that ever picks one and two
   // simultaneous print runs cannot land on the same number. Selected back
   // because the sheet has to print it.
-  const { data: created, error } = await admin
+  // As the verified caller, so the batch is attributed (_shared/audit.ts).
+  const { data: created, error } = await createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    global: { headers: actorHeaders(signedIn.id) },
+  })
     .from('user_film_passes')
     .insert(rows)
     .select('id, qr_code, pass_number')
@@ -188,6 +192,17 @@ Deno.serve(async (req: Request) => {
     console.error('[film-pass-batch] mint failed', error);
     return json({ error: 'Could not create the batch. Please try again.' }, 500);
   }
+
+  // Blank stickers are not audited row by row (user_film_passes logs updates
+  // and deletes only, 20260813000000), so the print run is recorded here.
+  await logStaffAction(signedIn, 'user_film_passes.batch_printed', 'user_film_passes', {
+    batch_id: batchId,
+    quantity: created.length,
+    pass_type_id: passType.id,
+    pass_type_name: passType.name,
+    first_pass_number: created[0]?.pass_number ?? null,
+    last_pass_number: created[created.length - 1]?.pass_number ?? null,
+  });
 
   return json({
     success: true,

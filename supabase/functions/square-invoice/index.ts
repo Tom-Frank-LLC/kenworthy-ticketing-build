@@ -23,6 +23,8 @@
 // Staff or admin only, checked server-side against user_roles.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { actorHeaders, logStaffAction } from '../_shared/audit.ts';
+import { squareErrorSummary } from './log.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { loadSquareConfig, squareErrorMessage, squareFetch } from '../_shared/square.ts';
 import type { SquareConfig } from '../_shared/square.ts';
@@ -86,7 +88,7 @@ async function resolveCustomer(
     },
   });
   if (!created.ok || !created.data?.customer?.id) {
-    console.error('[square-invoice] customer create failed', created.status, created.data);
+    console.error('[square-invoice] customer create failed', created.status, squareErrorSummary(created.data));
     return { ok: false, error: squareErrorMessage(created.data, 'Could not create the customer in Square') };
   }
   return { ok: true, customerId: created.data.customer.id };
@@ -113,7 +115,7 @@ async function deleteDraft(config: SquareConfig, invoiceId: string): Promise<str
     method: 'DELETE',
   });
   if (!removed.ok) {
-    console.error('[square-invoice] draft delete failed', removed.status, removed.data);
+    console.error('[square-invoice] draft delete failed', removed.status, squareErrorSummary(removed.data));
     return 'The previous draft could not be deleted in Square and is still there.';
   }
   return null;
@@ -152,6 +154,9 @@ Deno.serve(async (req: Request) => {
     admin.rpc('has_role', { _user_id: user.id, _role: 'admin' }),
   ]);
   if (!isStaff && !isAdmin) return json({ error: 'Staff access required' }, 403);
+  // The rental row's update below names the verified caller to the audit
+  // trigger (_shared/audit.ts); reads stay on `admin`.
+  const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { global: { headers: actorHeaders(user.id) } });
 
   const squareConfig = loadSquareConfig();
   if (!squareConfig.ok) {
@@ -234,7 +239,7 @@ Deno.serve(async (req: Request) => {
     },
   });
   if (!order.ok || !order.data?.order?.id) {
-    console.error('[square-invoice] order create failed', order.status, order.data);
+    console.error('[square-invoice] order create failed', order.status, squareErrorSummary(order.data));
     return json({ error: squareErrorMessage(order.data, 'Could not build the invoice in Square') }, 502);
   }
 
@@ -273,7 +278,7 @@ Deno.serve(async (req: Request) => {
     },
   });
   if (!invoice.ok || !invoice.data?.invoice?.id) {
-    console.error('[square-invoice] invoice create failed', invoice.status, invoice.data);
+    console.error('[square-invoice] invoice create failed', invoice.status, squareErrorSummary(invoice.data));
     // The order is left behind in Square. It bills nobody on its own — an
     // order with no invoice and no payment is inert — but say so in the log
     // rather than pretend the call was clean.
@@ -286,7 +291,7 @@ Deno.serve(async (req: Request) => {
 
   // ---- Remember it ---------------------------------------------------------
 
-  const { data: saved, error: saveErr } = await admin
+  const { data: saved, error: saveErr } = await db
     .from('rental_requests')
     .update({
       square_invoice_id: created.id,
@@ -306,6 +311,14 @@ Deno.serve(async (req: Request) => {
         'Open Square before generating another.',
     }, 500);
   }
+
+  await logStaffAction(user, 'rental_requests.invoice_created', 'rental_requests', {
+    invoice_id: created.id,
+    square_order_id: order.data.order.id,
+    total_cents: order.data.order.total_money?.amount ?? null,
+    regenerated: regenerate,
+    warning,
+  }, rentalRequestId);
 
   return json({
     invoice_id: created.id,

@@ -3,6 +3,9 @@ import { corsHeaders } from "../_shared/http.ts";
 import { loadSquareConfig, squareFetch, type SquareConfig } from "../_shared/square.ts";
 import { buildTicketOrder, loadTicketGroups, orderRequestBody, processingFeeGroup } from "../_shared/square-order.ts";
 import { canonicalTier, variationName } from "../_shared/square-catalog.ts";
+import { MAX_BUNDLED_DONATION_CENTS } from "../_shared/pricing.ts";
+import { actorHeaders, logStaffAction } from "../_shared/audit.ts";
+import { checkoutMatchesOrder, logToken } from "./binding.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -78,14 +81,15 @@ Deno.serve(async (req) => {
     if (action === "get_checkout") {
       return await getCheckout(square.config, params, corsHeaders);
     }
+    const caller = { id: user.id, email: user.email ?? null };
     if (action === "list_devices") {
       return await listDevices(square.config, corsHeaders);
     }
     if (action === "start_sale") {
-      return await startSale(square.config, params, corsHeaders);
+      return await startSale(square.config, params, corsHeaders, caller);
     }
     if (action === "confirm_sale") {
-      return await confirmSale(square.config, params, corsHeaders);
+      return await confirmSale(square.config, params, corsHeaders, caller);
     }
 
     return new Response(
@@ -183,12 +187,22 @@ async function getCheckout(
   params: { checkout_id: string },
   headers: Record<string, string>
 ) {
-  if (params.checkout_id.startsWith("SIM_")) {
+  const checkoutId = String(params.checkout_id ?? "");
+  if (checkoutId.startsWith("SIM_")) {
+    // createCheckout only ever mints a SIM_ id in the sandbox. In production a
+    // SIM_ id is somebody typing one, and answering COMPLETED to it is a free
+    // "card approved" for the film-pass counter (security audit 2026-10-06, L1).
+    if (config.environment === "production") {
+      return new Response(
+        JSON.stringify({ error: "Simulated checkouts do not exist in production" }),
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } },
+      );
+    }
     return new Response(
       JSON.stringify({
         simulated: true,
         checkout: {
-          id: params.checkout_id,
+          id: checkoutId,
           status: "COMPLETED",
         },
       }),
@@ -198,11 +212,11 @@ async function getCheckout(
 
   const { ok, status, data } = await squareFetch(
     config,
-    `/terminals/checkouts/${params.checkout_id}`,
+    `/terminals/checkouts/${encodeURIComponent(checkoutId)}`,
   );
 
   if (!ok) {
-    throw new Error(`Square API error [${status}]: ${JSON.stringify(data)}`);
+    throw new Error(`Square API error [${status}]: ${data?.errors?.[0]?.code ?? "unknown"}`);
   }
 
   // payment_ids is what makes a box-office card sale refundable: the POS stores
@@ -236,7 +250,13 @@ async function getCheckout(
 // test devices never complete on their own), so the confirm step trusts the
 // checkout's own status and amount and treats the order as attribution.
 
-const admin = () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+/** The service-role client, naming the verified caller to the audit trigger
+ *  (_shared/audit.ts, actorHeaders) so a confirm is not filed under nobody. */
+const admin = (actorId: string) =>
+  createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+    global: { headers: actorHeaders(actorId) },
+  });
+type Caller = { id: string; email: string | null };
 const jsonRes = (headers: Record<string, string>, body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...headers, "Content-Type": "application/json" } });
 
@@ -256,11 +276,17 @@ async function startSale(
   config: SquareConfig,
   params: { order_token: string; donation_cents?: number; idempotency_key: string; device_id?: string },
   headers: Record<string, string>,
+  caller: Caller,
 ) {
-  const db = admin();
+  const db = admin(caller.id);
   const orderToken = String(params.order_token ?? "").trim();
   if (!orderToken) return jsonRes(headers, { error: "order_token is required" }, 400);
   const donationCents = Math.max(0, Math.floor(Number(params.donation_cents ?? 0)) || 0);
+  // The same ceiling the POS's donation box enforces (DonationPrompt). The
+  // browser cannot exceed it, so anything over it did not come from the till.
+  if (donationCents > MAX_BUNDLED_DONATION_CENTS) {
+    return jsonRes(headers, { error: `A counter gift is capped at $${MAX_BUNDLED_DONATION_CENTS / 100}. Take a larger gift through Donations.` }, 400);
+  }
 
   const { rows, cents } = await pendingRows(db, orderToken);
   if (rows.length === 0) return jsonRes(headers, { error: "No card sale is waiting under that order" }, 404);
@@ -280,7 +306,7 @@ async function startSale(
     if (donationCents > 0) groups.push({ tierKey: "__donation", displayName: "Donation", variationId: null, unitPriceCents: donationCents, count: 1, taxable: false });
     const built = buildTicketOrder(groups);
     if (built.expectedTotalCents !== chargeCents) {
-      console.error(`[square-terminal] order build ${built.expectedTotalCents} != charge ${chargeCents} for ${orderToken}; no Square Order`);
+      console.error(`[square-terminal] order build ${built.expectedTotalCents} != charge ${chargeCents} for ${logToken(orderToken)}; no Square Order`);
     } else {
       const created = await squareFetch(config, "/orders", {
         method: "POST",
@@ -328,8 +354,9 @@ async function confirmSale(
   config: SquareConfig,
   params: { order_token: string; checkout_id: string },
   headers: Record<string, string>,
+  caller: Caller,
 ) {
-  const db = admin();
+  const db = admin(caller.id);
   const orderToken = String(params.order_token ?? "").trim();
   const checkoutId = String(params.checkout_id ?? "").trim();
   if (!orderToken || !checkoutId) return jsonRes(headers, { error: "order_token and checkout_id are required" }, 400);
@@ -345,8 +372,15 @@ async function confirmSale(
     if (config.environment === "production") return jsonRes(headers, { error: "Simulated checkouts do not exist in production" }, 400);
     status = "COMPLETED"; paid = cents;
   } else {
-    const r = await squareFetch(config, `/terminals/checkouts/${checkoutId}`);
+    const r = await squareFetch(config, `/terminals/checkouts/${encodeURIComponent(checkoutId)}`);
     if (!r.ok) return jsonRes(headers, { error: "Could not read the checkout from Square" }, 502);
+    // The checkout has to be the one start_sale created for THIS order. Before,
+    // any completed checkout id confirmed any order whose total it covered, so
+    // one card swipe could confirm a queue of later sales (L1).
+    if (!checkoutMatchesOrder(r.data.checkout, orderToken)) {
+      console.error(`[square-terminal] checkout ${checkoutId} is not for order ${logToken(orderToken)}`);
+      return jsonRes(headers, { error: "That card payment belongs to a different sale. Start this sale again on the reader." }, 409);
+    }
     status = r.data.checkout?.status;
     paymentId = r.data.checkout?.payment_ids?.[0] ?? null;
     paid = r.data.checkout?.amount_money?.amount ?? null;
@@ -359,6 +393,20 @@ async function confirmSale(
     return jsonRes(headers, { error: `The reader took ${paid} but the order is ${cents}; not confirming. Contact support.`, status }, 409);
   }
 
+  // One payment, one order. The database refuses it too (tickets trigger,
+  // PT423); asking first turns that into a sentence for the counter rather
+  // than "the card was charged but…".
+  if (paymentId) {
+    const [{ data: otherTickets }, { data: passes }] = await Promise.all([
+      db.from("tickets").select("id").eq("square_payment_id", paymentId).neq("order_token", orderToken).limit(1),
+      db.from("user_film_passes").select("id").eq("square_payment_id", paymentId).limit(1),
+    ]);
+    if ((otherTickets ?? []).length > 0 || (passes ?? []).length > 0) {
+      console.error(`[square-terminal] payment ${paymentId} already used; order ${logToken(orderToken)} not confirmed`);
+      return jsonRes(headers, { error: "That card payment already paid for a different sale. Start this sale again on the reader." }, 409);
+    }
+  }
+
   const ids = rows.map((t: any) => t.id);
   const { data: updated, error } = await db
     .from("tickets")
@@ -366,9 +414,12 @@ async function confirmSale(
     .in("id", ids)
     .select("id");
   if (error || !updated || updated.length !== ids.length) {
-    console.error("[square-terminal] confirm failed after charge", error, { orderToken, checkoutId, paymentId });
+    console.error("[square-terminal] confirm failed after charge", error, { order: logToken(orderToken), checkoutId, paymentId });
     return jsonRes(headers, { error: "The card was charged but the tickets could not be confirmed. Do not charge again — contact support.", payment_id: paymentId }, 500);
   }
+  await logStaffAction(caller, "tickets.card_sale_confirmed", "tickets", {
+    ticket_ids: ids, payment_id: paymentId, checkout_id: checkoutId, amount_cents: cents, paid_cents: paid,
+  });
   return jsonRes(headers, { confirmed: true, ticket_ids: ids, payment_id: paymentId, amount_cents: cents });
 }
 

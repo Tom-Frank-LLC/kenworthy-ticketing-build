@@ -54,6 +54,8 @@ import {
   type BuyerContact,
 } from '../_shared/buyers.ts';
 import { sendTransactionalEmail } from '../_shared/deliver.ts';
+import { actorHeaders } from '../_shared/audit.ts';
+import { counterPaymentProblem } from './counter_payment.ts';
 import {
   buildPassOrderEmailHtml,
   buildPassOrderEmailText,
@@ -133,6 +135,12 @@ Deno.serve(async (req: Request) => {
     if (!isStaff) return json({ error: 'Staff access required' }, 403);
     return { id: signedIn.id };
   };
+
+  /** The service-role client for a staff action, naming the verified caller to
+   *  the audit trigger (_shared/audit.ts). Without it an activation, a void or
+   *  an admission is logged as nobody's (security audit 2026-10-06, M11). */
+  const asActor = (actorId: string) =>
+    createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { global: { headers: actorHeaders(actorId) } });
 
   // ---------------------------------------------------------------------
   // The box office queue: money taken, pass still owed
@@ -241,7 +249,7 @@ Deno.serve(async (req: Request) => {
     // gets zero rows — so the email below is reached only by the winner. This
     // matters more than it looks: a duplicate here is not a duplicate write,
     // it is a second email telling a patron their pass shipped.
-    const { data: marked, error: markErr } = await admin
+    const { data: marked, error: markErr } = await asActor(staff.id)
       .from('film_pass_orders')
       .update({ posted_at: new Date().toISOString(), posted_by: staff.id })
       .eq('id', orderId)
@@ -451,8 +459,38 @@ Deno.serve(async (req: Request) => {
       taxPaid = paymentMethod === 'comp'
         ? 0
         : Math.round(Math.round(Number(passType.price) * 100) * FILM_PASS_TAX_RATE) / 100;
-      squarePaymentId =
-        typeof body.square_payment_id === 'string' ? body.square_payment_id : null;
+      // Only a card sale carries a payment, and only one the reader actually
+      // took for this pass. activate used to accept any string here, so a cash
+      // sale could be booked as card with somebody else's payment id and the
+      // till would expect nothing (security audit 2026-10-06, L1).
+      squarePaymentId = paymentMethod === 'card' && typeof body.square_payment_id === 'string'
+        ? body.square_payment_id.trim() || null
+        : null;
+      if (paymentMethod === 'card') {
+        if (!square.ok) return json({ error: square.error }, 500);
+        const dueCents = Math.round(Number(passType.price) * 100) + Math.round(taxPaid * 100);
+        if (!squarePaymentId) {
+          // Only the sandbox's simulated reader completes without a payment.
+          if (square.config.environment === 'production') {
+            return json({ error: 'A card sale needs the payment from the reader. Take the card again.' }, 400);
+          }
+        } else {
+          const read = await squareFetch(square.config, `/payments/${encodeURIComponent(squarePaymentId)}`);
+          const [{ data: usedTickets }, { data: usedPasses }, { data: usedOrders }] = await Promise.all([
+            admin.from('tickets').select('id').eq('square_payment_id', squarePaymentId).limit(1),
+            admin.from('user_film_passes').select('id').eq('square_payment_id', squarePaymentId).limit(1),
+            admin.from('film_pass_orders').select('id').eq('square_payment_id', squarePaymentId).limit(1),
+          ]);
+          const problem = counterPaymentProblem({
+            found: read.ok,
+            payment: read.data?.payment,
+            locationId: square.config.locationId,
+            dueCents,
+            alreadyUsed: [usedTickets, usedPasses, usedOrders].some((r) => (r ?? []).length > 0),
+          });
+          if (problem) return json({ error: problem }, problem.startsWith('That card payment already') ? 409 : 400);
+        }
+      }
 
       // Contact is optional. A walk-in who gives one gets a pass attached to an
       // account, and a lost pass can then be voided and reissued. One who gives
@@ -475,7 +513,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { data: result, error } = await admin.rpc('activate_film_pass', {
+    const { data: result, error } = await asActor(staff.id).rpc('activate_film_pass', {
       p_qr_code: qrCode,
       p_order_id: orderId,
       p_user_id: userId,
@@ -504,7 +542,7 @@ Deno.serve(async (req: Request) => {
     // nothing else — the pass is already live and the money already collected —
     // so it is logged rather than surfaced to somebody holding a queue.
     if (taxPaid > 0 && verdict.pass_id) {
-      const { error: taxErr } = await admin
+      const { error: taxErr } = await asActor(staff.id)
         .from('user_film_passes')
         .update({ tax_paid: taxPaid })
         .eq('id', verdict.pass_id);
@@ -534,7 +572,7 @@ Deno.serve(async (req: Request) => {
     if (!passCode) return json({ error: 'Scan a pass' }, 400);
     if (!showingId) return json({ result: 'no_showing_selected' });
 
-    const { data: result, error } = await admin.rpc('admit_with_film_pass', {
+    const { data: result, error } = await asActor(staff.id).rpc('admit_with_film_pass', {
       p_pass_code: passCode,
       p_showing_id: showingId,
       p_scanned_by: signedIn!.id,
@@ -574,7 +612,7 @@ Deno.serve(async (req: Request) => {
     const passId = String(body.pass_id ?? '').trim();
     if (!passId) return json({ error: 'Which pass?' }, 400);
 
-    const { data: updated, error } = await admin
+    const { data: updated, error } = await asActor(signedIn.id)
       .from('user_film_passes')
       .update({ status: 'void' })
       .eq('id', passId)

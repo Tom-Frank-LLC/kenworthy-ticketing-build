@@ -27,6 +27,7 @@
 //   2. Touch anything outside item_data.variations. Asserted before the write
 //      and re-checked after it.
 
+import { auditedHandler, type StaffAuditContext } from "../_shared/audit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { loadSquareConfig, squareFetch, type SquareConfig } from "../_shared/square.ts";
 
@@ -83,7 +84,9 @@ async function listAll(config: SquareConfig, catalogVersion?: number) {
   return objects;
 }
 
-Deno.serve(async (req: Request) => {
+// auditedHandler: a real write is logged with the verified admin and its
+// outcome (security audit 2026-10-06, M11). Dry runs and reads are not.
+Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -149,6 +152,10 @@ Deno.serve(async (req: Request) => {
     if (!ids.length) return json({ error: "ids required (or plan:true)" }, 400);
     const dryRun = payload.dry_run !== false;
     if (!dryRun && payload.confirm !== "RESTORE") return json({ error: 'a real write requires confirm:"RESTORE"' }, 400);
+    if (!dryRun) {
+      audit.actor = { id: userRes.user.id, email: userRes.user.email };
+      audit.action = "square_catalog.variation_restore";
+    }
     const maxBatch = Number(payload.max_batch ?? 10);
     if (ids.length > maxBatch) return json({ error: `refusing ${ids.length} ids; max_batch is ${maxBatch}` }, 400);
 
@@ -237,4 +244,4 @@ Deno.serve(async (req: Request) => {
     console.error("square-variation-restore", e);
     return json({ error: e.message ?? String(e) }, 500);
   }
-});
+}));

@@ -23,6 +23,7 @@
 //      behaviour. We re-retrieve and confirm Square actually stored it, and
 //      that nothing else moved.
 
+import { auditedHandler, type StaffAuditContext } from "../_shared/audit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   loadSquareConfig,
@@ -96,7 +97,9 @@ function diffPaths(a: any, b: any, prefix = "", out: string[] = []): string[] {
   return out;
 }
 
-Deno.serve(async (req: Request) => {
+// auditedHandler: a real write is logged with the verified admin and its
+// outcome (security audit 2026-10-06, M11). Dry runs and reads are not.
+Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const admin = createClient(
@@ -126,6 +129,10 @@ Deno.serve(async (req: Request) => {
   const maxBatch = Number(payload.max_batch ?? 1);
   if (!dryRun && payload.confirm !== "WRITE") {
     return json({ error: 'a real write requires confirm:"WRITE"' }, 400);
+  }
+  if (!dryRun) {
+    audit.actor = { id: user.id, email: user.email };
+    audit.action = "square_catalog.event_write";
   }
   if (rows.length > maxBatch) {
     return json({
@@ -313,4 +320,4 @@ Deno.serve(async (req: Request) => {
     tally,
     results,
   });
-});
+}));

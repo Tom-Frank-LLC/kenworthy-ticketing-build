@@ -30,6 +30,7 @@
 //   - Touch an item whose product_type is not EVENT.
 //   - Edit or remove an existing variation. It only ever appends.
 
+import { actorHeaders, auditedHandler, type StaffAuditContext } from "../_shared/audit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   loadSquareConfig,
@@ -122,10 +123,12 @@ async function allRows(query: (from: number, to: number) => any): Promise<any[]>
   return out;
 }
 
-Deno.serve(async (req: Request) => {
+// auditedHandler: a real write is logged with the verified admin and its
+// outcome (security audit 2026-10-06, M11). Dry runs and reads are not.
+Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
-  const admin = createClient(
+  let admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
@@ -137,6 +140,12 @@ Deno.serve(async (req: Request) => {
   if (!user) return json({ error: "Unauthorized" }, 401);
   const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
   if (!isAdmin) return json({ error: "Admin only" }, 403);
+  // From here every row write names the verified admin to the audit trigger.
+  admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { global: { headers: actorHeaders(user.id) } },
+  );
 
   const loaded = loadSquareConfig();
   if (!loaded.ok) return json({ error: loaded.error }, 500);
@@ -184,6 +193,12 @@ Deno.serve(async (req: Request) => {
   const maxBatch = isEnsure ? Number(payload.max_batch ?? 8) : Number(payload.max_batch ?? 1);
   if (action === "apply" && !dryRun && payload.confirm !== "WRITE") {
     return json({ error: 'a real write requires confirm:"WRITE"' }, 400);
+  }
+  // Anything that can write to Square or to our mapping tables. A dry run,
+  // or a plan, is a read and is not logged.
+  if (isEnsure || payload.dry_run === false || action === "link_item" || action === "link_pass_type") {
+    audit.actor = { id: user.id, email: user.email };
+    audit.action = `square_catalog.${action}`;
   }
 
   // ---- film pass types ------------------------------------------------------
@@ -1027,4 +1042,4 @@ Deno.serve(async (req: Request) => {
   } catch (e: any) {
     return json({ error: e.message ?? String(e) }, 500);
   }
-});
+}));

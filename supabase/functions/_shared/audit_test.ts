@@ -89,3 +89,39 @@ Deno.test('non-objects pass through untouched', () => {
   assertEquals(redact(null), null);
   assertEquals(redact([1, 'two']), [1, 'two']);
 });
+
+// ---------------------------------------------------------------------------
+// Staff actions through the service role (security audit 2026-10-06, M11)
+// ---------------------------------------------------------------------------
+import { ACTOR_HEADER, actorHeaders, summariseResponse } from './audit.ts';
+
+Deno.test('the actor header is lower-case, as PostgREST exposes it', () => {
+  assertEquals(ACTOR_HEADER, ACTOR_HEADER.toLowerCase());
+  assertEquals(actorHeaders('u-1'), { [ACTOR_HEADER]: 'u-1' });
+  assertEquals(actorHeaders(null), {});
+});
+
+Deno.test('a response summary keeps scalars and the shape of lists, not whole objects', () => {
+  const s = summariseResponse({
+    ok: true,
+    dry_run: false,
+    tally: { written: 2 },
+    results: [
+      { id: 'A', name: 'Film', action: 'written', object: { huge: 'x'.repeat(1000) } },
+      { id: 'B', name: 'Show', action: 'refused' },
+    ],
+  });
+  assertEquals(s.ok, true);
+  assertEquals(s.tally, { written: 2 });
+  assertEquals(s.results_count, 2);
+  assertEquals(s.results, [
+    { id: 'A', name: 'Film', action: 'written' },
+    { id: 'B', name: 'Show', action: 'refused' },
+  ]);
+});
+
+Deno.test('a long list is cut to 25 entries but counted whole', () => {
+  const s = summariseResponse({ results: Array.from({ length: 40 }, (_, i) => ({ id: i })) });
+  assertEquals(s.results_count, 40);
+  assertEquals((s.results as unknown[]).length, 25);
+});
