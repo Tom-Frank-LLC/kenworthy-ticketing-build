@@ -15,11 +15,15 @@ concessions and donations; runs the box office (`/admin/pos`) and door scanner;
 and handles theatre rentals, staff scheduling and Square/Mailchimp/LGL sync.
 
 React + Vite + TypeScript + Tailwind on Cloudflare Workers, with Supabase
-(Postgres + Auth + 34 edge functions) behind it.
+(Postgres + Auth + 35 edge functions) behind it.
 
-**Patrons are `anon`.** Member login was removed, so `authenticated` now means
-staff / admin / superadmin only. Any policy shaped `user_id = auth.uid()` was
-written for patrons and is probably dead code.
+**Patrons are meant to be `anon`, but `authenticated` does not mean staff.**
+Member login was removed from the UI, yet checkout still creates a confirmed auth
+account for every guest buyer, and "forgot password" works for any account. So
+any ticket buyer can hold a session with no role. Gate on `has_role(...)`, never
+on the presence of a user. Policies shaped `user_id = auth.uid()` were written for
+patrons and are still reachable by them. See H1 and M1 in
+`docs/AUDIT-security-2026-10-06.md`.
 
 ## Environments
 
@@ -152,10 +156,15 @@ on 14 Aug 2026, and the damage was invisible in both UIs — timestamps were the
 only evidence. Read-modify-write only, and prefer create-only.
 
 **Square taxes the order, not the line, and rounds half-to-even.** Tax is 6% of
-the summed taxable lines, once; line shape changes nothing. Our arithmetic lives in
-`_shared/order_math.ts` (byte-identical twin `src/lib/orderMath.ts`), the database
-holds every order's rows to it (`enforce_ticket_order_tax`, PT422), and
-`_shared/pricing_vectors.json` pins all three to totals Square's sandbox returned.
+the summed taxable lines, once; line shape changes nothing. Pricing lives in one
+place, the SQL function `price_ticket_order` (with `round_half_even_div` /
+`order_tax_cents`), and every paid row is written by `create_ticket_order`, which
+calls it. `_shared/order_math.ts` keeps only Square's rounding, to predict
+Square's total before a charge. `_shared/pricing_vectors.json` pins both to totals
+Square's sandbox returned (`supabase/tests/pricing_rpc`). The old order-level
+triggers (`enforce_ticket_order_tax`, PT422, and its successor) are **gone**,
+dropped in `20260922162659`, so a row the service role inserts directly is
+checked by nothing but the `enforce_ticket_pricing` row trigger.
 Never compute tax as `Math.round(price * 0.06)` per item: it agrees with Square
 only at multiples of 50¢, and a Square order that disagrees with the charge by a
 cent is abandoned to a bare payment. An order-scoped Square discount also
