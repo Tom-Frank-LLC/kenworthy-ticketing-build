@@ -1,11 +1,12 @@
 ---
 brief: rental-contract-pdf-fill
 title: Rental contract PDFs render filled-in values cleanly, with no strikethrough and no displaced values
-status: built
+status: shipped
 track: bug
-severity: P1
 date: 2026-10-07
-verified: false
+shipped_in: ["#372"]
+shipped_at: 2026-10-07
+verified: true
 findings: ../FINDINGS-contract-pdf-html2canvas.md
 ---
 
