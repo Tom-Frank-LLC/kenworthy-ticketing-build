@@ -39,21 +39,27 @@ goes in `.env.*` or `wrangler.jsonc`.
 
 Project refs: staging `rpqzrpboyhshdrfdwayk`, production `vlmslygnimfbamrtwvyo`.
 
-## Shared between staging and production
+## Staging holds no live vendor keys (since 2026-10-07)
 
-Staging is **not** isolated for three vendors. Per CLAUDE.md and the audit
-(names and timestamps compared; values deliberately not):
+Mailchimp, Little Green Light and Twilio have no sandbox, and until 7 Oct 2026
+staging held **production's** keys for all three. A staging subscribe wrote a
+real contact, a staging donation a real donor record and gift, and a staging SMS
+was a real text from the theatre's number. Their secrets were **unset on
+staging** on 2026-10-07 (`LGL_API_KEY`, `MAILCHIMP_API_KEY`,
+`MAILCHIMP_AUDIENCE_ID`, `MAILCHIMP_SERVER_PREFIX`, `TWILIO_ACCOUNT_SID`,
+`TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_MESSAGING_SERVICE_SID`).
+Each integration on staging now answers "not configured", and its caller treats
+that as non-fatal:
 
-| vendor | staging holds | consequence |
-|---|---|---|
-| Mailchimp | production's API key and audience | a staging subscribe writes a real contact; a leak from staging is a leak of the live audience |
-| Little Green Light | production's API key | a staging donation creates a real donor record and gift |
-| Twilio | production's account and API key | a staging SMS is a real text from the theatre's number |
+| vendor | on staging now |
+|---|---|
+| Mailchimp | checkout and donations call it fire-and-forget, so nothing waits on it; the Mailchimp admin screens say "Mailchimp not configured" |
+| Little Green Light | a donation completes and sends its receipt; the LGL post records "LGL not configured" on the row |
+| Twilio | an SMS fails and is logged; email delivery is unaffected, and a phone-only test order shows as undelivered |
 
-So **rotating any of these three is one rotation that has to land on both
-projects at once**, and anyone with access to the staging project can reach the
-production donor database and audience. What separate staging keys would take is
-at the end.
+So rotating any of the three is now a **production-only** rotation. To test one
+of these syncs on staging, give staging its own vendor account (see *Separate
+staging keys* at the end). Don't copy production's key back.
 
 Square, Turnstile and the Supabase keys are already separate per environment.
 Resend appears on both projects; whether it is one key or two has not been
@@ -181,7 +187,7 @@ sandbox, `_shared/square.ts`). Per set:
 (the credential in use), `TWILIO_AUTH_TOKEN` (fallback only, used when no API
 key is set), `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`.
 
-- **Shared:** staging and production hold the same account and key.
+- **Staging:** none since 2026-10-07; production only.
 - **Rotate:** Twilio Console → API keys → create a new standard key, set
   `TWILIO_API_KEY_SID` and `TWILIO_API_KEY_SECRET` together on **both** projects,
   then delete the old key. No gap if you delete last. If `TWILIO_AUTH_TOKEN` is
@@ -189,7 +195,7 @@ key is set), `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`.
   unset it: the API key is the credential, and the auth token is the master key
   to the account.
 - **What breaks:** SMS tickets. Email is unaffected, and checkout succeeds.
-- **Verify:** a ticket by SMS to your own number from a staging test order.
+- **Verify:** on production, a $0 or cash counter sale delivered by SMS to your own number (staging has no Twilio keys since 2026-10-07).
   This is a real text.
 
 ---
@@ -199,7 +205,7 @@ key is set), `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`.
 `MAILCHIMP_API_KEY` (secret), `MAILCHIMP_SERVER_PREFIX` and
 `MAILCHIMP_AUDIENCE_ID` (identifiers).
 
-- **Shared:** staging and production hold production's key and audience.
+- **Staging:** none since 2026-10-07; production only.
 - **Rotate:** Mailchimp → Account → Extras → API keys → create a key, set it on
   **both** projects, then disable the old key. No gap if you disable last.
 - **What breaks:** newsletter signups, donor tagging and e-commerce sync. All
@@ -231,7 +237,7 @@ key is set), `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`.
 
 ## Little Green Light (`LGL_API_KEY`)
 
-- **Shared:** staging and production hold production's key.
+- **Staging:** none since 2026-10-07; production only.
 - **Rotate:** in LGL's settings, under its API / integration keys, generate a
   new key, set it on **both** projects, then revoke the old one.
 - **What breaks:** between revoking and setting, every gift (online and box
@@ -271,5 +277,5 @@ key is set), `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID`.
 | Twilio | Twilio's test credentials (a test Account SID and auth token that never send a real message), used through the `TWILIO_AUTH_TOKEN` mode `_shared/deliver.ts` already supports. Or a subaccount with its own API key. | Test credentials only accept Twilio's magic numbers, so staging SMS becomes simulated. A subaccount still sends real texts, but can be revoked without touching production. |
 | Resend | A second API key for staging, restricted to sending. | Free. Removes the open question above. |
 
-Until this is done, treat staging access as production access for those three
-vendors.
+Staging's keys for Mailchimp, LGL and Twilio were removed on 2026-10-07 (above),
+so these options are only needed to *test* a sync on staging again.
