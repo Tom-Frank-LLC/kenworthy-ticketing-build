@@ -37,10 +37,14 @@ patrons and are still reachable by them. See H1 and M1 in
 in `.gitignore` for why. Never put a service-role key or Square token in them;
 server-side secrets go in `supabase secrets set`.
 
-**Staging is not a sandbox for everything.** Square has a real sandbox there.
-Mailchimp and LGL do **not** — staging shares production's key and audience, so
-a test subscribe or test donation writes a real contact and a real donor record,
-with no reversal path.
+**Staging talks to no live vendor.** Square has a real sandbox there. Mailchimp,
+LGL and Twilio have no sandbox, and staging used to hold production's keys for
+all three, so a test subscribe or donation wrote a real contact and donor record.
+Their keys were **removed from staging on 7 Oct 2026**. Each integration now
+reports "not configured" and the sale, gift or delivery carries on without it.
+Don't put production's keys back on staging to test a sync; give staging its own
+vendor account instead (see `docs/RUNBOOK-secret-rotation.md`). Resend still
+sends real email from staging.
 
 ## Build and run
 
