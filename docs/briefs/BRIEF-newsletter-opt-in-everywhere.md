@@ -1,11 +1,13 @@
 ---
 brief: newsletter-opt-in-everywhere
 title: Donors and film-pass buyers are asked about the newsletter, and nobody is subscribed without saying yes
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-07
-verified: false
+verified: true
+shipped_in: ["#369", "e1d03aa"]
+shipped_at: 2026-10-07
+evidence: "3 functions + Worker on both projects; prod Worker 90c96b7a (rollback 72decd4e); checkbox seen ticked on production /donate and /film-pass/:id (headless); CASH still refused after redeploy"
 ---
 
 # Brief: one newsletter opt-in, on every form that takes money
