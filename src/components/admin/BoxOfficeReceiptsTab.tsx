@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { FileText, Download, Loader2, Search, X } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
+import { withHtml2CanvasBaseline } from '@/lib/html2canvasBaseline';
 import { formatShowtime, venueLocalToInstant } from '@/lib/datetime';
 
 interface Showing {
@@ -167,7 +168,7 @@ export default function BoxOfficeReceiptsTab() {
       const date = formatShowtime(active.start_time, 'yyyy_MM_dd');
       const safeTitle = title.replace(/[^\w]+/g, '');
       const filename = `${date}_${safeTitle}_BOR.pdf`;
-      await html2pdf()
+      await withHtml2CanvasBaseline(() => html2pdf()
         .from(receiptRef.current)
         .set({
           margin: 0.4,
@@ -176,7 +177,7 @@ export default function BoxOfficeReceiptsTab() {
           html2canvas: { scale: 2, backgroundColor: '#ffffff' },
           jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
         })
-        .save();
+        .save());
     } catch (e: any) {
       toast.error(e?.message ?? 'PDF generation failed');
     } finally {

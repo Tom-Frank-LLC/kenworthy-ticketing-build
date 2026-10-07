@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import { formatClockTime, formatPlainDate } from '@/lib/datetime';
 // @ts-ignore - no types
 import html2pdf from 'html2pdf.js';
+import { withHtml2CanvasBaseline } from '@/lib/html2canvasBaseline';
 
 type ContractData = {
   agreement_date?: string;
@@ -91,16 +92,10 @@ export default function RentalContract() {
     setExporting(true);
     try {
       const filename = `Kenworthy-Contract-${(request.event_title || 'rental').replace(/[^a-z0-9]+/gi, '-')}.pdf`;
-      await html2pdf()
-        .set({
-          margin: [0.5, 0.5, 0.5, 0.5],
-          filename,
-          image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-          jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
-        } as any)
-        .from(el)
-        .save();
+      await withHtml2CanvasBaseline(() => html2pdf()
+        .set({ ...PDF_OPTIONS, filename } as any)
+        .from(breakableCopy(el))
+        .save());
     } catch (e: any) {
       toast.error(e?.message || 'Failed to export PDF');
     } finally {
@@ -111,13 +106,8 @@ export default function RentalContract() {
   async function renderPdfBlob(): Promise<Blob> {
     const el = document.getElementById('contract-body');
     if (!el) throw new Error('Contract body not found');
-    const opts = {
-      margin: [0.5, 0.5, 0.5, 0.5],
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
-    };
-    return await html2pdf().set(opts as any).from(el).outputPdf('blob');
+    return await withHtml2CanvasBaseline(() =>
+      html2pdf().set(PDF_OPTIONS as any).from(breakableCopy(el)).outputPdf('blob'));
   }
 
   function blobToBase64(blob: Blob): Promise<string> {
@@ -366,78 +356,86 @@ export default function RentalContract() {
         <H2>9. Non-Discrimination Clause</H2>
         <p>The Kenworthy Performing Arts Centre prohibits discrimination, in the entertainment and in the audience, on the basis of race, religion, color, national origin, gender, sexual orientation, disability, or age. Licensee agrees to abide by non-discrimination policy while using the premises.</p>
 
-        <p>IN WITNESS WHEREOF, the parties executed this Agreement as of the day and year first set forth above.</p>
+        <Keep>
+          <p>IN WITNESS WHEREOF, the parties executed this Agreement as of the day and year first set forth above.</p>
 
-        <div className="grid md:grid-cols-2 gap-8 mt-10">
-          <div>
-            <p className="font-semibold">OWNER</p>
-            <p>Kenworthy Performing Arts Centre, Inc.</p>
-            <div className="mt-12 border-t border-neutral-800 pt-2">
-              <p>Jordan Goins</p>
-              <p className="text-sm text-neutral-600">Operations Manager</p>
+          <div className="grid md:grid-cols-2 gap-8 mt-10">
+            <div>
+              <p className="font-semibold">OWNER</p>
+              <p>Kenworthy Performing Arts Centre, Inc.</p>
+              <div className="mt-12 border-t border-neutral-800 pt-2">
+                <p>Jordan Goins</p>
+                <p className="text-sm text-neutral-600">Operations Manager</p>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold">LICENSEE</p>
+              <p>&nbsp;</p>
+              <div className="mt-12 border-t border-neutral-800 pt-2">
+                <p>{licensee}</p>
+              </div>
             </div>
           </div>
-          <div>
-            <p className="font-semibold">LICENSEE</p>
-            <p>&nbsp;</p>
-            <div className="mt-12 border-t border-neutral-800 pt-2">
-              <p>{licensee}</p>
-            </div>
-          </div>
-        </div>
+        </Keep>
 
         <hr className="my-12 border-neutral-400" />
 
         {/* Addendum */}
-        {alcoholYes ? (
-          <section>
-            <h2 className="font-display text-xl uppercase text-center">Addendum 1 — Alcohol Agreement</h2>
-            <ol className="list-decimal pl-6 mt-4 space-y-2 text-sm">
-              <li>Alcohol may NOT be served at any event at the KPAC without execution of this addendum.</li>
-              <li>Beer and wine will be served under the Kenworthy Performing Arts Centre beer and wine license.</li>
-              <li>Beer and wine will be served/sold by Kenworthy employees.</li>
-              <li>A $100.00 cleaning deposit may be assessed if alcohol is served. Additional cleaning charges up to $300.00 may be assessed if deemed necessary by Owner.</li>
-              <li>Licensees will not be permitted to bring any alcoholic beverages on premises. Only KPAC can provide alcohol products for consumption on premises.</li>
-              <li>Alcohol consumption will be limited to the auditorium, backstage, and lobby. Not in restrooms, balcony, or outside the building.</li>
-              <li>Alcohol sales during rental event may only be sold, served and/or consumed during hours listed on the rental agreement and in accordance with City Code Title 9, Chapter 6-32.</li>
-              <li>Licensee will assume all liability arising from and in connection with alcohol consumption.</li>
-              <li>All guests are required to provide valid ID to be served. No one under 21 will be served. Any guest providing alcohol to a minor will be required to leave immediately.</li>
-              <li>Licensee will be fined $100 and possible early closure if patrons are consuming alcohol not vendored by the Kenworthy.</li>
-              <li>KPAC will retain 100% of beer and wine sales.</li>
-              <li>Kenworthy employees have the duty and right to remove any patron unlawfully bringing beer or wine on premises.</li>
-              <li>The Kenworthy reserves the right to refuse service to any patron for any reason.</li>
-              <li>Employees shall not serve patrons who appear intoxicated or exhibit inappropriate, unsafe, or unruly behavior.</li>
-              <li>Kenworthy employees reserve the right to remove anyone from the premises under circumstances they deem appropriate.</li>
-              <li>At the discretion of the Kenworthy, security may be required at the sole expense of the Licensee for the duration of the event (one uniformed police officer).</li>
-              <li>KPAC at its sole discretion may terminate alcohol sale or distribution if any provision of this addendum is breached or a safety concern exists.</li>
-            </ol>
-          </section>
-        ) : (
-          <section>
-            <h2 className="font-display text-xl uppercase text-center">Addendum 1 — No Alcohol Service</h2>
-            <ol className="list-decimal pl-6 mt-4 space-y-2 text-sm">
-              <li>This addendum marks acknowledgement from Licensee that no sales of alcohol will take place during their event at the Kenworthy Performing Arts Centre.</li>
-              <li>Licensees will not be permitted to bring any alcoholic beverages on premises.</li>
-              <li>Licensee will be fined $100 and may face possible early closure of the event if patrons are consuming alcoholic beverages not vendored by the Kenworthy.</li>
-              <li>Kenworthy employees will have the duty and right to remove any patron who has unlawfully brought beer or wine onto the premises.</li>
-              <li>Kenworthy employees reserve the right to remove anyone from the premises under circumstances they deem appropriate.</li>
-            </ol>
-          </section>
-        )}
+        <Keep>
+          {alcoholYes ? (
+            <section>
+              <HeadingKeep>
+                <h2 className="font-display text-xl uppercase text-center">Addendum 1 — Alcohol Agreement</h2>
+              </HeadingKeep>
+              <ol className="list-decimal pl-6 mt-4 space-y-2 text-sm">
+                <li>Alcohol may NOT be served at any event at the KPAC without execution of this addendum.</li>
+                <li>Beer and wine will be served under the Kenworthy Performing Arts Centre beer and wine license.</li>
+                <li>Beer and wine will be served/sold by Kenworthy employees.</li>
+                <li>A $100.00 cleaning deposit may be assessed if alcohol is served. Additional cleaning charges up to $300.00 may be assessed if deemed necessary by Owner.</li>
+                <li>Licensees will not be permitted to bring any alcoholic beverages on premises. Only KPAC can provide alcohol products for consumption on premises.</li>
+                <li>Alcohol consumption will be limited to the auditorium, backstage, and lobby. Not in restrooms, balcony, or outside the building.</li>
+                <li>Alcohol sales during rental event may only be sold, served and/or consumed during hours listed on the rental agreement and in accordance with City Code Title 9, Chapter 6-32.</li>
+                <li>Licensee will assume all liability arising from and in connection with alcohol consumption.</li>
+                <li>All guests are required to provide valid ID to be served. No one under 21 will be served. Any guest providing alcohol to a minor will be required to leave immediately.</li>
+                <li>Licensee will be fined $100 and possible early closure if patrons are consuming alcohol not vendored by the Kenworthy.</li>
+                <li>KPAC will retain 100% of beer and wine sales.</li>
+                <li>Kenworthy employees have the duty and right to remove any patron unlawfully bringing beer or wine on premises.</li>
+                <li>The Kenworthy reserves the right to refuse service to any patron for any reason.</li>
+                <li>Employees shall not serve patrons who appear intoxicated or exhibit inappropriate, unsafe, or unruly behavior.</li>
+                <li>Kenworthy employees reserve the right to remove anyone from the premises under circumstances they deem appropriate.</li>
+                <li>At the discretion of the Kenworthy, security may be required at the sole expense of the Licensee for the duration of the event (one uniformed police officer).</li>
+                <li>KPAC at its sole discretion may terminate alcohol sale or distribution if any provision of this addendum is breached or a safety concern exists.</li>
+              </ol>
+            </section>
+          ) : (
+            <section>
+              <HeadingKeep>
+                <h2 className="font-display text-xl uppercase text-center">Addendum 1 — No Alcohol Service</h2>
+              </HeadingKeep>
+              <ol className="list-decimal pl-6 mt-4 space-y-2 text-sm">
+                <li>This addendum marks acknowledgement from Licensee that no sales of alcohol will take place during their event at the Kenworthy Performing Arts Centre.</li>
+                <li>Licensees will not be permitted to bring any alcoholic beverages on premises.</li>
+                <li>Licensee will be fined $100 and may face possible early closure of the event if patrons are consuming alcoholic beverages not vendored by the Kenworthy.</li>
+                <li>Kenworthy employees will have the duty and right to remove any patron who has unlawfully brought beer or wine onto the premises.</li>
+                <li>Kenworthy employees reserve the right to remove anyone from the premises under circumstances they deem appropriate.</li>
+              </ol>
+            </section>
+          )}
 
-        <div className="grid md:grid-cols-2 gap-8 mt-10">
-          <div>
-            <div className="mt-12 border-t border-neutral-800 pt-2">
-              <p>Jordan Goins</p>
-              <p className="text-sm text-neutral-600">Operations Manager</p>
+          <div className="grid md:grid-cols-2 gap-8 mt-10">
+            <div>
+              <div className="mt-12 border-t border-neutral-800 pt-2">
+                <p>Jordan Goins</p>
+                <p className="text-sm text-neutral-600">Operations Manager</p>
+              </div>
+            </div>
+            <div>
+              <div className="mt-12 border-t border-neutral-800 pt-2">
+                <p>{licensee}</p>
+              </div>
             </div>
           </div>
-          <div>
-            <div className="mt-12 border-t border-neutral-800 pt-2">
-              <p>{licensee}</p>
-            </div>
-          </div>
-        </div>
+        </Keep>
 
         {!isAdmin && (
           <div className="print:hidden mt-10 text-center flex justify-center gap-2">
@@ -459,14 +457,82 @@ function num(v: number | undefined) {
 }
 
 function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="font-display uppercase text-base mt-6 mb-2 tracking-wide">{children}</h2>;
+  return (
+    <HeadingKeep>
+      <h2 className="font-display uppercase text-base mt-6 mb-2 tracking-wide">{children}</h2>
+    </HeadingKeep>
+  );
 }
 
 function Fill({ children }: { children: React.ReactNode }) {
-  // The filled-in blanks of the agreement. On a dark page these were a tinted
-  // highlight; on paper they read as the ruled blank a typed value sits on.
-  return <span className="bg-neutral-100 border-b border-neutral-500 px-1">{children}</span>;
+  // The filled-in values of the agreement, set in bold. This span is rasterized
+  // by html2canvas for the PDF, so keep it to plain text styling: html2canvas
+  // paints a background on a wrapped inline span as one box over its whole
+  // bounding rectangle, covering the neighbouring words, and it draws
+  // underlines through descenders with no offset. Check a change in the
+  // generated PDF, not on screen.
+  return <span className="font-semibold">{children}</span>;
 }
+
+// Shared by Draft PDF / Download PDF and Sign & Download, so the copy a renter
+// downloads and the copy that gets signed are laid out the same way.
+//
+// html2pdf cuts a page every 10 inches whatever is there, slicing lines of text
+// in half. With `avoid`, an element that would straddle a cut is pushed whole onto
+// the next page. Whole paragraphs left half-empty pages, so `breakableCopy` puts
+// each word in its own span instead. The word that would straddle the cut moves
+// down and takes the rest of its line with it, which is a break between lines.
+const PDF_OPTIONS = {
+  margin: [0.5, 0.5, 0.5, 0.5],
+  image: { type: 'jpeg', quality: 0.95 },
+  html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+  jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+  pagebreak: { mode: ['css', 'legacy'], avoid: ['.pdf-keep', '.pdf-word', 'tr'] },
+};
+
+// A detached copy of the contract for html2pdf, with every word of running text
+// in a `.pdf-word` span. Only the copy is changed; React's DOM is left alone.
+function breakableCopy(el: HTMLElement): HTMLElement {
+  const copy = el.cloneNode(true) as HTMLElement;
+  // What print leaves out, the PDF leaves out: the patron's Download / Print
+  // buttons sit inside the contract and were printed on its last page.
+  copy.querySelectorAll('.print\\:hidden').forEach((n) => n.remove());
+  const walker = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n.nodeValue?.trim()) texts.push(n as Text);
+  }
+  for (const text of texts) {
+    const frag = document.createDocumentFragment();
+    for (const part of text.nodeValue!.split(/(\s+)/)) {
+      if (!part) continue;
+      if (/^\s+$/.test(part)) {
+        frag.appendChild(document.createTextNode(part));
+      } else {
+        const word = document.createElement('span');
+        word.className = 'pdf-word';
+        word.textContent = part;
+        frag.appendChild(word);
+      }
+    }
+    text.replaceWith(frag);
+  }
+  return copy;
+}
+
+// Kept on one page in the PDF (see PDF_OPTIONS). Only for blocks shorter than a
+// page; html2pdf lets a taller one break, and its words still break by line.
+function Keep({ children }: { children: React.ReactNode }) {
+  return <div className="pdf-keep">{children}</div>;
+}
+
+// A heading must not be the last thing on a page. The padding reserves room for
+// the first lines after it inside the kept box, and the matching negative margin
+// gives that room back, so the layout is unchanged.
+function HeadingKeep({ children }: { children: React.ReactNode }) {
+  return <div className="pdf-keep pb-[4.5em] -mb-[4.5em]">{children}</div>;
+}
+
 
 function Row({ label, value }: { label: string; value: number }) {
   return (

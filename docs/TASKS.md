@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**129 briefs** — 115 shipped, 8 built, 6 open, 0 needs triage, 0 closed.
+**130 briefs** — 116 shipped, 8 built, 6 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -32,6 +32,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Shipped
 
 - **Donors and film-pass buyers are asked about the newsletter, and nobody is subscribed without saying yes**<br>`feature` — `#369`, `e1d03aa` — [brief](briefs/BRIEF-newsletter-opt-in-everywhere.md)
+- **Rental contract PDFs render filled-in values cleanly, with no strikethrough and no displaced values**<br>`bug` — `#372` — [brief](briefs/BRIEF-rental-contract-pdf-fill.md) · [notes](briefs/../FINDINGS-contract-pdf-html2canvas.md)
 - **No known-vulnerable package ships to the browser — TipTap 3, react-router 7, SheetJS 0.20.3, Dependabot backlog triaged**<br>`security` — `#365`, `bae77aa` — [brief](briefs/BRIEF-sec-deps.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - **qbo-sync is safe to deploy, debug probes cannot be deployed, counter gifts need a Square payment, and every function import is pinned**<br>`security` — `#366`, `29c8ebc` — [brief](briefs/BRIEF-sec-wave2-functions.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - **Public checkouts and the donation form are rate limited and behind Turnstile, create no account for a refused request, and say nothing internal**<br>`security` — `#361`, `67b1259` — [brief](briefs/BRIEF-sec-checkout-abuse.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
