@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**128 briefs** — 114 shipped, 9 built, 5 open, 0 needs triage, 0 closed.
+**128 briefs** — 115 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -16,7 +16,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
 - `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
-- `P2` **Donors and film-pass buyers are asked about the newsletter, and nobody is subscribed without saying yes**<br>`feature` — [brief](briefs/BRIEF-newsletter-opt-in-everywhere.md)
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
@@ -31,6 +30,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Donors and film-pass buyers are asked about the newsletter, and nobody is subscribed without saying yes**<br>`feature` — `#369`, `e1d03aa` — [brief](briefs/BRIEF-newsletter-opt-in-everywhere.md)
 - **No known-vulnerable package ships to the browser — TipTap 3, react-router 7, SheetJS 0.20.3, Dependabot backlog triaged**<br>`security` — `#365`, `bae77aa` — [brief](briefs/BRIEF-sec-deps.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - **qbo-sync is safe to deploy, debug probes cannot be deployed, counter gifts need a Square payment, and every function import is pinned**<br>`security` — `#366`, `29c8ebc` — [brief](briefs/BRIEF-sec-wave2-functions.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - **Public checkouts and the donation form are rate limited and behind Turnstile, create no account for a refused request, and say nothing internal**<br>`security` — `#361`, `67b1259` — [brief](briefs/BRIEF-sec-checkout-abuse.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
