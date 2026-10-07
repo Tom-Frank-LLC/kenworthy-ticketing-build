@@ -8,17 +8,24 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Copy, ExternalLink, Trash2, Eye, FileText, Link2, Receipt, RefreshCw } from 'lucide-react';
+import { Copy, ExternalLink, Trash2, Eye, FileText, Link2, Receipt, RefreshCw, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { formatClockTime, formatPlainDateRange } from '@/lib/datetime';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { invokeFunction } from '@/lib/functions';
+import { TEAM_ROLES } from '@/lib/roleRules';
 import RentalInvoiceLines from './RentalInvoiceLines';
 
 type RentalRequest = any;
 
 const STATUS_OPTIONS = ['pending', 'reviewing', 'approved', 'declined', 'archived'] as const;
+
+// A team member who can own a request. Same source as the Team tab's roster:
+// anyone holding a TEAM_ROLES role, named from their profile.
+type TeamMember = { id: string; name: string };
+
+const UNASSIGNED = 'unassigned';
 
 const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   pending: 'default',
@@ -35,6 +42,7 @@ export default function RentalRequestsTab() {
   const [open, setOpen] = useState<RentalRequest | null>(null);
   const [lineCounts, setLineCounts] = useState<Record<string, number>>({});
   const [generating, setGenerating] = useState<string | null>(null);
+  const [team, setTeam] = useState<TeamMember[]>([]);
 
   async function load() {
     setLoading(true);
@@ -108,7 +116,34 @@ export default function RentalRequestsTab() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  // The roster for the "Assigned to" picker. Reading every user_roles row and
+  // every profile is an admin-or-above read under RLS, which is who this tab
+  // is for (/admin is AdminOnly).
+  async function loadTeam() {
+    const { data: roles, error } = await supabase
+      .from('user_roles')
+      .select('user_id')
+      .in('role', [...TEAM_ROLES]);
+    if (error) { toast.error(error.message); return; }
+    const ids = [...new Set((roles || []).map(r => r.user_id))];
+    if (!ids.length) { setTeam([]); return; }
+    const { data: profiles, error: pErr } = await supabase
+      .from('profiles')
+      .select('id, email, display_name')
+      .in('id', ids);
+    if (pErr) { toast.error(pErr.message); return; }
+    setTeam(
+      (profiles || [])
+        .map(p => ({ id: p.id, name: p.display_name || p.email || 'Unnamed' }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
+  }
+
+  useEffect(() => { load(); loadTeam(); }, []);
+
+  // Until the roster arrives every id would read as a former member.
+  const teamName = (id: string | null | undefined) =>
+    !id ? null : team.find(m => m.id === id)?.name ?? (team.length ? 'Former team member' : '…');
 
   const publicFormUrl = `${window.location.origin}/rental-request`;
 
@@ -118,6 +153,19 @@ export default function RentalRequestsTab() {
     const { error } = await supabase.from('rental_requests').update({ status: status as any }).eq('id', id);
     if (error) toast.error(error.message);
     else { toast.success('Status updated'); load(); }
+  }
+
+  // RLS refuses a write by answering 204 with no rows, so the row count is
+  // the proof the assignment landed.
+  async function updateAssignee(id: string, assigned_to: string | null) {
+    const { data, error } = await supabase
+      .from('rental_requests')
+      .update({ assigned_to })
+      .eq('id', id)
+      .select('id');
+    if (error) toast.error(error.message);
+    else if (!data?.length) toast.error('Not saved — you may not have permission to assign requests');
+    else { toast.success(assigned_to ? `Assigned to ${teamName(assigned_to)}` : 'Unassigned'); load(); }
   }
 
   async function saveNotes(id: string, admin_notes: string) {
@@ -143,13 +191,20 @@ export default function RentalRequestsTab() {
     <div className="space-y-4">
       <CollapsibleSection id="rentals.public-form" title="Public rental form">
         <p className="font-serif text-xs text-muted-foreground break-all">{publicFormUrl}</p>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button size="sm" variant="outline" onClick={() => copyLink()}>
             <Copy className="h-4 w-4 mr-1" /> Copy link
           </Button>
           <Button size="sm" variant="outline" asChild>
             <a href={publicFormUrl} target="_blank" rel="noreferrer">
               <ExternalLink className="h-4 w-4 mr-1" /> Open
+            </a>
+          </Button>
+          {/* For the rare rental done on paper: the full contract with every
+              fill-in a ruled line, to download or print and complete by hand. */}
+          <Button size="sm" variant="outline" asChild title="The contract with every fill-in left blank, to complete by hand">
+            <a href="/contract/blank" target="_blank" rel="noreferrer">
+              <FileText className="h-4 w-4 mr-1" /> Blank contract
             </a>
           </Button>
         </div>
@@ -185,6 +240,12 @@ export default function RentalRequestsTab() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium truncate">{r.event_title}</p>
                       <Badge variant={STATUS_VARIANT[r.status]} className="capitalize text-xs">{r.status}</Badge>
+                      {r.assigned_to && (
+                        <Badge variant="outline" className="text-xs">
+                          <UserRound className="h-3 w-3 mr-1" aria-hidden="true" />
+                          <span className="sr-only">Point person: </span>{teamName(r.assigned_to)}
+                        </Badge>
+                      )}
                     </div>
                     <p className="font-serif text-xs text-muted-foreground mt-1">
                       {r.applicant_name} • {r.email}
@@ -249,6 +310,8 @@ export default function RentalRequestsTab() {
             <RequestDetail
               request={open}
               onStatus={(s) => updateStatus(open.id, s)}
+              team={team}
+              onAssign={(id) => updateAssignee(open.id, id)}
               onSaveNotes={(n) => saveNotes(open.id, n)}
               onDelete={() => deleteRequest(open.id)}
               onGenerateInvoice={(regenerate) => generateInvoice(open, regenerate)}
@@ -261,9 +324,11 @@ export default function RentalRequestsTab() {
   );
 }
 
-function RequestDetail({ request: r, onStatus, onSaveNotes, onDelete, onGenerateInvoice, generating }: {
+function RequestDetail({ request: r, onStatus, team, onAssign, onSaveNotes, onDelete, onGenerateInvoice, generating }: {
   request: RentalRequest;
   onStatus: (s: string) => void;
+  team: TeamMember[];
+  onAssign: (id: string | null) => void;
   onSaveNotes: (n: string) => void;
   onDelete: () => void;
   onGenerateInvoice: (regenerate: boolean) => void;
@@ -286,6 +351,24 @@ function RequestDetail({ request: r, onStatus, onSaveNotes, onDelete, onGenerate
           <SelectContent>
             {STATUS_OPTIONS.map(s => (
               <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Label className="font-serif text-xs">Assigned to</Label>
+        <Select
+          value={r.assigned_to || UNASSIGNED}
+          onValueChange={v => onAssign(v === UNASSIGNED ? null : v)}
+        >
+          <SelectTrigger className="w-48" aria-label="Assigned to"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+            {/* Someone who has since left the team keeps their assignment
+                visible until it is changed, rather than reading as Unassigned. */}
+            {r.assigned_to && !team.some(m => m.id === r.assigned_to) && (
+              <SelectItem value={r.assigned_to}>Former team member</SelectItem>
+            )}
+            {team.map(m => (
+              <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>

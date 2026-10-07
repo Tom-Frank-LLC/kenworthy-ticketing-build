@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { Printer, Save, ShieldCheck, BadgeCheck } from 'lucide-react';
+import { Download, Printer, Save, ShieldCheck, BadgeCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { formatClockTime, formatPlainDate } from '@/lib/datetime';
@@ -41,7 +41,15 @@ const DEFAULTS: ContractData = {
   alcohol_addendum: 'not_served',
 };
 
-export default function RentalContract() {
+/**
+ * The rental licence agreement, at /contract/:token for one request.
+ *
+ * `blank` (at /contract/blank) is the same document with every fill-in left as
+ * a ruled line, for the rare rental that is done on paper. It loads no request
+ * and has nothing to save or sign; only the merge fields differ, so a blank
+ * form and a real contract can never drift apart in their clauses.
+ */
+export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const { token } = useParams();
   const { isAdmin } = useAuth();
   const [request, setRequest] = useState<any>(null);
@@ -53,6 +61,7 @@ export default function RentalContract() {
 
   useEffect(() => {
     (async () => {
+      if (blank) { setLoading(false); return; }
       if (!token) return;
       const { data: rows, error } = await supabase.rpc('get_rental_request_by_token', { p_token: token });
       if (error) toast.error(error.message);
@@ -63,7 +72,7 @@ export default function RentalContract() {
       }
       setLoading(false);
     })();
-  }, [token]);
+  }, [token, blank]);
 
   const totals = useMemo(() => {
     const base = (data.hourly_rate || 0) * (data.base_hours || 0);
@@ -86,18 +95,55 @@ export default function RentalContract() {
     else toast.success('Contract saved');
   }
 
+  const filename = blank
+    ? 'Kenworthy-Contract-BLANK.pdf'
+    : `Kenworthy-Contract-${(request?.event_title || 'rental').replace(/[^a-z0-9]+/gi, '-')}.pdf`;
+
   async function exportPdf() {
     const el = document.getElementById('contract-body');
     if (!el) return;
     setExporting(true);
     try {
-      const filename = `Kenworthy-Contract-${(request.event_title || 'rental').replace(/[^a-z0-9]+/gi, '-')}.pdf`;
       await withHtml2CanvasBaseline(() => html2pdf()
         .set({ ...PDF_OPTIONS, filename } as any)
         .from(breakableCopy(el))
         .save());
     } catch (e: any) {
       toast.error(e?.message || 'Failed to export PDF');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // Print is the same PDF as Download, opened in a tab for the browser's PDF
+  // viewer to print. `window.print()` printed the web page instead, and the
+  // browser stamps its own URL, date and page numbers on that — chrome no page
+  // CSS can remove — and paginated it differently from the file.
+  //
+  // The tab is opened before the render, while the click still counts as a
+  // user gesture: a window.open after an await is a popup, and gets blocked.
+  async function printPdf() {
+    const tab = window.open('', '_blank');
+    setExporting(true);
+    try {
+      const blob = await renderPdfBlob();
+      const url = URL.createObjectURL(blob);
+      if (tab) {
+        tab.location.href = url;
+      } else {
+        // Popups blocked: hand over the file instead of doing nothing.
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      // The tab loads the blob on its own schedule; revoking now can beat it.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) {
+      tab?.close();
+      toast.error(e?.message || 'Failed to build the PDF');
     } finally {
       setExporting(false);
     }
@@ -163,26 +209,34 @@ export default function RentalContract() {
   }
 
   if (loading) return <div className="container py-16 text-center text-muted-foreground">Loading…</div>;
-  if (!request) return <div className="container py-16 text-center text-muted-foreground">Contract not found.</div>;
+  if (!request && !blank) return <div className="container py-16 text-center text-muted-foreground">Contract not found.</div>;
 
+  // A blank form leaves every merge field empty — not today's date, not
+  // `__________`, not $0.00 — and Fill draws a ruled line in its place.
   // `agreement_date` and `proposed_date` are calendar days, not instants:
   // `new Date('2026-08-14')` is UTC midnight and prints as the 13th here, on
   // the document a renter signs. formatPlainDate reads the day as written.
-  const agreementDate = data.agreement_date
-    ? formatPlainDate(data.agreement_date)
-    : format(new Date(request.created_at), 'MMMM d, yyyy');
-  const eventDate = request.proposed_date
-    ? request.end_date
-      ? `${formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')} through ${formatPlainDate(request.end_date, 'EEEE MMMM do, yyyy')}`
-      : formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')
-    : '__________';
-  const timeRange =
-    [formatClockTime(request.event_start_time), formatClockTime(request.event_end_time)].filter(Boolean).join('–') ||
-    '__________';
-  const licensee = request.applicant_name || request.organization_name || '__________';
-  const contact = [request.applicant_name, request.email].filter(Boolean).join(', ');
-  const purpose = request.event_description || request.event_title || '__________';
-  const alcoholYes = data.alcohol_addendum === 'served' || request.wants_beer_wine;
+  const agreementDate = blank
+    ? ''
+    : data.agreement_date
+      ? formatPlainDate(data.agreement_date)
+      : format(new Date(request.created_at), 'MMMM d, yyyy');
+  const eventDate = blank
+    ? ''
+    : request.proposed_date
+      ? request.end_date
+        ? `${formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')} through ${formatPlainDate(request.end_date, 'EEEE MMMM do, yyyy')}`
+        : formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')
+      : '__________';
+  const timeRange = blank
+    ? ''
+    : [formatClockTime(request.event_start_time), formatClockTime(request.event_end_time)].filter(Boolean).join('–') ||
+      '__________';
+  const licensee = blank ? '' : request.applicant_name || request.organization_name || '__________';
+  const contact = blank ? '' : [request.applicant_name, request.email].filter(Boolean).join(', ');
+  const purpose = blank ? '' : request.event_description || request.event_title || '__________';
+  const alcoholYes = data.alcohol_addendum === 'served' || request?.wants_beer_wine;
+  const money = (v: number) => (blank ? '' : `$${v.toFixed(2)}`);
 
   return (
     <div className="min-h-screen bg-background print:bg-white">
@@ -191,8 +245,10 @@ export default function RentalContract() {
         <div className="print:hidden border-b border-border/40 bg-card/50 sticky top-0 z-10">
           <div className="container max-w-5xl py-4 px-4 flex items-center justify-between gap-3">
             <div>
-              <h1 className="font-display uppercase">Contract Editor — {request.event_title}</h1>
-              {request.signed_at && (
+              <h1 className="font-display uppercase">
+                {blank ? 'Blank Contract — to fill in by hand' : `Contract Editor — ${request.event_title}`}
+              </h1>
+              {request?.signed_at && (
                 <p className="font-serif text-sm text-accent flex items-center gap-1 mt-1">
                   <BadgeCheck className="h-3.5 w-3.5" />
                   Signed {format(new Date(request.signed_at), 'PPp')} by {request.signed_by_name}
@@ -202,24 +258,28 @@ export default function RentalContract() {
               )}
             </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={save} disabled={saving}>
-                <Save className="h-4 w-4 mr-1" /> {saving ? 'Saving…' : 'Save'}
-              </Button>
+              {!blank && (
+                <Button size="sm" onClick={save} disabled={saving}>
+                  <Save className="h-4 w-4 mr-1" /> {saving ? 'Saving…' : 'Save'}
+                </Button>
+              )}
               <Button size="sm" variant="outline" onClick={exportPdf} disabled={exporting}>
-                <Printer className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Draft PDF'}
+                <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : blank ? 'Download PDF' : 'Draft PDF'}
               </Button>
-              <Button size="sm" onClick={signAndDownload} disabled={signing}>
-                <ShieldCheck className="h-4 w-4 mr-1" /> {signing ? 'Signing…' : 'Sign & Download'}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => window.print()}>
-                <Printer className="h-4 w-4 mr-1" /> Print / PDF
+              {!blank && (
+                <Button size="sm" onClick={signAndDownload} disabled={signing}>
+                  <ShieldCheck className="h-4 w-4 mr-1" /> {signing ? 'Signing…' : 'Sign & Download'}
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={printPdf} disabled={exporting}>
+                <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {isAdmin && (
+      {isAdmin && !blank && (
         <div className="print:hidden container max-w-5xl px-4 mt-4">
           <Card className="glass">
             <CardContent className="p-4 grid md:grid-cols-3 gap-3">
@@ -270,18 +330,18 @@ export default function RentalContract() {
       <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-white text-neutral-900 font-serif text-base leading-relaxed print:py-0">
         <header className="text-center mb-8">
           <h1 className="font-display text-3xl uppercase tracking-wider">License Agreement</h1>
-          <p className="text-neutral-600 text-sm mt-2">{agreementDate}</p>
+          <p className="text-neutral-600 text-sm mt-2">{blank ? <Fill width="10em" /> : agreementDate}</p>
         </header>
 
         <p>
-          This License Agreement (the &ldquo;Agreement&rdquo;) is made on <Fill>{agreementDate}</Fill> between
+          This License Agreement (the &ldquo;Agreement&rdquo;) is made on <Fill width="10em">{agreementDate}</Fill> between
           {' '}<strong>Kenworthy Performing Arts Centre, Inc.</strong>, an Idaho non-profit corporation (&ldquo;Owner&rdquo;),
-          and <Fill>{licensee}</Fill> (&ldquo;Licensee&rdquo;).
+          and <Fill width="16em">{licensee}</Fill> (&ldquo;Licensee&rdquo;).
         </p>
 
         <H2>Recitals</H2>
         <p><strong>A.</strong> Owner owns fee simple title to the Kenworthy Performing Arts Centre located in Latah County, State of Idaho, more particularly described as a theater located at 508 S. Main Street in Moscow, Idaho. <strong>Correspondence should be addressed to: PO Box 8126, Moscow, ID 83843. Telephone (208) 882-4127.</strong></p>
-        <p><strong>B.</strong> Licensee desires to use the theater (&ldquo;Licensed Premises&rdquo;). <strong>Correspondence should be addressed to: <Fill>{contact || licensee}</Fill></strong></p>
+        <p><strong>B.</strong> Licensee desires to use the theater (&ldquo;Licensed Premises&rdquo;). <strong>Correspondence should be addressed to: <Fill width="20em">{contact || licensee}</Fill></strong></p>
         <p><strong>C.</strong> Owner will agree to Licensee&rsquo;s use of the Licensed Premises upon terms and conditions as set forth in this Agreement and the attached addendum(s).</p>
 
         <p>Owner and Licensee agree as follows:</p>
@@ -291,14 +351,16 @@ export default function RentalContract() {
 
         <H2>2. Term</H2>
         <p>
-          The term of this Agreement (the &ldquo;Term&rdquo;) shall include <Fill>{eventDate}, from {timeRange}</Fill>.
+          The term of this Agreement (the &ldquo;Term&rdquo;) shall include {blank
+            ? <><Fill width="16em" />, from <Fill width="8em" /></>
+            : <Fill>{eventDate}, from {timeRange}</Fill>}.
           Term is assessed from the time in which KPAC staff begins preparations for event and ends when staff completes clean-up after event.
         </p>
 
         <H2>3. Consideration</H2>
         <p>
           Licensee shall pay to Owner as a consideration for the License granted by this Agreement the total sum of
-          {' '}<Fill>${totals.subtotal.toFixed(2)}</Fill>, plus additional items <strong>To Be Determined</strong>.
+          {' '}<Fill width="6em">{money(totals.subtotal)}</Fill>, plus additional items <strong>To Be Determined</strong>.
           Estimated itemization may be found below.
         </p>
         <p>
@@ -307,11 +369,13 @@ export default function RentalContract() {
 
         <H2>4. Use of Licensed Premises</H2>
         <p>
-          Licensee shall use the Licensed Premises only for the following purpose(s): <Fill>{purpose}</Fill>.
+          Licensee shall use the Licensed Premises only for the following purpose(s): <Fill width="20em">{purpose}</Fill>.
           Licensee shall not occupy or use the Licensed Premises for any purpose not authorized by this Agreement, nor make or permit any use of the Licensed Premises which directly or indirectly is forbidden by law, ordinance or governmental regulation or order, or which may be dangerous to life, limb or property or which increases the premium costs or invalidates any policy of insurance covering the Licensed Premises or the Owner. Licensee shall also be subject to all reasonable rules and regulations imposed by Owner.
         </p>
         <p>
-          Licensee shall be responsible for following current social distancing and attendance guidelines as outlined by Owner. Owner maintains the ability to refuse service if guidelines are not met and/or followed. Attendance of private rentals will be limited to a <Fill>maximum of {data.max_attendees} attendees</Fill>.
+          Licensee shall be responsible for following current social distancing and attendance guidelines as outlined by Owner. Owner maintains the ability to refuse service if guidelines are not met and/or followed. Attendance of private rentals will be limited to a {blank
+            ? <>maximum of <Fill width="4em" /> attendees</>
+            : <Fill>maximum of {data.max_attendees} attendees</Fill>}.
         </p>
         <p>
           Licensee shall during the Term at Licensee&rsquo;s own cost and expense keep in force by advance payment of premiums, public liability and property damage insurance in an amount of not less than <strong>FIVE HUNDRED THOUSAND DOLLARS ($500,000)</strong> per occurrence, insuring, protecting, indemnifying and defending Licensee and Owner against all liability, loss, damage or claim that may arise against them or either of them on account of any occurrences in or about the Licensed Premises or the Center during the Term in consequence of Licensee&rsquo;s use of the Licensed Premises. Said insurance shall be with an insurance carrier or insurance carriers satisfactory to Owner and shall not be subject to cancellation except after at least ten (10) days&rsquo; prior written notice to Owner, and the policy for said insurance or a duly executed certificate of said insurance shall be delivered to Owner a minimum of forty-eight (48) hours prior to Licensee&rsquo;s use hereunder.
@@ -328,21 +392,31 @@ export default function RentalContract() {
         <H2>Itemized Breakdown of Rental Costs</H2>
         <table className="w-full border-collapse text-sm my-4">
           <tbody>
-            <Row label={`Theater Rental ($${num(data.hourly_rate)}/hr × ${num(data.base_hours)})`} value={totals.base} />
-            {totals.extra > 0 && (
-              <Row label={`Additional Hours ($${num(data.additional_hours_rate)}/hr × ${num(data.additional_hours)})`} value={totals.extra} />
+            {blank ? (
+              <>
+                <Row label={<>Theater Rental ($<Fill width="3em" />/hr × <Fill width="2em" />)</>} value="" />
+                <Row label={<>Additional Hours ($<Fill width="3em" />/hr × <Fill width="2em" />)</>} value="" />
+                <Row label={<>Additional KPAC Staff ($<Fill width="3em" />/hr × <Fill width="2em" />)</>} value="" />
+              </>
+            ) : (
+              <>
+                <Row label={`Theater Rental ($${num(data.hourly_rate)}/hr × ${num(data.base_hours)})`} value={money(totals.base)} />
+                {totals.extra > 0 && (
+                  <Row label={`Additional Hours ($${num(data.additional_hours_rate)}/hr × ${num(data.additional_hours)})`} value={money(totals.extra)} />
+                )}
+                <Row label={`Additional KPAC Staff ($${num(data.staff_rate)}/hr × ${num(data.staff_hours)})`} value={money(totals.staff)} />
+              </>
             )}
-            <Row label={`Additional KPAC Staff ($${num(data.staff_rate)}/hr × ${num(data.staff_hours)})`} value={totals.staff} />
-            <Row label="Concessions Fees" value={totals.conc} />
-            <Row label="LCD / DVD / DCP Fees" value={totals.av} />
+            <Row label="Concessions Fees" value={money(totals.conc)} />
+            <Row label="LCD / DVD / DCP Fees" value={money(totals.av)} />
             <tr className="border-t border-neutral-400 font-semibold">
               <td className="py-2">Subtotal</td>
-              <td className="py-2 text-right">${totals.subtotal.toFixed(2)}</td>
+              <td className="py-2 text-right">{money(totals.subtotal)}</td>
             </tr>
           </tbody>
         </table>
-        <p><strong>Estimated Rental Cost: <Fill>${totals.subtotal.toFixed(2)}</Fill></strong></p>
-        <p><strong>Total Rental Cost: <Fill>${totals.subtotal.toFixed(2)}</Fill></strong> (plus any fees to be determined in planning or after the event).</p>
+        <p><strong>Estimated Rental Cost: <Fill width="6em">{money(totals.subtotal)}</Fill></strong></p>
+        <p><strong>Total Rental Cost: <Fill width="6em">{money(totals.subtotal)}</Fill></strong> (plus any fees to be determined in planning or after the event).</p>
 
         <H2>6. Indemnification</H2>
         <p>Licensee shall defend, indemnify and hold harmless Owner from all claims arising out of any injury or death to any person or damage to property arising from Licensee&rsquo;s and its customers, clients, invitees, agents, and employees use of the Licensed Premises and Center during the Term. Owner shall not be held responsible for any event participants who contract COVID-19 or any other communicable diseases.</p>
@@ -372,7 +446,7 @@ export default function RentalContract() {
               <p className="font-semibold">LICENSEE</p>
               <p>&nbsp;</p>
               <div className="mt-12 border-t border-neutral-800 pt-2">
-                <p>{licensee}</p>
+                <p>{licensee || '\u00a0'}</p>
               </div>
             </div>
           </div>
@@ -380,9 +454,10 @@ export default function RentalContract() {
 
         <hr className="my-12 border-neutral-400" />
 
-        {/* Addendum */}
-        <Keep>
-          {alcoholYes ? (
+        {/* Addendum. A blank form carries both, each with its own signatures;
+            whoever fills it in completes the one that applies. */}
+        {(blank || alcoholYes) && (
+          <Keep>
             <section>
               <HeadingKeep>
                 <h2 className="font-display text-xl uppercase text-center">Addendum 1 — Alcohol Agreement</h2>
@@ -407,7 +482,24 @@ export default function RentalContract() {
                 <li>KPAC at its sole discretion may terminate alcohol sale or distribution if any provision of this addendum is breached or a safety concern exists.</li>
               </ol>
             </section>
-          ) : (
+            <div className="grid md:grid-cols-2 gap-8 mt-10">
+              <div>
+                <div className="mt-12 border-t border-neutral-800 pt-2">
+                  <p>Jordan Goins</p>
+                  <p className="text-sm text-neutral-600">Operations Manager</p>
+                </div>
+              </div>
+              <div>
+                <div className="mt-12 border-t border-neutral-800 pt-2">
+                  <p>{licensee || '\u00a0'}</p>
+                </div>
+              </div>
+            </div>
+          </Keep>
+        )}
+        {blank && <div className="mt-16" />}
+        {(blank || !alcoholYes) && (
+          <Keep>
             <section>
               <HeadingKeep>
                 <h2 className="font-display text-xl uppercase text-center">Addendum 1 — No Alcohol Service</h2>
@@ -420,30 +512,29 @@ export default function RentalContract() {
                 <li>Kenworthy employees reserve the right to remove anyone from the premises under circumstances they deem appropriate.</li>
               </ol>
             </section>
-          )}
-
-          <div className="grid md:grid-cols-2 gap-8 mt-10">
-            <div>
-              <div className="mt-12 border-t border-neutral-800 pt-2">
-                <p>Jordan Goins</p>
-                <p className="text-sm text-neutral-600">Operations Manager</p>
+            <div className="grid md:grid-cols-2 gap-8 mt-10">
+              <div>
+                <div className="mt-12 border-t border-neutral-800 pt-2">
+                  <p>Jordan Goins</p>
+                  <p className="text-sm text-neutral-600">Operations Manager</p>
+                </div>
+              </div>
+              <div>
+                <div className="mt-12 border-t border-neutral-800 pt-2">
+                  <p>{licensee || '\u00a0'}</p>
+                </div>
               </div>
             </div>
-            <div>
-              <div className="mt-12 border-t border-neutral-800 pt-2">
-                <p>{licensee}</p>
-              </div>
-            </div>
-          </div>
-        </Keep>
+          </Keep>
+        )}
 
         {!isAdmin && (
           <div className="print:hidden mt-10 text-center flex justify-center gap-2">
             <Button onClick={exportPdf} disabled={exporting}>
-              <Printer className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
+              <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
             </Button>
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer className="h-4 w-4 mr-1" /> Print / Save as PDF
+            <Button variant="outline" onClick={printPdf} disabled={exporting}>
+              <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
             </Button>
           </div>
         )}
@@ -464,13 +555,28 @@ function H2({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Fill({ children }: { children: React.ReactNode }) {
+function Fill({ children, width = '8em' }: { children?: React.ReactNode; width?: string }) {
   // The filled-in values of the agreement, set in bold. This span is rasterized
   // by html2canvas for the PDF, so keep it to plain text styling: html2canvas
   // paints a background on a wrapped inline span as one box over its whole
   // bounding rectangle, covering the neighbouring words, and it draws
   // underlines through descenders with no offset. Check a change in the
   // generated PDF, not on screen.
+  //
+  // Empty, it is a line to write on: a bottom border on an inline-block, not a
+  // text underline, so it sits below the baseline and cannot wrap. `width` is
+  // in em so the blank scales with the type.
+  if (children === undefined || children === null || children === '' || children === false) {
+    return (
+      <span
+        data-blank-fill=""
+        className="inline-block border-b border-neutral-800 align-baseline"
+        style={{ width }}
+      >
+        {'\u00a0'}
+      </span>
+    );
+  }
   return <span className="font-semibold">{children}</span>;
 }
 
@@ -534,11 +640,13 @@ function HeadingKeep({ children }: { children: React.ReactNode }) {
 }
 
 
-function Row({ label, value }: { label: string; value: number }) {
+// `value` is preformatted; empty on a blank form, where the row's own rule is
+// the line to write the amount on.
+function Row({ label, value }: { label: React.ReactNode; value: string }) {
   return (
     <tr className="border-b border-neutral-300">
       <td className="py-1.5">{label}</td>
-      <td className="py-1.5 text-right">${value.toFixed(2)}</td>
+      <td className="py-1.5 text-right">{value || '\u00a0'}</td>
     </tr>
   );
 }

@@ -2179,6 +2179,7 @@ export type Database = {
           age_range: string | null
           applicant_name: string
           arrival_time: string | null
+          assigned_to: string | null
           contract_data: Json
           contract_status: string
           created_at: string
@@ -2232,6 +2233,7 @@ export type Database = {
           age_range?: string | null
           applicant_name: string
           arrival_time?: string | null
+          assigned_to?: string | null
           contract_data?: Json
           contract_status?: string
           created_at?: string
@@ -2285,6 +2287,7 @@ export type Database = {
           age_range?: string | null
           applicant_name?: string
           arrival_time?: string | null
+          assigned_to?: string | null
           contract_data?: Json
           contract_status?: string
           created_at?: string
