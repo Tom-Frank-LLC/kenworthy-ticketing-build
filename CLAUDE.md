@@ -68,6 +68,8 @@ npx vitest run                          # src/ and worker/ tests
 deno check supabase/functions/**/*.ts    # build/vitest never touch these
 deno test --allow-env supabase/functions
 sh supabase/tests/pricing_rpc/run.sh   # needs Docker. The pricing function, against Square's own totals
+sh supabase/tests/boot/run.sh          # needs Docker. Bundles and boots every function as deploy would
+supabase db query --linked -f supabase/tests/anon_surface/surface.sql   # read-only; what anon can reach. 0 rows
 ```
 
 Bare `tsc --noEmit` **checks nothing**: `tsconfig.json` is solution-style with

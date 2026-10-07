@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**125 briefs** — 112 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
+**127 briefs** — 114 shipped, 8 built, 5 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -30,6 +30,8 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **No known-vulnerable package ships to the browser — TipTap 3, react-router 7, SheetJS 0.20.3, Dependabot backlog triaged**<br>`security` — `#365`, `bae77aa` — [brief](briefs/BRIEF-sec-deps.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
+- **qbo-sync is safe to deploy, debug probes cannot be deployed, counter gifts need a Square payment, and every function import is pinned**<br>`security` — `#366`, `29c8ebc` — [brief](briefs/BRIEF-sec-wave2-functions.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - **Public checkouts and the donation form are rate limited and behind Turnstile, create no account for a refused request, and say nothing internal**<br>`security` — `#361`, `67b1259` — [brief](briefs/BRIEF-sec-checkout-abuse.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - **Sign-in redirect stays on the site, sign-out clears the device, email preheaders are escaped, stored URLs are http(s) only**<br>`security` — `#359`, `de88e39` — [brief](briefs/BRIEF-sec-client-hygiene.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - **Identity is auth.users and a session is not a role — buyers cannot sign in, edit their identity, or pass as staff**<br>`security` — `#360`, `0d9cf1a` — [brief](briefs/BRIEF-sec-identity.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
@@ -240,13 +242,12 @@ Separate from Letterboxd. TMDB (The Movie Database) has an open, free, well-docu
 | 3.7MB JS bundle — needs code splitting for mobile | 🟡 |
 | No race-condition protection on seat booking | 🟡 |
 | Tax rate hardcoded — confirm Moscow, ID jurisdiction & rate | 🟡 |
-| `xlsx` package has no security fix — replace with `exceljs` | 🟡 |
 | Multi-day showings not in WP export (e.g. extra Cat Video Fest days) — verify/add manually | 🟡 |
 | Historical archive under-represents multi-day runs — MEC export flattened recurrence; the `days`-field parse (`kenworthy_showings_fix.sql`) recovered most, but validate coverage | 🟡 |
 | Home page `buildFeed` duplicates `useFeed` logic — consolidate | 🟢 |
 | Drawer `DialogContent` missing `aria-describedby` (a11y warning) | 🟢 |
 | Seat map not tied to specific venue room | 🟢 |
-| Remaining npm vulnerabilities | 🟢 |
+| Remaining npm vulnerabilities — 8, all dev-only in the Tailwind 3 toolchain (fix is Tailwind 4); production deps clean since #365 | 🟢 |
 | Comp tickets (`HostDashboard` `COMP-` prefix) — verify they render a real QR and scan | 🟢 |
 
 ---
