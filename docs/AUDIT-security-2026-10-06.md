@@ -128,6 +128,39 @@ hold the evidence and rollback ids.
 read-only against a live project with `supabase db query --linked -f`. It
 returns 0 rows on production.
 
+### Available, not enabled: refuse sign-in for accounts with no role
+
+`public.refuse_roleless_access_token` (migration `20261006225756`) is installed
+on both projects and **deliberately off** (Tom, 2026-10-07). Turned on as
+Supabase's *Customize Access Token (JWT) Claims* hook, it refuses every token for
+an account that holds no staff, host, admin or superadmin role. That covers
+sign-in and the hourly silent refresh, with "Sign-in is for Kenworthy staff…".
+
+**Why it's off:** today it would block nobody.
+- Buyers have no password.
+- `send-auth-email` already refuses reset and magic-link emails to role-less
+  accounts.
+- On 2026-10-07 production had 17 accounts with a role (14 signed in within 90
+  days), and no role-less account had ever signed in.
+
+Meanwhile it would sit on every staff login and refresh. If it ever failed, say
+from a database hiccup or a bad change to `user_roles`, everyone would be locked
+out at their next refresh. It also hasn't been exercised against Supabase's real
+hook mechanism.
+
+**When to turn it on:** if anything ever gives patrons a way to sign in again
+(member accounts, a password set at checkout, a new auth provider). It's
+insurance against that kind of regression.
+
+**How:**
+1. **Staging first:** Dashboard → Authentication → Hooks → Customize Access
+   Token (JWT) Claims → Postgres, schema `public`, function
+   `refuse_roleless_access_token`.
+2. **Check:** staff and admin sign-in works, a refresh an hour later works, and
+   a role-less test account is refused.
+3. Then production.
+4. **Rollback:** disable the hook on the same screen.
+
 ---
 
 ## Findings

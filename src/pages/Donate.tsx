@@ -4,6 +4,7 @@ import { SEO } from '@/components/SEO';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Heart, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,6 +36,10 @@ export default function Donate() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  // The donor's own answer, as on the ticket form. Ticked by default; it only
+  // ever means "yes" because they left it ticked, and Mailchimp still asks them
+  // to confirm by email before they join the list.
+  const [newsletter, setNewsletter] = useState(true);
 
   const [dedicationType, setDedicationType] = useState<'' | 'in_honor' | 'in_memory'>('');
   const [dedicateTo, setDedicateTo] = useState('');
@@ -108,13 +113,23 @@ export default function Donate() {
       }
 
       setDone({ receiptUrl: data.receiptUrl ?? null, amount });
-      // Fire-and-forget Mailchimp sync — server-side subscribe also happens
-      // in square-donation for the anonymous case; this covers logged-in
-      // donors and refreshes their LTV/segmentation.
-      try {
-        const { syncMailchimpProfile } = await import('@/lib/mailchimp');
-        void syncMailchimpProfile({ extraTags: ['donor'], source: 'donation' });
-      } catch { /* noop */ }
+      // The newsletter, only if they asked. This is the one subscribe path for
+      // a gift: square-donation does not add donors to Mailchimp. Anonymous, so
+      // Mailchimp sends a confirm-by-email first. Fire-and-forget: marketing
+      // must never fail a gift that already went through.
+      if (newsletter && email.trim()) {
+        try {
+          const { subscribeToMailchimp } = await import('@/lib/mailchimp');
+          const [first, ...rest] = name.trim().split(/\s+/);
+          void subscribeToMailchimp({
+            email: email.trim(),
+            first_name: first ?? '',
+            last_name: rest.join(' '),
+            tags: ['donor'],
+            source: 'donation',
+          });
+        } catch { /* noop */ }
+      }
     } catch (err) {
       console.error('Donation submit error:', err);
       if (sent) turnstile.refresh();
@@ -265,6 +280,20 @@ export default function Donate() {
             <div>
               <Label htmlFor="d-phone">Phone (optional)</Label>
               <Input id="d-phone" type="tel" maxLength={CAPS.phone} value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+            <div className="sm:col-span-2 flex items-start gap-2 pt-1">
+              <Checkbox
+                id="d-newsletter"
+                checked={newsletter}
+                onCheckedChange={(v) => setNewsletter(v === true)}
+                className="mt-0.5"
+              />
+              <Label
+                htmlFor="d-newsletter"
+                className="text-sm font-normal leading-relaxed text-muted-foreground cursor-pointer"
+              >
+                Email me about upcoming films, performances, and Kenworthy news.
+              </Label>
             </div>
           </div>
 

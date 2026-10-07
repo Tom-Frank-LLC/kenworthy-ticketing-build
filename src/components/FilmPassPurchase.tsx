@@ -3,6 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { Check, CreditCard, Loader2, Mail, Minus, Plus, Store } from 'lucide-react';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
@@ -71,6 +72,9 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  // The buyer's own answer, as on the ticket form: ticked by default, and
+  // Mailchimp still asks them to confirm by email before they join the list.
+  const [newsletter, setNewsletter] = useState(true);
   const [address, setAddress] = useState({
     line1: '', line2: '', city: '', state: 'ID', postal_code: '',
   });
@@ -152,6 +156,22 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
         total,
         email: email.trim(),
       });
+      // The newsletter, only if they asked. film-pass-checkout does not add
+      // buyers to Mailchimp; this anonymous call is the one subscribe path, so
+      // Mailchimp sends a confirm-by-email first. Fire-and-forget: marketing
+      // must never fail a sale that already went through.
+      if (newsletter) {
+        const [first, ...rest] = name.trim().split(/\s+/);
+        void import('@/lib/mailchimp')
+          .then(({ subscribeToMailchimp }) => subscribeToMailchimp({
+            email: email.trim(),
+            first_name: first ?? '',
+            last_name: rest.join(' '),
+            tags: ['film-pass'],
+            source: 'film-pass-checkout',
+          }))
+          .catch(() => { /* noop */ });
+      }
       idempotencyKeyRef.current = crypto.randomUUID();
     } catch (err: any) {
       idempotencyKeyRef.current = crypto.randomUUID();
@@ -371,6 +391,20 @@ export function FilmPassPurchase({ pass, onPlaced, children }: FilmPassPurchaseP
             We use your name to find your pass at the counter, and your email to confirm the
             order.{COLLECT_PHONE ? ' A phone number is optional, and only so we can reach you about this order.' : ''}
           </p>
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="pass-newsletter"
+              checked={newsletter}
+              onCheckedChange={v => setNewsletter(v === true)}
+              className="mt-0.5"
+            />
+            <Label
+              htmlFor="pass-newsletter"
+              className="text-sm font-normal leading-relaxed text-muted-foreground cursor-pointer"
+            >
+              Email me about upcoming films, performances, and Kenworthy news.
+            </Label>
+          </div>
         </div>
       </div>
 

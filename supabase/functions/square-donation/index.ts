@@ -280,21 +280,13 @@ Deno.serve(async (req) => {
       })
       .eq("id", pending.id);
 
-    // Fire-and-forget Mailchimp sync — donor tag + e-commerce order.
-    // Never block on success/failure.
+    // Fire-and-forget purchase history to Mailchimp's store (dormant until
+    // mailchimp-bootstrap has run). Never block on success/failure. Not a
+    // newsletter signup: that is the donor's checkbox, sent from the browser
+    // (Donate.tsx). A call from here used to subscribe every donor regardless,
+    // and never arrived for want of an Authorization header; removed 2026-10-07.
     try {
       const [first, ...rest] = donorName.split(/\s+/);
-      void fetch(`${supabaseUrl}/functions/v1/mailchimp-subscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": anonKey },
-        body: JSON.stringify({
-          email: donorEmail,
-          first_name: first ?? "",
-          last_name: rest.join(" "),
-          tags: ["donor"],
-          source: "donation",
-        }),
-      }).catch(() => {});
       void fetch(`${supabaseUrl}/functions/v1/mailchimp-ecommerce`, {
         method: "POST",
         headers: {
