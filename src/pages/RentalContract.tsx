@@ -91,7 +91,7 @@ export default function RentalContract() {
     setExporting(true);
     try {
       const filename = `Kenworthy-Contract-${(request.event_title || 'rental').replace(/[^a-z0-9]+/gi, '-')}.pdf`;
-      await html2pdf()
+      await withHtml2CanvasBaseline(() => html2pdf()
         .set({
           margin: [0.5, 0.5, 0.5, 0.5],
           filename,
@@ -100,7 +100,7 @@ export default function RentalContract() {
           jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
         } as any)
         .from(el)
-        .save();
+        .save());
     } catch (e: any) {
       toast.error(e?.message || 'Failed to export PDF');
     } finally {
@@ -117,7 +117,7 @@ export default function RentalContract() {
       html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
       jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
     };
-    return await html2pdf().set(opts as any).from(el).outputPdf('blob');
+    return await withHtml2CanvasBaseline(() => html2pdf().set(opts as any).from(el).outputPdf('blob'));
   }
 
   function blobToBase64(blob: Blob): Promise<string> {
@@ -463,9 +463,29 @@ function H2({ children }: { children: React.ReactNode }) {
 }
 
 function Fill({ children }: { children: React.ReactNode }) {
-  // The filled-in blanks of the agreement. On a dark page these were a tinted
-  // highlight; on paper they read as the ruled blank a typed value sits on.
-  return <span className="bg-neutral-100 border-b border-neutral-500 px-1">{children}</span>;
+  // The filled-in values of the agreement, set in bold. This span is rasterized
+  // by html2canvas for the PDF, so keep it to plain text styling: html2canvas
+  // paints a background on a wrapped inline span as one box over its whole
+  // bounding rectangle, covering the neighbouring words, and it draws
+  // underlines through descenders with no offset. Check a change in the
+  // generated PDF, not on screen.
+  return <span className="font-semibold">{children}</span>;
+}
+
+// Tailwind's preflight sets `img { display: block }`. html2canvas finds the
+// text baseline by measuring an inline <img> it places beside a text run, in the
+// live document, so under preflight it puts every line of text several pixels too
+// low: borders and rules then run through the glyphs and read as strikethrough.
+// Restore inline images for the length of the export only.
+async function withHtml2CanvasBaseline<T>(render: () => Promise<T>): Promise<T> {
+  const style = document.createElement('style');
+  style.textContent = 'img { display: inline-block; }';
+  document.head.appendChild(style);
+  try {
+    return await render();
+  } finally {
+    style.remove();
+  }
 }
 
 function Row({ label, value }: { label: string; value: number }) {
