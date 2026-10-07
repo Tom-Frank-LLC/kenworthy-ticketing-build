@@ -101,7 +101,7 @@ hold the evidence and rollback ids.
 | M6 payroll to staff | **Fixed** | #363 |
 | M7 Mailchimp overwrite | **Fixed** | #360 |
 | M8 unescaped staff email | **Fixed** | #359 |
-| M9 no MFA | **Deferred** to its own brief (Tom, 2026-10-06) | — |
+| M9 no MFA | **Briefed:** `BRIEF-admin-mfa.md` (TOTP for the 5 admin-tier accounts, enforced in `has_role` and the edge functions behind a switch) | — |
 | M10 `audit_bulk_*` grants | **Fixed.** It was not live on either project. | #362 |
 | M11 unattributed staff actions | **Fixed** | #363 |
 | L1 unverified staff payments | **Fixed** | #363, #366 |
