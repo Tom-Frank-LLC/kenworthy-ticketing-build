@@ -37,3 +37,9 @@ scoped to the export. See `docs/FINDINGS-contract-pdf-html2canvas.md`.
 ## Decision
 
 Tom chose **bold, no underline** (2026-10-07).
+
+## Added in the same PR (Tom, 2026-10-07)
+
+- Page breaks fall between lines; headings are never left at the foot of a page.
+- The patron's Download / Print buttons are no longer printed on their PDF.
+- The Box Office Receipt PDF had the same low-text fault and now uses the same fix.

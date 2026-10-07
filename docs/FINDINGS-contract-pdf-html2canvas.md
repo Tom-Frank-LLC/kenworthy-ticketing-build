@@ -1,6 +1,8 @@
 # FINDINGS: rental contract PDFs struck through and misaligned (html2canvas)
 
-October 7, 2026. Fix: `src/pages/RentalContract.tsx` (`Fill`, `withHtml2CanvasBaseline`).
+October 7, 2026. Fix: `src/lib/html2canvasBaseline.ts`, used by `src/pages/RentalContract.tsx`
+and `src/components/admin/BoxOfficeReceiptsTab.tsx`; `Fill`, `PDF_OPTIONS`, `breakableCopy` in
+`RentalContract.tsx`.
 
 ## Symptom
 
@@ -35,7 +37,7 @@ every line of the PDF, and any future border or underline would show it again.
 
 ## Fix
 
-- `withHtml2CanvasBaseline()` appends `img { display: inline-block; }` to the
+- `withHtml2CanvasBaseline()` (`src/lib/html2canvasBaseline.ts`) appends `img { display: inline-block; }` to the
   live document for the duration of each export and removes it afterwards.
   Injecting the style into the clone through html2canvas's `onclone` option
   **does not work**: the metrics are measured against the original document.
@@ -43,6 +45,43 @@ every line of the PDF, and any future border or underline would show it again.
 - `Fill` is `font-semibold` and nothing else (Tom's choice, between bold,
   underline and bold + underline). Underline was ruled out because html2canvas
   ignores `text-underline-offset` and draws the line through descenders.
+
+## The same fault in the Box Office Receipt
+
+`BoxOfficeReceiptsTab` makes its PDF with html2pdf under the same Tailwind
+preflight. Rendered through the same call with the receipt's inline styles,
+every table cell's text sat on the cell's bottom border, with descenders
+clipped. It goes through `withHtml2CanvasBaseline()` too, and the text is now
+centred in its cells. Every html2canvas export in this app should go through it.
+
+## Page breaks
+
+html2pdf cuts the canvas every page-height (10 in. at these margins) whatever is
+there, so lines of text and headings were sliced in half across pages. Its
+`pagebreak.avoid` option pushes a listed element that straddles a cut onto the
+next page, but only whole elements:
+
+- Avoiding `p` and `li` left pages 2, 3 and 5 nearly half empty, because long
+  paragraphs moved whole. The contract grew from 7 pages to 9.
+- So `breakableCopy()` hands html2pdf a detached copy of the contract with
+  every word wrapped in a `.pdf-word` span, and `avoid` lists `.pdf-word`. The
+  word that would straddle the cut is pushed down, and the rest of its line
+  wraps after it, so the break falls between lines. The React DOM is untouched.
+- Headings (`H2`, and the addendum titles) sit in a `.pdf-keep` box with
+  `pb-[4.5em] -mb-[4.5em]`. The padding reserves about three lines below the
+  heading inside the kept box, and the negative margin returns that space, so a
+  heading cannot be stranded at the foot of a page and the layout is unchanged.
+- The witness line with its signature block, and the addendum with its
+  signatures, are kept whole when shorter than a page. The alcohol addendum is
+  longer than a page, so html2pdf lets it break, and its words still break by line.
+- The copy also drops `print:hidden` elements. The patron's own Download PDF /
+  Print buttons sit inside `#contract-body` and had always been printed on the
+  last page of the patron's download, showing "Exporting…".
+
+Checked on three real staging contracts, including one with the alcohol
+addendum (forced by rewriting the lookup response in the headless browser, with
+no database write), by cropping every page boundary at 110 dpi. No line is cut,
+and each page is full apart from the kept blocks.
 
 ## How this was verified
 
@@ -61,9 +100,15 @@ every line of the PDF, and any future border or underline would show it again.
 
 ## Not covered
 
-- Contracts already signed are stored PDFs and still look broken. To get a clean
-  copy (for example the Indivisible / Moscow contract), regenerate it and have it
-  re-signed.
-- html2pdf cuts pages at fixed heights with no `pagebreak` setting, so a heading
-  can be sliced across two pages ("2. TERM" on the staging sample). That
-  predates this fix and is untouched.
+- **Signed PDFs are not stored anywhere.** `sign-contract` stamps the PDF,
+  records `signed_pdf_sha256`, the Ed25519 signature, signer and time on
+  `rental_requests`, and returns the PDF to the browser to download. Only the
+  downloaded file exists. Drafts are rendered fresh on every open, so they are
+  fixed as soon as the code is deployed.
+- **A contract that is already signed needs re-signing to get a clean copy, and
+  that has a cost.** There is one signature per rental. Re-signing overwrites the
+  hash, so the copy already sent to the renter will then show "tampered" at the
+  `/verify/<id>` link printed on it. In production on 2026-10-07 only one
+  contract was signed: Indivisible Moscow (signed 2026-10-06 by Jordan Goins).
+- Signing sends nothing to anyone. The only writes are the `rental_requests`
+  update and the audit log.
