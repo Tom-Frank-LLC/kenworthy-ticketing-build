@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**130 briefs** — 116 shipped, 8 built, 6 open, 0 needs triage, 0 closed.
+**131 briefs** — 117 shipped, 8 built, 6 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -31,6 +31,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A blank printable contract, a point person on each rental request, and Print that produces the same PDF as Download**<br>`feature` — `#373` — [brief](briefs/BRIEF-contract-blank-assignee-print.md)
 - **Donors and film-pass buyers are asked about the newsletter, and nobody is subscribed without saying yes**<br>`feature` — `#369`, `e1d03aa` — [brief](briefs/BRIEF-newsletter-opt-in-everywhere.md)
 - **Rental contract PDFs render filled-in values cleanly, with no strikethrough and no displaced values**<br>`bug` — `#372` — [brief](briefs/BRIEF-rental-contract-pdf-fill.md) · [notes](briefs/../FINDINGS-contract-pdf-html2canvas.md)
 - **No known-vulnerable package ships to the browser — TipTap 3, react-router 7, SheetJS 0.20.3, Dependabot backlog triaged**<br>`security` — `#365`, `bae77aa` — [brief](briefs/BRIEF-sec-deps.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
