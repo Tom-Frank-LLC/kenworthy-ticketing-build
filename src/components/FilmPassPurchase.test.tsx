@@ -31,6 +31,13 @@ vi.mock('@/components/SquareCardForm', () => ({
   ),
 }));
 
+// The newsletter signup goes from the browser, never from film-pass-checkout,
+// so it is asserted here.
+const subscribeToMailchimp = vi.fn();
+vi.mock('@/lib/mailchimp', () => ({
+  subscribeToMailchimp: (...args: unknown[]) => subscribeToMailchimp(...args),
+}));
+
 const render = (ui: ReactElement) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 
 const PASS: PassType = {
@@ -94,5 +101,53 @@ describe('FilmPassPurchase fulfillment', () => {
     const body = await pay();
     expect(body.fulfillment).toBe('pickup');
     expect(body.mailing_address).toBeUndefined();
+  });
+});
+
+describe('FilmPassPurchase newsletter', () => {
+  beforeEach(() => {
+    invokeFunction.mockReset();
+    invokeFunction.mockResolvedValue({ success: true });
+    subscribeToMailchimp.mockReset();
+  });
+
+  it('asks, ticked by default, and subscribes the buyer only after the order is placed', async () => {
+    render(<FilmPassPurchase pass={PASS} onPlaced={vi.fn()} />);
+    const box = screen.getByRole('checkbox', { name: /Email me about upcoming films/ });
+    expect(box).toBeChecked();
+
+    fillContactDetails();
+    await pay();
+
+    await waitFor(() => expect(subscribeToMailchimp).toHaveBeenCalledTimes(1));
+    expect(subscribeToMailchimp.mock.calls[0][0]).toMatchObject({
+      email: 'tom@example.com',
+      first_name: 'Tom',
+      last_name: 'Staging',
+      tags: ['film-pass'],
+      source: 'film-pass-checkout',
+    });
+  });
+
+  it('does not subscribe a buyer who unticks the box', async () => {
+    render(<FilmPassPurchase pass={PASS} onPlaced={vi.fn()} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: /Email me about upcoming films/ }));
+
+    fillContactDetails();
+    await pay();
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(subscribeToMailchimp).not.toHaveBeenCalled();
+  });
+
+  it('does not subscribe anyone when the order fails', async () => {
+    invokeFunction.mockRejectedValue(new Error('Card declined'));
+    render(<FilmPassPurchase pass={PASS} onPlaced={vi.fn()} />);
+
+    fillContactDetails();
+    await pay();
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(subscribeToMailchimp).not.toHaveBeenCalled();
   });
 });

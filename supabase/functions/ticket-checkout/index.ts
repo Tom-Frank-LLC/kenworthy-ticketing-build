@@ -809,8 +809,14 @@ async function findExistingOrder(
 }
 
 /**
- * Marketing sync. Fire-and-forget by design: a Mailchimp outage must never
- * affect a completed purchase.
+ * Purchase history to Mailchimp's store. Fire-and-forget by design: a
+ * Mailchimp outage must never affect a completed purchase.
+ *
+ * Not a newsletter signup. That happens in the browser, and only when the buyer
+ * ticks the box (Showing.tsx); a call from here used to subscribe every buyer
+ * regardless, and never arrived because it sent no Authorization header.
+ * Removed 2026-10-07. The store sync below is dormant until
+ * mailchimp-bootstrap has been run for this project.
  */
 function syncMailchimp(
   contact: BuyerContact,
@@ -821,18 +827,6 @@ function syncMailchimp(
   if (!contact.email) return;
   try {
     const [first, ...rest] = contact.name.split(/\s+/);
-    void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
-      body: JSON.stringify({
-        email: contact.email,
-        first_name: first ?? '',
-        last_name: rest.join(' '),
-        tags: ['ticket-buyer'],
-        source: 'ticket-checkout',
-      }),
-    }).catch(() => {});
-
     void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-ecommerce`, {
       method: 'POST',
       headers: {

@@ -80,7 +80,6 @@ const FILM_PASS_TAX_RATE = 0.06;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 /** A single order is a gift, a stack of them is a mistake or an attack. */
 const MAX_PASSES_PER_ORDER = 10;
@@ -1111,7 +1110,8 @@ Deno.serve(async (req: Request) => {
     EdgeRuntime.waitUntil(confirm);
   }
 
-  syncMailchimp(contact);
+  // No newsletter signup from here: the buyer's checkbox sends it from the
+  // browser (FilmPassPurchase.tsx), and only when ticked. Removed 2026-10-07.
 
   return json({
     success: true,
@@ -1234,23 +1234,3 @@ async function findExistingOrder(
   };
 }
 
-/** Marketing sync. Fire-and-forget: an outage must not affect a paid order. */
-function syncMailchimp(contact: BuyerContact) {
-  if (!contact.email) return;
-  try {
-    const [first, ...rest] = (contact.name || '').split(/\s+/);
-    void fetch(`${SUPABASE_URL}/functions/v1/mailchimp-subscribe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: ANON_KEY },
-      body: JSON.stringify({
-        email: contact.email,
-        first_name: first ?? '',
-        last_name: rest.join(' '),
-        tags: ['film-pass'],
-        source: 'film-pass-checkout',
-      }),
-    }).catch(() => {});
-  } catch (e) {
-    console.warn('[film-pass-checkout] mailchimp sync threw', e);
-  }
-}
