@@ -1,5 +1,5 @@
 {
- "_comment": "Expected values are what Square's SANDBOX returned from POST /v2/orders/calculate on 2026-09-21 (API 2024-01-18) — not our own arithmetic. Regenerate with supabase/functions/square-discount-probe. See docs/FINDINGS-square-order-arithmetic.md.",
+ "_comment": "Expected values are what Square's SANDBOX returned from POST /v2/orders/calculate on 2026-09-21 (API 2024-01-18) — not our own arithmetic. Regenerate with supabase/probes/square-discount-probe. See docs/FINDINGS-square-order-arithmetic.md.",
  "tax_only": [
   {
    "label": "1 x $8.00",

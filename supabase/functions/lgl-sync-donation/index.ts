@@ -9,7 +9,7 @@
 // It also resends the donation emails on request, so an operator has one place
 // to recover a gift whose receipt bounced.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { corsHeaders, json } from '../_shared/http.ts';
 import { donorEmailEditError, syncDonationToLgl } from '../_shared/lgl.ts';
 import { deliverDonationEmails } from '../_shared/donations.ts';

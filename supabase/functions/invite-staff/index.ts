@@ -33,7 +33,7 @@
 // Kenworthy templates in `_shared/auth-email.ts`, which already carry copy for
 // the `invite` action. So the simple call gets the branded email for free.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { EMAIL_RE, findUserIdByEmail } from '../_shared/buyers.ts';
 import { SITE_URL } from '../_shared/brand.ts';
 import { logAudit } from '../_shared/audit.ts';

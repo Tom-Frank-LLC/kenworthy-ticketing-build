@@ -6,7 +6,7 @@ Square and confirmed. See §9 for the outcome.
 
 Companion to `INCIDENT-2026-08-14-square-catalog.md`. Read that first.
 
-Evidence: `supabase/functions/square-event-probe` (temporary, read-only, admin
+Evidence: `supabase/probes/square-event-probe` (temporary, read-only, admin
 gated) run against the production catalog on 2026-08-17.
 
 ## The short version

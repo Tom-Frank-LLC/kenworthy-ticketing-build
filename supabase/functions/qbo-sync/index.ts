@@ -1,8 +1,26 @@
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { corsHeaders } from 'npm:@supabase/supabase-js@2.117.2/cors';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
+import { actorHeaders } from '../_shared/audit.ts';
+import { SITE_URL } from '../_shared/brand.ts';
+import { callerHasRole, callerUser } from '../_shared/callers.ts';
+import {
+  DEFAULT_RETURN_TO,
+  makeState,
+  returnUrl,
+  safeReturnPath,
+  STATE_TTL_MS,
+  stateSecret,
+  verifyState,
+  type StateBody,
+} from './oauth_state.ts';
 
 // QBO sync — OAuth + payroll export.
 // Actions: status | oauth_start | oauth_callback | disconnect | refresh | payroll_export
+//
+// oauth_callback is reached by Intuit's browser redirect and is gated by the
+// signed, single-use state (oauth_state.ts). Everything else is admin-only,
+// checked in code by requireAdmin — the gateway checks nothing, because this
+// function is verify_jwt = false (see supabase/config.toml).
 //
 // Tokens live in Supabase Vault; written via admin RPC `qbo_save_tokens`,
 // read service-side via `qbo_get_active_tokens`. Tokens never reach the browser.
@@ -25,35 +43,41 @@ function configuredRedirectUri(req: Request) {
   return `https://${host}/functions/v1/qbo-sync?action=oauth_callback`;
 }
 
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
 
-
-async function hmacSign(payload: string, secret: string) {
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+/**
+ * A service-role client. Pass the admin's id when it writes, so the audit
+ * trigger names them rather than nobody (_shared/audit.ts, M11).
+ */
+function serviceClient(actorId?: string) {
+  return createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    actorId ? { global: { headers: actorHeaders(actorId) } } : undefined,
   );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
-  return btoa(String.fromCharCode(...new Uint8Array(sig)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-async function makeState(userId: string, env: string, returnTo: string) {
-  const body = { u: userId, e: env, r: returnTo, n: crypto.randomUUID(), t: Date.now() };
-  const json = JSON.stringify(body);
-  const b64 = btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const sig = await hmacSign(b64, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  return `${b64}.${sig}`;
-}
-
-async function verifyState(state: string) {
-  const [b64, sig] = state.split('.');
-  if (!b64 || !sig) throw new Error('Malformed state');
-  const expected = await hmacSign(b64, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  if (expected !== sig) throw new Error('State signature mismatch');
-  const json = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-  const body = JSON.parse(json) as { u: string; e: string; r: string; n: string; t: number };
-  if (Date.now() - body.t > 10 * 60 * 1000) throw new Error('State expired');
-  return body;
+/**
+ * The admin behind this request, or the response that refuses it.
+ *
+ * This function is `verify_jwt = false` (supabase/config.toml), because
+ * Intuit's browser redirect to oauth_callback carries no JWT and the gateway
+ * would 401 it. So the gateway checks nothing here, and every action except
+ * the callback comes through this gate in code. `has_role` is hierarchical, so
+ * a superadmin passes; the old exact `role === 'admin'` match refused one.
+ */
+async function requireAdmin(req: Request): Promise<{ id: string } | Response> {
+  const user = await callerUser(createClient, req);
+  if (!user) return json({ error: 'Not authenticated' }, 401);
+  const isAdmin = await callerHasRole(serviceClient(), user.id, 'admin');
+  if (isAdmin === null) return json({ error: 'Could not check your role. Try again.' }, 503);
+  if (!isAdmin) return json({ error: 'Admin role required' }, 403);
+  return { id: user.id };
 }
 
 Deno.serve(async (req) => {
@@ -67,114 +91,67 @@ Deno.serve(async (req) => {
   const action = url.searchParams.get('action') || 'status';
   const redirectUri = configuredRedirectUri(req);
 
-  if (action === 'status') {
-    // Report connection metadata only — never the token values.
-    let connected = false;
-    let realm: string | null = null;
-    let expiresAt: string | null = null;
-    try {
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-      );
-      const { data } = await supabase
-        .from('qbo_connection')
-        .select('realm_id, token_expires_at, is_active, environment')
-        .eq('environment', env)
-        .eq('is_active', true)
-        .maybeSingle();
-      if (data) {
-        connected = true;
-        realm = data.realm_id;
-        expiresAt = data.token_expires_at;
-      }
-    } catch (_) { /* table empty or unreachable */ }
-
-    return new Response(JSON.stringify({
-      configured: !!(clientId && clientSecret),
-      environment: env,
-      connected,
-      realm_id: realm,
-      token_expires_at: expiresAt,
-      message: clientId && clientSecret
-        ? 'QBO credentials configured. Click Connect to authorize.'
-        : 'QBO_CLIENT_ID and QBO_CLIENT_SECRET not set. Add them in project secrets to enable live sync.',
-      redirect_uri: redirectUri,
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  }
-
-  // -------- oauth_start: authenticated admin → returns Intuit authorize URL --------
-  if (action === 'oauth_start') {
-    if (!clientId || !clientSecret) {
-      return new Response(JSON.stringify({ error: 'QBO credentials not configured' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    const authHeader = req.headers.get('Authorization') || '';
-    const supabaseUser = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: { user }, error: userErr } = await supabaseUser.auth.getUser();
-    if (userErr || !user) {
-      return new Response(JSON.stringify({ error: 'Not authenticated' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-    const { data: roleRows } = await svc.from('user_roles').select('role').eq('user_id', user.id);
-    const isAdmin = (roleRows || []).some((r: { role: string }) => r.role === 'admin');
-    if (!isAdmin) {
-      return new Response(JSON.stringify({ error: 'Admin role required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
-    let payload: { return_to?: string } = {};
-    try { payload = await req.json(); } catch (_) { /* no body */ }
-    const returnTo = payload.return_to || '/admin?tab=accounting';
-    const state = await makeState(user.id, env, returnTo);
-
-    const authUrl = new URL(INTUIT_AUTHORIZE_URL);
-    authUrl.searchParams.set('client_id', clientId);
-    authUrl.searchParams.set('scope', SCOPES);
-    authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('state', state);
-
-    console.log('QBO oauth_start', { redirect_uri: redirectUri, environment: env, user_id: user.id });
-
-    return new Response(JSON.stringify({
-      authorize_url: authUrl.toString(),
-      redirect_uri: redirectUri,
-      environment: env,
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-  }
-
   // -------- oauth_callback: Intuit redirects browser here with code+state+realmId --------
+  // The one action with no session. The signed, single-use state is its gate.
   if (action === 'oauth_callback') {
     if (!clientId || !clientSecret) {
       return new Response('QBO credentials not configured', { status: 400 });
+    }
+    const secret = stateSecret();
+    if (!secret) {
+      console.error('qbo-sync: QBO_STATE_SECRET is not set; refusing the callback');
+      return new Response('QuickBooks connection is not configured', { status: 503 });
     }
     const code = url.searchParams.get('code');
     const realmId = url.searchParams.get('realmId');
     const state = url.searchParams.get('state');
     const oauthError = url.searchParams.get('error');
 
-    const origin = req.headers.get('referer')
-      ? new URL(req.headers.get('referer')!).origin
-      : (Deno.env.get('SITE_URL') || 'https://kenworthy-ticketing-build.mrtomfrank.workers.dev').replace(/\/+$/, '');
+    // Always our own configured origin. Never the Referer: that is whatever
+    // page the browser came from, which an attacker can choose.
+    const origin = SITE_URL;
 
     if (oauthError) {
-      return Response.redirect(`${origin}/admin?qbo=error&message=${encodeURIComponent(oauthError)}`, 302);
+      return Response.redirect(returnUrl(origin, DEFAULT_RETURN_TO, { qbo: 'error', message: oauthError }), 302);
     }
     if (!code || !realmId || !state) {
       return new Response('Missing code/realmId/state', { status: 400 });
     }
 
-    let stateBody;
-    try { stateBody = await verifyState(state); }
+    let stateBody: StateBody;
+    try { stateBody = await verifyState(state, secret); }
     catch (e) {
       return new Response(`Invalid state: ${(e as Error).message}`, { status: 400 });
+    }
+
+    const svc = serviceClient();
+
+    // Consume the nonce before anything acts on the state. One DELETE …
+    // RETURNING: of two racing callbacks only one gets the row back, and a
+    // replayed URL finds nothing.
+    const { data: consumed, error: consumeErr } = await svc
+      .from('qbo_oauth_states')
+      .delete()
+      .eq('nonce', stateBody.n)
+      .eq('user_id', stateBody.u)
+      .eq('environment', stateBody.e)
+      .gt('expires_at', new Date().toISOString())
+      .select('nonce');
+    if (consumeErr) {
+      console.error('qbo-sync: nonce consume failed', consumeErr.message);
+      return new Response('Could not check the connection request. Start again from the admin page.', { status: 503 });
+    }
+    if (!consumed || consumed.length !== 1) {
+      return new Response('Invalid state: already used or unknown', { status: 400 });
+    }
+    if (stateBody.e !== env) {
+      return new Response('Invalid state: environment changed', { status: 400 });
+    }
+
+    // Still an admin? The state is up to ten minutes old.
+    const stillAdmin = await callerHasRole(svc, stateBody.u, 'admin');
+    if (stillAdmin !== true) {
+      return Response.redirect(returnUrl(origin, stateBody.r, { qbo: 'error', message: 'Admin role required' }), 302);
     }
 
     // Exchange auth code for tokens
@@ -192,23 +169,22 @@ Deno.serve(async (req) => {
         redirect_uri: redirectUri,
       }).toString(),
     });
-    const tokenJson = await tokenRes.json();
+    const tokenJson = await tokenRes.json().catch(() => ({}));
     if (!tokenRes.ok) {
       return Response.redirect(
-        `${origin}${stateBody.r}&qbo=error&message=${encodeURIComponent(tokenJson.error_description || tokenJson.error || 'token_exchange_failed')}`,
+        returnUrl(origin, stateBody.r, {
+          qbo: 'error',
+          message: tokenJson.error_description || tokenJson.error || 'token_exchange_failed',
+        }),
         302,
       );
     }
 
     const expiresAt = new Date(Date.now() + (tokenJson.expires_in ?? 3600) * 1000).toISOString();
 
-    // Save tokens via SECURITY DEFINER RPC — impersonate the admin who started the flow.
-    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-    // qbo_save_tokens requires auth.uid() == admin. Since we're using service role,
-    // bypass by upserting directly through service role and reusing vault calls in the RPC.
-    // We'll do this via a service-role insert into vault.secrets is not feasible from PostgREST,
-    // so call qbo_save_tokens with the admin's JWT minted via service role is also not possible.
-    // Instead: write a parallel path that uses service_role to insert vault secrets via SQL.
+    // Save tokens via a service-role-only SECURITY DEFINER RPC. qbo_save_tokens
+    // (the admin RPC) needs auth.uid(), which a browser redirect does not have;
+    // qbo_save_tokens_service takes the admin's id from the verified state.
     const { error: saveErr } = await svc.rpc('qbo_save_tokens_service', {
       p_user_id: stateBody.u,
       p_realm_id: realmId,
@@ -218,18 +194,105 @@ Deno.serve(async (req) => {
       p_environment: env,
     });
     if (saveErr) {
+      console.error('qbo-sync: saving tokens failed', saveErr.message);
       return Response.redirect(
-        `${origin}${stateBody.r}&qbo=error&message=${encodeURIComponent(saveErr.message)}`,
+        returnUrl(origin, stateBody.r, { qbo: 'error', message: 'Could not save the connection' }),
         302,
       );
     }
 
-    const sep = stateBody.r.includes('?') ? '&' : '?';
-    return Response.redirect(`${origin}${stateBody.r}${sep}qbo=connected&realm=${realmId}`, 302);
+    return Response.redirect(returnUrl(origin, stateBody.r, { qbo: 'connected', realm: realmId }), 302);
+  }
+
+  // Every other action is admin-only.
+  const gate = await requireAdmin(req);
+  if (gate instanceof Response) return gate;
+  const adminId = gate.id;
+
+  if (action === 'status') {
+    // Report connection metadata only — never the token values.
+    let connected = false;
+    let realm: string | null = null;
+    let expiresAt: string | null = null;
+    try {
+      const { data } = await serviceClient()
+        .from('qbo_connection')
+        .select('realm_id, token_expires_at, is_active, environment')
+        .eq('environment', env)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (data) {
+        connected = true;
+        realm = data.realm_id;
+        expiresAt = data.token_expires_at;
+      }
+    } catch (_) { /* table empty or unreachable */ }
+
+    return json({
+      configured: !!(clientId && clientSecret && stateSecret()),
+      environment: env,
+      connected,
+      realm_id: realm,
+      token_expires_at: expiresAt,
+      message: clientId && clientSecret && stateSecret()
+        ? 'QBO credentials configured. Click Connect to authorize.'
+        : 'QBO_CLIENT_ID, QBO_CLIENT_SECRET and QBO_STATE_SECRET must all be set to enable live sync.',
+      redirect_uri: redirectUri,
+    });
+  }
+
+  // -------- oauth_start: authenticated admin → returns Intuit authorize URL --------
+  if (action === 'oauth_start') {
+    if (!clientId || !clientSecret) {
+      return json({ error: 'QBO credentials not configured' }, 400);
+    }
+    const secret = stateSecret();
+    if (!secret) {
+      console.error('qbo-sync: QBO_STATE_SECRET is not set; refusing oauth_start');
+      return json({ error: 'QBO_STATE_SECRET not configured' }, 503);
+    }
+
+    let payload: { return_to?: unknown } = {};
+    try { payload = await req.json(); } catch (_) { /* no body */ }
+    const returnTo = safeReturnPath(payload.return_to);
+
+    const now = Date.now();
+    const nonce = crypto.randomUUID();
+    const svc = serviceClient(adminId);
+    // Housekeeping: a state nobody came back with is dead after its TTL.
+    await svc.from('qbo_oauth_states').delete().lt('expires_at', new Date(now).toISOString());
+    const { error: nonceErr } = await svc.from('qbo_oauth_states').insert({
+      nonce,
+      user_id: adminId,
+      environment: env,
+      expires_at: new Date(now + STATE_TTL_MS).toISOString(),
+    });
+    if (nonceErr) {
+      console.error('qbo-sync: recording the OAuth nonce failed', nonceErr.message);
+      return json({ error: 'Could not start the QuickBooks connection. Try again.' }, 503);
+    }
+    const state = await makeState({ u: adminId, e: env, r: returnTo, n: nonce, t: now }, secret);
+
+    const authUrl = new URL(INTUIT_AUTHORIZE_URL);
+    authUrl.searchParams.set('client_id', clientId);
+    authUrl.searchParams.set('scope', SCOPES);
+    authUrl.searchParams.set('redirect_uri', redirectUri);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('state', state);
+
+    console.log('QBO oauth_start', { redirect_uri: redirectUri, environment: env, user_id: adminId });
+
+    return json({
+      authorize_url: authUrl.toString(),
+      redirect_uri: redirectUri,
+      environment: env,
+    });
   }
 
   // -------- disconnect --------
   if (action === 'disconnect') {
+    // As the admin, not the service role: qbo_disconnect checks has_role on
+    // auth.uid() itself, a second gate behind requireAdmin.
     const authHeader = req.headers.get('Authorization') || '';
     const supabaseUser = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -251,27 +314,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'QBO credentials not configured' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    const authHeader = req.headers.get('Authorization') || '';
-    const userClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: { user }, error: uErr } = await userClient.auth.getUser();
-    if (uErr || !user) {
-      return new Response(JSON.stringify({ error: 'Not authenticated' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    {
-      const svcRole = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-      const { data: roleRows } = await svcRole.from('user_roles').select('role').eq('user_id', user.id);
-      const isAdmin = (roleRows || []).some((r: { role: string }) => r.role === 'admin');
-      if (!isAdmin) {
-        return new Response(JSON.stringify({ error: 'Admin role required' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-    }
-    const svc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const svc = serviceClient(adminId);
     const { data: tokens, error: tokErr } = await svc.rpc('qbo_get_active_tokens', { p_environment: env });
     if (tokErr || !tokens || tokens.length === 0) {
       return new Response(JSON.stringify({ error: 'No active QBO connection' }),
@@ -310,30 +353,7 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'payroll_export') {
-    const authHeader = req.headers.get('Authorization') || '';
-    const userClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: { user }, error: uErr } = await userClient.auth.getUser();
-    if (uErr || !user) {
-      return new Response(JSON.stringify({ error: 'Not authenticated' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    {
-      const svcRole = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-      const { data: roleRows } = await svcRole.from('user_roles').select('role').eq('user_id', user.id);
-      const isAdmin = (roleRows || []).some((r: { role: string }) => r.role === 'admin');
-      if (!isAdmin) {
-        return new Response(JSON.stringify({ error: 'Admin role required' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-    }
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+    const supabase = serviceClient(adminId);
     let payload: { period_start?: string; period_end?: string; lines?: Array<{ user_id: string; staff_name: string; regular_hours: number; overtime_hours: number; cost: number }> } = {};
     try { payload = await req.json(); } catch (_) { /* ignore */ }
     const period_start = payload.period_start || new Date().toISOString().slice(0, 10);

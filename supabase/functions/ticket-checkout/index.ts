@@ -23,7 +23,7 @@
 // card to Square's own iframe and sends us a single-use token, which is all
 // `source_id` below ever is. (PCI SAQ A-EP.)
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { json, preflight } from '../_shared/http.ts';
 import {
   createPayment,

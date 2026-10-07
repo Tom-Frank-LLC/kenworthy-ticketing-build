@@ -39,7 +39,7 @@ import {
   squareFetch,
   SQUARE_API_VERSION,
   type SquareConfig,
-} from "../_shared/square.ts";
+} from "../../functions/_shared/square.ts";
 
 declare const Deno: any;
 

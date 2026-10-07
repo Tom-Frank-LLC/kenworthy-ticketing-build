@@ -15,7 +15,7 @@
 // 14 Aug catalog damage (docs/INCIDENT-2026-08-14-square-catalog.md) a
 // reporting endpoint has no business holding a write path.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { corsHeaders, json } from "../_shared/http.ts";
 import { loadSquareConfig } from "../_shared/square.ts";
 import {

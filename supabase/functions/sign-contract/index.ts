@@ -1,10 +1,13 @@
-// Imported via esm.sh, not `npm:`. The npm: specifier form fails to start in
-// the Supabase edge runtime (BOOT_ERROR) — it type-checks and runs fine under
-// local Deno, so the failure only shows up once deployed. guest-checkout has
-// always used these exact specifiers and boots, which makes it the reference.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// supabase-js and its /cors entry are imported at ONE exact version. This
+// function once took BOOT_ERROR from `npm:…@2.45.0` beside `npm:…@2/cors`:
+// Deno dedupes npm packages by name, so /cors resolved against 2.45.0, which
+// has no such export — fine under local Deno, fatal once deployed (see
+// docs/TICKET-DELIVERY.md). Every function pins exact versions now (security
+// audit 2026-10-06, L6), and supabase/tests/boot/run.sh boots each one in the
+// real edge runtime, so that class of failure is caught before a deploy.
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { actorHeaders } from '../_shared/audit.ts';
-import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
+import { corsHeaders } from 'npm:@supabase/supabase-js@2.117.2/cors';
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
 
 // Deno globals

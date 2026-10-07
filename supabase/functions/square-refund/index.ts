@@ -21,7 +21,7 @@
 //
 // Staff or admin only, checked server-side against user_roles.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { json, preflight } from '../_shared/http.ts';
 import { loadSquareConfig, refundPayment, squareErrorMessage } from '../_shared/square.ts';
 import { actorHeaders, logStaffAction } from '../_shared/audit.ts';

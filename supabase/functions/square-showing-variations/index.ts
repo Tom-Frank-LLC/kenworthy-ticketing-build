@@ -31,7 +31,7 @@
 //   - Edit or remove an existing variation. It only ever appends.
 
 import { actorHeaders, auditedHandler, type StaffAuditContext } from "../_shared/audit.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import {
   loadSquareConfig,
   SQUARE_API_VERSION,

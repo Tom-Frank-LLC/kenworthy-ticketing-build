@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { corsHeaders } from "../_shared/http.ts";
 import { loadSquareConfig, squareFetch, type SquareConfig } from "../_shared/square.ts";
 import { buildTicketOrder, loadTicketGroups, orderRequestBody, processingFeeGroup } from "../_shared/square-order.ts";

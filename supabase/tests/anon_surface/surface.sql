@@ -70,6 +70,12 @@ function_allow(f, why) AS (VALUES
   ('quote_ticket_order',          'the checkout price preview'),
   ('log_failed_staff_login',      'staff sign-in page, before there is a session'),
   ('has_role',                    'called by the SELECT policies anon evaluates; revoking it breaks every public read'),
+  -- Supabase's ensure_rls event trigger (made on the projects, not by a
+  -- migration, so the replay never sees it). It returns event_trigger, which
+  -- the trigger exclusion below does not cover. An event_trigger function
+  -- cannot be called directly ("trigger functions can only be called as
+  -- triggers"), so anon's EXECUTE on it is inert.
+  ('rls_auto_enable',             'ensure_rls event-trigger function; cannot be called directly, so EXECUTE is inert'),
   -- SECURITY INVOKER pure helpers: run with anon's own rights, read nothing
   ('ticket_hold_window', 'constant'), ('door_grace_window', 'constant'),
   ('audit_is_secret_key', 'pure'), ('audit_redact', 'pure'), ('audit_uuid_or_null', 'pure'),

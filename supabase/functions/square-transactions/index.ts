@@ -37,7 +37,7 @@
 // a deliberate decision rather than something to slip in here. `isolate` is
 // reported in the response so this stays checkable instead of remembered.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { json, preflight } from '../_shared/http.ts';
 import { loadSquareConfig, squareErrorMessage, squareFetch } from '../_shared/square.ts';
 import {

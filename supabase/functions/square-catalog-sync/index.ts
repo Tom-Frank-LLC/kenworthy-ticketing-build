@@ -45,7 +45,7 @@
 //     Square category NAME on every row.
 // ---------------------------------------------------------------------------
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { json, preflight } from "../_shared/http.ts";
 import { logAudit, withBulkAudit } from "../_shared/audit.ts";
 import { concessionSquarePushEnabled } from "../_shared/flags.ts";

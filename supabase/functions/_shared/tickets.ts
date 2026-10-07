@@ -16,7 +16,7 @@ declare const Deno: any;
 // pngjs, which needs node streams and zlib. PNG encoding is therefore done
 // below against Web APIs only (CompressionStream), which the edge runtime does
 // support.
-import qrcodeGenerator from 'https://esm.sh/qrcode-generator@1.4.4';
+import qrcodeGenerator from 'npm:qrcode-generator@1.4.4';
 import { resolveDurationMinutes } from './purchasable.ts';
 
 // The Kenworthy is in Moscow, Idaho — Pacific time. Showtimes are stored as
