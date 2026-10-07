@@ -1,12 +1,12 @@
 ---
 brief: contract-blank-assignee-print
 title: A blank printable contract, a point person on each rental request, and Print that produces the same PDF as Download
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-07
-shipped_in: []
-verified: false
+shipped_in: ["#373"]
+shipped_at: 2026-10-07
+verified: true
 ---
 
 # Brief: Blank printable contract · assign a point person · make Print match Download
