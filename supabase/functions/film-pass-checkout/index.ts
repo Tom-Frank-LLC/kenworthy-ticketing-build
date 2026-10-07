@@ -33,7 +33,7 @@
 // Card data never touches this function. The browser hands the card to Square's
 // iframe and sends a single-use token, which is all `source_id` ever is.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { json, preflight } from '../_shared/http.ts';
 import {
   createPayment,
@@ -58,7 +58,7 @@ import { BOT_CHECK_REFUSAL, verifyTurnstile } from '../_shared/turnstile.ts';
 import { NOT_CHARGED_FAILURE, PAYMENTS_UNAVAILABLE, publicDeclineMessage } from '../_shared/public_errors.ts';
 import { sendTransactionalEmail } from '../_shared/deliver.ts';
 import { actorHeaders } from '../_shared/audit.ts';
-import { counterPaymentProblem } from './counter_payment.ts';
+import { counterPaymentProblem } from '../_shared/counter_payment.ts';
 import {
   buildPassOrderEmailHtml,
   buildPassOrderEmailText,

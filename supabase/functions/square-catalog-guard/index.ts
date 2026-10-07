@@ -26,7 +26,7 @@
 // destroyed 906 items; the baseline table records shape so we know WHAT went
 // missing, never so we can reconstruct it.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import {
   loadSquareConfig,
   SQUARE_API_VERSION,

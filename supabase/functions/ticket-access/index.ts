@@ -17,8 +17,8 @@
 //
 // Requires verify_jwt = false (see supabase/config.toml).
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
+import { corsHeaders } from 'npm:@supabase/supabase-js@2.117.2/cors';
 import { loadOrder, renderQrPng, ticketPageUrl, type Order } from '../_shared/tickets.ts';
 import { buildIcs } from '../_shared/calendar.ts';
 import { LIMITS, checkRateLimit } from '../_shared/rate_limit.ts';

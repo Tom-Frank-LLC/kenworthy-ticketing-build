@@ -24,7 +24,7 @@
 // password-reset relay, so an unverified request is refused before anything
 // else happens.
 
-import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
+import { corsHeaders } from 'npm:@supabase/supabase-js@2.117.2/cors';
 import { verifyStandardWebhook } from '../_shared/webhook.ts';
 import {
   buildAuthEmailHtml,

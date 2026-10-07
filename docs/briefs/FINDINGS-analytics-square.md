@@ -10,7 +10,7 @@ Companion to `docs/briefs/BRIEF-analytics-square.md`.
 
 The brief says of `square-event-probe`: *"that function was never committed;
 this is its committed, scoped replacement."* It is committed, and it has been
-all along — `supabase/functions/square-event-probe/index.ts`, with both
+all along — `supabase/probes/square-event-probe/index.ts`, with both
 `accounting_audit` (line 353) and `orders_audit` (line 421) intact.
 
 That matters beyond pedantry. Working code in the repo is the authoritative

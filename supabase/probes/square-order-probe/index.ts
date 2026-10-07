@@ -21,7 +21,7 @@
 // deletes what it makes.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { loadSquareConfig, SQUARE_API_VERSION, squareFetch } from "../_shared/square.ts";
+import { loadSquareConfig, SQUARE_API_VERSION, squareFetch } from "../../functions/_shared/square.ts";
 
 declare const Deno: any;
 

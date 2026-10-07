@@ -1,5 +1,5 @@
 import "https://deno.land/std@0.224.0/dotenv/load.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { LIMITS, checkRateLimit } from "../_shared/rate_limit.ts";
 import { callerHasRole, callerUser, verifyServiceRoleCaller } from "../_shared/callers.ts";
 import { type CallerKind, createHandler } from "./handler.ts";

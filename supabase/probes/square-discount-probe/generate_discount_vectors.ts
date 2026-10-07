@@ -1,11 +1,16 @@
 // Regenerates the `discounted` section of _shared/pricing_vectors.json.
 //
-// The probe is NOT left deployed. First:
+// The probe is NOT left deployed, and lives outside supabase/functions/ so a
+// bulk `functions deploy` cannot ship it (see supabase/probes/README.md). First
+// copy it in and deploy it to staging:
+//   cp -R supabase/probes/square-discount-probe supabase/functions/
+//   (fix its ../../functions/_shared import back to ../_shared)
 //   npx supabase functions deploy square-discount-probe --project-ref rpqzrpboyhshdrfdwayk --no-verify-jwt
-// and delete it again afterwards. It refuses to run against production.
+// then delete it from staging and from supabase/functions/ afterwards. It
+// refuses to run against production.
 //
 //   PROBE_KEY=<staging service_role key> deno run --allow-net --allow-env --allow-read --allow-write \
-//     supabase/functions/square-discount-probe/generate_discount_vectors.ts
+//     supabase/probes/square-discount-probe/generate_discount_vectors.ts
 //
 // For each case it asks the STAGING database's own pricing function
 // (quote_ticket_order, via a throwaway showing) how the discount is allocated —
@@ -43,7 +48,7 @@ async function allocate(rule: DiscountRule, list: number[]): Promise<{ perTicket
 
 const REF = 'rpqzrpboyhshdrfdwayk';
 const KEY = Deno.env.get('PROBE_KEY')!;
-const VECTORS = new URL('../_shared/pricing_vectors.json', import.meta.url);
+const VECTORS = new URL('../../functions/_shared/pricing_vectors.json', import.meta.url);
 const TAX = [{ uid: 'tx', name: 'Sales tax', percentage: '6', scope: 'LINE_ITEM', type: 'ADDITIVE' }];
 
 const rule = (type: DiscountRule['type'], value: number, min: number, label: string): DiscountRule =>

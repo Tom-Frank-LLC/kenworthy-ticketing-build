@@ -28,7 +28,7 @@ import {
   loadSquareConfig,
   SQUARE_API_VERSION,
   squareFetch,
-} from "../_shared/square.ts";
+} from "../../functions/_shared/square.ts";
 
 declare const Deno: any;
 
@@ -62,16 +62,13 @@ Deno.serve(async (req: Request) => {
   try { payload = await req.json(); } catch { /* none */ }
   const keep = payload.keep === true;
 
-  // Production is not forbidden outright any more — the sandbox answered yes and
-  // a production confirmation is the point — but it must be asked for by name.
-  // A missing flag defaults to refusing, so this can never run against the live
-  // catalog by accident or by a stray retry of a sandbox call.
-  if (config.environment === "production" && payload.confirm !== "PRODUCTION-CREATE") {
-    return json({
-      error: 'Refusing production without confirm:"PRODUCTION-CREATE". ' +
-             "Creating is additive and the probe deletes what it makes, but the " +
-             "live catalog is never touched on a default call.",
-    }, 400);
+  // Sandbox only, with no override (security audit 2026-10-06, L11). There
+  // used to be a `confirm:"PRODUCTION-CREATE"` switch that let an admin write to
+  // the live catalog through a debug function. The production question it was
+  // for is answered (docs/FINDINGS-square-line-items.md); a live catalog write
+  // belongs in square-event-write, which has the read-modify-write rules.
+  if (config.environment === "production") {
+    return json({ error: "Refusing production. This probe runs against the Square sandbox only." }, 400);
   }
 
   const stamp = Date.now();

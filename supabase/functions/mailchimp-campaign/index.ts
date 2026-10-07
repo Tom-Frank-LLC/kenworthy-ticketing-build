@@ -1,4 +1,5 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { callerHasRole } from "../_shared/callers.ts";
 import { brand, emailLockup, sans, VENUE_NAME, VENUE_SHORT, BOX_OFFICE_ADDRESS } from "../_shared/brand.ts";
 import { logAudit } from "../_shared/audit.ts";
 import { htmlToPlainText } from "../_shared/html_text.ts";
@@ -55,9 +56,11 @@ Deno.serve(async (req) => {
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   if (userErr || !userData?.user) return json({ error: "Unauthorized" }, 401);
   const admin = createClient(supabaseUrl, serviceKey);
-  const { data: roleRow } = await admin
-    .from("user_roles").select("role").eq("user_id", userData.user.id).eq("role", "admin").maybeSingle();
-  if (!roleRow) return json({ error: "Admin only" }, 403);
+  // has_role is hierarchical, so a superadmin passes; an exact
+  // user_roles.role = 'admin' match refused one (audit 2026-10-06, L4).
+  const isAdmin = await callerHasRole(admin, userData.user.id, "admin");
+  if (isAdmin === null) return json({ error: "Could not check your role. Try again." }, 503);
+  if (!isAdmin) return json({ error: "Admin only" }, 403);
 
   let body: any = {};
   try { body = await req.json(); } catch { return json({ error: "Bad JSON" }, 400); }

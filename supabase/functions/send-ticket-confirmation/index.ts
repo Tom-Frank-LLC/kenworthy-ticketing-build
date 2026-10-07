@@ -8,8 +8,8 @@
 // delivers a counter sale. It is a thin authorization wrapper and nothing
 // more.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2/cors';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
+import { corsHeaders } from 'npm:@supabase/supabase-js@2.117.2/cors';
 import { loadOrder } from '../_shared/tickets.ts';
 import { deliverConfirmation } from '../_shared/deliver.ts';
 import { flagsFor, isOperator as callerIsOperator, overridesFor } from '../_shared/confirmation_auth.ts';

@@ -65,7 +65,7 @@ does. The id also went into the Square path unencoded.
   id, and the id is verified with `GET /v2/payments/{id}`. It must be
   COMPLETED, at our location, not refunded, at least the pass price plus tax,
   and not already on a ticket, pass or pass order
-  (`film-pass-checkout/counter_payment.ts`). In production a card activation
+  (`_shared/counter_payment.ts`, moved there by sec-wave2-functions). In production a card activation
   with no payment id is refused. In the sandbox, a simulated reader still
   activates.
 - **Counter gifts are capped** at `MAX_BUNDLED_DONATION_CENTS` ($1,000) in
@@ -192,7 +192,7 @@ silent success.
   Supabase's real definitions, which also read `request.jwt.claims`.
 - Deno: `square-labor/team_test.ts` (ownership, admin reads, path encoding),
   `square-refund/plan_test.ts`, `square-terminal/binding_test.ts`,
-  `film-pass-checkout/counter_payment_test.ts`, `square-invoice/log_test.ts`
+  `_shared/counter_payment_test.ts`, `square-invoice/log_test.ts`
   and `_shared/audit_test.ts`. Vitest: `src/lib/posRelease.test.ts`.
 
 ## DEPLOY STEPS

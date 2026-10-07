@@ -23,7 +23,7 @@
 //                     there is no GET-one and no DELETE; remove = PUT is_deleted
 //                     publish = POST /publish or /bulk-publish, not draft:false
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import {
   loadSquareConfig,
   squareErrorMessage,

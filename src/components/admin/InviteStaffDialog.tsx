@@ -37,15 +37,22 @@ export function InviteStaffDialog({
     e.preventDefault();
     setInviting(true);
     try {
-      const res = await invokeFunction<{ created: boolean; email: string; role: string }>(
+      const res = await invokeFunction<{ created: boolean; email: string; role: string; notice?: string }>(
         'invite-staff',
         { email, display_name: name, role },
       );
-      toast.success(
-        res.created
-          ? `Invited ${res.email} as ${res.role} — they'll get an email to set a password.`
-          : `${res.email} already had an account — granted ${res.role}.`,
-      );
+      if (res.created) {
+        toast.success(`Invited ${res.email} as ${res.role} — they'll get an email to set a password.`);
+      } else {
+        // A reused account gets no invitation email, so the person has to be
+        // told how to get in. invite-staff says how in `notice`; it is the one
+        // instruction the admin has to pass on, so it stays up long enough to.
+        toast.success(`${res.email} already had an account — granted ${res.role}.`, {
+          description: res.notice
+            ?? 'No invitation email was sent: they should use "Forgot password?" on the staff sign-in page to set a password.',
+          duration: 20000,
+        });
+      }
       onOpenChange(false);
       setEmail('');
       setName('');

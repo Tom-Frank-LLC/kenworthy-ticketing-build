@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { corsHeaders } from "../_shared/http.ts";
 import {
   createPayment,
@@ -13,6 +13,10 @@ import { donorTextError, settleDonation } from "../_shared/donations.ts";
 import { LIMITS, RATE_LIMIT_REFUSAL, callerIp, checkRateLimit } from "../_shared/rate_limit.ts";
 import { BOT_CHECK_REFUSAL, verifyTurnstile } from "../_shared/turnstile.ts";
 import { PAYMENTS_UNAVAILABLE, BOX_OFFICE_PHONE, publicDeclineMessage } from "../_shared/public_errors.ts";
+import { actorHeaders } from "../_shared/audit.ts";
+import { callerHasRole, callerUser } from "../_shared/callers.ts";
+import { counterPaymentProblem } from "../_shared/counter_payment.ts";
+import { type Channel, orderCents, orderProblem, requestProblem } from "./in_person.ts";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -47,10 +51,11 @@ Deno.serve(async (req) => {
   // Box office: a donation taken at the counter, alongside (or instead of) a
   // ticket sale. No card is charged here — either the till took cash, or the
   // amount was already included in the combined charge sent to the Square
-  // terminal — so this action records the gift and nothing else. Square config
-  // is irrelevant to it, which is why it sits above the square.ok guard.
+  // terminal — so this action records the gift and nothing else. It reads the
+  // Square payment that carried the gift (in_person.ts), so it takes the
+  // config, but it is staff-only and not behind Turnstile.
   if (action === "record_in_person") {
-    return await recordInPersonDonation(req, body);
+    return await recordInPersonDonation(req, body, square);
   }
 
   if (action !== "create_payment") {
@@ -362,44 +367,101 @@ function json(payload: unknown, status = 200) {
  * Staff-only, checked server-side. The donations table grants INSERT to nobody
  * but service_role, which is the reason this action exists at all: the POS
  * cannot write the row itself.
+ *
+ * Not on a staff member's word. The gift has to name the sale it rode on, and
+ * Square has to hold a payment for that sale that covers the gift — see
+ * in_person.ts for each rule and why (security audit 2026-10-06, L1).
  */
-async function recordInPersonDonation(req: Request, body: Record<string, unknown>) {
+async function recordInPersonDonation(
+  req: Request,
+  body: Record<string, unknown>,
+  square: ReturnType<typeof loadSquareConfig>,
+) {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-  const admin = createClient(supabaseUrl, serviceKey);
+  const reader = createClient(supabaseUrl, serviceKey);
 
-  const authHeader = req.headers.get("Authorization") || "";
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: { user } } = await userClient.auth.getUser();
+  const user = await callerUser(createClient, req);
   if (!user) return json({ error: "Sign in required" }, 401);
-  const { data: isStaff } = await admin.rpc("has_role", { _user_id: user.id, _role: "staff" });
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
-  if (!isStaff && !isAdmin) return json({ error: "Staff only" }, 403);
+  // has_role is hierarchical: staff covers admin and superadmin.
+  const isStaff = await callerHasRole(reader, user.id, "staff");
+  if (isStaff === null) return json({ error: "Could not check your role. Try again." }, 503);
+  if (!isStaff) return json({ error: "Staff only" }, 403);
+  const isAdmin = (await callerHasRole(reader, user.id, "admin")) === true;
 
+  const shape = requestProblem(body);
+  if (shape) return json({ error: shape.error }, shape.status);
   const amountCents = Number(body.amountCents);
-  if (!Number.isInteger(amountCents) || amountCents < 100 || amountCents > 10_000_000) {
-    return json({ error: "Donation must be between $1 and $100,000" }, 400);
-  }
-
-  const paymentChannel = String(body.paymentChannel || "");
-  if (!["cash", "terminal"].includes(paymentChannel)) {
-    return json({ error: "paymentChannel must be cash or terminal" }, 400);
-  }
+  const paymentChannel = String(body.paymentChannel) as Channel;
+  const orderToken = String(body.orderToken).trim();
 
   const donorEmail = (body.donorEmail as string)?.trim() || null;
   if (donorEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(donorEmail)) {
     return json({ error: "That donor email is not a valid address" }, 400);
   }
+
+  const { data: tickets, error: ticketErr } = await reader
+    .from("tickets")
+    .select("user_id, payment_method, status, square_payment_id, total_price, processing_fee, showing_id")
+    .eq("order_token", orderToken);
+  if (ticketErr) return json({ error: "Could not read that sale. Try again." }, 503);
+
+  if (!square.ok) {
+    console.error("[square-donation] record_in_person:", square.error);
+    return json({ error: PAYMENTS_UNAVAILABLE }, 500);
+  }
+  const verdict = orderProblem({
+    channel: paymentChannel,
+    tickets: tickets ?? [],
+    callerId: user.id,
+    callerIsAdmin: isAdmin,
+    claimedPaymentId: typeof body.squarePaymentId === "string" ? body.squarePaymentId : null,
+    environment: square.config.environment,
+  });
+  if (!verdict.ok) return json({ error: verdict.refusal.error }, verdict.refusal.status);
+
+  // One gift per sale. A retry (a double-click, a slow response) gets the gift
+  // it already filed, not a second receipt and a second LGL record.
+  const { data: existing, error: existingErr } = await reader
+    .from("donations").select("id, amount_cents").eq("order_token", orderToken).limit(1);
+  if (existingErr) return json({ error: "Could not check that sale. Try again." }, 503);
+  if ((existing ?? []).length > 0) {
+    return json({ success: true, already_recorded: true, donationId: existing![0].id, amountCents: existing![0].amount_cents });
+  }
+
+  const live = (tickets ?? []).filter((t: { status: string | null }) => t.status !== "failed");
+  if (verdict.paymentId) {
+    const paymentId = verdict.paymentId;
+    const read = await squareFetch(square.config, `/payments/${encodeURIComponent(paymentId)}`);
+    const [{ data: otherTickets }, { data: passes }, { data: passOrders }, { data: otherGifts }] = await Promise.all([
+      reader.from("tickets").select("id").eq("square_payment_id", paymentId).neq("order_token", orderToken).limit(1),
+      reader.from("user_film_passes").select("id").eq("square_payment_id", paymentId).limit(1),
+      reader.from("film_pass_orders").select("id").eq("square_payment_id", paymentId).limit(1),
+      reader.from("donations").select("id").eq("square_payment_id", paymentId).limit(1),
+    ]);
+    const problem = counterPaymentProblem({
+      found: read.ok,
+      payment: read.data?.payment,
+      locationId: square.config.locationId,
+      dueCents: orderCents(live) + amountCents,
+      alreadyUsed: [otherTickets, passes, passOrders, otherGifts].some((r) => (r ?? []).length > 0),
+      purpose: "this sale with its gift",
+    });
+    if (problem) {
+      console.error(`[square-donation] record_in_person refused for order ${orderToken.slice(0, 8)}…: ${problem}`);
+      return json({ error: problem }, problem.startsWith("That card payment already") ? 409 : 400);
+    }
+  }
+
   // A walk-in who hands over a dollar has no name to give and no receipt to
   // send. The gift is still income, so it is still recorded — labelled for
   // whoever reconciles the day rather than left out of the books.
   const donorName = (body.donorName as string)?.trim() ||
     (donorEmail ? donorEmail.split("@")[0] : "Box office donor");
 
+  // Writes name the staff member to the audit trigger (_shared/audit.ts, M11).
+  const admin = createClient(supabaseUrl, serviceKey, { global: { headers: actorHeaders(user.id) } });
   const { data: row, error } = await admin
     .from("donations")
     .insert({
@@ -410,9 +472,11 @@ async function recordInPersonDonation(req: Request, body: Record<string, unknown
       status: "completed",
       source: "staff_pos",
       payment_channel: paymentChannel,
-      square_payment_id: (body.squarePaymentId as string) || null,
-      order_token: (body.orderToken as string) || null,
-      showing_id: (body.showingId as string) || null,
+      // The payment Square holds for it, as verified above — not what the
+      // browser sent.
+      square_payment_id: verdict.paymentId,
+      order_token: orderToken,
+      showing_id: live[0]?.showing_id ?? null,
     })
     .select("id")
     .single();

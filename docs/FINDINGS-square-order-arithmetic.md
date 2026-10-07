@@ -2,7 +2,7 @@
 
 **Measured:** 21 Sep 2026, Square **sandbox**, API `2024-01-18`, via `POST /v2/orders/calculate`
 (prices an order, persists nothing). 49 orders across four batches.
-**Probe:** `supabase/functions/square-discount-probe/` — inputs and raw results are in its
+**Probe:** `supabase/probes/square-discount-probe/` — inputs and raw results are in its
 `cases/` folder. Deployed to **staging only**; it refuses to run against production.
 **Why it was run:** `BRIEF-ticket-discounts.md` requires a discounted order's three totals
 (ours, the built order's, Square's) to agree to the cent, and said "this is where it will break
@@ -89,7 +89,7 @@ Square's rule. One showing is priced $8.02 and has never sold.
 # staging only. The probe proves the bearer is a service key by using it.
 curl -s -X POST https://rpqzrpboyhshdrfdwayk.supabase.co/functions/v1/square-discount-probe \
   -H "Authorization: Bearer <staging service_role key>" -H "Content-Type: application/json" \
-  --data @supabase/functions/square-discount-probe/cases/batch3.json
+  --data @supabase/probes/square-discount-probe/cases/batch3.json
 ```
 
 `batch3.model-prediction.json` holds the model's predicted total per label; compare with

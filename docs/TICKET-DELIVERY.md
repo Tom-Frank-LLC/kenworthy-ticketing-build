@@ -223,10 +223,22 @@ Two related traps, both hit while diagnosing this:
 - `sb_secret_…` is **not** accepted by the Functions gateway at all, in either
   header. Only the legacy `service_role` JWT and `sb_publishable_` work there.
 - Do **not** authorize a function by string-comparing the bearer against
-  `SUPABASE_SERVICE_ROLE_KEY`. The gateway does not reliably hand the function
-  back the value the caller sent, so genuine service-role calls get refused.
-  Read the `role` claim from the JWT instead — safe to trust, because with
-  `verify_jwt = true` the gateway has already checked the signature.
+  `SUPABASE_SERVICE_ROLE_KEY` alone. The project's injected key is the
+  `sb_secret_` form, while an operator or the dashboard may present the legacy
+  `service_role` JWT, so a genuine service-role call can fail the comparison.
+- Do **not** trust the JWT's `role` claim either. This section used to say it was
+  safe because the gateway checks signatures under `verify_jwt = true`. That
+  holds only while the function stays `verify_jwt = true`: one
+  `--no-verify-jwt` deploy, or a move into `config.toml`'s `verify_jwt = false`
+  list, makes a hand-written unsigned `{"role":"service_role"}` token full
+  service-role trust (security audit 2026-10-06, L9).
+- Use `verifyServiceRoleCaller(req)` from `_shared/callers.ts`. It compares the
+  presented key in constant time against every service key the environment
+  holds (`SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_SECRET_KEYS`). Failing that,
+  a bearer that *claims* `service_role` is put to auth's admin API, which
+  verifies every signing key the project has had: only a genuine service-role
+  token gets "user not found" for the all-zero user id. It fails closed when
+  auth cannot be reached. `send-ticket-confirmation` uses it.
 
 **Import Supabase via `https://esm.sh/@supabase/supabase-js@2`.** This cost a
 deploy cycle and is worth knowing before writing another edge function.

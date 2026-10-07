@@ -52,7 +52,7 @@
 // It is logged loudly on every call so "we'll set that later" cannot become
 // "nobody remembered".
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { json, preflight } from '../_shared/http.ts';
 import { notifyStaffOfRentalRequest } from '../_shared/staff_notifications.ts';
 import { callerIp } from '../_shared/rate_limit.ts';

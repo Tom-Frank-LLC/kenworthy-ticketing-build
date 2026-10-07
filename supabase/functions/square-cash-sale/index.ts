@@ -16,7 +16,7 @@
 // so this is a recording step: a failure here loses the Square record, never the
 // sale, and never the money.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
 import { json, preflight } from '../_shared/http.ts';
 import {
   createCashPayment,

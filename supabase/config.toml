@@ -14,3 +14,12 @@ verify_jwt = false
 # is what guards it -- see supabase/functions/_shared/webhook.ts.
 [functions.send-auth-email]
 verify_jwt = false
+
+# Intuit's OAuth redirect lands on ?action=oauth_callback as a plain browser
+# GET with no JWT, which the gateway would refuse under verify_jwt = true. So
+# the gateway checks nothing for this function, and the function gates every
+# action itself: the callback by its signed, single-use state; everything else
+# by requireAdmin (has_role admin). See supabase/functions/qbo-sync/index.ts
+# and handler_test.ts, which pins each gate.
+[functions.qbo-sync]
+verify_jwt = false

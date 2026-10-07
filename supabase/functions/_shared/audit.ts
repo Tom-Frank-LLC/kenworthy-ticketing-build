@@ -9,7 +9,7 @@
 //
 // Deliberately built on plain fetch rather than supabase-js. This module is
 // imported by _shared/deliver.ts, which is bundled into most of the ticketing
-// functions; adding an esm.sh dependency to that path is how a function starts
+// functions; adding a remote dependency to that path is how a function starts
 // answering BOOT_ERROR. fetch against PostgREST has no import to go wrong.
 //
 // Every function here swallows its own errors. An audit write must never be

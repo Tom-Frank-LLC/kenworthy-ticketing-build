@@ -12,7 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Turnstile, turnstileConfigured } from '@/components/Turnstile';
+import { Turnstile } from '@/components/Turnstile';
+import { useTurnstileGate } from '@/hooks/useTurnstileGate';
 import { invokeFunction } from '@/lib/functions';
 import { marqueeBookingSchema, toRentalRequestPayload } from '@/lib/marqueeBooking';
 
@@ -33,7 +34,10 @@ export function MarqueeBookingForm({ trigger }: { trigger: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  // The checkouts' gate (#361): a label that knows whether the widget is
+  // solving or waiting on a click, and a fresh single-use token after a
+  // failed send.
+  const gate = useTurnstileGate();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -59,7 +63,7 @@ export function MarqueeBookingForm({ trigger }: { trigger: React.ReactNode }) {
     setErrors({});
     setFormError(null);
     setSubmitted(false);
-    setTurnstileToken(null);
+    gate.refresh();
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -82,9 +86,12 @@ export function MarqueeBookingForm({ trigger }: { trigger: React.ReactNode }) {
     setSubmitting(true);
 
     try {
-      await invokeFunction('rental-request', toRentalRequestPayload(parsed.data, turnstileToken));
+      await invokeFunction('rental-request', toRentalRequestPayload(parsed.data, gate.token));
     } catch (err) {
       setSubmitting(false);
+      // The server spent the token on this attempt whatever went wrong, so a
+      // retry needs a new one. Only the widget remounts; the form is kept.
+      gate.refresh();
       setFormError(err instanceof Error ? err.message : 'Could not send that request');
       return;
     }
@@ -231,7 +238,7 @@ export function MarqueeBookingForm({ trigger }: { trigger: React.ReactNode }) {
                 )}
               </div>
 
-              <Turnstile onToken={setTurnstileToken} />
+              <Turnstile key={gate.widgetKey} onToken={gate.onToken} onInteractive={gate.onInteractive} />
 
               {formError && (
                 <p role="alert" className="text-sm font-serif text-destructive">{formError}</p>
@@ -248,12 +255,8 @@ export function MarqueeBookingForm({ trigger }: { trigger: React.ReactNode }) {
                   greyed-out "Send request" with no explanation reads as a broken
                   form — the same reasoning as the full rental form's submit.
                 */}
-                <Button type="submit" disabled={submitting || (turnstileConfigured && !turnstileToken)}>
-                  {submitting
-                    ? 'Sending…'
-                    : turnstileConfigured && !turnstileToken
-                      ? 'Checking your browser…'
-                      : 'Send request'}
+                <Button type="submit" disabled={submitting || gate.waiting}>
+                  {submitting ? 'Sending…' : gate.waitLabel ?? 'Send request'}
                 </Button>
               </div>
             </form>
