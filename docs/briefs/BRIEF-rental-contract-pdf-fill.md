@@ -6,7 +6,7 @@ track: bug
 severity: P1
 date: 2026-10-07
 verified: false
-findings: FINDINGS-contract-pdf-html2canvas.md
+findings: ../FINDINGS-contract-pdf-html2canvas.md
 ---
 
 # Brief: fix garbled merge-field rendering in rental contract PDFs
