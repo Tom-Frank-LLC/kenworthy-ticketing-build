@@ -1,12 +1,14 @@
 ---
 brief: sec-wave2-functions
 title: qbo-sync is safe to deploy, debug probes cannot be deployed, counter gifts need a Square payment, and every function import is pinned
-status: built
+status: shipped
 track: security
-severity: P2
 date: 2026-10-06
-verified: false
+verified: true
 findings: ../AUDIT-security-2026-10-06.md
+shipped_in: ["#366", "29c8ebc"]
+shipped_at: 2026-10-07
+evidence: "migration 20261006233349 on both; all 28 deployed functions redeployed on both in four probed groups (Docker bundler), pinned imports; anon surface 0 on production; Worker prod 72decd4e for InviteStaffDialog/MarqueeBookingForm; qbo-sync still not deployed (needs QBO_STATE_SECRET + SITE_URL)"
 ---
 
 # Security wave two: edge functions (L4, L11, L1 remainder, L6, L8, leftovers)

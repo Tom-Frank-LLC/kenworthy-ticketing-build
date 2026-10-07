@@ -1,12 +1,14 @@
 ---
 brief: sec-deps
 title: No known-vulnerable package ships to the browser — TipTap 3, react-router 7, SheetJS 0.20.3, Dependabot backlog triaged
-status: built
+status: shipped
 track: security
-severity: P2
 date: 2026-10-06
-verified: false
+verified: true
 findings: ../AUDIT-security-2026-10-06.md
+shipped_in: ["#365", "bae77aa"]
+shipped_at: 2026-10-07
+evidence: "Worker prod 72decd4e (rollback fe2e750b), first deployed then rolled back on 2026-10-07 when the editor check turned out to have run on production; re-shipped the same day after a TipTap 3 edit was confirmed on staging (superadmin, clean HTML). npm audit --omit=dev 47 -> 0; 12 superseded Dependabot PRs closed, #12 (jsdom) left open"
 ---
 
 # Browser-side vulnerable dependencies: L5, and the library half of M5

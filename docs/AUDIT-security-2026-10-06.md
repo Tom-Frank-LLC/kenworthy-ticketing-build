@@ -97,24 +97,24 @@ hold the evidence and rollback ids.
 | M2 checkout bot/rate controls | **Fixed** (Turnstile + limits) | #361 |
 | M3 movie terms anon-readable | **Fixed** (plus 3 more column grants found in the sweep) | #362 |
 | M4 broad host policies | **Fixed** | #362 |
-| M5 sign-in open redirect | **Fixed** in code; the react-router bump is in wave 2 | #359 |
+| M5 sign-in open redirect | **Fixed** (guard, plus react-router 7.18.4) | #359, #365 |
 | M6 payroll to staff | **Fixed** | #363 |
 | M7 Mailchimp overwrite | **Fixed** | #360 |
 | M8 unescaped staff email | **Fixed** | #359 |
 | M9 no MFA | **Deferred** to its own brief (Tom, 2026-10-06) | — |
 | M10 `audit_bulk_*` grants | **Fixed.** It was not live on either project. | #362 |
 | M11 unattributed staff actions | **Fixed** | #363 |
-| L1 unverified staff payments | **Fixed** except `square-donation` `record_in_person` (wave 2) | #363 |
+| L1 unverified staff payments | **Fixed** | #363, #366 |
 | L2 multi-pass fulfilment | **Fixed** | #358 |
 | L3 refund races | **Fixed** | #363 |
-| L4 qbo-sync | Wave 2 (not deployed anywhere) | — |
-| L5 vulnerable npm deps | Wave 2 | — |
-| L6 floating Deno imports | Wave 2 | — |
+| L4 qbo-sync | **Fixed** in code; still not deployed. Set `QBO_STATE_SECRET` and `SITE_URL` before its first deploy. | #366 |
+| L5 vulnerable npm deps | **Fixed** (`npm audit --omit=dev` 47 → 0) | #365 |
+| L6 floating Deno imports | **Fixed** (exact pins; no lockfile, by choice) | #366 |
 | L7 secret scanning off | **Fixed** (GitHub settings; 0 alerts) | — |
-| L8 rotation runbook | Wave 2 | — |
+| L8 rotation runbook | **Fixed.** Staging's Mailchimp, LGL and Twilio keys were also removed on 2026-10-07. | #366, #367 |
 | L9 unverified service-role claim | **Fixed** | #360 |
 | L10 internal error text | **Fixed** | #361, #360 |
-| L11 debug probes in repo | Wave 2 | — |
+| L11 debug probes in repo | **Fixed** (moved to `supabase/probes/`) | #366 |
 | L12 sign-out fallback | **Fixed** | #359 |
 | L13 unchecked stored URLs | **Fixed** (plus DB constraints) | #359 |
 | L14 audit-log integrity | **Fixed** | #363 |
@@ -126,7 +126,7 @@ hold the evidence and rollback ids.
 
 **New standing check:** `supabase/tests/anon_surface/`. Run `surface.sql`
 read-only against a live project with `supabase db query --linked -f`. It
-should return only `rls_auto_enable()`, which is inert and being allowlisted.
+returns 0 rows on production.
 
 ---
 
