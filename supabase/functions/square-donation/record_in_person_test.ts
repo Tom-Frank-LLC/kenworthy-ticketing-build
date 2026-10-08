@@ -14,9 +14,10 @@ import {
   jsonResponse,
   loadHandler,
   quietly,
-  rpc,
+  roleGateRoute,
   type Route,
   SQUARE_TEST_ENV,
+  testJwt,
   useRoutes,
   verifiedBot,
   withEnv,
@@ -27,7 +28,7 @@ const handler = await loadHandler(() => import('./index.ts'), BASE_ENV);
 
 const STAFF = '00000000-0000-0000-0000-0000000000c1';
 const OTHER_STAFF = '00000000-0000-0000-0000-0000000000c2';
-const STAFF_JWT = 'staff-session-jwt';
+const STAFF_JWT = testJwt(STAFF);
 const ORDER = '7b0c2a3e-1111-4222-8333-444455556666';
 const PAY = 'sq-payment-1';
 
@@ -47,7 +48,8 @@ interface World {
   existingGift?: boolean;
   paymentCents?: number;
   paymentUsedElsewhere?: boolean;
-  role?: 'staff' | 'admin' | 'none';
+  /** `admin_no_mfa`: an admin at aal1 with the MFA switch on. */
+  role?: 'staff' | 'admin' | 'none' | 'admin_no_mfa';
 }
 
 function routes(w: World): Route[] {
@@ -58,12 +60,11 @@ function routes(w: World): Route[] {
         ? jsonResponse({ id: STAFF, email: 'staff@x.test', aud: 'authenticated' })
         : jsonResponse({ msg: 'invalid JWT' }, 401))
       : undefined),
-    (c) => {
-      if (!rpc('has_role')(c)) return undefined;
-      const want = (c.body as { _role: string })._role;
+    roleGateRoute(({ _role }) => {
       const role = w.role ?? 'staff';
-      return jsonResponse(role === 'admin' || (role === 'staff' && want === 'staff'));
-    },
+      if (role === 'admin_no_mfa') return 'mfa_required';
+      return role === 'admin' || (role === 'staff' && _role === 'staff') ? 'ok' : 'forbidden';
+    }),
     (c) => {
       if (!is(c, 'GET', '/rest/v1/tickets')) return undefined;
       // The "used by another order" lookup filters on square_payment_id.
@@ -223,6 +224,15 @@ run('a cash gift claimed on a card sale is refused', { tickets: [ticket({ paymen
 run('a non-staff session is refused', { role: 'none' }, async () => {
   assertEquals((await handler(gift())).status, 403);
   assertEquals(inserts().length, 0);
+});
+
+run('an admin without their authenticator code is asked for it, and nothing is read or filed', { role: 'admin_no_mfa' }, async () => {
+  const res = await handler(gift());
+  assertEquals(res.status, 403);
+  assertEquals((await res.json()).code, 'mfa_required');
+  assertEquals(inserts().length, 0);
+  assertEquals(calls.filter((c) => c.url.pathname.startsWith('/rest/v1/tickets')).length, 0);
+  assertEquals(calls.filter((c) => c.url.hostname.includes('squareup')).length, 0);
 });
 
 // ---- the pure rules --------------------------------------------------------

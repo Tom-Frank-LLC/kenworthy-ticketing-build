@@ -30,6 +30,7 @@ const MyPasses = lazyWithRecovery(() => import("./pages/MyPasses"));
 const FilmPassesPage = lazyWithRecovery(() => import("./pages/FilmPasses"));
 const FilmPassDetail = lazyWithRecovery(() => import("./pages/FilmPassDetail"));
 const Profile = lazyWithRecovery(() => import("./pages/Profile"));
+const AccountSecurity = lazyWithRecovery(() => import("./pages/AccountSecurity"));
 const ResetPassword = lazyWithRecovery(() => import("./pages/ResetPassword"));
 const Sponsors = lazyWithRecovery(() => import("./pages/Sponsors"));
 const HistoryPage = lazyWithRecovery(() => import("./pages/History"));
@@ -128,6 +129,7 @@ const App = () => (
                   <Route path="/film-pass/:id" element={<FilmPassDetail />} />
                   <Route path="/my-passes" element={<MyPasses />} />
                   <Route path="/profile" element={<Profile />} />
+                  <Route path="/account/security" element={<AccountSecurity />} />
                   {/* Management, and only management. Every form here already
                       refused a non-admin from inside its own effect; the gate
                       makes /admin itself say the same thing, and says it before

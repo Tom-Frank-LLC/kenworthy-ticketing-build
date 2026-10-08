@@ -18,8 +18,8 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { actorHeaders, logStaffAction } from '../_shared/audit.ts';
-import { json, preflight } from '../_shared/http.ts';
-import { authenticatedUser } from '../_shared/buyers.ts';
+import { corsHeaders, json, preflight } from '../_shared/http.ts';
+import { requireRole } from '../_shared/callers.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -49,14 +49,12 @@ Deno.serve(async (req: Request) => {
   const action = String(body.action ?? 'create');
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  const signedIn = await authenticatedUser(createClient, req);
-  if (!signedIn) return json({ error: 'Staff sign-in required' }, 401);
-
-  const { data: isStaff } = await admin.rpc('has_role', {
-    _user_id: signedIn.id,
-    _role: 'staff',
+  const signedIn = await requireRole(req, admin, 'staff', {
+    headers: corsHeaders,
+    unauthorized: 'Staff sign-in required',
+    forbidden: 'Staff access required',
   });
-  if (!isStaff) return json({ error: 'Staff access required' }, 403);
+  if (signedIn instanceof Response) return signedIn;
 
   // -------------------------------------------------------------------------
   // Re-open a batch for reprinting

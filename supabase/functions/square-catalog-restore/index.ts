@@ -22,6 +22,7 @@
 
 import { auditedHandler, type StaffAuditContext } from "../_shared/audit.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { requireRole } from "../_shared/callers.ts";
 import {
   loadSquareConfig,
   squareFetch,
@@ -124,13 +125,8 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return json({ error: "Missing Authorization" }, 401);
-  const { data: userRes } = await admin.auth.getUser(authHeader.replace("Bearer ", ""));
-  const user = userRes?.user;
-  if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
-  if (!isAdmin) return json({ error: "Admin only" }, 403);
+  const user = await requireRole(req, admin, "admin", { headers: cors, forbidden: "Admin only" });
+  if (user instanceof Response) return user;
 
   const loaded = loadSquareConfig();
   if (!loaded.ok) return json({ error: loaded.error }, 500);

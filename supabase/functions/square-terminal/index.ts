@@ -5,6 +5,7 @@ import { buildTicketOrder, loadTicketGroups, orderRequestBody, processingFeeGrou
 import { canonicalTier, variationName } from "../_shared/square-catalog.ts";
 import { MAX_BUNDLED_DONATION_CENTS } from "../_shared/pricing.ts";
 import { actorHeaders, logStaffAction } from "../_shared/audit.ts";
+import { requireRole } from "../_shared/callers.ts";
 import { checkoutMatchesOrder, logToken } from "./binding.ts";
 
 Deno.serve(async (req) => {
@@ -23,29 +24,6 @@ Deno.serve(async (req) => {
     );
   }
 
-  // Validate JWT
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Missing authorization" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
   // Staff, not admin.
   //
   // This gate read `has_role(uid, 'admin')` and answered "Admin access
@@ -55,21 +33,17 @@ Deno.serve(async (req) => {
   // amount to the terminal, get_checkout asks whether it was paid. Neither
   // configures anything.
   //
-  // 'staff' is the right test rather than a wider one: has_role honours the
+  // 'staff' is the right test rather than a wider one: the gate honours the
   // hierarchy, so admin and superadmin still satisfy it (see migration
   // 20260812063211_has_role_hierarchy.sql), and every sibling in the POS —
   // square-cash-sale, square-refund, square-donation, square-labor — already
   // gates exactly here.
-  const { data: hasStaff } = await supabase.rpc("has_role", {
-    _user_id: user.id,
-    _role: "staff",
+  const gateClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const user = await requireRole(req, gateClient, "staff", {
+    headers: corsHeaders,
+    forbidden: "Staff access required",
   });
-  if (!hasStaff) {
-    return new Response(JSON.stringify({ error: "Staff access required" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  if (user instanceof Response) return user;
 
   try {
     const { action, ...params } = await req.json();
@@ -81,7 +55,7 @@ Deno.serve(async (req) => {
     if (action === "get_checkout") {
       return await getCheckout(square.config, params, corsHeaders);
     }
-    const caller = { id: user.id, email: user.email ?? null };
+    const caller = { id: user.id, email: user.email };
     if (action === "list_devices") {
       return await listDevices(square.config, corsHeaders);
     }

@@ -17,6 +17,9 @@ import { useColorLab } from '@/components/colorlab/ColorLabProvider';
 import { subscribeToMailchimp } from '@/lib/mailchimp';
 import { COLOR_LAB_ENABLED, MEMBER_ACCOUNTS_ENABLED } from '@/lib/flags';
 import { safeRedirectPath } from '@/lib/safeUrl';
+import { MfaCodeStep } from '@/components/MfaCodeStep';
+import { readMfaState } from '@/lib/mfa';
+import type { Factor } from '@supabase/supabase-js';
 
 /**
  * The sign-in door.
@@ -40,7 +43,7 @@ export default function Auth() {
   // staff member in here and hand them to someone else's page. See safeUrl.ts.
   const redirectTo = safeRedirectPath(searchParams.get('redirect'));
   const navigate = useNavigate();
-  const { signIn, signUp } = useAuth();
+  const { signIn, completeSignIn, signUp, signOut } = useAuth();
   const colorLab = useColorLab();
 
   const [signinEmail, setSigninEmail] = useState('');
@@ -52,14 +55,27 @@ export default function Auth() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [showForgot, setShowForgot] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Set once the password is accepted and the account has an authenticator:
+  // the card swaps to the code step, and nothing routes until it is done.
+  const [codeFactors, setCodeFactors] = useState<Factor[] | null>(null);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await signIn(signinEmail, signinPassword);
+      const next = await signIn(signinEmail, signinPassword);
+      if (next === 'code') {
+        setCodeFactors((await readMfaState()).verifiedFactors);
+        return;
+      }
       toast.success('Welcome back!');
-      navigate(redirectTo);
+      // An admin-tier account with no authenticator sets one up first. The
+      // page carries the redirect on, so they land where they were going.
+      navigate(
+        next === 'enroll'
+          ? `/account/security?setup=1&redirect=${encodeURIComponent(redirectTo)}`
+          : redirectTo,
+      );
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -170,7 +186,24 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {MEMBER_ACCOUNTS_ENABLED ? (
+          {codeFactors ? (
+            <MfaCodeStep
+              factors={codeFactors}
+              onVerified={() => {
+                completeSignIn();
+                toast.success('Welcome back!');
+                navigate(redirectTo);
+              }}
+              onCancel={async () => {
+                // Back to the password form, without leaving a half-signed-in
+                // (aal1) session behind on this device.
+                await signOut().catch(() => {});
+                setCodeFactors(null);
+                setSigninPassword('');
+              }}
+              cancelLabel="Use a different account"
+            />
+          ) : MEMBER_ACCOUNTS_ENABLED ? (
             <Tabs defaultValue={defaultTab}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="signin">Sign In</TabsTrigger>

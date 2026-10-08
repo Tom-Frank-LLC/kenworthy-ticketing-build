@@ -90,8 +90,8 @@ Deno.test({
       'the anon key must be rejected explicitly',
     );
     assert(
-      /has_role[\s\S]{0,120}_role:\s*'admin'/.test(source),
-      "the caller must be checked with has_role(..., 'admin')",
+      /requireRole\(\s*req,\s*admin,\s*'admin'/.test(source),
+      "the caller must be checked with requireRole(req, admin, 'admin'), which also applies the MFA gate",
     );
   },
 });

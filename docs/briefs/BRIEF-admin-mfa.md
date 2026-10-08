@@ -1,7 +1,7 @@
 ---
 brief: admin-mfa
 title: Admin and superadmin accounts need an authenticator code, enforced on the server, not only asked for in the browser
-status: queued
+status: in-progress
 track: security
 severity: P1
 date: 2026-10-07
@@ -144,6 +144,46 @@ After the password succeeds, call
   `RUNBOOK-admin-mfa.md`.
 - Recommend that Tom enrolls **two** authenticators, phone plus a password
   manager, so one loss isn't a lockout.
+
+## As built (2026-10-08)
+
+Tom's addendum the same day made this **Phase 1 of two**. Phase 2 adds passkeys
+as an extra factor, with the authenticator kept as the backup: see
+`BRIEF-admin-passkeys.md`. So everything below handles factors generically and
+tests the assurance level, never the factor type.
+
+Where the build differs from the design above, and why:
+
+- **The rule lives in SQL only.** `mfa_blocks(user, aal)` (switch on, holds
+  admin or superadmin, not aal2) is used by both `has_role` and a new
+  service-role-only `role_gate(user, role, aal)` → `'ok' | 'forbidden' |
+  'mfa_required'`. The edge functions call `role_gate` rather than reading the
+  switch and roles themselves, so the rule isn't re-implemented in TypeScript.
+- **The token's `aal` is read after GoTrue's `/auth/v1/user` accepts that exact
+  token**, not via `auth.getClaims()`. Eight functions pin supabase-js 2.45.0,
+  which has no `getClaims`. `/user` also checks the session still exists, which
+  `getClaims` does not. It's built on fetch, so one implementation serves every
+  pin (`verifiedCaller` in `_shared/callers.ts`).
+- **`my_mfa_required()`** (authenticated): "is the server enforcing for me?"
+  The browser uses it to decide whether an admin with no authenticator may skip
+  enrolling (switch off) or must enroll (switch on).
+- **The sign-in audit row is written after the code**, not after the password.
+  The `admin_audit_log` INSERT policy goes through `has_role`, so an aal1 row
+  would be dropped once the switch is on.
+- **Any account with a verified factor is asked for the code**, staff included
+  and switch or no switch. That's Supabase's model (nextLevel = aal2), and the
+  alternative is a factor that does nothing. Staff are never *required* to enroll.
+- **Recovery UI:** `/superadmin` → *Two-step sign-in* lists every role holder's
+  factor count (also the rollout check) with a Reset button.
+  `admin-mfa-reset` requires aal2 for a reset **even with the switch off**.
+- **Unenrolling the last factor** is blocked in the page while the server
+  requires one. Add the new one first, then remove the old.
+
+Tests: `supabase/tests/admin_mfa/run.sh` (49 cases: every role at aal1/aal2,
+switch off/on, the gate, grants; fails with `BEFORE=1`), deno tests for
+`requireRole` and per-function `mfa_required` refusals, vitest
+`src/components/mfaGate.test.tsx` and `src/lib/mfa.test.ts`. Operations:
+`docs/RUNBOOK-admin-mfa.md`.
 
 ## Rollout
 

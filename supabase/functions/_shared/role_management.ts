@@ -34,7 +34,7 @@ export type InvitableRole = typeof INVITABLE_ROLES[number];
 /** The subset an admin may invite. Matches the INSERT policy's allowed set. */
 export const ADMIN_INVITABLE_ROLES: readonly InvitableRole[] = ['staff', 'host'];
 
-/** What the caller is, once has_role() has been asked. */
+/** What the caller is, once the role gate (requireRole/roleGate) has been asked. */
 export type CallerTier = 'superadmin' | 'admin' | null;
 
 export function isInvitableRole(role: string): role is InvitableRole {

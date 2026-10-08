@@ -1,5 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
+import { MfaCodeStep } from '@/components/MfaCodeStep';
+import { needsCode } from '@/lib/mfa';
 
 /**
  * Route wrappers that will not render their child to the wrong person.
@@ -28,8 +30,9 @@ function RoleGate({
   allowed: boolean;
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, loading, mfa, mfaRequired, isAdmin, signOut } = useAuth();
   const location = useLocation();
+  const here = location.pathname + location.search;
 
   // Roles arrive a round trip after the session does. Redirecting during that
   // window would bounce the person who *does* have the role, on every hard
@@ -46,8 +49,33 @@ function RoleGate({
     // /auth would show them a form they have already filled in.
     const to = user
       ? '/'
-      : `/auth?redirect=${encodeURIComponent(location.pathname + location.search)}`;
+      : `/auth?redirect=${encodeURIComponent(here)}`;
     return <Navigate to={to} replace />;
+  }
+
+  // Two-step sign-in (BRIEF-admin-mfa). An account with an authenticator whose
+  // session is still password-only (restored from before it enrolled, or a tab
+  // left open) is asked for the code here rather than shown a page the server
+  // would leave empty. Once it verifies, the auth listener re-renders this with
+  // an aal2 session and the child appears.
+  if (needsCode(mfa)) {
+    return (
+      <div className="container max-w-md py-16">
+        <MfaCodeStep
+          factors={mfa.verifiedFactors}
+          onCancel={() => {
+            void signOut().finally(() => { window.location.href = '/auth'; });
+          }}
+        />
+      </div>
+    );
+  }
+
+  // An admin with no authenticator, once the server requires one: nothing
+  // behind this gate would work, so go and set one up. While the switch is off
+  // they are only nudged, once, after signing in (Auth.tsx).
+  if (isAdmin && mfaRequired && mfa.verifiedFactors.length === 0) {
+    return <Navigate to={`/account/security?setup=1&redirect=${encodeURIComponent(here)}`} replace />;
   }
 
   return <>{children}</>;

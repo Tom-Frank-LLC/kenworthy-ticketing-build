@@ -22,7 +22,8 @@
 // Staff or admin only, checked server-side against user_roles.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
-import { json, preflight } from '../_shared/http.ts';
+import { corsHeaders, json, preflight } from '../_shared/http.ts';
+import { requireRole } from '../_shared/callers.ts';
 import { loadSquareConfig, refundPayment, squareErrorMessage } from '../_shared/square.ts';
 import { actorHeaders, logStaffAction } from '../_shared/audit.ts';
 import { centsOf, type ClaimedTicket, planRefund, refundKey } from './plan.ts';
@@ -52,14 +53,12 @@ Deno.serve(async (req: Request) => {
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
   // Authorise
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
+  const user = await requireRole(req, admin, 'staff', {
+    headers: corsHeaders,
+    unauthorized: 'Staff sign-in required',
+    forbidden: 'Staff access required',
   });
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user) return json({ error: 'Staff sign-in required' }, 401);
-
-  const { data: isStaff } = await admin.rpc('has_role', { _user_id: user.id, _role: 'staff' });
-  if (!isStaff) return json({ error: 'Staff access required' }, 403);
+  if (user instanceof Response) return user;
 
   // Every write below goes through `db`, which names the verified caller to
   // the audit trigger (_shared/audit.ts, actorHeaders).

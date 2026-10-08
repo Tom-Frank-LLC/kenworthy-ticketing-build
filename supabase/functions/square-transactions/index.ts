@@ -38,7 +38,8 @@
 // reported in the response so this stays checkable instead of remembered.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
-import { json, preflight } from '../_shared/http.ts';
+import { corsHeaders, json, preflight } from '../_shared/http.ts';
+import { requireRole } from '../_shared/callers.ts';
 import { loadSquareConfig, squareErrorMessage, squareFetch } from '../_shared/square.ts';
 import {
   attachSiteMatches,
@@ -173,14 +174,12 @@ Deno.serve(async (req: Request) => {
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
+  const user = await requireRole(req, admin, 'admin', {
+    headers: corsHeaders,
+    unauthorized: 'Admin sign-in required',
+    forbidden: 'Admin access required',
   });
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user) return json({ error: 'Admin sign-in required' }, 401);
-
-  const { data: isAdmin } = await admin.rpc('has_role', { _user_id: user.id, _role: 'admin' });
-  if (!isAdmin) return json({ error: 'Admin access required' }, 403);
+  if (user instanceof Response) return user;
 
   // -------------------------------------------------------------------------
   // Range

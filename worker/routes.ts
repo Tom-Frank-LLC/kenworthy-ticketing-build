@@ -148,6 +148,7 @@ const PRIVATE_PREFIXES = [
   '/my-tickets',
   '/my-passes',
   '/profile',
+  '/account/',
   '/t/',
   '/contract/',
   '/verify/',

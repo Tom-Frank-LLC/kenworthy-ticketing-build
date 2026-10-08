@@ -14,6 +14,7 @@ import { corsHeaders, json } from '../_shared/http.ts';
 import { donorEmailEditError, syncDonationToLgl } from '../_shared/lgl.ts';
 import { deliverDonationEmails } from '../_shared/donations.ts';
 import { logAudit } from '../_shared/audit.ts';
+import { requireRole } from '../_shared/callers.ts';
 
 // Deno globals
 declare const Deno: any;
@@ -41,16 +42,12 @@ Deno.serve(async (req: Request) => {
   // Admin-only. The function is deployed with verify_jwt, so a caller is
   // authenticated, but authenticated is not the same as allowed to write to the
   // theatre's donor database.
-  const authHeader = req.headers.get('Authorization') || '';
-  const userClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
-    global: { headers: { Authorization: authHeader } },
+  const user = await requireRole(req, admin, 'admin', {
+    headers: corsHeaders,
+    unauthorized: 'Sign in required',
+    forbidden: 'Admin only',
   });
-  const {
-    data: { user },
-  } = await userClient.auth.getUser();
-  if (!user) return json({ error: 'Sign in required' }, 401);
-  const { data: isAdmin } = await admin.rpc('has_role', { _user_id: user.id, _role: 'admin' });
-  if (!isAdmin) return json({ error: 'Admin only' }, 403);
+  if (user instanceof Response) return user;
 
   // Every branch below reaches a system outside this database — LGL has no
   // sandbox and shares one API key with production, so a sync writes a real

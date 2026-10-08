@@ -14,7 +14,7 @@ import { LIMITS, RATE_LIMIT_REFUSAL, callerIp, checkRateLimit } from "../_shared
 import { BOT_CHECK_REFUSAL, verifyTurnstile } from "../_shared/turnstile.ts";
 import { PAYMENTS_UNAVAILABLE, BOX_OFFICE_PHONE, publicDeclineMessage } from "../_shared/public_errors.ts";
 import { actorHeaders } from "../_shared/audit.ts";
-import { callerHasRole, callerUser } from "../_shared/callers.ts";
+import { requireRole, roleGate } from "../_shared/callers.ts";
 import { counterPaymentProblem } from "../_shared/counter_payment.ts";
 import { type Channel, orderCents, orderProblem, requestProblem } from "./in_person.ts";
 
@@ -374,13 +374,15 @@ async function recordInPersonDonation(
 
   const reader = createClient(supabaseUrl, serviceKey);
 
-  const user = await callerUser(createClient, req);
-  if (!user) return json({ error: "Sign in required" }, 401);
-  // has_role is hierarchical: staff covers admin and superadmin.
-  const isStaff = await callerHasRole(reader, user.id, "staff");
-  if (isStaff === null) return json({ error: "Could not check your role. Try again." }, 503);
-  if (!isStaff) return json({ error: "Staff only" }, 403);
-  const isAdmin = (await callerHasRole(reader, user.id, "admin")) === true;
+  // The gate is hierarchical: staff covers admin and superadmin.
+  const user = await requireRole(req, reader, "staff", {
+    headers: corsHeaders,
+    unauthorized: "Sign in required",
+    forbidden: "Staff only",
+  });
+  if (user instanceof Response) return user;
+  // Past the MFA check already, so this is the plain role test.
+  const isAdmin = (await roleGate(reader, user, "admin")) === "ok";
 
   const shape = requestProblem(body);
   if (shape) return json({ error: shape.error }, shape.status);

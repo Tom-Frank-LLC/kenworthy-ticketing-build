@@ -14,6 +14,7 @@ import {
   Ticket,
   User,
   Building2,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { SIGN_OUT_FAILED } from '@/lib/signOutDevice';
@@ -144,6 +145,7 @@ export function MobileNav() {
   if (isAdmin) staffLinks.push({ label: 'Admin', to: '/admin', icon: Shield });
   if (isSuperadmin) staffLinks.push({ label: 'Superadmin', to: '/superadmin', icon: ShieldCheck });
   if (isHost && !isAdmin) staffLinks.push({ label: 'Host Dashboard', to: '/host', icon: Home });
+  if (isStaff || isHost) staffLinks.push({ label: 'Sign-in security', to: '/account/security', icon: KeyRound });
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

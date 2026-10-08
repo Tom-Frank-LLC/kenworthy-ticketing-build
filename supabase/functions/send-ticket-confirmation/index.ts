@@ -13,14 +13,13 @@ import { corsHeaders } from 'npm:@supabase/supabase-js@2.117.2/cors';
 import { loadOrder } from '../_shared/tickets.ts';
 import { deliverConfirmation } from '../_shared/deliver.ts';
 import { flagsFor, isOperator as callerIsOperator, overridesFor } from '../_shared/confirmation_auth.ts';
-import { callerHasRole, verifyServiceRoleCaller } from '../_shared/callers.ts';
+import { mfaRequiredResponse, roleGate, verifiedCaller, verifyServiceRoleCaller } from '../_shared/callers.ts';
 
 // Deno globals
 declare const Deno: any;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -48,7 +47,7 @@ Deno.serve(async (req: Request) => {
     //                     refused. Allowed only for their own order, once:
     //                     overrides, force and account_created are ignored.
     //
-    // "Operator" below is the first two. The staff gate is `has_role(.., 'staff')`
+    // "Operator" below is the first two. The staff gate is `role_gate(.., 'staff')`
     // — the same test as `isStaff` in src/lib/auth.tsx and the same one
     // square-refund uses, and the one that actually matches who can open
     // StaffPOS. Gating on 'admin' instead would be worse than a refusal: a
@@ -68,7 +67,6 @@ Deno.serve(async (req: Request) => {
     // alone would have made this function's safety depend on verify_jwt staying
     // on — and a forged service-role token here can mail any order's QR codes
     // anywhere.
-    const authHeader = req.headers.get('Authorization') ?? '';
     const isServiceRole = await verifyServiceRoleCaller(req);
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
@@ -76,25 +74,24 @@ Deno.serve(async (req: Request) => {
     let callerId: string | null = null;
     let isStaff = false;
     if (!isServiceRole) {
-      const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-        global: { headers: { Authorization: authHeader } },
-      });
-      const { data: caller } = await userClient.auth.getUser();
-      callerId = caller?.user?.id ?? null;
-      if (!callerId) return json({ error: 'Not authorised' }, 401);
+      const caller = await verifiedCaller(req);
+      callerId = caller?.id ?? null;
+      if (!caller) return json({ error: 'Not authorised' }, 401);
 
-      // Asked through the admin client, not the caller's: has_role is SECURITY
-      // DEFINER, but user_roles is not readable by every signed-in user, and a
-      // role check that can be starved by RLS is a role check that fails open
-      // in the wrong direction.
-      const hasStaff = await callerHasRole(admin, callerId, 'staff');
-      if (hasStaff === null) {
+      // Asked through the admin client, not the caller's: user_roles is not
+      // readable by every signed-in user, and a role check that can be starved
+      // by RLS is a role check that fails open in the wrong direction.
+      const gate = await roleGate(admin, caller, 'staff');
+      if (gate === null) {
         // Never silently demote a staff caller to the own-order path — that is
         // exactly the case that would mail the patron's ticket to the counter.
         console.error('[send-ticket-confirmation] role lookup failed');
         return json({ error: 'Could not verify your access. Try again.' }, 503);
       }
-      isStaff = hasStaff;
+      // The same reasoning for an admin who has not entered their code: refuse
+      // and ask for it, rather than fall through to the own-order path.
+      if (gate === 'mfa_required') return mfaRequiredResponse(corsHeaders);
+      isStaff = gate === 'ok';
     }
 
     // Service role and staff are both operators here. The rule itself lives in

@@ -1,8 +1,18 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { logAuthEvent, logFailedLogin } from '@/lib/auditClient';
 import { signOutDevice } from '@/lib/signOutDevice';
+import { NO_MFA, fetchMfaRequired, needsCode, readMfaState, type MfaState } from '@/lib/mfa';
 import type { User, Session } from '@supabase/supabase-js';
+
+/**
+ * What sign-in has to do after the password, decided once the roles and the
+ * session's factors are known:
+ *   code    the account has an authenticator; ask for the code before routing
+ *   enroll  an admin-tier account with no authenticator; send it to set one up
+ *   done    nothing more to ask
+ */
+export type SignInNext = 'code' | 'enroll' | 'done';
 
 interface AuthContextType {
   user: User | null;
@@ -12,12 +22,26 @@ interface AuthContextType {
   isHost: boolean;
   isSuperadmin: boolean;
   loading: boolean;
+  /** Where this session stands on two-step sign-in. See lib/mfa.ts. */
+  mfa: MfaState;
+  /**
+   * The server will refuse this person without a code: the switch is on and
+   * they hold admin or superadmin. False for everyone else, and false until
+   * known.
+   */
+  mfaRequired: boolean;
+  /** Re-read factors and the switch, after enrolling or removing a factor. */
+  refreshMfa: () => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<SignInNext>;
+  /** The code step after signIn returned 'code' succeeded: record the sign-in now. */
+  completeSignIn: () => void;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const ADMIN_TIER = ['admin', 'superadmin'];
 
 async function fetchRoles(userId: string): Promise<string[]> {
   const { data } = await supabase.from('user_roles').select('role').eq('user_id', userId);
@@ -54,15 +78,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isHost, setIsHost] = useState(false);
   const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [mfa, setMfa] = useState<MfaState>(NO_MFA);
+  const [mfaRequired, setMfaRequired] = useState(false);
 
+  // Roles come from the caller's own user_roles rows, which RLS shows them
+  // whatever their assurance level. That is what lets the app route an aal1
+  // admin to the code step instead of treating them as nobody.
+  //
+  // The switch is asked for admin-tier accounts only; for anyone else the
+  // answer is false by definition, and a patron's session should not spend a
+  // request on it. It is re-asked on every auth change (including the hourly
+  // token refresh), so a switch flipped mid-shift is noticed within the hour.
   const checkRoles = async (userId: string) => {
-    const roles = await fetchRoles(userId);
+    const [roles, state] = await Promise.all([fetchRoles(userId), readMfaState()]);
     const superadmin = roles.includes('superadmin');
     setIsSuperadmin(superadmin);
     setIsAdmin(roles.includes('admin') || superadmin);
     setIsStaff(roles.includes('staff') || roles.includes('admin') || superadmin);
     setIsHost(roles.includes('host'));
+    setMfa(state);
+    setMfaRequired(roles.some(r => ADMIN_TIER.includes(r)) ? await fetchMfaRequired() : false);
   };
+
+  const refreshMfa = useCallback(async () => {
+    const state = await readMfaState();
+    setMfa(state);
+    setMfaRequired(await fetchMfaRequired());
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -83,6 +125,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsStaff(false);
         setIsHost(false);
         setIsSuperadmin(false);
+        setMfa(NO_MFA);
+        setMfaRequired(false);
         setLoading(false);
       }
     });
@@ -104,13 +148,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // "signed in" several times a shift for someone who signed in once. This is
   // the only path into the admin screens: Auth.tsx offers password sign-in and
   // a password reset, and no magic-link or OTP entry point exists.
-  const signIn = async (email: string, password: string) => {
+  //
+  // The password is only the first step for an account with an authenticator.
+  // The session it returns is aal1, and Auth.tsx asks for the code before
+  // routing anywhere. An admin-tier account with no authenticator is sent to
+  // set one up: while the switch is off it may skip, and once the switch is on
+  // that is the only way back in.
+  const signIn = async (email: string, password: string): Promise<SignInNext> => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       void logFailedLogin(email);
       throw error;
     }
-    if (data.user) void recordStaffLogin(data.user);
+    if (!data.user) return 'done';
+    const [roles, state] = await Promise.all([fetchRoles(data.user.id), readMfaState()]);
+    // Not recorded yet when a code is still owed. The audit INSERT policy goes
+    // through has_role, which refuses an aal1 admin once the switch is on, so
+    // the row would be silently dropped, and "signed in" isn't true until the
+    // code is in anyway. completeSignIn records it.
+    if (needsCode(state)) return 'code';
+    void recordStaffLogin(data.user);
+    if (roles.some(r => ADMIN_TIER.includes(r)) && state.verifiedFactors.length === 0) return 'enroll';
+    return 'done';
+  };
+
+  const completeSignIn = () => {
+    void supabase.auth.getUser().then(({ data }) => {
+      if (data.user) void recordStaffLogin(data.user);
+    });
   };
 
   const signOut = async () => {
@@ -124,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAdmin, isStaff, isHost, isSuperadmin, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, isAdmin, isStaff, isHost, isSuperadmin, loading, mfa, mfaRequired, refreshMfa, signUp, signIn, completeSignIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
