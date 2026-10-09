@@ -69,8 +69,8 @@ export default function Auth() {
         return;
       }
       toast.success('Welcome back!');
-      // An admin-tier account with no authenticator sets one up first. The
-      // page carries the redirect on, so they land where they were going.
+      // An account with no authenticator sets one up first. The page carries
+      // the redirect on, so they land where they were going.
       navigate(
         next === 'enroll'
           ? `/account/security?setup=1&redirect=${encodeURIComponent(redirectTo)}`

@@ -110,14 +110,16 @@ run('the staff queue is not behind Turnstile (it is behind a staff sign-in)', as
 
 // ---- the MFA gate (BRIEF-admin-mfa.md, section 4) --------------------------
 //
-// Staff actions and admin actions both go through requireRole, so an admin
-// whose session is aal1 is asked for their code at either level, and nothing
-// past the gate is read or written. A staff account is unaffected.
+// Staff actions and admin actions both go through requireRole, so anyone whose
+// session is aal1 is asked for their code at either level, and nothing past the
+// gate is read or written. Once they have entered it, staff pass and admin
+// actions still refuse them.
 
 const ADMIN = '00000000-0000-0000-0000-0000000000a1';
 const STAFF = '00000000-0000-0000-0000-0000000000c1';
 const ADMIN_AAL1 = testJwt(ADMIN, 'aal1');
 const STAFF_AAL1 = testJwt(STAFF, 'aal1');
+const STAFF_AAL2 = testJwt(STAFF, 'aal2');
 
 const signedIn = (bearer: string, body: unknown) =>
   new Request('http://localhost/', {
@@ -127,10 +129,11 @@ const signedIn = (bearer: string, body: unknown) =>
   });
 
 const mfaWorld = () => [
-  authUsers({ [ADMIN_AAL1]: { id: ADMIN }, [STAFF_AAL1]: { id: STAFF } }),
-  // The switch is on: an admin needs aal2; staff holds staff and nothing more.
+  authUsers({ [ADMIN_AAL1]: { id: ADMIN }, [STAFF_AAL1]: { id: STAFF }, [STAFF_AAL2]: { id: STAFF } }),
+  // The switch is on: the role first (staff holds staff and nothing more), then
+  // aal2 for everyone, as role_gate decides it.
   roleGateRoute(({ _user_id, _role, _aal }) =>
-    _user_id === ADMIN ? (_aal === 'aal2' ? 'ok' : 'mfa_required') : _role === 'staff' ? 'ok' : 'forbidden'
+    _user_id === STAFF && _role !== 'staff' ? 'forbidden' : _aal === 'aal2' ? 'ok' : 'mfa_required'
   ),
   (c: any) => (c.url.pathname.startsWith('/rest/v1/') ? jsonResponse([]) : undefined),
 ];
@@ -147,9 +150,17 @@ for (const action of ['queue', 'lookup', 'admit', 'void', 'delete']) {
   });
 }
 
-run('queue: a staff account at aal1 passes the gate and reads the queue', async () => {
+run('queue: a staff account at aal1 gets mfa_required too', async () => {
   useRoutes(mfaWorld());
   const res = await handler(signedIn(STAFF_AAL1, { action: 'queue' }));
+  assertEquals(res.status, 403);
+  assertEquals((await res.json()).code, 'mfa_required');
+  assertEquals(filmPassTableCalls(), 0);
+});
+
+run('queue: a staff account at aal2 passes the gate and reads the queue', async () => {
+  useRoutes(mfaWorld());
+  const res = await handler(signedIn(STAFF_AAL2, { action: 'queue' }));
   assertEquals(res.status, 200);
   assertEquals(calls.filter((c) => is(c, 'GET', '/rest/v1/film_pass_orders')).length, 2);
 });

@@ -4,10 +4,11 @@ import { supabase } from '@/integrations/supabase/client';
 /**
  * Two-step sign-in (security audit 2026-10-06, M9; docs/briefs/BRIEF-admin-mfa.md).
  *
- * The browser only asks. The server refuses an admin or superadmin whose session
- * is not `aal2` once the `mfa_required_for_admins` switch is on: `has_role` in
- * the database, `requireRole` in the edge functions. Everything here is about
- * getting a person to `aal2` without a dead end.
+ * The browser only asks. Once the `mfa_required` switch is on, the server gives a
+ * signed-in session that is not `aal2` nothing a signed-out visitor wouldn't
+ * get, whatever its role. The database does that through has_role, is_host_of
+ * and restrictive policies, the edge functions through requireRole. Everything
+ * here is about getting a person to `aal2` without a dead end.
  *
  * Factor-agnostic on purpose. Nothing below assumes "one TOTP factor": factors
  * are listed and labelled by type, and the server only cares that the session

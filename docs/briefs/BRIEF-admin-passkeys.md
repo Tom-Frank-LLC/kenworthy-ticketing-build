@@ -1,6 +1,6 @@
 ---
 brief: admin-passkeys
-title: Admins can add a passkey as a second factor, keeping their authenticator app as the backup
+title: Anyone who signs in can add a passkey as a second factor, keeping their authenticator app as the backup
 status: queued
 track: security
 severity: P3
@@ -17,9 +17,8 @@ as an **additional** second factor. TOTP stays enrolled as the backup.
 ## Why Phase 1 makes this additive
 
 Enforcement asks whether the session is `aal2`, never which factor got it
-there. In code, that's `mfa_blocks()` in
-`supabase/migrations/20261008233835_admin_mfa_enforcement.sql`, used by both
-`has_role()` and `role_gate()`. The browser side lists factors by type (`src/lib/mfa.ts`
+there. In code, that's `session_ok()` and `role_gate()` in
+`supabase/migrations/20261008233835_admin_mfa_enforcement.sql`. The browser side lists factors by type (`src/lib/mfa.ts`
 `FACTOR_LABELS`, `codeFactors`), and `/account/security` already handles an account
 holding several. A passkey that raises a session to `aal2` should need no server
 change.
@@ -38,7 +37,7 @@ change.
     the hosted project? Does verifying it produce an `aal2` session with
     `amr` `mfa/webauthn`?
   - Test 2: if the passkey *primary* sign-in is ever enabled, what `aal` does it
-    produce? If it's `aal1`, Phase 1's gate refuses it for admins (correct,
+    produce? If it's `aal1`, Phase 1's gate refuses it for everyone (correct,
     but confusing). If it's `aal2` from a single passkey, decide whether that
     counts as two factors for this theatre. A passkey is phishing-resistant, and
     NIST treats a user-verified passkey as multi-factor, but it changes what

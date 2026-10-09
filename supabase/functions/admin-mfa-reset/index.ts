@@ -82,7 +82,7 @@ Deno.serve(async (req: Request) => {
     const { data: sw } = await admin
       .from('app_config')
       .select('value')
-      .eq('key', 'mfa_required_for_admins')
+      .eq('key', 'mfa_required')
       .maybeSingle();
     return json({ required: sw?.value?.enabled === true, accounts });
   }

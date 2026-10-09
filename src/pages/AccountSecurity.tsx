@@ -34,9 +34,9 @@ import { safeRedirectPath } from '@/lib/safeUrl';
  * /account/security: set up and manage two-step sign-in
  * (security audit 2026-10-06, M9; docs/briefs/BRIEF-admin-mfa.md).
  *
- * Reachable by anyone signed in. Admin-tier accounts with no authenticator are
- * sent here after signing in (`?setup=1&redirect=…`). While the server isn't
- * yet requiring it they may skip; once it is, this page is the way back in.
+ * Reachable by anyone signed in. Every account with no authenticator is sent
+ * here after signing in (`?setup=1&redirect=…`). While the server isn't yet
+ * requiring it they may skip; once it is, this page is the way in.
  *
  * Factors are listed generically, by type, and an account may hold several:
  * two authenticators (a phone and a password manager) is the advice, so losing
@@ -51,7 +51,7 @@ import { safeRedirectPath } from '@/lib/safeUrl';
 type Enrolling = { factorId: string; qr: string; secret: string; name: string };
 
 export default function AccountSecurity() {
-  const { user, loading, mfa, mfaRequired, refreshMfa, isAdmin, signOut } = useAuth();
+  const { user, loading, mfa, mfaRequired, refreshMfa, signOut } = useAuth();
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const setup = params.get('setup') === '1';
@@ -151,9 +151,8 @@ export default function AccountSecurity() {
                 : 'Please set up an authenticator app for your account.'}
             </p>
             <p className="text-sm text-muted-foreground">
-              {isAdmin
-                ? 'Admin accounts can change the schedule, refunds and staff access, so they need more than a password. It takes about two minutes.'
-                : 'It takes about two minutes.'}
+              Accounts that sign in here can sell tickets, change the schedule or see who is
+              coming, so they need more than a password. It takes about two minutes.
             </p>
           </CardContent>
         </Card>

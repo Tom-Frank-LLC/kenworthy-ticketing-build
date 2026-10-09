@@ -197,8 +197,8 @@ export async function callerHasRole(
 // the caller's session or its assurance level, and the check inside has_role
 // never fires for them. So the function resolves the caller and their `aal`
 // itself, and hands both to `role_gate`, which applies the database's own rule
-// (`mfa_blocks`). The rule lives in SQL only. The switch, who counts as
-// admin-tier, and all-or-nothing are not re-implemented here.
+// (the switch and aal2 for every role holder). The rule lives in SQL only;
+// nothing about it is re-implemented here.
 // ---------------------------------------------------------------------------
 
 export type Role = 'staff' | 'admin' | 'superadmin' | 'host';
@@ -266,8 +266,8 @@ export type GateOutcome = 'ok' | 'forbidden' | 'mfa_required';
 
 /**
  * Whether `caller` may act as `role`, as the database decides it: the role
- * itself (hierarchical, like has_role), and then, when the MFA switch is on and
- * the caller holds admin or superadmin, an aal2 session.
+ * itself (hierarchical, like has_role), and then, when the MFA switch is on, an
+ * aal2 session.
  *
  * `admin` must be a service-role client: `role_gate` is executable by
  * service_role only. Returns null when the lookup itself failed, so the caller

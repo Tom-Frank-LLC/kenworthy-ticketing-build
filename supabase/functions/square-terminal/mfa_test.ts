@@ -29,14 +29,15 @@ const ADMIN = '00000000-0000-0000-0000-0000000000a1';
 const STAFF = '00000000-0000-0000-0000-0000000000c1';
 const ADMIN_AAL1 = testJwt(ADMIN, 'aal1');
 const STAFF_AAL1 = testJwt(STAFF, 'aal1');
+const STAFF_AAL2 = testJwt(STAFF, 'aal2');
 
 const users = authUsers({
   [ADMIN_AAL1]: { id: ADMIN, email: 'admin@x.test' },
   [STAFF_AAL1]: { id: STAFF, email: 'staff@x.test' },
+  [STAFF_AAL2]: { id: STAFF, email: 'staff@x.test' },
 });
-const gateSwitchOn = roleGateRoute(({ _user_id, _aal }) =>
-  _user_id === ADMIN ? (_aal === 'aal2' ? 'ok' : 'mfa_required') : 'ok'
-);
+/** The database's rule with the switch on: everyone who holds the role needs aal2. */
+const gateSwitchOn = roleGateRoute(({ _aal }) => (_aal === 'aal2' ? 'ok' : 'mfa_required'));
 const square: Route = (c) =>
   c.url.hostname.includes('squareup') ? jsonResponse({ checkout: { id: 'chk-1', status: 'PENDING' } }) : undefined;
 
@@ -74,8 +75,15 @@ run('an aal1 admin at the till is asked for the code, and nothing reaches the re
   assertEquals(calls.filter(toSquare).length, 0);
 });
 
-run('a staff account at aal1 is unaffected: the checkout goes to Square', async () => {
+run('staff at aal1 are asked for the code too: everyone who signs in needs it', async () => {
   const res = await handler(checkout(STAFF_AAL1));
+  assertEquals(res.status, 403);
+  assertEquals((await res.json()).code, 'mfa_required');
+  assertEquals(calls.filter(toSquare).length, 0);
+});
+
+run('staff at aal2: the checkout goes to Square', async () => {
+  const res = await handler(checkout(STAFF_AAL2));
   assertEquals(res.status, 200, await res.clone().text());
   assert(calls.filter(toSquare).length > 0);
 });

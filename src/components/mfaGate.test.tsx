@@ -3,16 +3,18 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 /**
- * The staff and admin gates and two-step sign-in (BRIEF-admin-mfa).
+ * The signed-in pages and two-step sign-in (BRIEF-admin-mfa). Everyone who
+ * signs in needs it, whatever their role.
  *
- * The server is the lock: has_role and requireRole refuse an aal1 admin once
- * the switch is on. These pin the signage that keeps a person from meeting
- * that refusal as a page of empty tables:
+ * The server is the lock: once the switch is on, a password-only session gets
+ * nothing a signed-out visitor wouldn't. These pin the signage that keeps a
+ * person from meeting that refusal as a page of empty tables:
  *   - an account with an authenticator, signed in with the password only, is
  *     asked for the code in place of the page, whatever the switch says;
- *   - an admin with no authenticator is sent to set one up only once the
- *     server requires it; until then the page opens as before;
- *   - staff with no authenticator are never stopped.
+ *   - an account with no authenticator is sent to set one up once the server
+ *     requires it, staff and hosts as much as admins; until then the page
+ *     opens as before;
+ *   - the pages outside the role gates (/host) get the same treatment.
  */
 
 const factor = {
@@ -43,6 +45,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
 import { AdminOnly, StaffOnly } from '@/components/RoleGate';
+import { MfaGate } from '@/components/MfaGate';
 
 function Where() {
   const l = useLocation();
@@ -55,6 +58,7 @@ function renderAt(path: string) {
       <Routes>
         <Route path="/admin" element={<AdminOnly><p>the dashboard</p></AdminOnly>} />
         <Route path="/staff/pos" element={<StaffOnly><p>the till</p></StaffOnly>} />
+        <Route path="/host" element={<MfaGate><p>the host dashboard</p></MfaGate>} />
         <Route path="/account/security" element={<Where />} />
       </Routes>
     </MemoryRouter>,
@@ -129,10 +133,45 @@ describe('an admin with no authenticator', () => {
 });
 
 describe('staff with no authenticator', () => {
-  it('are never stopped: staff are out of scope', () => {
+  it('open the till while the server does not require one yet', () => {
     staff();
-    mockAuth.mfaRequired = false; // my_mfa_required() is false for staff by definition
     renderAt('/staff/pos');
     expect(screen.getByText('the till')).toBeTruthy();
+  });
+
+  it('are sent to set one up once it does: everyone who signs in needs one', () => {
+    staff();
+    mockAuth.mfaRequired = true;
+    renderAt('/staff/pos');
+    expect(screen.queryByText('the till')).toBeNull();
+    expect(screen.getByText('at /account/security?setup=1&redirect=%2Fstaff%2Fpos')).toBeTruthy();
+  });
+});
+
+describe('a host, outside the role gates', () => {
+  beforeEach(() => {
+    mockAuth.isAdmin = false;
+    mockAuth.isStaff = false;
+    mockAuth.isHost = true;
+  });
+
+  it('is asked for the code on /host', () => {
+    mockAuth.mfa = { currentLevel: 'aal1', nextLevel: 'aal2', verifiedFactors: [factor] };
+    renderAt('/host');
+    expect(screen.queryByText('the host dashboard')).toBeNull();
+    expect(screen.getByLabelText('6-digit code')).toBeTruthy();
+  });
+
+  it('is sent to set one up once it is required', () => {
+    mockAuth.mfaRequired = true;
+    renderAt('/host');
+    expect(screen.getByText('at /account/security?setup=1&redirect=%2Fhost')).toBeTruthy();
+  });
+
+  it('opens /host after the code', () => {
+    mockAuth.mfa = { currentLevel: 'aal2', nextLevel: 'aal2', verifiedFactors: [factor] };
+    mockAuth.mfaRequired = true;
+    renderAt('/host');
+    expect(screen.getByText('the host dashboard')).toBeTruthy();
   });
 });

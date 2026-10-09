@@ -27,16 +27,15 @@ interface AccountStatus {
   known: boolean;
 }
 
-const ADMIN_TIER = ['admin', 'superadmin'];
-
 /**
  * The superadmin's view of two-step sign-in (BRIEF-admin-mfa): who has an
  * authenticator, whether the server is requiring one yet, and the reset for
  * someone who lost their phone. Backed by the admin-mfa-reset edge function,
  * which is superadmin-only and audited.
  *
- * This is also the rollout check: the switch should go on only when every admin
- * and superadmin row here shows a code.
+ * This is also the rollout check. The switch applies to everyone who signs in,
+ * so it should go on only when every row here shows one. Accounts with no role
+ * (patrons) aren't listed; they don't sign in while member accounts are off.
  */
 export function StaffMfaPanel() {
   const { user } = useAuth();
@@ -52,10 +51,11 @@ export function StaffMfaPanel() {
       });
       setError(null);
       setRequired(res.required);
+      // Who still needs one first.
       setAccounts(
         [...res.accounts].sort(
           (a, b) =>
-            Number(b.roles.some(r => ADMIN_TIER.includes(r))) - Number(a.roles.some(r => ADMIN_TIER.includes(r))) ||
+            Number(a.verified_factors > 0) - Number(b.verified_factors > 0) ||
             (a.email ?? '').localeCompare(b.email ?? ''),
         ),
       );
@@ -84,8 +84,7 @@ export function StaffMfaPanel() {
     }
   };
 
-  const adminTier = (accounts ?? []).filter(a => a.roles.some(r => ADMIN_TIER.includes(r)));
-  const adminsReady = adminTier.filter(a => a.verified_factors > 0).length;
+  const ready = (accounts ?? []).filter(a => a.verified_factors > 0).length;
 
   return (
     <Card>
@@ -95,9 +94,9 @@ export function StaffMfaPanel() {
         </CardTitle>
         <CardDescription>
           {required
-            ? 'Required for admin and superadmin accounts: the server refuses them without a code.'
-            : 'Not required yet. Admin and superadmin accounts are asked to set it up.'}{' '}
-          {accounts && `${adminsReady} of ${adminTier.length} admin-tier accounts have an authenticator.`}
+            ? 'Required for everyone who signs in: the server refuses a session without a code.'
+            : 'Not required yet. Everyone is asked to set it up when they sign in.'}{' '}
+          {accounts && `${ready} of ${accounts.length} accounts have an authenticator.`}
         </CardDescription>
       </CardHeader>
       <CardContent>

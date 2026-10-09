@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import { Layout } from "@/components/Layout";
 import { AdminOnly, StaffOnly } from "@/components/RoleGate";
+import { MfaGate } from "@/components/MfaGate";
 import { ColorLabProvider } from "@/components/colorlab/ColorLabProvider";
 
 // The home page is the overwhelming majority of first loads, so it ships in
@@ -116,7 +117,7 @@ const App = () => (
                   <Route path="/auth" element={<Auth />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
                   <Route path="/showing/:id" element={<Showing />} />
-                  <Route path="/my-tickets" element={<MyTickets />} />
+                  <Route path="/my-tickets" element={<MfaGate><MyTickets /></MfaGate>} />
                   {/* Public ticket link from confirmation email/SMS — no auth. */}
                   <Route path="/t/:token" element={<PublicTicket />} />
                   {/* Buying a film pass — public, no sign-in. Distinct from
@@ -127,8 +128,8 @@ const App = () => (
                       :id-keyed to match /showing/:id. */}
                   <Route path="/film-passes" element={<FilmPassesPage />} />
                   <Route path="/film-pass/:id" element={<FilmPassDetail />} />
-                  <Route path="/my-passes" element={<MyPasses />} />
-                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/my-passes" element={<MfaGate><MyPasses /></MfaGate>} />
+                  <Route path="/profile" element={<MfaGate><Profile /></MfaGate>} />
                   <Route path="/account/security" element={<AccountSecurity />} />
                   {/* Management, and only management. Every form here already
                       refused a non-admin from inside its own effect; the gate
@@ -168,7 +169,7 @@ const App = () => (
                     element={<StaffOnly allowHost><TicketScanner /></StaffOnly>}
                   />
                   <Route path="/staff/print-qr" element={<StaffOnly><PrintQrs /></StaffOnly>} />
-                  <Route path="/host" element={<HostDashboard />} />
+                  <Route path="/host" element={<MfaGate><HostDashboard /></MfaGate>} />
                   <Route path="/sponsors" element={<Sponsors />} />
                   <Route path="/history" element={<HistoryPage />} />
                   <Route path="/rental-request" element={<RentalRequest />} />
