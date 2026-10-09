@@ -671,17 +671,22 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           </Keep>
         )}
 
-        {!isAdmin && (
-          <div className="print:hidden mt-10 text-center flex justify-center gap-2">
-            <Button onClick={exportPdf} disabled={exporting}>
-              <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
-            </Button>
-            <Button variant="outline" onClick={printPdf} disabled={exporting}>
-              <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
-            </Button>
-          </div>
-        )}
       </article>
+
+      {/* A renter's only buttons. On the blank form they are also where a
+          staffer lands after reading it through, so admins get them too.
+          Below the paper, not on it: these are theme-styled buttons, and on
+          the contract's white sheet the outline one was dark-on-dark. */}
+      {(!isAdmin || blank) && (
+        <div data-testid="contract-bottom-actions" className="print:hidden container max-w-3xl px-4 py-8 flex flex-wrap justify-center gap-2">
+          <Button onClick={exportPdf} disabled={exporting}>
+            <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
+          </Button>
+          <Button variant="outline" onClick={printPdf} disabled={exporting}>
+            <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -789,8 +794,9 @@ const PDF_OPTIONS = {
 // in a `.pdf-word` span. Only the copy is changed; React's DOM is left alone.
 function breakableCopy(el: HTMLElement): HTMLElement {
   const copy = el.cloneNode(true) as HTMLElement;
-  // What print leaves out, the PDF leaves out: the patron's Download / Print
-  // buttons sit inside the contract and were printed on its last page.
+  // What print leaves out, the PDF leaves out. The patron's Download / Print
+  // buttons once sat inside the contract and were printed on its last page;
+  // they are below it now, and this keeps anything print-hidden from returning.
   copy.querySelectorAll('.print\\:hidden').forEach((n) => n.remove());
   const walker = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
   const texts: Text[] = [];

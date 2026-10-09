@@ -221,6 +221,24 @@ describe('filling in the blank contract', () => {
   });
 });
 
+describe('the buttons below the contract', () => {
+  const bottom = () => screen.queryByTestId('contract-bottom-actions');
+
+  it('are on the blank form for an admin too', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    fireEvent.click(within(bottom()!).getByRole('button', { name: /download pdf/i }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(within(bottom()!).getByRole('button', { name: /print \/ save pdf/i })).toBeTruthy();
+  });
+
+  it('stay off a real contract for an admin, who has the toolbar', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(bottom()).toBeNull();
+  });
+});
+
 describe('blankCosts', () => {
   it('leaves a line without an amount until all of it is typed', () => {
     const c = blankCosts({ ...EMPTY_BLANK, hourly_rate: '180', staff_rate: '30', staff_hours: '2', av_fee: '0' });
