@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import RentalContract, { BLANK_DRAFT_KEY, EMPTY_BLANK, blankCosts } from './RentalContract';
 
@@ -70,6 +70,12 @@ function renderAt(path: string) {
   );
 }
 
+// The blank form's own buttons, beside Clear form. An admin also has a pair in
+// the toolbar, so the page as a whole has two of each.
+function editor() {
+  return within(screen.getByRole('region', { name: 'Fill in the contract' }));
+}
+
 function contractText() {
   return document.getElementById('contract-body')!.textContent!;
 }
@@ -129,7 +135,8 @@ describe('blank contract', () => {
 
   it('downloads as Kenworthy-Contract-BLANK.pdf', async () => {
     renderAt('/contract/blank');
-    fireEvent.click(await screen.findByRole('button', { name: /download pdf/i }));
+    await screen.findByText('License Agreement');
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: 'Kenworthy-Contract-BLANK.pdf' }));
   });
@@ -151,10 +158,27 @@ describe('filling in the blank contract', () => {
     // Licensee and correspondence lines are filled; the other 16 stay ruled.
     expect(document.querySelectorAll('[data-blank-fill]').length).toBe(16);
 
-    fireEvent.click(screen.getByRole('button', { name: /download pdf/i }));
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: 'Kenworthy-Contract-Jane-Doe.pdf' }));
   });
+
+  for (const admin of [true, false]) {
+    it(`puts Download and Print beside Clear form (${admin ? 'admin' : 'renter'})`, async () => {
+      isAdmin = admin;
+      const tab = { location: { href: '' }, close: vi.fn() };
+      vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+      URL.createObjectURL = vi.fn(() => 'blob:contract');
+      URL.revokeObjectURL = vi.fn();
+
+      renderAt('/contract/blank');
+      await screen.findByText('License Agreement');
+      expect(editor().getByRole('button', { name: /clear form/i })).toBeTruthy();
+      fireEvent.click(editor().getByRole('button', { name: /print \/ save pdf/i }));
+      await waitFor(() => expect(tab.location.href).toBe('blob:contract'));
+      expect(outputPdf).toHaveBeenCalledWith('blob');
+    });
+  }
 
   it('prints what was typed, and only that', async () => {
     renderAt('/contract/blank');

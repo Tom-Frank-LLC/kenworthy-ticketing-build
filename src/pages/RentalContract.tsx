@@ -361,7 +361,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
       )}
 
       {blank && (
-        <div className="print:hidden container max-w-5xl px-4 mt-4">
+        <section aria-label="Fill in the contract" className="print:hidden container max-w-5xl px-4 mt-4">
           <Card className="glass">
             <CardContent className="p-4 space-y-4">
               <p className="font-serif text-sm text-muted-foreground">
@@ -405,14 +405,21 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
                 <BlankField label="Concessions fee" type="number" value={fields.concessions_fee} onChange={set('concessions_fee')} />
                 <BlankField label="LCD/DVD/DCP fee" type="number" value={fields.av_fee} onChange={set('av_fee')} />
               </FieldGroup>
-              <div className="flex justify-end">
+              {/* The form is long; download and print sit where the typing ends. */}
+              <div className="flex flex-wrap justify-end gap-2">
                 <Button size="sm" variant="outline" onClick={() => setFields(EMPTY_BLANK)}>
                   <Eraser className="h-4 w-4 mr-1" /> Clear form
+                </Button>
+                <Button size="sm" variant="outline" onClick={exportPdf} disabled={exporting}>
+                  <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={printPdf} disabled={exporting}>
+                  <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
                 </Button>
               </div>
             </CardContent>
           </Card>
-        </div>
+        </section>
       )}
 
       {isAdmin && !blank && (
