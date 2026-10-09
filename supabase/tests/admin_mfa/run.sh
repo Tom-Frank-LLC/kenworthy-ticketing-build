@@ -13,7 +13,7 @@ set -e
 cd "$(dirname "$0")/../../.."
 T=supabase/tests/admin_mfa
 C=pgmfa
-FIX="20261008233835_admin_mfa_enforcement.sql"
+FIX="20261008233835_admin_mfa_enforcement.sql 20261009003240_mfa_guard_inline.sql"
 docker rm -f $C >/dev/null 2>&1 || true
 docker run --rm -d --name $C -e POSTGRES_PASSWORD=pw postgres:15 >/dev/null
 until docker exec $C pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done

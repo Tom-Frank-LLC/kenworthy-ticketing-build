@@ -274,6 +274,14 @@ SELECT public.t_check('every own-row grant is behind the code',
             ('user_roles', 'Users can view own roles'),
             ('admin_audit_log', 'Admins and staff can insert audit entries as themselves'))));
 
+-- The per-row checks call no other function of ours. A nested SECURITY DEFINER
+-- call can't be inlined, and in has_role it made an admin's full showings read
+-- 14x slower on staging (20261009003240).
+SELECT public.t_check('has_role and the host checks inline the guard',
+  NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname IN ('has_role', 'is_host_of', 'is_host_of_showing')
+               AND pronamespace = 'public'::regnamespace
+               AND prosrc ~ '(session_ok|mfa_switch_on|mfa_blocks)\('));
+
 -- has_role keeps the shape the rest of the schema depends on.
 SELECT public.t_check('has_role is still STABLE SECURITY DEFINER',
   (SELECT provolatile = 's' AND prosecdef FROM pg_proc WHERE oid = 'public.has_role(uuid, app_role)'::regprocedure));

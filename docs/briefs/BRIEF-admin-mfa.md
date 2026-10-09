@@ -180,6 +180,16 @@ is structural: it fails if any policy grants on `auth.uid()` by a route not
 covered here. A mutation test (dropping one restrictive policy) confirmed it
 names the exposed policy.
 
+**Cost, measured on staging** (an aal1 admin running `select count(*) from
+showings` over 1,796 rows through RLS, the worst case). The baseline was
+~33 ms. The first cut called `session_ok()` from `has_role` / `is_host_of`,
+and nested SECURITY DEFINER calls can't be inlined: ~475 ms. Follow-up
+`20261009003240` inlines the guard: ~54 ms, switch on or off. Anon is
+unchanged at ~1 ms. The remaining ~20 ms is the per-call claims parse and
+switch read. Removing it means wrapping policies as `(SELECT has_role(…))`, so
+the check runs once per statement. The harness now fails if the per-row
+functions call another of ours.
+
 Other choices that differ from the design above, and why:
 
 - **The rule lives in SQL only.** Edge functions call the service-role-only
