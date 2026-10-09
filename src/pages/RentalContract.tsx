@@ -759,12 +759,14 @@ function Fill({ children, width = '8em' }: { children?: React.ReactNode; width?:
   //
   // Empty, it is a line to write on: a bottom border on an inline-block, not a
   // text underline, so it sits below the baseline and cannot wrap. `width` is
-  // in em so the blank scales with the type.
+  // in em so the blank scales with the type. `max-w-full` caps it at the line
+  // on a phone, where a 20em blank was wider than the column and scrolled the
+  // page sideways; the PDF's column is wider than any blank, so it never binds.
   if (children === undefined || children === null || children === '' || children === false) {
     return (
       <span
         data-blank-fill=""
-        className="inline-block border-b border-neutral-800 align-baseline"
+        className="inline-block max-w-full border-b border-neutral-800 align-baseline"
         style={{ width }}
       >
         {'\u00a0'}
