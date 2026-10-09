@@ -17,6 +17,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 import { corsHeaders, json } from "../_shared/http.ts";
+import { requireRole } from "../_shared/callers.ts";
 import { loadSquareConfig } from "../_shared/square.ts";
 import {
   type AnalyticsPayload,
@@ -54,13 +55,12 @@ Deno.serve(async (req: Request) => {
   // Admin-only. verify_jwt accepts the anon key, which ships in every browser
   // bundle and in this public repo, so it is not authentication — the function
   // gates itself. This returns the theatre's whole revenue picture.
-  const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: req.headers.get("Authorization") || "" } },
+  const gate = await requireRole(req, admin, "admin", {
+    headers: corsHeaders,
+    unauthorized: "Sign in required",
+    forbidden: "Admin only",
   });
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user) return json({ error: "Sign in required" }, 401);
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
-  if (!isAdmin) return json({ error: "Admin only" }, 403);
+  if (gate instanceof Response) return gate;
 
   const loaded = loadSquareConfig();
   if (!loaded.ok) return json({ error: loaded.error }, 500);

@@ -7,6 +7,7 @@
 // real edge runtime, so that class of failure is caught before a deploy.
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { actorHeaders } from '../_shared/audit.ts';
+import { requireRole } from '../_shared/callers.ts';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2.117.2/cors';
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
 
@@ -15,7 +16,6 @@ declare const Deno: any;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 function b64encode(bytes: Uint8Array): string {
   let bin = '';
@@ -131,34 +131,19 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Not authenticated' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Verify caller + admin role
-    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
+    // Verify caller + admin role. The gate is asked through a plain service
+    // client because the actor is not known until it answers.
+    const signer = await requireRole(req, createClient(SUPABASE_URL, SERVICE_ROLE_KEY), 'admin', {
+      headers: corsHeaders,
+      unauthorized: 'Not authenticated',
+      forbidden: 'Admin role required to sign contracts',
     });
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: 'Not authenticated' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    const userId = userData.user.id;
+    if (signer instanceof Response) return signer;
+    const userId = signer.id;
 
     // Names the verified admin to the audit trigger on rental_requests and
     // signing_keys (_shared/audit.ts); otherwise a signed contract is nobody's.
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { global: { headers: actorHeaders(userId) } });
-    const { data: roleCheck } = await admin.rpc('has_role', { _user_id: userId, _role: 'admin' });
-    if (!roleCheck) {
-      return new Response(JSON.stringify({ error: 'Admin role required to sign contracts' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
 
     const body = await req.json();
     const { request_id, pdf_base64 } = body;
@@ -185,7 +170,7 @@ Deno.serve(async (req: Request) => {
       .select('display_name, signer_title')
       .eq('id', userId)
       .single();
-    const signerName = profile?.display_name || userData.user.email || 'Authorized Admin';
+    const signerName = profile?.display_name || signer.email || 'Authorized Admin';
     const signerTitle = profile?.signer_title || 'Authorized Signer';
 
     // Get / create signing key

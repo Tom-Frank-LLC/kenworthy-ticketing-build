@@ -3708,6 +3708,7 @@ export type Database = {
       }
       is_protected_user: { Args: { _user_id: string }; Returns: boolean }
       log_failed_staff_login: { Args: { p_email: string }; Returns: undefined }
+      my_mfa_required: { Args: never; Returns: boolean }
       order_tax_cents: { Args: { base_cents: number }; Returns: number }
       price_ticket_order: {
         Args: { p_channel?: string; p_showing_id: string; p_tickets: Json }

@@ -190,3 +190,45 @@ export async function withEnv<T>(vars: Record<string, string | null>, fn: () => 
     }
   }
 }
+
+// ---- Signed-in callers, for the role gate (_shared/callers.ts) ------------
+//
+// requireRole reads `sub` and `aal` from the bearer, but only after GoTrue's
+// `/auth/v1/user` has accepted that same token and named the same user. So a
+// test caller is a JWT-shaped token carrying both claims (the signature is
+// never checked here: GoTrue is a stub), plus a `/auth/v1/user` route that
+// answers for it.
+
+function b64url(o: unknown): string {
+  return btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** A JWT-shaped bearer for `sub` at assurance level `aal`. */
+export function testJwt(sub: string, aal: 'aal1' | 'aal2' = 'aal2'): string {
+  return `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ sub, aal, role: 'authenticated' })}.sig`;
+}
+
+/** GoTrue's `/auth/v1/user`: each known bearer is its user; anything else 401. */
+export function authUsers(users: Record<string, { id: string; email?: string }>): Route {
+  return (c) => {
+    if (!is(c, 'GET', '/auth/v1/user')) return undefined;
+    const bearer = (c.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+    const u = users[bearer];
+    return u
+      ? jsonResponse({ id: u.id, email: u.email ?? null, aud: 'authenticated' })
+      : jsonResponse({ code: 401, msg: 'invalid JWT' }, 401);
+  };
+}
+
+/**
+ * The `role_gate` RPC, answered by `decide`. The stub sees what the function
+ * sent, `_aal` included, so a test can pin that the claim was passed through.
+ */
+export function roleGateRoute(
+  decide: (args: { _user_id: string; _role: string; _aal: string }) => 'ok' | 'forbidden' | 'mfa_required',
+): Route {
+  return (c) =>
+    rpc('role_gate')(c)
+      ? jsonResponse(decide(c.body as { _user_id: string; _role: string; _aal: string }))
+      : undefined;
+}

@@ -2,7 +2,7 @@ import { corsHeaders } from 'npm:@supabase/supabase-js@2.117.2/cors';
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { actorHeaders } from '../_shared/audit.ts';
 import { SITE_URL } from '../_shared/brand.ts';
-import { callerHasRole, callerUser } from '../_shared/callers.ts';
+import { callerHasRole, requireRole } from '../_shared/callers.ts';
 import {
   DEFAULT_RETURN_TO,
   makeState,
@@ -68,16 +68,21 @@ function serviceClient(actorId?: string) {
  * This function is `verify_jwt = false` (supabase/config.toml), because
  * Intuit's browser redirect to oauth_callback carries no JWT and the gateway
  * would 401 it. So the gateway checks nothing here, and every action except
- * the callback comes through this gate in code. `has_role` is hierarchical, so
+ * the callback comes through this gate in code. The gate is hierarchical, so
  * a superadmin passes; the old exact `role === 'admin'` match refused one.
+ *
+ * requireRole verifies the token with auth before reading its `aal`, which is
+ * what makes the MFA check safe here: with no gateway check, an unverified
+ * decode would let a hand-written token claim aal2.
  */
 async function requireAdmin(req: Request): Promise<{ id: string } | Response> {
-  const user = await callerUser(createClient, req);
-  if (!user) return json({ error: 'Not authenticated' }, 401);
-  const isAdmin = await callerHasRole(serviceClient(), user.id, 'admin');
-  if (isAdmin === null) return json({ error: 'Could not check your role. Try again.' }, 503);
-  if (!isAdmin) return json({ error: 'Admin role required' }, 403);
-  return { id: user.id };
+  const caller = await requireRole(req, serviceClient(), 'admin', {
+    headers: corsHeaders,
+    unauthorized: 'Not authenticated',
+    forbidden: 'Admin role required',
+  });
+  if (caller instanceof Response) return caller;
+  return { id: caller.id };
 }
 
 Deno.serve(async (req) => {
@@ -149,6 +154,13 @@ Deno.serve(async (req) => {
     }
 
     // Still an admin? The state is up to ten minutes old.
+    //
+    // A plain role check, not the MFA gate, and deliberately so. This is
+    // Intuit's browser redirect: it carries no JWT, so there is no session and
+    // no `aal` to read. The state it carries was minted by oauth_start, which
+    // only an admin past requireAdmin (MFA included) can reach, and it is
+    // signed, single-use and ten minutes old at most. So the second factor was
+    // already checked, at the start of this same flow.
     const stillAdmin = await callerHasRole(svc, stateBody.u, 'admin');
     if (stillAdmin !== true) {
       return Response.redirect(returnUrl(origin, stateBody.r, { qbo: 'error', message: 'Admin role required' }), 302);

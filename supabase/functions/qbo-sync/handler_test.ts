@@ -18,8 +18,10 @@ import {
   jsonResponse,
   loadHandler,
   quietly,
+  roleGateRoute,
   rpc,
   type Route,
+  testJwt,
   useRoutes,
   withEnv,
 } from '../_shared/testing/handler_harness.ts';
@@ -28,8 +30,11 @@ import { makeState } from './oauth_state.ts';
 const SITE = 'https://site.example';
 const SECRET = 'qbo-state-secret-for-tests';
 const ADMIN_ID = '00000000-0000-0000-0000-0000000000d1';
-const ADMIN_JWT = 'admin-session-jwt';
-const STAFF_JWT = 'staff-session-jwt';
+const STAFF_ID = '00000000-0000-0000-0000-0000000000c1';
+const ADMIN_JWT = testJwt(ADMIN_ID, 'aal2');
+/** The same admin, signed in with a password only. */
+const ADMIN_AAL1_JWT = testJwt(ADMIN_ID, 'aal1');
+const STAFF_JWT = testJwt(STAFF_ID, 'aal1');
 const NONCE = '11111111-1111-1111-1111-111111111111';
 
 const handler = await loadHandler(() => import('./index.ts'), {
@@ -45,13 +50,22 @@ const handler = await loadHandler(() => import('./index.ts'), {
 const auth: Route = (c) => {
   if (!is(c, 'GET', '/auth/v1/user')) return undefined;
   const bearer = (c.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
-  if (bearer === ADMIN_JWT) return jsonResponse({ id: ADMIN_ID, email: 'admin@x.test', aud: 'authenticated' });
-  if (bearer === STAFF_JWT) return jsonResponse({ id: 'staff-id', email: 'staff@x.test', aud: 'authenticated' });
+  if (bearer === ADMIN_JWT || bearer === ADMIN_AAL1_JWT) {
+    return jsonResponse({ id: ADMIN_ID, email: 'admin@x.test', aud: 'authenticated' });
+  }
+  if (bearer === STAFF_JWT) return jsonResponse({ id: STAFF_ID, email: 'staff@x.test', aud: 'authenticated' });
   return jsonResponse({ code: 401, msg: 'invalid JWT' }, 401);
 };
-/** has_role(_, 'admin'): true for the admin (or a superadmin), false for staff. */
+/** has_role(_, 'admin'): true for the admin (or a superadmin), false for staff.
+ *  Only the callback asks it now; it has no session to gate. */
 const hasRole: Route = (c) =>
   rpc('has_role')(c) ? jsonResponse((c.body as { _user_id: string })._user_id === ADMIN_ID) : undefined;
+/** role_gate with the MFA switch off: the admin passes at any aal, staff never. */
+const gate: Route = roleGateRoute(({ _user_id }) => (_user_id === ADMIN_ID ? 'ok' : 'forbidden'));
+/** role_gate with the switch on: an admin needs aal2. */
+const gateMfaOn: Route = roleGateRoute(({ _user_id, _aal }) =>
+  _user_id !== ADMIN_ID ? 'forbidden' : _aal === 'aal2' ? 'ok' : 'mfa_required'
+);
 const nonces = (consumed: boolean): Route => (c) => {
   if (c.url.pathname !== '/rest/v1/qbo_oauth_states') return undefined;
   if (c.method === 'DELETE') return jsonResponse(consumed && c.url.searchParams.get('nonce') === `eq.${NONCE}` ? [{ nonce: NONCE }] : []);
@@ -66,7 +80,7 @@ const saveTokens: Route = (c) => (rpc('qbo_save_tokens_service')(c) ? jsonRespon
 const connection: Route = (c) =>
   is(c, 'GET', '/rest/v1/qbo_connection') ? jsonResponse({ realm_id: 'R1', token_expires_at: null, is_active: true, environment: 'sandbox' }) : undefined;
 
-const ROUTES = [auth, hasRole, nonces(true), intuit, saveTokens, connection];
+const ROUTES = [auth, gate, hasRole, nonces(true), intuit, saveTokens, connection];
 
 function req(action: string, bearer: string | null, body?: unknown, extra: Record<string, string> = {}): Request {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', apikey: ANON, ...extra };
@@ -118,20 +132,52 @@ for (const action of ['status', 'oauth_start', 'disconnect', 'refresh', 'payroll
   });
 }
 
-run('status: an admin (has_role, so superadmin too) gets the connection metadata', async () => {
+run('status: an admin (the role gate, so superadmin too) gets the connection metadata', async () => {
   useRoutes(ROUTES);
   const res = await handler(req('status', ADMIN_JWT));
   assertEquals(res.status, 200);
   const j = await res.json();
   assertEquals(j.connected, true);
   assertEquals(j.realm_id, 'R1');
-  const roleCall = calls.find(rpc('has_role'))!;
-  assertEquals((roleCall.body as { _role: string })._role, 'admin', 'asked through has_role, not a literal match');
+  const roleCall = calls.find(rpc('role_gate'))!;
+  assertEquals(roleCall.body, { _user_id: ADMIN_ID, _role: 'admin', _aal: 'aal2' }, 'asked through role_gate, not a literal match');
 });
 
 run('a failed role lookup is a retryable 503, not a silent demotion or a pass', async () => {
-  useRoutes([auth, (c) => (rpc('has_role')(c) ? jsonResponse({ message: 'down' }, 500) : undefined), ...ROUTES]);
+  useRoutes([auth, (c) => (rpc('role_gate')(c) ? jsonResponse({ message: 'down' }, 500) : undefined), ...ROUTES]);
   assertEquals((await handler(req('status', ADMIN_JWT))).status, 503);
+});
+
+// ---- MFA (BRIEF-admin-mfa.md, section 4) ------------------------------------
+//
+// verify_jwt = false here, so this gate is the only one. An admin whose session
+// is aal1 is told to enter their code, and nothing past the gate runs.
+
+for (const action of ['status', 'oauth_start', 'disconnect', 'refresh', 'payroll_export']) {
+  run(`${action}: an aal1 admin with the switch on gets mfa_required, and nothing is read or sent`, async () => {
+    useRoutes([auth, gateMfaOn, hasRole, nonces(true), intuit, saveTokens, connection]);
+    const res = await handler(req(action, ADMIN_AAL1_JWT, {}));
+    assertEquals(res.status, 403);
+    const body = await res.json();
+    assertEquals(body.code, 'mfa_required');
+    assertEquals(touched(toConnection) + touched(toNonces) + touched(toIntuit), 0);
+    assertEquals((calls.find(rpc('role_gate'))!.body as { _aal: string })._aal, 'aal1');
+  });
+}
+
+run('status: the same admin at aal2 passes with the switch on', async () => {
+  useRoutes([auth, gateMfaOn, hasRole, nonces(true), intuit, saveTokens, connection]);
+  assertEquals((await handler(req('status', ADMIN_JWT))).status, 200);
+});
+
+run('a hand-written token claiming aal2 is refused 401: auth never accepted it', async () => {
+  useRoutes([auth, gateMfaOn, connection]);
+  // ADMIN_ID's sub with aal2, but not a token GoTrue knows: the stub 401s it.
+  const forged = testJwt(ADMIN_ID, 'aal2').replace(/\.sig$/, '.forged');
+  const res = await handler(req('status', forged));
+  assertEquals(res.status, 401);
+  assertEquals(calls.filter(rpc('role_gate')).length, 0);
+  assertEquals(touched(toConnection), 0);
 });
 
 // ---- oauth_start -----------------------------------------------------------

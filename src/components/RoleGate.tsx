@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
+import { MfaGate } from '@/components/MfaGate';
 
 /**
  * Route wrappers that will not render their child to the wrong person.
@@ -30,6 +31,7 @@ function RoleGate({
 }) {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const here = location.pathname + location.search;
 
   // Roles arrive a round trip after the session does. Redirecting during that
   // window would bounce the person who *does* have the role, on every hard
@@ -46,11 +48,13 @@ function RoleGate({
     // /auth would show them a form they have already filled in.
     const to = user
       ? '/'
-      : `/auth?redirect=${encodeURIComponent(location.pathname + location.search)}`;
+      : `/auth?redirect=${encodeURIComponent(here)}`;
     return <Navigate to={to} replace />;
   }
 
-  return <>{children}</>;
+  // Two-step sign-in (BRIEF-admin-mfa): the code, or setting one up, before
+  // the page. See MfaGate.
+  return <MfaGate>{children}</MfaGate>;
 }
 
 /** The counter: staff, admin and superadmin. */

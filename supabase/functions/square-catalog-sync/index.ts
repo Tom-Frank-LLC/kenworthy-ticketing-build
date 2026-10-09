@@ -46,7 +46,8 @@
 // ---------------------------------------------------------------------------
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
-import { json, preflight } from "../_shared/http.ts";
+import { corsHeaders, json, preflight } from "../_shared/http.ts";
+import { requireRole } from "../_shared/callers.ts";
 import { logAudit, withBulkAudit } from "../_shared/audit.ts";
 import { concessionSquarePushEnabled } from "../_shared/flags.ts";
 import {
@@ -153,17 +154,8 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey);
 
   // AuthN: require a signed-in admin.
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return json({ error: "Missing Authorization" }, 401);
-  const jwt = authHeader.replace("Bearer ", "");
-  const { data: userRes } = await admin.auth.getUser(jwt);
-  const user = userRes?.user;
-  if (!user) return json({ error: "Unauthorized" }, 401);
-  const { data: isAdmin } = await admin.rpc("has_role", {
-    _user_id: user.id,
-    _role: "admin",
-  });
-  if (!isAdmin) return json({ error: "Admin only" }, 403);
+  const user = await requireRole(req, admin, "admin", { headers: corsHeaders, forbidden: "Admin only" });
+  if (user instanceof Response) return user;
 
   let payload: any = {};
   try { payload = await req.json(); } catch { /* GET-style ping */ }

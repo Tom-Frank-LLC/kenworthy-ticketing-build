@@ -1,7 +1,7 @@
 import "https://deno.land/std@0.224.0/dotenv/load.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { LIMITS, checkRateLimit } from "../_shared/rate_limit.ts";
-import { callerHasRole, callerUser, verifyServiceRoleCaller } from "../_shared/callers.ts";
+import { roleGate, verifiedCaller, verifyServiceRoleCaller } from "../_shared/callers.ts";
 import { type CallerKind, createHandler } from "./handler.ts";
 
 // The rules live in handler.ts so they can be tested without reaching the
@@ -19,13 +19,14 @@ function admin() {
  * (which admin and superadmin satisfy). A valid JWT alone is not enough: every
  * guest buyer has an account (security audit M1). A host, a buyer's session, a
  * bad token or a failed role lookup all fall to the anonymous path, which is
- * the safe one.
+ * the safe one. So does an admin who has not entered their authenticator code:
+ * this branches rather than refuses, and anonymous is still a working sign-up.
  */
 async function classify(req: Request): Promise<CallerKind> {
   if (await verifyServiceRoleCaller(req)) return "trusted";
-  const user = await callerUser(createClient, req);
+  const user = await verifiedCaller(req);
   if (!user) return "anonymous";
-  return (await callerHasRole(admin(), user.id, "staff")) === true ? "trusted" : "anonymous";
+  return (await roleGate(admin(), user, "staff")) === "ok" ? "trusted" : "anonymous";
 }
 
 async function allow(req: Request): Promise<boolean> {

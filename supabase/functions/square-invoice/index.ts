@@ -25,7 +25,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { actorHeaders, logStaffAction } from '../_shared/audit.ts';
 import { squareErrorSummary } from './log.ts';
-import { json, preflight } from '../_shared/http.ts';
+import { corsHeaders, json, preflight } from '../_shared/http.ts';
+import { requireRole } from '../_shared/callers.ts';
 import { loadSquareConfig, squareErrorMessage, squareFetch } from '../_shared/square.ts';
 import type { SquareConfig } from '../_shared/square.ts';
 import {
@@ -143,17 +144,13 @@ Deno.serve(async (req: Request) => {
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
   // Authorise — staff or admin, the same pair that may edit the invoice lines.
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
+  // The gate is hierarchical, so staff covers admin.
+  const user = await requireRole(req, admin, 'staff', {
+    headers: corsHeaders,
+    unauthorized: 'Staff sign-in required',
+    forbidden: 'Staff access required',
   });
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user) return json({ error: 'Staff sign-in required' }, 401);
-
-  const [{ data: isStaff }, { data: isAdmin }] = await Promise.all([
-    admin.rpc('has_role', { _user_id: user.id, _role: 'staff' }),
-    admin.rpc('has_role', { _user_id: user.id, _role: 'admin' }),
-  ]);
-  if (!isStaff && !isAdmin) return json({ error: 'Staff access required' }, 403);
+  if (user instanceof Response) return user;
   // The rental row's update below names the verified caller to the audit
   // trigger (_shared/audit.ts); reads stay on `admin`.
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { global: { headers: actorHeaders(user.id) } });

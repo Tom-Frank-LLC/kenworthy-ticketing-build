@@ -27,6 +27,7 @@
 // missing, never so we can reconstruct it.
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { requireRole } from "../_shared/callers.ts";
 import {
   loadSquareConfig,
   SQUARE_API_VERSION,
@@ -137,11 +138,8 @@ Deno.serve(async (req: Request) => {
       }, 403);
     }
   } else {
-    const { data: userRes } = await admin.auth.getUser(bearer);
-    const user = userRes?.user;
-    if (!user) return json({ error: "Unauthorized" }, 401);
-    const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
-    if (!isAdmin) return json({ error: "Admin only" }, 403);
+    const user = await requireRole(req, admin, "admin", { headers: cors, forbidden: "Admin only" });
+    if (user instanceof Response) return user;
   }
 
   // The cheapest authenticated round trip there is. Exists so install_schedule

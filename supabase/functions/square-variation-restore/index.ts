@@ -29,6 +29,7 @@
 
 import { auditedHandler, type StaffAuditContext } from "../_shared/audit.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+import { requireRole } from "../_shared/callers.ts";
 import { loadSquareConfig, squareFetch, type SquareConfig } from "../_shared/square.ts";
 
 declare const Deno: any;
@@ -90,12 +91,8 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return json({ error: "Missing Authorization" }, 401);
-  const { data: userRes } = await admin.auth.getUser(authHeader.replace("Bearer ", ""));
-  if (!userRes?.user) return json({ error: "Unauthorized" }, 401);
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: userRes.user.id, _role: "admin" });
-  if (!isAdmin) return json({ error: "Admin only" }, 403);
+  const user = await requireRole(req, admin, "admin", { headers: cors, forbidden: "Admin only" });
+  if (user instanceof Response) return user;
 
   const loaded = loadSquareConfig();
   if (!loaded.ok) return json({ error: loaded.error }, 500);
@@ -153,7 +150,7 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
     const dryRun = payload.dry_run !== false;
     if (!dryRun && payload.confirm !== "RESTORE") return json({ error: 'a real write requires confirm:"RESTORE"' }, 400);
     if (!dryRun) {
-      audit.actor = { id: userRes.user.id, email: userRes.user.email };
+      audit.actor = { id: user.id, email: user.email };
       audit.action = "square_catalog.variation_restore";
     }
     const maxBatch = Number(payload.max_batch ?? 10);

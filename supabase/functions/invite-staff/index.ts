@@ -9,8 +9,9 @@
 // Authorisation is the whole point of this function, so it is spelled out
 // twice: `verify_jwt` is left at its default (true) by keeping this function
 // OUT of the `verify_jwt = false` list in config.toml, and the handler then
-// asks `has_role()` who the caller is. The client route guards on /superadmin
-// and the admin dashboard are not a boundary — hiding a dropdown entry stops
+// asks `requireRole` (`_shared/callers.ts`) who the caller is, which is also
+// where an admin without their authenticator code is stopped. The client route
+// guards on /superadmin and the admin dashboard are not a boundary — hiding a dropdown entry stops
 // nobody from calling `functions.invoke` directly.
 //
 // Since 2026-09-16 the gate is tiered rather than superadmin-only, to match
@@ -37,6 +38,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { EMAIL_RE, findUserIdByEmail } from '../_shared/buyers.ts';
 import { SITE_URL } from '../_shared/brand.ts';
 import { logAudit } from '../_shared/audit.ts';
+import { requireRole, roleGate } from '../_shared/callers.ts';
 import { inviteTargetMatches } from './target.ts';
 import {
   type CallerTier,
@@ -65,27 +67,28 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    // --- Authenticate the caller -------------------------------------------
-    const authHeader = req.headers.get('Authorization') ?? '';
-    if (!authHeader) return json({ error: 'Unauthorized' }, 401);
-
-    const userClient = createClient(
+    // The service client also asks the role gate, which only service_role may
+    // call.
+    const admin = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      { auth: { persistSession: false } },
     );
-    const { data: { user } } = await userClient.auth.getUser();
-    if (!user) return json({ error: 'Unauthorized' }, 401);
 
-    // --- Authorise: which tier is calling? ---------------------------------
-    // has_role is hierarchical, so a superadmin answers true to 'admin' as
-    // well; ask for the higher tier first and let it win.
-    const [{ data: isSuper }, { data: isAdmin }] = await Promise.all([
-      userClient.rpc('has_role', { _user_id: user.id, _role: 'superadmin' }),
-      userClient.rpc('has_role', { _user_id: user.id, _role: 'admin' }),
-    ]);
-    const tier: CallerTier = isSuper ? 'superadmin' : isAdmin ? 'admin' : null;
-    if (!tier) return json({ error: 'Admin access required' }, 403);
+    // --- Authenticate and authorise: which tier is calling? -----------------
+    // Admin is the floor. The gate is hierarchical, so a superadmin passes it
+    // too, and the second question tells the two apart. It is a plain role test
+    // by then: the MFA check already ran in the first.
+    const user = await requireRole(req, admin, 'admin', {
+      headers: corsHeaders,
+      forbidden: 'Admin access required',
+    });
+    if (user instanceof Response) return user;
+
+    const superGate = await roleGate(admin, user, 'superadmin');
+    // A failed lookup is not a demotion to admin: refuse, retryably.
+    if (superGate === null) return json({ error: 'Could not check your access. Please try again.' }, 503);
+    const tier: CallerTier = superGate === 'ok' ? 'superadmin' : 'admin';
 
     // --- Validate the request ----------------------------------------------
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
@@ -107,12 +110,6 @@ Deno.serve(async (req: Request) => {
     const displayName = String(body.display_name ?? '').trim() || null;
 
     // --- Privileged work ----------------------------------------------------
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-      { auth: { persistSession: false } },
-    );
-
     // Reuse rather than duplicate. Someone who once bought a ticket already has
     // an account (checkout made one silently); inviting them must grant the role
     // to *that* account, not fail and not fork their history into a second one.

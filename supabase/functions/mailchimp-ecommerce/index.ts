@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
-import { callerUser, isServiceRoleCaller } from "../_shared/callers.ts";
+import { isServiceRoleCaller, requireRole } from "../_shared/callers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -77,13 +77,11 @@ Deno.serve(async (req) => {
   // caller must not be able to use the shape of the refusal to learn whether
   // Mailchimp is wired up or whether a store exists.
   if (!isServiceRoleCaller(req)) {
-    const caller = await callerUser(createClient, req);
-    if (!caller) return json({ error: "Unauthorized" }, 401);
-    const { data: isAdmin } = await admin.rpc("has_role", {
-      _user_id: caller.id,
-      _role: "admin",
+    const caller = await requireRole(req, admin, "admin", {
+      headers: corsHeaders,
+      forbidden: "Admin access required",
     });
-    if (!isAdmin) return json({ error: "Admin access required" }, 403);
+    if (caller instanceof Response) return caller;
   }
 
   const apiKey = Deno.env.get("MAILCHIMP_API_KEY");

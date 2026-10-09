@@ -72,7 +72,7 @@ export type CallerKind = 'trusted' | 'anonymous';
 
 export interface SubscribeDeps {
   fetch: typeof fetch;
-  /** Staff (has_role staff) or the verified service role → 'trusted'. */
+  /** Staff (through the role gate) or the verified service role → 'trusted'. */
   classify(req: Request): Promise<CallerKind>;
   /** True when this anonymous request is within the limiter. */
   allow(req: Request): Promise<boolean>;

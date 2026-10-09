@@ -34,7 +34,8 @@
 // iframe and sends a single-use token, which is all `source_id` ever is.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
-import { json, preflight } from '../_shared/http.ts';
+import { corsHeaders, json, preflight } from '../_shared/http.ts';
+import { requireRole, type Caller } from '../_shared/callers.ts';
 import {
   createPayment,
   isChargeableSource,
@@ -129,18 +130,25 @@ Deno.serve(async (req: Request) => {
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  // The buyer, for `order`. Identity only, never a role: a guest buyer gets an
+  // account too, so this says nothing about being staff.
   const signedIn = await authenticatedUser(createClient, req);
 
-  /** Staff gate, used by every action but `order`. */
-  const requireStaff = async (): Promise<Response | { id: string }> => {
-    if (!signedIn) return json({ error: 'Staff sign-in required' }, 401);
-    const { data: isStaff } = await admin.rpc('has_role', {
-      _user_id: signedIn.id,
-      _role: 'staff',
+  /** Staff gate, used by every action but `order`. Through requireRole, so an
+   *  admin who has not entered their authenticator code is refused here too. */
+  const requireStaff = (): Promise<Caller | Response> =>
+    requireRole(req, admin, 'staff', {
+      headers: corsHeaders,
+      unauthorized: 'Staff sign-in required',
+      forbidden: 'Staff access required',
     });
-    if (!isStaff) return json({ error: 'Staff access required' }, 403);
-    return { id: signedIn.id };
-  };
+
+  const requireAdmin = (): Promise<Caller | Response> =>
+    requireRole(req, admin, 'admin', {
+      headers: corsHeaders,
+      unauthorized: 'Sign-in required',
+      forbidden: 'Admin access required',
+    });
 
   /** The service-role client for a staff action, naming the verified caller to
    *  the audit trigger (_shared/audit.ts). Without it an activation, a void or
@@ -524,7 +532,7 @@ Deno.serve(async (req: Request) => {
       p_order_id: orderId,
       p_user_id: userId,
       p_pass_type_id: passTypeId,
-      p_activated_by: signedIn!.id,
+      p_activated_by: staff.id,
       p_payment_method: paymentMethod,
       p_price_paid: pricePaid,
       p_square_payment_id: squarePaymentId,
@@ -581,7 +589,7 @@ Deno.serve(async (req: Request) => {
     const { data: result, error } = await asActor(staff.id).rpc('admit_with_film_pass', {
       p_pass_code: passCode,
       p_showing_id: showingId,
-      p_scanned_by: signedIn!.id,
+      p_scanned_by: staff.id,
     });
 
     if (error) {
@@ -608,17 +616,13 @@ Deno.serve(async (req: Request) => {
   // No money is returned here — refunding a pass is a decision at the counter,
   // and pretending otherwise would credit a card this function never charged.
   if (action === 'void') {
-    if (!signedIn) return json({ error: 'Sign-in required' }, 401);
-    const { data: isAdmin } = await admin.rpc('has_role', {
-      _user_id: signedIn.id,
-      _role: 'admin',
-    });
-    if (!isAdmin) return json({ error: 'Admin access required' }, 403);
+    const adminCaller = await requireAdmin();
+    if (adminCaller instanceof Response) return adminCaller;
 
     const passId = String(body.pass_id ?? '').trim();
     if (!passId) return json({ error: 'Which pass?' }, 400);
 
-    const { data: updated, error } = await asActor(signedIn.id)
+    const { data: updated, error } = await asActor(adminCaller.id)
       .from('user_film_passes')
       .update({ status: 'void' })
       .eq('id', passId)
@@ -667,12 +671,8 @@ Deno.serve(async (req: Request) => {
   // — PostgREST reports a blocked delete as a success with no rows — and the
   // UI would cheerfully report that a pass still in the table was gone.
   if (action === 'delete') {
-    if (!signedIn) return json({ error: 'Sign-in required' }, 401);
-    const { data: isAdmin } = await admin.rpc('has_role', {
-      _user_id: signedIn.id,
-      _role: 'admin',
-    });
-    if (!isAdmin) return json({ error: 'Admin access required' }, 403);
+    const adminCaller = await requireAdmin();
+    if (adminCaller instanceof Response) return adminCaller;
 
     const passId = String(body.pass_id ?? '').trim();
     if (!passId) return json({ error: 'Which pass?' }, 400);
@@ -748,7 +748,7 @@ Deno.serve(async (req: Request) => {
     // entity_id plus the action names exactly one row, now and forever.
     const { error: stampErr } = await admin
       .from('admin_audit_log')
-      .update({ actor_id: signedIn.id, actor_email: signedIn.email })
+      .update({ actor_id: adminCaller.id, actor_email: adminCaller.email })
       .eq('entity_type', 'user_film_passes')
       .eq('entity_id', passId)
       .eq('action', 'user_film_passes.delete');

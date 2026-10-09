@@ -23,6 +23,10 @@ const mockAuth = {
   isHost: false,
   isSuperadmin: false,
   loading: false,
+  // RoleGate also reads where the session stands on two-step sign-in; these
+  // cases are all "nothing to ask". mfaGate.test.tsx covers the rest.
+  mfa: { currentLevel: 'aal1', nextLevel: 'aal1', verifiedFactors: [] },
+  mfaRequired: false,
   signOut: vi.fn(),
 };
 

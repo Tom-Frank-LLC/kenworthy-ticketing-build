@@ -17,7 +17,8 @@
 // sale, and never the money.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.0';
-import { json, preflight } from '../_shared/http.ts';
+import { corsHeaders, json, preflight } from '../_shared/http.ts';
+import { requireRole } from '../_shared/callers.ts';
 import {
   createCashPayment,
   loadSquareConfig,
@@ -44,19 +45,10 @@ Deno.serve(async (req: Request) => {
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) return json({ error: 'Missing Authorization' }, 401);
-  const { data: userRes } = await admin.auth.getUser(authHeader.replace('Bearer ', ''));
-  const user = userRes?.user;
-  if (!user) return json({ error: 'Unauthorized' }, 401);
-
-  // Whoever can sell at the counter can record the sale.
-  const roles = await Promise.all(
-    (['staff', 'admin', 'superadmin'] as const).map((r) =>
-      admin.rpc('has_role', { _user_id: user.id, _role: r }).then((x: any) => !!x.data)
-    ),
-  );
-  if (!roles.some(Boolean)) return json({ error: 'Staff only' }, 403);
+  // Whoever can sell at the counter can record the sale. The gate is
+  // hierarchical, so staff covers admin and superadmin.
+  const user = await requireRole(req, admin, 'staff', { headers: corsHeaders, forbidden: 'Staff only' });
+  if (user instanceof Response) return user;
 
   let body: Record<string, any>;
   try { body = await req.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }

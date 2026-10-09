@@ -1,7 +1,7 @@
 ---
 brief: admin-mfa
-title: Admin and superadmin accounts need an authenticator code, enforced on the server, not only asked for in the browser
-status: queued
+title: Everyone who signs in needs an authenticator code, enforced on the server, not only asked for in the browser
+status: in-progress
 track: security
 severity: P1
 date: 2026-10-07
@@ -144,6 +144,81 @@ After the password succeeds, call
   `RUNBOOK-admin-mfa.md`.
 - Recommend that Tom enrolls **two** authenticators, phone plus a password
   manager, so one loss isn't a lockout.
+
+## As built (2026-10-08)
+
+**Scope changed, 2026-10-08.** Tom: "let's not even gate it behind roles for
+now - everyone who wants to log in must authenticate." So the switch applies to
+**every signed-in session**: staff (16), hosts, admins and the superadmin. That
+supersedes decision 1 above and the "Staff later" note. Patrons don't sign in
+(member accounts are off), so the public site and checkout are untouched.
+
+Tom's addendum the same day also made this **Phase 1 of two**. Phase 2 adds
+passkeys as an extra factor, with the authenticator kept as the backup: see
+`BRIEF-admin-passkeys.md`. So everything below handles factors generically and
+tests the assurance level, never the factor type.
+
+How "everyone" is enforced in the database. `has_role` alone isn't enough: a
+survey of all 208 policies on staging found hosts and own-row grants that never
+call it. Migration `20261008233835` closes three routes:
+
+1. **`has_role`** answers false for any role when the caller asks about
+   themselves from a session that `session_ok()` rejects (switch on, not aal2).
+2. **`is_host_of` / `is_host_of_showing`** get the same guard. That covers host
+   policies and the attendee, check-in and order RPCs.
+3. **A RESTRICTIVE policy, "Signed-in sessions need their code"**, on the ten
+   tables with own-row grants: donations, dvd_rentals, film_pass_redemptions,
+   host_event_assignments, profiles, rental_invoice_lines, shift_requests,
+   staff_square_links, tickets, user_film_passes. Postgres ANDs a restrictive
+   policy with every permissive one, so no existing policy was rewritten. None
+   of these tables has a signed-in read that isn't own-row or role-based.
+
+Two deliberate exceptions: own `user_roles` rows stay readable, so the browser
+can route a password-only staff session to the code step rather than home. And
+admin_audit_log's INSERT already ANDs with `has_role`. The harness's last case
+is structural: it fails if any policy grants on `auth.uid()` by a route not
+covered here. A mutation test (dropping one restrictive policy) confirmed it
+names the exposed policy.
+
+**Cost, measured on staging** (an aal1 admin running `select count(*) from
+showings` over 1,796 rows through RLS, the worst case). The baseline was
+~33 ms. The first cut called `session_ok()` from `has_role` / `is_host_of`,
+and nested SECURITY DEFINER calls can't be inlined: ~475 ms. Follow-up
+`20261009003240` inlines the guard: ~54 ms, switch on or off. Anon is
+unchanged at ~1 ms. The remaining ~20 ms is the per-call claims parse and
+switch read. Removing it means wrapping policies as `(SELECT has_role(…))`, so
+the check runs once per statement. The harness now fails if the per-row
+functions call another of ours.
+
+Other choices that differ from the design above, and why:
+
+- **The rule lives in SQL only.** Edge functions call the service-role-only
+  `role_gate(user, role, aal)` → `'ok' | 'forbidden' | 'mfa_required'`, rather
+  than reading the switch themselves.
+- **The token's `aal` is read after GoTrue's `/auth/v1/user` accepts that exact
+  token**, not via `auth.getClaims()`. Eight functions pin supabase-js 2.45.0,
+  which has no `getClaims`. `/user` also checks the session still exists.
+- **The switch is `app_config.mfa_required`**, not `mfa_required_for_admins`,
+  since it isn't about admins any more.
+- **The sign-in audit row is written after the code.** Its INSERT policy goes
+  through `has_role`, so an aal1 row would be dropped.
+- **Browser:** `MfaGate` sits in front of every signed-in page: the role-gated
+  ones, plus `/host`, `/profile`, `/my-tickets` and `/my-passes`. It shows the
+  code step on a password-only session. Once the switch is on, it sends anyone
+  without a factor to `/account/security`. After sign-in, everyone without a
+  factor is nudged there, and may skip while the switch is off.
+- **Recovery:** `/superadmin` → *Two-step sign-in* lists every role holder's
+  factor count, stragglers first (also the rollout check), with Reset.
+  `admin-mfa-reset` requires aal2 for a reset even with the switch off.
+- **Unenrolling the last factor** is blocked in the page while the server
+  requires one.
+
+Tests: `supabase/tests/admin_mfa/run.sh` covers 57 cases: staff, host, admin,
+superadmin and patron at aal1 and aal2, switch off and on, own-row reads, host
+edits, the gate, grants, and the structural guard. Also deno tests for
+`requireRole` and per-function `mfa_required` refusals, and vitest
+`src/components/mfaGate.test.tsx` and `src/lib/mfa.test.ts`. Operations:
+`docs/RUNBOOK-admin-mfa.md`.
 
 ## Rollout
 

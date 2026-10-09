@@ -24,6 +24,7 @@
 //                     publish = POST /publish or /bulk-publish, not draft:false
 
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { requireRole, roleGate } from "../_shared/callers.ts";
 import {
   loadSquareConfig,
   squareErrorMessage,
@@ -171,12 +172,17 @@ Deno.serve(async (req) => {
     { global: { headers: { Authorization: authHeader } } },
   );
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) return json({ error: "Unauthorized" }, 401);
-
-  const { data: hasAdmin } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
-  const { data: hasStaff } = await supabase.rpc("has_role", { _user_id: user.id, _role: "staff" });
-  if (!hasAdmin && !hasStaff) return json({ error: "Staff access required" }, 403);
+  // The role gate is service_role only, so it gets its own client; `supabase`
+  // stays the caller's, for the reads and writes RLS should judge. Staff is
+  // the floor and covers admin; admin is then a plain role test, the MFA check
+  // having already run.
+  const gateClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const user = await requireRole(req, gateClient, "staff", {
+    headers: corsHeaders,
+    forbidden: "Staff access required",
+  });
+  if (user instanceof Response) return user;
+  const hasAdmin = (await roleGate(gateClient, user, "admin")) === "ok";
 
   try {
     const body = await req.json().catch(() => ({}));

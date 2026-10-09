@@ -82,11 +82,12 @@ export function isServiceRoleCaller(req: Request): boolean {
 /**
  * Read a JWT's payload WITHOUT checking its signature.
  *
- * Only ever used as a cheap filter in `verifyServiceRoleCaller`, to decide
- * whether a token is worth asking auth about. Nothing may be granted on what
- * this returns.
+ * Used as a cheap filter (`verifyServiceRoleCaller`: is this token worth
+ * asking auth about?), and by `verifiedCaller` to read `aal` only after auth
+ * has accepted the very same token. Nothing may be granted on what this
+ * returns by itself.
  */
-function unverifiedJwtPayload(token: string): { role?: string } | null {
+function unverifiedJwtPayload(token: string): { role?: string; sub?: string; aal?: string } | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   try {
@@ -185,4 +186,165 @@ export async function callerHasRole(
   const { data, error } = await admin.rpc('has_role', { _user_id: userId, _role: role });
   if (error) return null;
   return data === true;
+}
+
+// ---------------------------------------------------------------------------
+// requireRole: the one gate for every role-checking function (security audit
+// 2026-10-06, M9; docs/briefs/BRIEF-admin-mfa.md).
+//
+// Why the functions need their own MFA check. They ask `has_role` through a
+// service-role client, where `auth.uid()` is NULL, so the database cannot see
+// the caller's session or its assurance level, and the check inside has_role
+// never fires for them. So the function resolves the caller and their `aal`
+// itself, and hands both to `role_gate`, which applies the database's own rule
+// (the switch and aal2 for every role holder). The rule lives in SQL only;
+// nothing about it is re-implemented here.
+// ---------------------------------------------------------------------------
+
+export type Role = 'staff' | 'admin' | 'superadmin' | 'host';
+
+/** A signed-in caller whose token auth has verified. */
+export interface Caller {
+  id: string;
+  email: string | null;
+  /** The session's assurance level: `aal2` once a second factor was used. */
+  aal: 'aal1' | 'aal2';
+}
+
+/**
+ * The signed-in user behind this request, with the session's assurance level,
+ * or null.
+ *
+ * The token goes to auth's `/user` endpoint, which checks the signature, the
+ * expiry and that the session still exists. Only once auth has accepted that
+ * exact token is its payload read for `aal`. The bytes are the ones auth
+ * verified, so the claim is as trustworthy as the user it returned. Reading the
+ * claim without that check would let a hand-written token say `aal2`, and
+ * `qbo-sync` runs with `verify_jwt = false`, so the gateway would not catch it.
+ *
+ * Built on fetch, not supabase-js: eight functions still pin 2.45.0, which has
+ * no `getClaims`, and one implementation is what keeps "every function gates
+ * itself" true in one place.
+ *
+ * Null for the anon key (auth refuses it as a user token), a service key, an
+ * expired or signed-out token, or auth being unreachable. Fails closed.
+ */
+export async function verifiedCaller(
+  req: Request,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Caller | null> {
+  const bearer = bearerOf(req);
+  if (!bearer) return null;
+  const claims = unverifiedJwtPayload(bearer);
+  // Not a JWT at all (the anon key, an sb_secret_ key): not a user.
+  if (!claims?.sub) return null;
+
+  const base = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '');
+  const anonKey = (Deno.env.get('SUPABASE_ANON_KEY') ?? '').trim();
+  if (!base || !anonKey) return null;
+
+  try {
+    const res = await fetchImpl(`${base}/auth/v1/user`, {
+      method: 'GET',
+      headers: { apikey: anonKey, Authorization: `Bearer ${bearer}` },
+    });
+    if (!res.ok) return null;
+    const user = await res.json().catch(() => null);
+    // Auth vouched for this user, by this token. The two must agree.
+    if (!user?.id || user.id !== claims.sub) return null;
+    return {
+      id: user.id,
+      email: user.email ?? null,
+      aal: claims.aal === 'aal2' ? 'aal2' : 'aal1',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type GateOutcome = 'ok' | 'forbidden' | 'mfa_required';
+
+/**
+ * Whether `caller` may act as `role`, as the database decides it: the role
+ * itself (hierarchical, like has_role), and then, when the MFA switch is on, an
+ * aal2 session.
+ *
+ * `admin` must be a service-role client: `role_gate` is executable by
+ * service_role only. Returns null when the lookup itself failed, so the caller
+ * can answer with a retryable error rather than silently demoting someone.
+ */
+export async function roleGate(
+  admin: any,
+  caller: Caller,
+  role: Role,
+): Promise<GateOutcome | null> {
+  const { data, error } = await admin.rpc('role_gate', {
+    _user_id: caller.id,
+    _role: role,
+    _aal: caller.aal,
+  });
+  if (error) return null;
+  return data === 'ok' || data === 'forbidden' || data === 'mfa_required' ? data : null;
+}
+
+/** What the browser shows when an edge function wants the code first. */
+export const MFA_REQUIRED_MESSAGE = 'Enter your authenticator code to continue';
+
+/**
+ * The refusal for an `mfa_required` gate. `code` lets the client show the code
+ * step instead of a dead end; `error` is what every existing toast reads.
+ */
+export function mfaRequiredResponse(headers: HeadersInit = {}): Response {
+  return new Response(
+    JSON.stringify({ error: MFA_REQUIRED_MESSAGE, code: 'mfa_required' }),
+    { status: 403, headers: { ...headers, 'Content-Type': 'application/json' } },
+  );
+}
+
+/**
+ * Resolve the caller and require `role`, or return the Response to send.
+ *
+ *   no verified user          401 { error: opts.unauthorized ?? 'Unauthorized' }
+ *   role not held             403 { error: opts.forbidden ?? 'Forbidden' }
+ *   needs an authenticator    403 { error: MFA_REQUIRED_MESSAGE, code: 'mfa_required' }
+ *   the lookup failed         503 { error: ... }    (retryable, not a demotion)
+ *
+ * Usage:
+ *   const gate = await requireRole(req, admin, 'admin', { headers: corsHeaders });
+ *   if (gate instanceof Response) return gate;
+ *   // gate.id, gate.email
+ *
+ * `unauthorized` and `forbidden` keep a function's existing wording, which its
+ * page may already show as a toast.
+ *
+ * A caller that also needs to know whether this person holds a higher role
+ * (staff here, admin for refunds) asks `roleGate(admin, gate, 'admin')`
+ * afterwards. The MFA check has already passed, so it is the plain role test.
+ */
+export async function requireRole(
+  req: Request,
+  admin: any,
+  role: Role,
+  opts: {
+    headers?: HeadersInit;
+    unauthorized?: string;
+    forbidden?: string;
+    fetchImpl?: typeof fetch;
+  } = {},
+): Promise<Caller | Response> {
+  const headers = opts.headers ?? {};
+  const json = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+    });
+
+  const caller = await verifiedCaller(req, opts.fetchImpl);
+  if (!caller) return json(401, { error: opts.unauthorized ?? 'Unauthorized' });
+
+  const gate = await roleGate(admin, caller, role);
+  if (gate === null) return json(503, { error: 'Could not check your access. Please try again.' });
+  if (gate === 'forbidden') return json(403, { error: opts.forbidden ?? 'Forbidden' });
+  if (gate === 'mfa_required') return mfaRequiredResponse(headers);
+  return caller;
 }

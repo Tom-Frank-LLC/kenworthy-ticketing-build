@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { SIGN_OUT_FAILED } from '@/lib/signOutDevice';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Ticket, LogOut, Shield, ShieldCheck, User, CreditCard, Home, MapPin, Mail, Phone, Heart, Building2, ChevronDown, Store } from 'lucide-react';
+import { Ticket, LogOut, Shield, ShieldCheck, User, CreditCard, Home, MapPin, Mail, Phone, Heart, Building2, ChevronDown, Store, KeyRound } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -81,6 +81,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
     if (isAdmin) accountLinks.push(['Dashboard', '/admin', Shield]);
     if (isSuperadmin) accountLinks.push(['Superadmin', '/superadmin', ShieldCheck]);
     if (isHost && !isAdmin) accountLinks.push(['Host Dashboard', '/host', Home]);
+    // Where an account sets up its authenticator app (BRIEF-admin-mfa).
+    if (isStaff || isHost) accountLinks.push(['Sign-in security', '/account/security', KeyRound]);
   }
 
   const handleSignOut = async () => {

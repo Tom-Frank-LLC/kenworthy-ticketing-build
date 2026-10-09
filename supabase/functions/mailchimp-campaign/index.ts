@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
-import { callerHasRole } from "../_shared/callers.ts";
+import { requireRole } from "../_shared/callers.ts";
 import { brand, emailLockup, sans, VENUE_NAME, VENUE_SHORT, BOX_OFFICE_ADDRESS } from "../_shared/brand.ts";
 import { logAudit } from "../_shared/audit.ts";
 import { htmlToPlainText } from "../_shared/html_text.ts";
@@ -45,22 +45,13 @@ Deno.serve(async (req) => {
   if (!apiKey || !server || !audienceId) return json({ error: "Mailchimp not configured" }, 500);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-  const authHeader = req.headers.get("Authorization") || "";
-  if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
-  if (userErr || !userData?.user) return json({ error: "Unauthorized" }, 401);
   const admin = createClient(supabaseUrl, serviceKey);
-  // has_role is hierarchical, so a superadmin passes; an exact
+  // The gate is hierarchical, so a superadmin passes; an exact
   // user_roles.role = 'admin' match refused one (audit 2026-10-06, L4).
-  const isAdmin = await callerHasRole(admin, userData.user.id, "admin");
-  if (isAdmin === null) return json({ error: "Could not check your role. Try again." }, 503);
-  if (!isAdmin) return json({ error: "Admin only" }, 403);
+  const caller = await requireRole(req, admin, "admin", { headers: corsHeaders, forbidden: "Admin only" });
+  if (caller instanceof Response) return caller;
 
   let body: any = {};
   try { body = await req.json(); } catch { return json({ error: "Bad JSON" }, 400); }
@@ -147,8 +138,8 @@ Deno.serve(async (req) => {
     action: "mailchimp.campaign_created",
     entityType: "showings",
     entityId: showingId,
-    actorId: userData.user.id,
-    actorEmail: userData.user.email ?? null,
+    actorId: caller.id,
+    actorEmail: caller.email ?? null,
     details: { campaign_id: created.id, web_id: created.web_id, title },
   });
 

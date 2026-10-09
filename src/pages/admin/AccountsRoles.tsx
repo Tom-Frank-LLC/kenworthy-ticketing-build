@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { Shield, ShieldCheck } from 'lucide-react';
 import { SEO } from '@/components/SEO';
 import { AccountRolesManager } from '@/components/admin/AccountRolesManager';
+import { StaffMfaPanel } from '@/components/admin/StaffMfaPanel';
 
 /**
  * The /superadmin page: a heading around `AccountRolesManager`.
@@ -50,6 +51,9 @@ export default function AccountsRoles() {
         </header>
 
         <AccountRolesManager />
+
+        {/* Superadmin only: the function behind it refuses anyone else. */}
+        {isSuperadmin && <StaffMfaPanel />}
       </div>
     </>
   );

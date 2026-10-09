@@ -23,6 +23,7 @@ Disallow: /staff
 Disallow: /host
 Disallow: /auth
 Disallow: /profile
+Disallow: /account/
 Disallow: /my-tickets
 Disallow: /my-passes
 Disallow: /reset-password
