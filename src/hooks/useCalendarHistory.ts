@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { format, subMonths } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import type { FeedItem } from '@/components/home/TrailerFeed';
-import { venueLocalToInstant } from '@/lib/datetime';
+import { venueDayBounds, venueDayKey, venueLocalToInstant } from '@/lib/datetime';
 import { isPast } from '@/lib/purchasable';
 import { FEED_STALE_MS, SHOWING_WITH_PRODUCTION, embeddedProduction, showingToFeedItem } from './useFeed';
 
@@ -14,11 +14,14 @@ import { FEED_STALE_MS, SHOWING_WITH_PRODUCTION, embeddedProduction, showingToFe
  * home page, the carousel and the showing pages depend on that. History is a
  * separate fetch with its own cache key so none of them change.
  *
+ * **Twelve months back, no further** (Tom, 2026-10-10). The archive runs to
+ * June 2021, but the calendar shows the last year: `HISTORY_MONTHS` before
+ * today, from the venue's midnight on this date last year.
+ *
  * Loaded **one month at a time, when the reader pages to it**, plus the month
- * before as a prefetch. The archive runs back to June 2021 at roughly 35
- * showings a month (about 1,800 in all, measured on production 2026-10-09), so
- * loading it all up front would cost every calendar visit a large download to
- * show the few readers who page back. A month is one small query.
+ * before as a prefetch. At roughly 35 showings a month, loading the year up
+ * front would cost every calendar visit a download to show the few readers
+ * who page back. A month is one small query.
  *
  * Two rules of the data shape this relies on:
  *
@@ -43,6 +46,18 @@ export const monthKey = (month: Date): MonthKey => format(month, 'yyyy-MM');
 
 const HISTORY_QUERY_KEY = 'calendar-history';
 
+/** How far back the calendar shows. */
+export const HISTORY_MONTHS = 12;
+
+/**
+ * The first instant the calendar shows history for: the venue's midnight on
+ * this date `HISTORY_MONTHS` ago. The grid's back arrow stops at this
+ * instant's month; days of that month before it stay empty.
+ */
+export function historyCutoff(now: Date = new Date()): Date {
+  return venueDayBounds(subMonths(now, HISTORY_MONTHS)).start;
+}
+
 /** The venue's midnight on the 1st of `key`'s month, as an instant. */
 function monthStartInstant(key: MonthKey): Date {
   return venueLocalToInstant(`${key}-01T00:00`);
@@ -53,10 +68,12 @@ function monthStartInstant(key: MonthKey): Date {
  * feed items. Exported for the tests.
  */
 export async function fetchHistoryMonth(key: MonthKey, now: number = Date.now()): Promise<FeedItem[]> {
-  const from = monthStartInstant(key);
+  const cutoff = historyCutoff(new Date(now));
+  const monthStart = monthStartInstant(key);
+  const from = monthStart < cutoff ? cutoff : monthStart;
   const [y, m] = key.split('-').map(Number);
   const next = monthStartInstant(monthKey(new Date(y, m, 1)));
-  if (from.getTime() >= now) return [];
+  if (from.getTime() >= now || next <= cutoff) return [];
   const until = new Date(Math.min(next.getTime(), now)).toISOString();
 
   const { data, error } = await supabase
@@ -78,29 +95,18 @@ export async function fetchHistoryMonth(key: MonthKey, now: number = Date.now())
   return items;
 }
 
-/** The first showing on record: how far back the arrows may go. */
-async function fetchEarliestShowing(): Promise<Date | null> {
-  const { data, error } = await supabase
-    .from('showings')
-    .select('start_time')
-    .lt('start_time', new Date().toISOString())
-    .order('start_time')
-    .limit(1);
-  if (error) throw error;
-  const first = (data as any[] | null)?.[0]?.start_time;
-  return first ? new Date(first) : null;
-}
-
 /**
  * The months worth asking for, given the months on screen: those, the one
- * before the earliest (so paging back one month is already loaded), and
- * nothing after the current month, which cannot hold anything that has ended.
+ * before the earliest (so paging back one month is already loaded), nothing
+ * before the cutoff's month, and nothing after the current month, which
+ * cannot hold anything that has ended.
  */
 export function historyMonthsFor(visible: Date[], now: Date = new Date()): MonthKey[] {
   if (visible.length === 0) return [];
   const current = monthKey(now);
+  const first = monthKey(subMonths(now, HISTORY_MONTHS));
   const wanted = [subMonths(visible[0], 1), ...visible].map(monthKey);
-  return [...new Set(wanted)].filter((k) => k <= current).sort();
+  return [...new Set(wanted)].filter((k) => k >= first && k <= current).sort();
 }
 
 const EMPTY: FeedItem[] = [];
@@ -108,6 +114,11 @@ const EMPTY: FeedItem[] = [];
 export function useCalendarHistory(visibleMonths: Date[]) {
   const wanted = useMemo(() => historyMonthsFor(visibleMonths), [visibleMonths]);
   const current = monthKey(new Date());
+  // Moves once a day; a fresh Date every render would move the grid's floor
+  // every render.
+  const today = venueDayKey(new Date());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const from = useMemo(() => historyCutoff(), [today]);
 
   // Every month asked for this visit, not just the ones on screen now. The
   // cache holds them anyway, and the grid needs the set of populated days to
@@ -119,12 +130,6 @@ export function useCalendarHistory(visibleMonths: Date[]) {
   useEffect(() => {
     if (keys.length !== seen.length) setSeen(keys);
   }, [keys, seen.length]);
-
-  const earliest = useQuery({
-    queryKey: [HISTORY_QUERY_KEY, 'earliest'],
-    queryFn: fetchEarliestShowing,
-    staleTime: Infinity,
-  });
 
   const months = useQueries({
     queries: keys.map((key) => ({
@@ -151,7 +156,8 @@ export function useCalendarHistory(visibleMonths: Date[]) {
 
   return {
     items,
-    earliest: earliest.data ?? null,
+    /** Where the grid's back arrow stops. */
+    from,
     loading: onScreen.some((q) => q.isPending),
     failed: onScreen.some((q) => q.isError),
   };

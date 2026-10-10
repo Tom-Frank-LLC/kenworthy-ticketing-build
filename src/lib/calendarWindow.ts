@@ -67,9 +67,9 @@ export function calendarStart(itemDayKeys: Iterable<string>, now: Date = new Dat
 /**
  * The earliest month the reader may page back to.
  *
- * The month of `calendarStart`, or of the earliest showing on record when the
- * caller knows one (`history`): the grid pages back as far as there is
- * something to see, and no further.
+ * The month of `calendarStart`, or of where the caller's history starts
+ * (`history`, twelve months back on /calendar): the grid pages back as far as
+ * there is something to show, and no further.
  */
 export function monthFloor(today: Date, history?: Date | null): Date {
   const floor = startOfMonth(today);

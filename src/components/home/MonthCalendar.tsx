@@ -146,9 +146,9 @@ export function MonthCalendar({
   onSelect?: (item: FeedItem) => void;
   showHint?: boolean;
   /**
-   * The first showing on record, when the caller loads history (/calendar
-   * does, through `useCalendarHistory`; the home page does not). The back
-   * arrow reaches its month instead of stopping at this one.
+   * How far back history goes, when the caller loads it (/calendar does,
+   * through `useCalendarHistory`, twelve months; the home page does not). The
+   * back arrow reaches its month instead of stopping at this one.
    */
   historyFrom?: Date | null;
   /** History for a month on screen is still on its way. */
@@ -193,7 +193,7 @@ export function MonthCalendar({
     [byDay],
   );
   const start = useMemo(() => calendarStart(liveDayKeys), [liveDayKeys]);
-  // The arrows go back as far as the record does when the caller loads
+  // The arrows go back as far as history does when the caller loads
   // history, and otherwise stop at the month of `start`: without history,
   // nothing earlier holds anything.
   const floor = useMemo(() => monthFloor(start, historyFrom), [start, historyFrom]);

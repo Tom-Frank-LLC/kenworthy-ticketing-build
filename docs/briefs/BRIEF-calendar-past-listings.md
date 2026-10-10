@@ -1,12 +1,12 @@
 ---
 brief: calendar-past-listings
-title: The /calendar month grid pages back through every past showing, read-only
+title: The /calendar month grid pages back through the last twelve months of showings, read-only
 status: built
 track: feature
 severity: P2
 date: 2026-10-09
 verified: false
-evidence: src/hooks/useCalendarHistory.ts; checked on staging data 2026-10-09 (opens on this week, pages back to July 2026 archive rows, axe 0 violations in both states, home page makes no history request)
+evidence: src/hooks/useCalendarHistory.ts; checked on staging data 2026-10-09/10 (opens on this week, back arrow stops at the 12-month cutoff month, axe 0 violations, home page makes no history request)
 ---
 
 # Brief: Show all past listings on the calendar
@@ -16,13 +16,21 @@ not just current and future ones, without slowing page load.
 
 ## What was decided
 
+**History is capped at twelve months** (Tom, 10 Oct 2026, after the first
+build paged back to June 2021). The cutoff is a rolling instant, the venue's
+midnight on this date a year ago (`historyCutoff`, `HISTORY_MONTHS = 12`). The
+back arrow stops at that month, and its days before the cutoff stay empty. On
+10 Oct 2026 the grid reaches October 2025, showing the 10th onward. No query
+asks for anything earlier. That replaces the "first showing on record" lookup,
+which is gone. To change the window, change `HISTORY_MONTHS`.
+
 Tom said "execute this" on a brief that offered four decisions, so its
 recommendations were taken:
 
 1. **Load strategy: per-month lazy load.** Each month's history is fetched when
    the reader pages to it, with the month before prefetched. Nothing extra
    loads up front beyond the current and previous month's ended showings (one
-   small query each) and one `limit 1` query for the first showing on record.
+   small query each).
 2. (Bounded window: not applicable.)
 3. **Month grid only.** The List view stays an upcoming planner. The shared
    feed (`useFeed`) and `fetchSiblingShowings` still use the −12h grace window,

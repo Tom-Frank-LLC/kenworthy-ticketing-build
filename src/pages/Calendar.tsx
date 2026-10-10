@@ -26,8 +26,8 @@ export default function CalendarPage() {
   // What already played, for the month grid only. The List stays a forward
   // "what's on" planner, and the shared feed — which the home page and the
   // showing pages also read — stays upcoming-only. Loaded a month at a time as
-  // the reader pages (see useCalendarHistory). Search covers the months loaded
-  // so far, not the whole archive.
+  // the reader pages, twelve months back at most (see useCalendarHistory).
+  // Search covers the months loaded so far, not the whole year.
   const [monthsInView, setMonthsInView] = useState<Date[]>([]);
   const history = useCalendarHistory(monthsInView);
   const monthItems = useMemo(() => {
@@ -135,7 +135,7 @@ export default function CalendarPage() {
           <MonthCalendar
             items={monthItems}
             onSelect={handleSelect}
-            historyFrom={history.earliest}
+            historyFrom={history.from}
             historyLoading={history.loading}
             historyFailed={history.failed}
             onMonthsInView={setMonthsInView}

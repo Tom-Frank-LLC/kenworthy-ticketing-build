@@ -40,7 +40,7 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-const { fetchHistoryMonth, historyMonthsFor } = await import('./useCalendarHistory');
+const { fetchHistoryMonth, historyCutoff, historyMonthsFor } = await import('./useCalendarHistory');
 
 const NOW = new Date('2026-10-09T20:00:00Z').getTime(); // 1 PM at the venue
 
@@ -95,6 +95,19 @@ describe('fetchHistoryMonth', () => {
     expect(await fetchHistoryMonth('2026-10', NOW)).toEqual([]);
   });
 
+  it('starts the cutoff month at the cutoff, not at the 1st', async () => {
+    await fetchHistoryMonth('2025-10', NOW);
+    const gte = calls.find((c) => c.table === 'showings' && c.op === 'gte');
+    // Midnight Oct 9 2025 Pacific: twelve months before NOW, to the day.
+    expect(gte?.args).toEqual(['start_time', '2025-10-09T07:00:00.000Z']);
+  });
+
+  it('asks nothing of a month entirely more than twelve months back', async () => {
+    expect(await fetchHistoryMonth('2025-09', NOW)).toEqual([]);
+    expect(await fetchHistoryMonth('2021-06', NOW)).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
   it('asks nothing of a month that has not started', async () => {
     expect(await fetchHistoryMonth('2026-11', NOW)).toEqual([]);
     expect(calls).toEqual([]);
@@ -113,10 +126,28 @@ describe('historyMonthsFor', () => {
   });
 
   it('prefetches across a year boundary', () => {
-    expect(historyMonthsFor([new Date(2025, 0, 1)], now)).toEqual(['2024-12', '2025-01']);
+    const jan = new Date(2027, 0, 20);
+    expect(historyMonthsFor([new Date(2027, 0, 1)], jan)).toEqual(['2026-12', '2027-01']);
+  });
+
+  it('never asks for a month before the twelve-month cutoff', () => {
+    // On the floor month, the prefetch would be the month before it.
+    expect(historyMonthsFor([new Date(2025, 9, 1)], now)).toEqual(['2025-10']);
   });
 
   it('asks for nothing before the grid reports what it shows', () => {
     expect(historyMonthsFor([], now)).toEqual([]);
+  });
+});
+
+describe('historyCutoff', () => {
+  it("is the venue's midnight on this date twelve months ago", () => {
+    expect(historyCutoff(new Date(NOW)).toISOString()).toBe('2025-10-09T07:00:00.000Z');
+  });
+
+  it('is computed on the venue day, not the viewer day', () => {
+    // 11:30 PM Oct 9 at the venue is already Oct 10 in UTC.
+    const lateEvening = new Date('2026-10-10T06:30:00Z');
+    expect(historyCutoff(lateEvening).toISOString()).toBe('2025-10-09T07:00:00.000Z');
   });
 });
