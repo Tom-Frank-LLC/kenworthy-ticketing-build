@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**133 briefs** — 117 shipped, 9 built, 7 open, 0 needs triage, 0 closed.
+**133 briefs** — 118 shipped, 8 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -19,7 +19,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
-- **The blank rental contract is a fillable worksheet that downloads whatever has been typed, with empty fields as ruled lines**<br>`feature` — [brief](briefs/BRIEF-fillable-blank-contract.md)
 
 ## Open
 
@@ -33,6 +32,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The blank rental contract is a fillable worksheet that downloads whatever has been typed, with empty fields as ruled lines**<br>`feature` — `#375` — [brief](briefs/BRIEF-fillable-blank-contract.md)
 - **A blank printable contract, a point person on each rental request, and Print that produces the same PDF as Download**<br>`feature` — `#373` — [brief](briefs/BRIEF-contract-blank-assignee-print.md)
 - **Donors and film-pass buyers are asked about the newsletter, and nobody is subscribed without saying yes**<br>`feature` — `#369`, `e1d03aa` — [brief](briefs/BRIEF-newsletter-opt-in-everywhere.md)
 - **Rental contract PDFs render filled-in values cleanly, with no strikethrough and no displaced values**<br>`bug` — `#372` — [brief](briefs/BRIEF-rental-contract-pdf-fill.md) · [notes](briefs/../FINDINGS-contract-pdf-html2canvas.md)

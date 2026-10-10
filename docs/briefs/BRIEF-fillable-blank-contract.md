@@ -1,10 +1,12 @@
 ---
 brief: fillable-blank-contract
 title: The blank rental contract is a fillable worksheet that downloads whatever has been typed, with empty fields as ruled lines
-status: built
+status: shipped
 track: feature
 date: 2026-10-09
-verified: false
+shipped_in: ["#375"]
+shipped_at: 2026-10-09
+verified: true
 ---
 
 # Brief: Make the blank rental contract a fillable form
@@ -32,6 +34,12 @@ Builds on the blank contract from #373 (`/contract/blank`).
 - The alcohol addendum defaults to undecided, which carries both addenda as
   before. Choosing one carries only that one.
 - Save and Sign remain request-only. Request-backed contracts are unchanged.
+- Download PDF and Print / Save PDF also sit beside Clear form, and again below
+  the contract for admins as well as renters. That bottom pair moved off the
+  white sheet onto the page, because the outline button on the paper was
+  dark-on-dark.
+- Ruled blanks are capped at the column (`max-w-full`), so a phone no longer
+  scrolls sideways. The PDF is unchanged (compared page by page).
 - The editor shows for anyone who opens `/contract/blank`, not only admins. The
   route was already public, and nothing is stored server-side.
 
