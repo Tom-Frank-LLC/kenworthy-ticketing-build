@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, Printer, Save, ShieldCheck, BadgeCheck } from 'lucide-react';
+import { Download, Printer, Save, ShieldCheck, BadgeCheck, Eraser } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { formatClockTime, formatPlainDate } from '@/lib/datetime';
@@ -42,12 +42,72 @@ const DEFAULTS: ContractData = {
 };
 
 /**
+ * What a staffer has typed into the blank contract. Strings throughout, numbers
+ * included: an empty field must stay empty and print as a ruled line, where a
+ * number would fall back to 0 and print "$0.00" for someone to cross out.
+ * `alcohol_addendum` empty means undecided, and the form carries both addenda.
+ */
+export type BlankFields = {
+  name: string;
+  organization: string;
+  email: string;
+  phone: string;
+  agreement_date: string;
+  event_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  purpose: string;
+  max_attendees: string;
+  hourly_rate: string;
+  base_hours: string;
+  additional_hours_rate: string;
+  additional_hours: string;
+  staff_rate: string;
+  staff_hours: string;
+  concessions_fee: string;
+  av_fee: string;
+  alcohol_addendum: '' | 'served' | 'not_served';
+};
+
+export const EMPTY_BLANK: BlankFields = {
+  name: '', organization: '', email: '', phone: '',
+  agreement_date: '', event_date: '', end_date: '', start_time: '', end_time: '',
+  purpose: '', max_attendees: '',
+  hourly_rate: '', base_hours: '', additional_hours_rate: '', additional_hours: '',
+  staff_rate: '', staff_hours: '', concessions_fee: '', av_fee: '',
+  alcohol_addendum: '',
+};
+
+// sessionStorage, not localStorage: the draft survives a refresh, which is what
+// a long fill needs, and is gone when the tab closes. The page is public and
+// the box office machines are shared; a renter's name and phone number should
+// not wait there for the next person to open /contract/blank.
+export const BLANK_DRAFT_KEY = 'kenworthy.blankContract.v1';
+
+function loadBlankDraft(): BlankFields {
+  try {
+    const raw = window.sessionStorage.getItem(BLANK_DRAFT_KEY);
+    if (!raw) return EMPTY_BLANK;
+    const saved = JSON.parse(raw);
+    const out = { ...EMPTY_BLANK };
+    for (const k of Object.keys(EMPTY_BLANK) as (keyof BlankFields)[]) {
+      if (typeof saved?.[k] === 'string') (out as Record<string, string>)[k] = saved[k];
+    }
+    return out;
+  } catch {
+    return EMPTY_BLANK;
+  }
+}
+
+/**
  * The rental licence agreement, at /contract/:token for one request.
  *
- * `blank` (at /contract/blank) is the same document with every fill-in left as
- * a ruled line, for the rare rental that is done on paper. It loads no request
- * and has nothing to save or sign; only the merge fields differ, so a blank
- * form and a real contract can never drift apart in their clauses.
+ * `blank` (at /contract/blank) is the same document as a worksheet: no request
+ * is loaded, an editor above it takes whatever the staffer knows, and every
+ * field left empty prints as a ruled line to write on. It has nothing to save
+ * or sign; only the merge fields differ, so a blank form and a real contract
+ * can never drift apart in their clauses.
  */
 export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const { token } = useParams();
@@ -58,6 +118,20 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [signing, setSigning] = useState(false);
+  const [fields, setFields] = useState<BlankFields>(() => (blank ? loadBlankDraft() : EMPTY_BLANK));
+
+  useEffect(() => {
+    if (!blank) return;
+    try {
+      if (Object.values(fields).some(Boolean)) {
+        window.sessionStorage.setItem(BLANK_DRAFT_KEY, JSON.stringify(fields));
+      } else {
+        window.sessionStorage.removeItem(BLANK_DRAFT_KEY);
+      }
+    } catch {
+      // Storage blocked: the form still works, it just won't survive a refresh.
+    }
+  }, [blank, fields]);
 
   useEffect(() => {
     (async () => {
@@ -73,6 +147,8 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
       setLoading(false);
     })();
   }, [token, blank]);
+
+  const blankTotals = useMemo(() => blankCosts(fields), [fields]);
 
   const totals = useMemo(() => {
     const base = (data.hourly_rate || 0) * (data.base_hours || 0);
@@ -95,8 +171,9 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
     else toast.success('Contract saved');
   }
 
+  const blankLicensee = (fields.name.trim() || fields.organization.trim());
   const filename = blank
-    ? 'Kenworthy-Contract-BLANK.pdf'
+    ? `Kenworthy-Contract-${slug(blankLicensee) || 'BLANK'}.pdf`
     : `Kenworthy-Contract-${(request?.event_title || 'rental').replace(/[^a-z0-9]+/gi, '-')}.pdf`;
 
   async function exportPdf() {
@@ -211,32 +288,36 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   if (loading) return <div className="container py-16 text-center text-muted-foreground">Loading…</div>;
   if (!request && !blank) return <div className="container py-16 text-center text-muted-foreground">Contract not found.</div>;
 
-  // A blank form leaves every merge field empty — not today's date, not
-  // `__________`, not $0.00 — and Fill draws a ruled line in its place.
+  // A blank form leaves every merge field it was not given empty — not today's
+  // date, not `__________`, not $0.00 — and Fill draws a ruled line in its place.
   // `agreement_date` and `proposed_date` are calendar days, not instants:
   // `new Date('2026-08-14')` is UTC midnight and prints as the 13th here, on
   // the document a renter signs. formatPlainDate reads the day as written.
+  const b = trimmed(fields);
   const agreementDate = blank
-    ? ''
+    ? formatPlainDate(b.agreement_date)
     : data.agreement_date
       ? formatPlainDate(data.agreement_date)
       : format(new Date(request.created_at), 'MMMM d, yyyy');
   const eventDate = blank
-    ? ''
-    : request.proposed_date
-      ? request.end_date
-        ? `${formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')} through ${formatPlainDate(request.end_date, 'EEEE MMMM do, yyyy')}`
-        : formatPlainDate(request.proposed_date, 'EEEE MMMM do, yyyy')
-      : '__________';
+    ? eventDays(b.event_date, b.end_date === b.event_date ? '' : b.end_date)
+    : eventDays(request.proposed_date, request.end_date) || '__________';
   const timeRange = blank
     ? ''
     : [formatClockTime(request.event_start_time), formatClockTime(request.event_end_time)].filter(Boolean).join('–') ||
       '__________';
-  const licensee = blank ? '' : request.applicant_name || request.organization_name || '__________';
-  const contact = blank ? '' : [request.applicant_name, request.email].filter(Boolean).join(', ');
-  const purpose = blank ? '' : request.event_description || request.event_title || '__________';
+  const licensee = blank ? blankLicensee : request.applicant_name || request.organization_name || '__________';
+  const contact = blank
+    ? [b.name, b.organization, b.email, b.phone].filter(Boolean).join(', ')
+    : [request.applicant_name, request.email].filter(Boolean).join(', ');
+  const purpose = blank ? b.purpose : request.event_description || request.event_title || '__________';
   const alcoholYes = data.alcohol_addendum === 'served' || request?.wants_beer_wine;
-  const money = (v: number) => (blank ? '' : `$${v.toFixed(2)}`);
+  // Undecided, the blank form carries both addenda for the writer to choose.
+  const showAlcohol = blank ? fields.alcohol_addendum !== 'not_served' : alcoholYes;
+  const showNoAlcohol = blank ? fields.alcohol_addendum !== 'served' : !alcoholYes;
+  const money = (v: number | undefined) => (v === undefined ? '' : `$${v.toFixed(2)}`);
+  const subtotal = blank ? blankTotals.subtotal : totals.subtotal;
+  const set = (k: keyof BlankFields) => (v: string) => setFields(f => ({ ...f, [k]: v }));
 
   return (
     <div className="min-h-screen bg-background print:bg-white">
@@ -246,7 +327,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           <div className="container max-w-5xl py-4 px-4 flex items-center justify-between gap-3">
             <div>
               <h1 className="font-display uppercase">
-                {blank ? 'Blank Contract — to fill in by hand' : `Contract Editor — ${request.event_title}`}
+                {blank ? 'Blank Contract — fill in here or by hand' : `Contract Editor — ${request.event_title}`}
               </h1>
               {request?.signed_at && (
                 <p className="font-serif text-sm text-accent flex items-center gap-1 mt-1">
@@ -277,6 +358,68 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
             </div>
           </div>
         </div>
+      )}
+
+      {blank && (
+        <section aria-label="Fill in the contract" className="print:hidden container max-w-5xl px-4 mt-4">
+          <Card className="glass">
+            <CardContent className="p-4 space-y-4">
+              <p className="font-serif text-sm text-muted-foreground">
+                Fill in as much or as little as you like; anything left empty prints as a line to write on.
+                Download or print at any point. Nothing here is saved to a rental.
+              </p>
+              <FieldGroup legend="Who">
+                <BlankField label="Licensee name" value={fields.name} onChange={set('name')} />
+                <BlankField label="Organization" value={fields.organization} onChange={set('organization')} />
+                <BlankField label="Email" type="email" value={fields.email} onChange={set('email')} />
+                <BlankField label="Phone" type="tel" value={fields.phone} onChange={set('phone')} />
+              </FieldGroup>
+              <FieldGroup legend="When">
+                <BlankField label="Agreement date" type="date" value={fields.agreement_date} onChange={set('agreement_date')} />
+                <BlankField label="Event date" type="date" value={fields.event_date} onChange={set('event_date')} />
+                <BlankField label="End date" type="date" value={fields.end_date} onChange={set('end_date')} />
+                <BlankField label="Start time" type="time" value={fields.start_time} onChange={set('start_time')} />
+                <BlankField label="End time" type="time" value={fields.end_time} onChange={set('end_time')} />
+              </FieldGroup>
+              <FieldGroup legend="What">
+                <BlankField label="Purpose" value={fields.purpose} onChange={set('purpose')} />
+                <BlankField label="Max attendees" type="number" value={fields.max_attendees} onChange={set('max_attendees')} />
+                <SelectField
+                  label="Alcohol addendum"
+                  value={fields.alcohol_addendum}
+                  onChange={v => set('alcohol_addendum')(v)}
+                  options={[
+                    ['', 'Not decided — include both'],
+                    ['not_served', 'No alcohol service'],
+                    ['served', 'Alcohol served (Addendum 1)'],
+                  ]}
+                />
+              </FieldGroup>
+              <FieldGroup legend="Costs">
+                <BlankField label="Hourly rate ($/hr)" type="number" value={fields.hourly_rate} onChange={set('hourly_rate')} />
+                <BlankField label="Base hours" type="number" value={fields.base_hours} onChange={set('base_hours')} />
+                <BlankField label="Add'l hour rate" type="number" value={fields.additional_hours_rate} onChange={set('additional_hours_rate')} />
+                <BlankField label="Add'l hours" type="number" value={fields.additional_hours} onChange={set('additional_hours')} />
+                <BlankField label="Staff rate ($/hr)" type="number" value={fields.staff_rate} onChange={set('staff_rate')} />
+                <BlankField label="Staff hours" type="number" value={fields.staff_hours} onChange={set('staff_hours')} />
+                <BlankField label="Concessions fee" type="number" value={fields.concessions_fee} onChange={set('concessions_fee')} />
+                <BlankField label="LCD/DVD/DCP fee" type="number" value={fields.av_fee} onChange={set('av_fee')} />
+              </FieldGroup>
+              {/* The form is long; download and print sit where the typing ends. */}
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setFields(EMPTY_BLANK)}>
+                  <Eraser className="h-4 w-4 mr-1" /> Clear form
+                </Button>
+                <Button size="sm" variant="outline" onClick={exportPdf} disabled={exporting}>
+                  <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={printPdf} disabled={exporting}>
+                  <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
       )}
 
       {isAdmin && !blank && (
@@ -330,7 +473,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
       <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-white text-neutral-900 font-serif text-base leading-relaxed print:py-0">
         <header className="text-center mb-8">
           <h1 className="font-display text-3xl uppercase tracking-wider">License Agreement</h1>
-          <p className="text-neutral-600 text-sm mt-2">{blank ? <Fill width="10em" /> : agreementDate}</p>
+          <p className="text-neutral-600 text-sm mt-2">{agreementDate || <Fill width="10em" />}</p>
         </header>
 
         <p>
@@ -352,7 +495,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
         <H2>2. Term</H2>
         <p>
           The term of this Agreement (the &ldquo;Term&rdquo;) shall include {blank
-            ? <><Fill width="16em" />, from <Fill width="8em" /></>
+            ? <><Fill width="16em">{eventDate}</Fill>, from <Fill width="5em">{formatClockTime(b.start_time)}</Fill> to <Fill width="5em">{formatClockTime(b.end_time)}</Fill></>
             : <Fill>{eventDate}, from {timeRange}</Fill>}.
           Term is assessed from the time in which KPAC staff begins preparations for event and ends when staff completes clean-up after event.
         </p>
@@ -360,7 +503,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
         <H2>3. Consideration</H2>
         <p>
           Licensee shall pay to Owner as a consideration for the License granted by this Agreement the total sum of
-          {' '}<Fill width="6em">{money(totals.subtotal)}</Fill>, plus additional items <strong>To Be Determined</strong>.
+          {' '}<Fill width="6em">{money(subtotal)}</Fill>, plus additional items <strong>To Be Determined</strong>.
           Estimated itemization may be found below.
         </p>
         <p>
@@ -374,7 +517,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
         </p>
         <p>
           Licensee shall be responsible for following current social distancing and attendance guidelines as outlined by Owner. Owner maintains the ability to refuse service if guidelines are not met and/or followed. Attendance of private rentals will be limited to a {blank
-            ? <>maximum of <Fill width="4em" /> attendees</>
+            ? <>maximum of <Fill width="4em">{b.max_attendees}</Fill> attendees</>
             : <Fill>maximum of {data.max_attendees} attendees</Fill>}.
         </p>
         <p>
@@ -394,9 +537,9 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           <tbody>
             {blank ? (
               <>
-                <Row label={<>Theater Rental ($<Fill width="3em" />/hr × <Fill width="2em" />)</>} value="" />
-                <Row label={<>Additional Hours ($<Fill width="3em" />/hr × <Fill width="2em" />)</>} value="" />
-                <Row label={<>Additional KPAC Staff ($<Fill width="3em" />/hr × <Fill width="2em" />)</>} value="" />
+                <Row label={<>Theater Rental ($<Fill width="3em">{b.hourly_rate}</Fill>/hr × <Fill width="2em">{b.base_hours}</Fill>)</>} value={money(blankTotals.base)} />
+                <Row label={<>Additional Hours ($<Fill width="3em">{b.additional_hours_rate}</Fill>/hr × <Fill width="2em">{b.additional_hours}</Fill>)</>} value={money(blankTotals.extra)} />
+                <Row label={<>Additional KPAC Staff ($<Fill width="3em">{b.staff_rate}</Fill>/hr × <Fill width="2em">{b.staff_hours}</Fill>)</>} value={money(blankTotals.staff)} />
               </>
             ) : (
               <>
@@ -407,16 +550,16 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
                 <Row label={`Additional KPAC Staff ($${num(data.staff_rate)}/hr × ${num(data.staff_hours)})`} value={money(totals.staff)} />
               </>
             )}
-            <Row label="Concessions Fees" value={money(totals.conc)} />
-            <Row label="LCD / DVD / DCP Fees" value={money(totals.av)} />
+            <Row label="Concessions Fees" value={money(blank ? blankTotals.conc : totals.conc)} />
+            <Row label="LCD / DVD / DCP Fees" value={money(blank ? blankTotals.av : totals.av)} />
             <tr className="border-t border-neutral-400 font-semibold">
               <td className="py-2">Subtotal</td>
-              <td className="py-2 text-right">{money(totals.subtotal)}</td>
+              <td className="py-2 text-right">{money(subtotal)}</td>
             </tr>
           </tbody>
         </table>
-        <p><strong>Estimated Rental Cost: <Fill width="6em">{money(totals.subtotal)}</Fill></strong></p>
-        <p><strong>Total Rental Cost: <Fill width="6em">{money(totals.subtotal)}</Fill></strong> (plus any fees to be determined in planning or after the event).</p>
+        <p><strong>Estimated Rental Cost: <Fill width="6em">{money(subtotal)}</Fill></strong></p>
+        <p><strong>Total Rental Cost: <Fill width="6em">{money(subtotal)}</Fill></strong> (plus any fees to be determined in planning or after the event).</p>
 
         <H2>6. Indemnification</H2>
         <p>Licensee shall defend, indemnify and hold harmless Owner from all claims arising out of any injury or death to any person or damage to property arising from Licensee&rsquo;s and its customers, clients, invitees, agents, and employees use of the Licensed Premises and Center during the Term. Owner shall not be held responsible for any event participants who contract COVID-19 or any other communicable diseases.</p>
@@ -456,7 +599,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
 
         {/* Addendum. A blank form carries both, each with its own signatures;
             whoever fills it in completes the one that applies. */}
-        {(blank || alcoholYes) && (
+        {showAlcohol && (
           <Keep>
             <section>
               <HeadingKeep>
@@ -497,8 +640,8 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
             </div>
           </Keep>
         )}
-        {blank && <div className="mt-16" />}
-        {(blank || !alcoholYes) && (
+        {showAlcohol && showNoAlcohol && <div className="mt-16" />}
+        {showNoAlcohol && (
           <Keep>
             <section>
               <HeadingKeep>
@@ -528,23 +671,74 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           </Keep>
         )}
 
-        {!isAdmin && (
-          <div className="print:hidden mt-10 text-center flex justify-center gap-2">
-            <Button onClick={exportPdf} disabled={exporting}>
-              <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
-            </Button>
-            <Button variant="outline" onClick={printPdf} disabled={exporting}>
-              <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
-            </Button>
-          </div>
-        )}
       </article>
+
+      {/* A renter's only buttons. On the blank form they are also where a
+          staffer lands after reading it through, so admins get them too.
+          Below the paper, not on it: these are theme-styled buttons, and on
+          the contract's white sheet the outline one was dark-on-dark. */}
+      {(!isAdmin || blank) && (
+        <div data-testid="contract-bottom-actions" className="print:hidden container max-w-3xl px-4 py-8 flex flex-wrap justify-center gap-2">
+          <Button onClick={exportPdf} disabled={exporting}>
+            <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
+          </Button>
+          <Button variant="outline" onClick={printPdf} disabled={exporting}>
+            <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
 function num(v: number | undefined) {
   return v ?? 0;
+}
+
+function trimmed(f: BlankFields): BlankFields {
+  const out = { ...f };
+  for (const k of Object.keys(out) as (keyof BlankFields)[]) (out as Record<string, string>)[k] = out[k].trim();
+  return out;
+}
+
+function slug(s: string) {
+  return s.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
+}
+
+// "Saturday November 14th, 2026", or "… through …" when there is an end date.
+function eventDays(start: string | null | undefined, end: string | null | undefined) {
+  const first = formatPlainDate(start, 'EEEE MMMM do, yyyy');
+  if (!first) return '';
+  return end ? `${first} through ${formatPlainDate(end, 'EEEE MMMM do, yyyy')}` : first;
+}
+
+function amount(s: string): number | undefined {
+  if (s.trim() === '') return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * The blank form's cost lines. A line has an amount only once everything it is
+ * made of has been typed: a rate with no hours is not a $0 line, it is a line
+ * still to be filled in. The subtotal adds up the lines that have amounts, and
+ * is itself blank until at least one does, which is what a staffer filling the
+ * paper form by hand would write.
+ */
+export function blankCosts(f: BlankFields) {
+  const times = (a: string, b: string) => {
+    const x = amount(a), y = amount(b);
+    return x === undefined || y === undefined ? undefined : x * y;
+  };
+  const lines = {
+    base: times(f.hourly_rate, f.base_hours),
+    extra: times(f.additional_hours_rate, f.additional_hours),
+    staff: times(f.staff_rate, f.staff_hours),
+    conc: amount(f.concessions_fee),
+    av: amount(f.av_fee),
+  };
+  const known = Object.values(lines).filter((v): v is number => v !== undefined);
+  return { ...lines, subtotal: known.length ? known.reduce((a, v) => a + v, 0) : undefined };
 }
 
 function H2({ children }: { children: React.ReactNode }) {
@@ -565,12 +759,14 @@ function Fill({ children, width = '8em' }: { children?: React.ReactNode; width?:
   //
   // Empty, it is a line to write on: a bottom border on an inline-block, not a
   // text underline, so it sits below the baseline and cannot wrap. `width` is
-  // in em so the blank scales with the type.
+  // in em so the blank scales with the type. `max-w-full` caps it at the line
+  // on a phone, where a 20em blank was wider than the column and scrolled the
+  // page sideways; the PDF's column is wider than any blank, so it never binds.
   if (children === undefined || children === null || children === '' || children === false) {
     return (
       <span
         data-blank-fill=""
-        className="inline-block border-b border-neutral-800 align-baseline"
+        className="inline-block max-w-full border-b border-neutral-800 align-baseline"
         style={{ width }}
       >
         {'\u00a0'}
@@ -600,8 +796,9 @@ const PDF_OPTIONS = {
 // in a `.pdf-word` span. Only the copy is changed; React's DOM is left alone.
 function breakableCopy(el: HTMLElement): HTMLElement {
   const copy = el.cloneNode(true) as HTMLElement;
-  // What print leaves out, the PDF leaves out: the patron's Download / Print
-  // buttons sit inside the contract and were printed on its last page.
+  // What print leaves out, the PDF leaves out. The patron's Download / Print
+  // buttons once sat inside the contract and were printed on its last page;
+  // they are below it now, and this keeps anything print-hidden from returning.
   copy.querySelectorAll('.print\\:hidden').forEach((n) => n.remove());
   const walker = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
   const texts: Text[] = [];
@@ -660,6 +857,46 @@ function NumField({ label, value, onChange }: { label: string; value: number | u
         value={value ?? ''}
         onChange={e => onChange(e.target.value === '' ? 0 : parseFloat(e.target.value))}
       />
+    </div>
+  );
+}
+
+function FieldGroup({ legend, children }: { legend: string; children: React.ReactNode }) {
+  return (
+    <fieldset>
+      <legend className="font-display uppercase text-sm tracking-wide mb-2">{legend}</legend>
+      <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">{children}</div>
+    </fieldset>
+  );
+}
+
+function BlankField({ label, value, onChange, type = 'text' }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string;
+}) {
+  const id = useId();
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-sm">{label}</Label>
+      <Input id={id} type={type} value={value} onChange={e => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function SelectField<T extends string>({ label, value, onChange, options }: {
+  label: string; value: T; onChange: (v: T) => void; options: [T, string][];
+}) {
+  const id = useId();
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-sm">{label}</Label>
+      <select
+        id={id}
+        className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+        value={value}
+        onChange={e => onChange(e.target.value as T)}
+      >
+        {options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
+      </select>
     </div>
   );
 }
