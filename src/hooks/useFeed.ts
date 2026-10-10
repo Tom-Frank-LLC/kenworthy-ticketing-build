@@ -7,7 +7,7 @@ import { MOVIE_PUBLIC_COLUMNS } from '@/lib/movieColumns';
 import { isPast } from '@/lib/purchasable';
 import { LOOKBACK_MS } from '@/lib/showtimes';
 
-type ProductionType = 'movie' | 'event' | 'concert';
+export type ProductionType = 'movie' | 'event' | 'concert';
 
 export interface FullProduction {
   id: string;
@@ -37,7 +37,7 @@ export interface FeedData {
  * Events and live performances still come back whole: their rows *do* leave
  * this file, as `productionsById`, and the detail drawer reads them.
  */
-const SHOWING_FEED_COLUMNS =
+export const SHOWING_FEED_COLUMNS =
   'id,start_time,ticket_price,movie_id,event_id,live_performance_id,is_featured,no_ticket_required,manually_sold_out';
 
 /**
@@ -57,6 +57,45 @@ const SHOWING_FEED_COLUMNS =
  */
 export const FEED_QUERY_KEY = ['feed'] as const;
 export const FEED_STALE_MS = 60_000;
+
+/** Which production a showing belongs to. Exactly one of the three is set. */
+export function showingProduction(s: {
+  movie_id?: string | null;
+  event_id?: string | null;
+  live_performance_id?: string | null;
+}): { type: ProductionType; id: string } | null {
+  if (s.movie_id) return { type: 'movie', id: s.movie_id };
+  if (s.event_id) return { type: 'event', id: s.event_id };
+  if (s.live_performance_id) return { type: 'concert', id: s.live_performance_id };
+  return null;
+}
+
+/**
+ * One showing row, read as a listing. Shared with the calendar's history
+ * fetch so a past showing is described exactly as it was while it was on.
+ * `prod` must be the production `showingProduction(s)` names.
+ */
+export function showingToFeedItem(s: any, prod: FullProduction): FeedItem {
+  return {
+    id: `${prod.type}-${prod.id}-${s.id}`,
+    productionId: prod.id,
+    title: prod.title,
+    posterUrl: prod.poster_url,
+    trailerUrl: prod.trailer_url,
+    startTime: s.start_time,
+    showingId: s.id,
+    durationMinutes: prod.duration_minutes ?? null,
+    type: prod.type,
+    ticketType: prod.ticket_type,
+    rsvpUrl: prod.rsvp_url,
+    curatorNote: prod.description,
+    isFeatured: prod.is_featured ?? false,
+    isFeaturedShowing: s.is_featured ?? false,
+    ticketPrice: s.ticket_price,
+    noTicketRequired: s.no_ticket_required ?? false,
+    manuallySoldOut: s.manually_sold_out ?? false,
+  };
+}
 
 export async function fetchFeed(): Promise<FeedData> {
   // A showing stays listed until it *ends*, not until it starts: someone
@@ -89,34 +128,12 @@ export async function fetchFeed(): Promise<FeedData> {
 
   const items: FeedItem[] = [];
   for (const s of (showingsRes.data || []) as any[]) {
-    let type: ProductionType | null = null;
-    let prodId: string | null = null;
-    if (s.movie_id) { type = 'movie'; prodId = s.movie_id; }
-    else if (s.event_id) { type = 'event'; prodId = s.event_id; }
-    else if (s.live_performance_id) { type = 'concert'; prodId = s.live_performance_id; }
-    if (!type || !prodId) continue;
-    const prod = byId.get(`${type}:${prodId}`);
+    const ref = showingProduction(s);
+    if (!ref) continue;
+    const prod = byId.get(`${ref.type}:${ref.id}`);
     if (!prod) continue;
     if (isPast(s, prod)) continue;
-    items.push({
-      id: `${type}-${prodId}-${s.id}`,
-      productionId: prodId,
-      title: prod.title,
-      posterUrl: prod.poster_url,
-      trailerUrl: prod.trailer_url,
-      startTime: s.start_time,
-      showingId: s.id,
-      durationMinutes: prod.duration_minutes ?? null,
-      type,
-      ticketType: prod.ticket_type,
-      rsvpUrl: prod.rsvp_url,
-      curatorNote: prod.description,
-      isFeatured: prod.is_featured ?? false,
-      isFeaturedShowing: s.is_featured ?? false,
-      ticketPrice: s.ticket_price,
-      noTicketRequired: s.no_ticket_required ?? false,
-      manuallySoldOut: s.manually_sold_out ?? false,
-    });
+    items.push(showingToFeedItem(s, prod));
   }
 
   // RSVP / info-only events have no showings of their own, so they would

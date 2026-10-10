@@ -9,6 +9,7 @@ import {
   isShadedMonth,
   monthDividers,
   monthFloor,
+  monthsCovered,
   stepView,
   viewDays,
   viewLabel,
@@ -255,5 +256,57 @@ describe('calendarStart', () => {
     // 00:30 on Tuesday 2026-09-01, a 2026-08-31 show still playing.
     const start = calendarStart(['2026-08-31'], new Date(2026, 8, 1, 0, 30));
     expect(key(monthFloor(start))).toBe('2026-08-01');
+  });
+});
+
+/**
+ * The /calendar grid can hold history now. It still opens on this week, and
+ * the back arrow reaches the first showing on record instead of stopping at
+ * the current month.
+ */
+describe('history', () => {
+  it('moves the floor back to the first showing on record', () => {
+    expect(key(monthFloor(FRI, new Date(2021, 5, 17)))).toBe('2021-06-01');
+  });
+
+  it('leaves the floor where it was without history, or with history from later', () => {
+    expect(key(monthFloor(FRI))).toBe('2026-08-01');
+    expect(key(monthFloor(FRI, null))).toBe('2026-08-01');
+    expect(key(monthFloor(FRI, new Date(2026, 9, 1)))).toBe('2026-08-01');
+  });
+
+  it('lets the arrows page back into history', () => {
+    const floor = monthFloor(FRI, new Date(2021, 5, 17));
+    expect(canStepBack(month(2026, 7), floor)).toBe(true);
+    expect(key(stepView(month(2022, 0), -1, floor).start)).toBe('2021-12-01');
+    expect(canStepBack(month(2021, 5), floor)).toBe(false);
+  });
+
+  it('follows the soonest match from today on, not the oldest one in history', () => {
+    // A search hitting a 2022 run and next month's revival lands on the revival.
+    const floor = monthFloor(FRI, new Date(2021, 5, 17));
+    const next = anchorView(WEEK_VIEW, ['2022-03-04', '2026-11-19'], floor, FRI);
+    expect(next.mode).toBe('week');
+    expect(key(next.start)).toBe('2026-11-15');
+  });
+
+  it('falls back to the most recent past match, by month, when nothing is coming', () => {
+    const floor = monthFloor(FRI, new Date(2021, 5, 17));
+    const next = anchorView(WEEK_VIEW, ['2022-03-04', '2024-05-10'], floor, FRI);
+    expect(next).toEqual({ mode: 'month', start: new Date(2024, 4, 1) });
+  });
+
+  it('does not leave the week view for a past match it cannot reach', () => {
+    expect(key(anchorView(WEEK_VIEW, ['2022-03-04'], FLOOR, FRI).start)).toBe('2026-08-23');
+  });
+});
+
+describe('monthsCovered', () => {
+  it('names each month a grid touches, once, in order', () => {
+    expect(monthsCovered(viewDays(month(2026, 8))).map(key)).toEqual([
+      '2026-08-01',
+      '2026-09-01',
+      '2026-10-01',
+    ]);
   });
 });
