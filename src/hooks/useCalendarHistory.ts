@@ -4,16 +4,8 @@ import { format, subMonths } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import type { FeedItem } from '@/components/home/TrailerFeed';
 import { venueLocalToInstant } from '@/lib/datetime';
-import { MOVIE_PUBLIC_COLUMNS } from '@/lib/movieColumns';
 import { isPast } from '@/lib/purchasable';
-import {
-  FEED_STALE_MS,
-  SHOWING_FEED_COLUMNS,
-  type FullProduction,
-  type ProductionType,
-  showingProduction,
-  showingToFeedItem,
-} from './useFeed';
+import { FEED_STALE_MS, SHOWING_WITH_PRODUCTION, embeddedProduction, showingToFeedItem } from './useFeed';
 
 /**
  * What already played, for the /calendar month grid only.
@@ -38,12 +30,10 @@ import {
  *    The flip side is that a showing staff deactivated to cancel it also
  *    appears here once its date has passed. None exists today
  *    (no past inactive showing was created after the import).
- *  - **Productions are fetched by id, not as "every active title".** There are
- *    1,131 active films on production, past PostgREST's silent 1,000-row cap,
- *    so a catalogue-wide read would drop some at random. A month's showings
- *    name a few dozen titles at most. Hidden titles stay hidden: RLS still
- *    requires `is_active` on movies/events/live_performances, and a showing
- *    whose title is hidden is dropped.
+ *  - **Productions are embedded in the showing read** (`SHOWING_WITH_PRODUCTION`,
+ *    the same select the live feed uses), never read as "every active title",
+ *    which is past PostgREST's 1,000-row cap. Hidden titles stay hidden: a
+ *    showing whose title is not active is dropped, as it is in the feed.
  */
 
 /** `yyyy-MM`, the cache key of one month of history. */
@@ -52,12 +42,6 @@ export type MonthKey = string;
 export const monthKey = (month: Date): MonthKey => format(month, 'yyyy-MM');
 
 const HISTORY_QUERY_KEY = 'calendar-history';
-
-const PRODUCTION_TABLE: Record<ProductionType, { table: string; columns: string }> = {
-  movie: { table: 'movies', columns: MOVIE_PUBLIC_COLUMNS },
-  event: { table: 'events', columns: '*' },
-  concert: { table: 'live_performances', columns: '*' },
-};
 
 /** The venue's midnight on the 1st of `key`'s month, as an instant. */
 function monthStartInstant(key: MonthKey): Date {
@@ -75,43 +59,17 @@ export async function fetchHistoryMonth(key: MonthKey, now: number = Date.now())
   if (from.getTime() >= now) return [];
   const until = new Date(Math.min(next.getTime(), now)).toISOString();
 
-  const { data: showings, error } = await supabase
+  const { data, error } = await supabase
     .from('showings')
-    .select(SHOWING_FEED_COLUMNS)
+    .select(SHOWING_WITH_PRODUCTION)
     .gte('start_time', from.toISOString())
     .lt('start_time', until)
     .order('start_time');
   if (error) throw error;
-  const rows = (showings ?? []) as any[];
-  if (rows.length === 0) return [];
-
-  const idsByType: Record<ProductionType, Set<string>> = {
-    movie: new Set(),
-    event: new Set(),
-    concert: new Set(),
-  };
-  for (const s of rows) {
-    const ref = showingProduction(s);
-    if (ref) idsByType[ref.type].add(ref.id);
-  }
-
-  const byId = new Map<string, FullProduction>();
-  await Promise.all(
-    (Object.keys(idsByType) as ProductionType[]).map(async (type) => {
-      const ids = [...idsByType[type]];
-      if (ids.length === 0) return;
-      const { table, columns } = PRODUCTION_TABLE[type];
-      const { data, error: prodError } = await supabase.from(table as any).select(columns).in('id', ids);
-      if (prodError) throw prodError;
-      for (const row of (data ?? []) as any[]) byId.set(`${type}:${row.id}`, { ...row, type });
-    }),
-  );
 
   const items: FeedItem[] = [];
-  for (const s of rows) {
-    const ref = showingProduction(s);
-    if (!ref) continue;
-    const prod = byId.get(`${ref.type}:${ref.id}`);
+  for (const s of (data ?? []) as any[]) {
+    const prod = embeddedProduction(s);
     if (!prod) continue;
     // Still playing belongs to the live feed, which lists it until it ends.
     if (!isPast(s, prod, now)) continue;

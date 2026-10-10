@@ -41,10 +41,30 @@ export const SHOWING_FEED_COLUMNS =
   'id,start_time,ticket_price,movie_id,event_id,live_performance_id,is_featured,no_ticket_required,manually_sold_out';
 
 /**
+ * A showing together with its production, in one read.
+ *
+ * The feed used to read every active film, event and performance and join
+ * them in the browser. Production has 1,131 active films (2026-10-09), past
+ * PostgREST's silent 1,000-row cap, so that read returned an arbitrary 1,000
+ * and any showing whose film fell outside them vanished from the listings
+ * with no error. Embedding reads exactly the titles the showings name, however
+ * large the catalogue grows, and is still one request.
+ *
+ * Films are read through MOVIE_PUBLIC_COLUMNS; events and performances come
+ * back whole because they leave this file as `productionsById`, and the
+ * detail drawer reads them.
+ */
+export const SHOWING_WITH_PRODUCTION =
+  `${SHOWING_FEED_COLUMNS},` +
+  `movie:movies(${MOVIE_PUBLIC_COLUMNS}),` +
+  'event:events(*),' +
+  'live_performance:live_performances(*)';
+
+/**
  * One cache entry for the whole public catalogue.
  *
- * The home page and the calendar are the same four queries — active movies,
- * events, performances, and every upcoming showing — and until now each page
+ * The home page and the calendar read the same catalogue — every upcoming
+ * showing with its production, and the standalone RSVP events — and until now each page
  * ran them again on every mount. Going home → calendar → home was three full
  * round-trips of the same data, and that is most of what "navigation feels
  * slow" was. A shared query key means the second page renders from cache and
@@ -68,6 +88,20 @@ export function showingProduction(s: {
   if (s.event_id) return { type: 'event', id: s.event_id };
   if (s.live_performance_id) return { type: 'concert', id: s.live_performance_id };
   return null;
+}
+
+/**
+ * The production embedded in a `SHOWING_WITH_PRODUCTION` row, or null when it
+ * is hidden. RLS already withholds an inactive title from the public; the
+ * explicit check is for a signed-in staff member, who can read hidden titles
+ * and should still see the public listing.
+ */
+export function embeddedProduction(s: any): FullProduction | null {
+  const ref = showingProduction(s);
+  if (!ref) return null;
+  const row = ref.type === 'movie' ? s.movie : ref.type === 'event' ? s.event : s.live_performance;
+  if (!row || row.is_active !== true) return null;
+  return { ...row, type: ref.type };
 }
 
 /**
@@ -105,66 +139,63 @@ export async function fetchFeed(): Promise<FeedData> {
   // query casts the same bounded net backwards the showing page's date list
   // does and isPast decides below.
   const since = new Date(Date.now() - LOOKBACK_MS).toISOString();
-  const [moviesRes, eventsRes, concertsRes, showingsRes] = await Promise.all([
-    supabase
-      .from('movies')
-      .select(MOVIE_PUBLIC_COLUMNS)
-      .eq('is_active', true),
-    supabase.from('events').select('*').eq('is_active', true),
-    supabase.from('live_performances').select('*').eq('is_active', true),
+  const [showingsRes, standaloneRes] = await Promise.all([
     supabase
       .from('showings')
-      .select(SHOWING_FEED_COLUMNS)
+      .select(SHOWING_WITH_PRODUCTION)
       .eq('is_active', true)
       .gte('start_time', since)
       .order('start_time'),
+    // The only productions the feed lists without a showing. Read on their
+    // own, by kind, rather than as part of every active event.
+    supabase
+      .from('events')
+      .select('*')
+      .eq('is_active', true)
+      .in('ticket_type', ['rsvp', 'info_only']),
   ]);
 
+  // Only the titles the listings name. The two pages that read this map look
+  // a title up from a FeedItem, so nothing else is ever asked of it.
   const byId = new Map<string, FullProduction>();
-  const push = (row: any, type: ProductionType) => byId.set(`${type}:${row.id}`, { ...row, type });
-  (moviesRes.data || []).forEach((r) => push(r, 'movie'));
-  (eventsRes.data || []).forEach((r) => push(r, 'event'));
-  (concertsRes.data || []).forEach((r) => push(r, 'concert'));
 
   const items: FeedItem[] = [];
   for (const s of (showingsRes.data || []) as any[]) {
-    const ref = showingProduction(s);
-    if (!ref) continue;
-    const prod = byId.get(`${ref.type}:${ref.id}`);
+    const prod = embeddedProduction(s);
     if (!prod) continue;
     if (isPast(s, prod)) continue;
+    byId.set(`${prod.type}:${prod.id}`, prod);
     items.push(showingToFeedItem(s, prod));
   }
 
   // RSVP / info-only events have no showings of their own, so they would
   // otherwise vanish from the page. They ride along with a far-future sort key:
   // still surfaced, but below the dated calendar.
-  for (const prod of byId.values()) {
-    if (prod.type !== 'event') continue;
+  for (const row of (standaloneRes.data || []) as any[]) {
+    const prod: FullProduction = { ...row, type: 'event' };
     const hasShowings = items.some((i) => i.type === 'event' && i.productionId === prod.id);
     if (hasShowings) continue;
-    if (prod.ticket_type === 'rsvp' || prod.ticket_type === 'info_only') {
-      const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-      items.push({
-        id: `event-${prod.id}-standalone`,
-        productionId: prod.id,
-        title: prod.title,
-        posterUrl: prod.poster_url,
-        trailerUrl: prod.trailer_url,
-        startTime: farFuture,
-        showingId: null,
-        type: 'event',
-        ticketType: prod.ticket_type,
-        rsvpUrl: prod.rsvp_url,
-        curatorNote: prod.description,
-        isFeatured: prod.is_featured ?? false,
-        // No showing exists in this branch — these are standalone RSVP /
-        // info-only events — so there is no price to carry. `s` belongs to
-        // the showings loop above and is out of scope here; referencing it
-        // threw a ReferenceError that took down the whole feed.
-        ticketPrice: undefined,
-      });
-    }
+    byId.set(`event:${prod.id}`, prod);
+    const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    items.push({
+      id: `event-${prod.id}-standalone`,
+      productionId: prod.id,
+      title: prod.title,
+      posterUrl: prod.poster_url,
+      trailerUrl: prod.trailer_url,
+      startTime: farFuture,
+      showingId: null,
+      type: 'event',
+      ticketType: prod.ticket_type,
+      rsvpUrl: prod.rsvp_url,
+      curatorNote: prod.description,
+      isFeatured: prod.is_featured ?? false,
+      // No showing exists in this branch — these are standalone RSVP /
+      // info-only events — so there is no price to carry. `s` belongs to
+      // the showings loop above and is out of scope here; referencing it
+      // threw a ReferenceError that took down the whole feed.
+      ticketPrice: undefined,
+    });
   }
 
   items.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());

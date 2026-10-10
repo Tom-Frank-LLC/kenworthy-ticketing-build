@@ -65,19 +65,36 @@ never a faded one.
     its date passes. None exists today.
 - 1,314 of 1,315 past productions are active. Productions still need
   `is_active` under RLS, so a hidden title's showings are dropped.
-- **Productions are fetched by id per month**, not as "all active titles". See
-  the next section for why.
+- **Productions are embedded in the showings read**, not read as "all active
+  titles". The next section explains why.
 
-## Found along the way, not fixed here
+## Also fixed here: the feed's films read was over the 1,000-row cap
 
-**`fetchFeed`'s films query is already over PostgREST's 1,000-row cap.**
-Production has 1,131 active films, and the anon read returns exactly 1,000
-(checked with curl, 2026-10-09). No upcoming showing is dropped today (20 of 20
-film showings matched), but only because of row order. A newly added film can
-fall outside the 1,000, and its showings will vanish from the home page and
-calendar with no error. Fix: fetch productions by the ids the upcoming showings
-name, as `useCalendarHistory` does. Needs its own change, because it is the
-shared feed.
+Tom asked for this to ship as part of the brief (9 Oct 2026).
+
+`fetchFeed` used to read every active film, event and performance, then join
+them in the browser. Production has 1,131 active films, and the anon read
+returned exactly 1,000 (checked with curl, 2026-10-09). No upcoming showing was
+dropped yet (44 of 44 matched), but only because of row order: a newly added
+film could fall outside the 1,000, and its showings would vanish from the home
+page and calendar with no error.
+
+Now the showings read embeds its production (`SHOWING_WITH_PRODUCTION`:
+`movie:movies(MOVIE_PUBLIC_COLUMNS), event:events(*),
+live_performance:live_performances(*)`), the same pattern `src/pages/Rentals.tsx`
+already used. A second, parallel read fetches only the standalone RSVP /
+info-only events (5 on production). Still one round trip.
+
+- **Same output.** On production, before and after both give the same 44
+  upcoming showings and the same 5 standalone candidates.
+- **Hidden titles stay hidden.** `embeddedProduction` requires
+  `is_active === true`, as the old `.eq('is_active', true)` did. That matters
+  for signed-in staff, whom RLS lets read hidden titles.
+- **`productionsById` holds only the titles the feed lists.** Its two readers,
+  `Index.tsx` and `Calendar.tsx`, look titles up from feed items only.
+- **Smaller download.** The old reads were about 516 KB per home or calendar
+  load (films 444 KB, events 71 KB). The new showings read is about 14 KB.
+- The history hook uses the same select and the same `embeddedProduction`.
 
 ## Limits
 

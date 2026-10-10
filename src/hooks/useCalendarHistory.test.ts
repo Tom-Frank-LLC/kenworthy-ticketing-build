@@ -24,11 +24,15 @@ vi.mock('@/integrations/supabase/client', () => ({
         };
       }
       chain.then = (resolve: any, reject: any) => {
-        // `.in('id', ids)` narrows productions, as PostgREST would.
-        const inCalls = calls.filter((c) => c.table === table && c.op === 'in');
-        const inCall = inCalls[inCalls.length - 1];
-        let data = rows[table] ?? [];
-        if (inCall) data = data.filter((r) => (inCall.args[1] as string[]).includes(r.id));
+        // Showings come back with their production embedded, as PostgREST
+        // returns `movie:movies(...)`: null when RLS hides the title.
+        const find = (t: string, id: string | null | undefined) => rows[t]?.find((r) => r.id === id) ?? null;
+        const data = (rows[table] ?? []).map((s) => ({
+          ...s,
+          movie: find('movies', s.movie_id),
+          event: find('events', s.event_id),
+          live_performance: find('live_performances', s.live_performance_id),
+        }));
         return Promise.resolve({ data, error: null }).then(resolve, reject);
       };
       return chain;
@@ -44,8 +48,8 @@ describe('fetchHistoryMonth', () => {
   beforeEach(() => {
     calls.length = 0;
     rows.movies = [
-      { id: 'm1', title: 'Metropolis', duration_minutes: 150 },
-      { id: 'm2', title: 'Nosferatu', duration_minutes: 90 },
+      { id: 'm1', title: 'Metropolis', duration_minutes: 150, is_active: true },
+      { id: 'm2', title: 'Nosferatu', duration_minutes: 90, is_active: true },
     ];
     rows.events = [];
     rows.live_performances = [];
@@ -79,12 +83,16 @@ describe('fetchHistoryMonth', () => {
     expect(lt?.args).toEqual(['start_time', new Date(NOW).toISOString()]);
   });
 
-  it('reads productions by id, never the whole catalogue', async () => {
+  it('reads productions embedded in the showings, never the whole catalogue', async () => {
     await fetchHistoryMonth('2026-10', NOW);
-    const movieIn = calls.find((c) => c.table === 'movies' && c.op === 'in');
-    expect(movieIn?.args[0]).toBe('id');
-    expect((movieIn?.args[1] as string[]).sort()).toEqual(['hidden', 'm1', 'm2']);
-    expect(calls.some((c) => c.table === 'movies' && c.op === 'eq')).toBe(false);
+    expect(new Set(calls.map((c) => c.table))).toEqual(new Set(['showings']));
+    const select = calls.find((c) => c.op === 'select');
+    expect(select?.args[0]).toContain('movie:movies(');
+  });
+
+  it('drops a showing whose title is no longer active', async () => {
+    rows.movies[0].is_active = false;
+    expect(await fetchHistoryMonth('2026-10', NOW)).toEqual([]);
   });
 
   it('asks nothing of a month that has not started', async () => {
