@@ -42,6 +42,7 @@ function renderShowings(showings: any[], handlers: Record<string, any> = {}) {
           getScanned={() => 0}
           onOpenAttendees={handlers.onOpenAttendees ?? vi.fn()}
           onToggleSoldOut={handlers.onToggleSoldOut ?? vi.fn()}
+          onToggleCancelled={handlers.onToggleCancelled ?? vi.fn()}
           onDeleteShowing={handlers.onDeleteShowing ?? vi.fn()}
         />
       </TooltipProvider>
@@ -93,6 +94,22 @@ describe('ProductionShowings', () => {
     expect(screen.queryByRole('button', { name: /sold out|Reopen/i })).toBeNull();
   });
 
+  it('cancels a showing with the sold count, so the confirm can name the tickets', () => {
+    const onToggleCancelled = vi.fn();
+    const row = showing();
+    renderShowings([row], { onToggleCancelled });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel showing' }));
+    expect(onToggleCancelled).toHaveBeenCalledWith(row, 30);
+  });
+
+  it('says Cancelled on a cancelled row, offers Restore, and drops the sell-out toggle', () => {
+    renderShowings([showing({ cancelled_at: '2026-09-01T00:00:00Z', is_active: false, manually_sold_out: true })]);
+    expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    expect(screen.queryByText('Sold Out')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Restore showing' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /sold out|Reopen online sales/i })).toBeNull();
+  });
+
   it('renders nothing at all for a title with no showings', () => {
     const { container } = renderShowings([]);
     expect(container).toBeEmptyDOMElement();
@@ -117,6 +134,7 @@ describe('ProductionShowings — what the child rows are called', () => {
             getScanned={() => 0}
             onOpenAttendees={vi.fn()}
             onToggleSoldOut={vi.fn()}
+            onToggleCancelled={vi.fn()}
             onDeleteShowing={vi.fn()}
           />
         </TooltipProvider>

@@ -30,9 +30,8 @@ import { FEED_STALE_MS, SHOWING_WITH_PRODUCTION, embeddedProduction, showingToFe
  *    on production). Filtering on the flag would show two months of history.
  *    Anon can read every past showing: the SELECT policy admits
  *    `start_time < now()` (20260909180838_showings_past_readable_by_anon.sql).
- *    The flip side is that a showing staff deactivated to cancel it also
- *    appears here once its date has passed. None exists today
- *    (no past inactive showing was created after the import).
+ *    A cancelled showing is excluded by `cancelled_at`, not by the flag
+ *    (20261011005202_showing_cancellation.sql).
  *  - **Productions are embedded in the showing read** (`SHOWING_WITH_PRODUCTION`,
  *    the same select the live feed uses), never read as "every active title",
  *    which is past PostgREST's 1,000-row cap. Hidden titles stay hidden: a
@@ -79,6 +78,10 @@ export async function fetchHistoryMonth(key: MonthKey, now: number = Date.now())
   const { data, error } = await supabase
     .from('showings')
     .select(SHOWING_WITH_PRODUCTION)
+    // A cancelled night did not play. History ignores `is_active` (see above),
+    // so this is the one listing that has to ask; everything else hides a
+    // cancelled showing through the flag, which cancelling always clears.
+    .is('cancelled_at', null)
     .gte('start_time', from.toISOString())
     .lt('start_time', until)
     .order('start_time');
