@@ -35,19 +35,43 @@ const rows: Record<string, unknown[]> = {
   ],
 };
 
+/** Every table the feed read from, in order: the catalogue-wide reads that
+ *  hit PostgREST's row cap must not come back. */
+const tableCalls: string[] = [];
+
+/** A production row as the database holds it: active unless a test says not. */
+const stored = (table: string, id: string | null) => {
+  const row = (rows[table] as any[] | undefined)?.find((r) => r.id === id);
+  return row ? { is_active: true, ...row } : null;
+};
+
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: (table: string) => {
-      const result = Promise.resolve({ data: rows[table] ?? [], error: null });
-      // Every query ends in `.eq('is_active', true)`; showings go on to
-      // `.gte().order()`. Each step returns the same thenable so the chain
-      // resolves however long it is.
+      tableCalls.push(table);
+      const filters: Array<(r: any) => boolean> = [];
+      // Showings come back with their production embedded, as PostgREST
+      // returns `movie:movies(...)`; other tables honour eq/in like it would.
+      const resolve = () => {
+        const base = (rows[table] ?? []) as any[];
+        const data =
+          table === 'showings'
+            ? base.map((s) => ({
+                ...s,
+                movie: stored('movies', s.movie_id),
+                event: stored('events', s.event_id),
+                live_performance: stored('live_performances', s.live_performance_id),
+              }))
+            : base.map((r) => ({ is_active: true, ...r })).filter((r) => filters.every((f) => f(r)));
+        return Promise.resolve({ data, error: null });
+      };
       const chain: any = {
         select: (cols: string) => { selectCalls.push(`${table}:${cols}`); return chain; },
-        eq: () => chain,
+        eq: (col: string, val: unknown) => { filters.push((r) => r[col] === val); return chain; },
+        in: (col: string, vals: unknown[]) => { filters.push((r) => vals.includes(r[col])); return chain; },
         gte: (col: string, val: string) => { gteCalls.push([col, val]); return chain; },
         order: () => chain,
-        then: result.then.bind(result),
+        then: (ok: any, fail: any) => resolve().then(ok, fail),
       };
       return chain;
     },
@@ -63,7 +87,7 @@ function wrapperFor(client: QueryClient) {
 }
 
 describe('useFeed', () => {
-  beforeEach(() => { selectCalls.length = 0; });
+  beforeEach(() => { selectCalls.length = 0; tableCalls.length = 0; });
 
   it('builds one item per showing, plus a standalone item for an RSVP event with no dates', async () => {
     const client = new QueryClient();
@@ -86,8 +110,25 @@ describe('useFeed', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     const showingsSelect = selectCalls.find(c => c.startsWith('showings:'));
     expect(showingsSelect).toBeDefined();
-    expect(showingsSelect).not.toContain('*');
+    // The showing's own columns. Its embedded event and performance come back
+    // whole on purpose: they leave the feed as productionsById.
+    const ownColumns = showingsSelect!.split(',movie:')[0];
+    expect(ownColumns).not.toContain('*');
     expect(showingsSelect).toContain('manually_sold_out');
+  });
+
+  it('reads the titles the showings name, never the whole catalogue', async () => {
+    // Production has more active films than PostgREST returns in one read
+    // (1,131 against a cap of 1,000), so a catalogue-wide read loses some at
+    // random. The films must arrive embedded in the showings instead.
+    const client = new QueryClient();
+    const { result } = renderHook(() => useFeed(), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(tableCalls.sort()).toEqual(['events', 'showings']);
+    expect(selectCalls.find((c) => c.startsWith('showings:'))).toContain('movie:movies(');
+    // The events read is the standalone RSVP / info-only ones, and only those.
+    expect(result.current.productionsById.has('event:e1')).toBe(true);
+    expect([...result.current.productionsById.keys()].sort()).toEqual(['event:e1', 'event:e2', 'movie:m1']);
   });
 
   it('serves a second mount from cache inside the stale window', async () => {
@@ -97,7 +138,7 @@ describe('useFeed', () => {
     const first = renderHook(() => useFeed(), { wrapper });
     await waitFor(() => expect(first.result.current.loading).toBe(false));
     const fetchesAfterFirst = selectCalls.length;
-    expect(fetchesAfterFirst).toBe(4);
+    expect(fetchesAfterFirst).toBe(2);
     first.unmount();
 
     // The calendar mounting after the home page, or home again after the
@@ -114,6 +155,22 @@ describe('useFeed', () => {
  * A showing stays listed until it ends, not until it starts, and every item
  * and chip carries its production's runtime so the buttons know when that is.
  */
+describe('fetchFeed — hidden titles', () => {
+  it("drops a showing whose title is not active, as the old catalogue read did", async () => {
+    const saved = { ...rows };
+    rows.movies = [{ id: 'gone', title: 'Withdrawn', is_active: false }];
+    rows.events = [];
+    rows.showings = [{ id: 'sx', start_time: soon(1), ticket_price: 10, movie_id: 'gone', event_id: null, live_performance_id: null }];
+    try {
+      const { feed, productionsById } = await fetchFeed();
+      expect(feed).toEqual([]);
+      expect(productionsById.size).toBe(0);
+    } finally {
+      Object.assign(rows, saved);
+    }
+  });
+});
+
 describe('fetchFeed — listed until the showing ends', () => {
   const ago = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000).toISOString();
   const saved = { ...rows };

@@ -118,6 +118,15 @@ export interface FeedItem {
    * FeedItem; callers treat absent as empty.
    */
   upcomingShowings?: UpcomingShowing[];
+  /**
+   * This showing is over: history, not something to buy.
+   *
+   * Only the calendar's history fetch (`useCalendarHistory`) sets it. The
+   * shared feed lists nothing that has ended, so every surface built on it can
+   * keep treating an item as live. Anything that can render an ended item must
+   * render it read-only: no button into the drawer, the preview or checkout.
+   */
+  ended?: boolean;
 }
 
 const TYPE_ICON = {

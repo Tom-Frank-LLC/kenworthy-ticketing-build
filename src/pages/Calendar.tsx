@@ -7,6 +7,7 @@ import { MonthCalendar } from '@/components/home/MonthCalendar';
 import { ShowingPreview } from '@/components/home/ShowingPreview';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { useFeed, filterFeed } from '@/hooks/useFeed';
+import { useCalendarHistory } from '@/hooks/useCalendarHistory';
 import { useIsSplitLayout } from '@/hooks/use-mobile';
 import type { FeedItem } from '@/components/home/TrailerFeed';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,22 @@ export default function CalendarPage() {
   const [previewId, setPreviewId] = useState<string | null>(null);
 
   const filtered = useMemo(() => filterFeed(feed, query), [feed, query]);
+
+  // What already played, for the month grid only. The List stays a forward
+  // "what's on" planner, and the shared feed — which the home page and the
+  // showing pages also read — stays upcoming-only. Loaded a month at a time as
+  // the reader pages, twelve months back at most (see useCalendarHistory).
+  // Search covers the months loaded so far, not the whole year.
+  const [monthsInView, setMonthsInView] = useState<Date[]>([]);
+  const history = useCalendarHistory(monthsInView);
+  const monthItems = useMemo(() => {
+    if (history.items.length === 0) return filtered;
+    // A showing that ends while the page is open can sit in both until the
+    // feed next refreshes; the live copy wins.
+    const live = new Set(feed.map((i) => i.showingId));
+    const past = filterFeed(history.items, query).filter((i) => !live.has(i.showingId));
+    return [...past, ...filtered];
+  }, [filtered, history.items, feed, query]);
 
   // The List view at `lg` and up has a whole empty column next to it, so the
   // picked showing is shown there instead of behind a slide-out sheet. The
@@ -50,6 +67,10 @@ export default function CalendarPage() {
   };
 
   const handleSelect = (item: FeedItem) => {
+    // Nothing that has ended opens the drawer or the preview: both lead to
+    // checkout. The grid draws ended showings as text, so this is the second
+    // lock on the same door, not the first.
+    if (item.ended) return;
     if (inlinePreview) {
       setPreviewId(item.id);
       return;
@@ -106,12 +127,19 @@ export default function CalendarPage() {
 
         {loading ? (
           <p className="font-serif italic text-muted-foreground">Loading the calendar…</p>
-        ) : filtered.length === 0 ? (
+        ) : (view === 'month' ? monthItems : filtered).length === 0 ? (
           <p className="font-serif italic text-muted-foreground">
             {query ? `No showings match "${query}".` : 'Nothing on the books just yet.'}
           </p>
         ) : view === 'month' ? (
-          <MonthCalendar items={filtered} onSelect={handleSelect} />
+          <MonthCalendar
+            items={monthItems}
+            onSelect={handleSelect}
+            historyFrom={history.from}
+            historyLoading={history.loading}
+            historyFailed={history.failed}
+            onMonthsInView={setMonthsInView}
+          />
         ) : inlinePreview ? (
           // Widened with ShowingPreview's portrait split: the pane carries two
           // columns of its own now, and 1.1fr was sized for a stacked card.

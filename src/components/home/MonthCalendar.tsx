@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { format, isSameDay, isToday } from 'date-fns';
+import { format, isSameDay, isSameMonth, isToday } from 'date-fns';
 import { ChevronLeft, ChevronRight, Film, Sparkles, Music, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,7 @@ import {
   isShadedMonth,
   monthDividers,
   monthFloor,
+  monthsCovered,
   stepView,
   viewDays,
   viewLabel,
@@ -61,12 +62,21 @@ function DayShowings({
         .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
         .map((it) => {
           const Icon = TYPE_ICON[it.type];
+          // An ended showing is a record of what played, so it is drawn as
+          // text, not as a button: there is nothing to open, and the drawer
+          // behind the button is a way into checkout. The dashed border and
+          // the "Ended" line carry the difference, not colour.
+          const Row = it.ended ? 'div' : 'button';
           return (
             <li key={it.id}>
-              <button
-                type="button"
-                onClick={() => onSelect?.(it)}
-                className="w-full text-left rounded-md border border-accent/20 bg-card hover:border-primary hover:bg-primary/5 transition-colors p-3 flex items-start gap-3 group lg:flex-col lg:items-stretch"
+              <Row
+                {...(it.ended ? {} : { type: 'button' as const, onClick: () => onSelect?.(it) })}
+                className={cn(
+                  'w-full text-left rounded-md border bg-card p-3 flex items-start gap-3 group lg:flex-col lg:items-stretch',
+                  it.ended
+                    ? 'border-dashed border-accent/40'
+                    : 'border-accent/20 hover:border-primary hover:bg-primary/5 transition-colors',
+                )}
               >
                 {it.posterUrl ? (
                   <img
@@ -87,22 +97,37 @@ function DayShowings({
                   </div>
                   <div className="font-display text-lg text-accent tabular-nums leading-none">
                     {formatShowtime(it.startTime, 'h:mm a')}
+                    {it.ended && (
+                      <span className="ml-2 font-sans text-xs uppercase tracking-widest text-muted-foreground align-middle">
+                        Ended
+                      </span>
+                    )}
                   </div>
-                  <div className="font-serif text-base leading-snug mt-1 group-hover:text-primary transition-colors">
+                  <div
+                    className={cn(
+                      'font-serif text-base leading-snug mt-1',
+                      !it.ended && 'group-hover:text-primary transition-colors',
+                    )}
+                  >
                     {it.title}
                   </div>
-                  {typeof it.ticketPrice === 'number' && it.ticketPrice > 0 && (
+                  {!it.ended && typeof it.ticketPrice === 'number' && it.ticketPrice > 0 && (
                     <div className="text-sm text-muted-foreground mt-1">
                       ${it.ticketPrice.toFixed(2)}
                     </div>
                   )}
                 </div>
-              </button>
+              </Row>
             </li>
           );
         })}
     </ul>
   );
+}
+
+/** "March 4", or "March 4, 2023" once the reader has paged out of this year. */
+function dayHeading(day: Date): string {
+  return format(day, day.getFullYear() === new Date().getFullYear() ? 'MMMM d' : 'MMMM d, yyyy');
 }
 
 export function MonthCalendar({
@@ -112,10 +137,27 @@ export function MonthCalendar({
   // above this grid, so it opts out rather than stacking a second one. The
   // /calendar page has no such line and keeps this on.
   showHint = true,
+  historyFrom,
+  historyLoading = false,
+  historyFailed = false,
+  onMonthsInView,
 }: {
   items: FeedItem[];
   onSelect?: (item: FeedItem) => void;
   showHint?: boolean;
+  /**
+   * How far back history goes, when the caller loads it (/calendar does,
+   * through `useCalendarHistory`, twelve months; the home page does not). The
+   * back arrow reaches its month instead of stopping at this one.
+   */
+  historyFrom?: Date | null;
+  /** History for a month on screen is still on its way. */
+  historyLoading?: boolean;
+  /** History for a month on screen could not be loaded. */
+  historyFailed?: boolean;
+  /** Told the months the grid touches, whenever they change, so the caller
+   *  can load their history. */
+  onMonthsInView?: (months: Date[]) => void;
 }) {
   // Group dated items by yyyy-MM-dd for instant per-day lookups.
   const byDay = useMemo(() => {
@@ -134,11 +176,27 @@ export function MonthCalendar({
 
   const dayKeys = useMemo(() => [...byDay.keys()].sort(), [byDay]);
 
+  // The venue's today, as a day key. Days before it are history: drawn with a
+  // dashed edge and read-only showings.
+  const todayKey = venueDayKey(new Date());
+
   // "Today" for the grid: today, or the day of a showing still playing from
-  // before midnight. `useFeed` lists only showings that have not ended, so
-  // nothing earlier holds anything, and the arrows stop at its month.
-  const start = useMemo(() => calendarStart(dayKeys), [dayKeys]);
-  const floor = useMemo(() => monthFloor(start), [start]);
+  // before midnight. Asked of the live showings only — with history loaded the
+  // earliest populated day is years back, and the grid opens on this week, not
+  // on that one.
+  const liveDayKeys = useMemo(
+    () =>
+      [...byDay.entries()]
+        .filter(([, dayItems]) => dayItems.some((it) => !it.ended))
+        .map(([key]) => key)
+        .sort(),
+    [byDay],
+  );
+  const start = useMemo(() => calendarStart(liveDayKeys), [liveDayKeys]);
+  // The arrows go back as far as history does when the caller loads
+  // history, and otherwise stop at the month of `start`: without history,
+  // nothing earlier holds anything.
+  const floor = useMemo(() => monthFloor(start, historyFrom), [start, historyFrom]);
 
   // Opens week-anchored on the current week, then switches to month navigation
   // the moment the reader pages. `anchorView` only moves off the current week
@@ -154,7 +212,7 @@ export function MonthCalendar({
   const [selectedDay, setSelectedDay] = useState<Date>(() => {
     const today = new Date();
     if (byDay.has(format(today, 'yyyy-MM-dd'))) return today;
-    const firstKey = [...byDay.keys()].sort()[0];
+    const firstKey = liveDayKeys[0];
     if (!firstKey) return today;
     const [y, m, d] = firstKey.split('-').map(Number);
     return new Date(y, m - 1, d);
@@ -172,18 +230,34 @@ export function MonthCalendar({
   // filter actually changes something and not when the caller re-renders — and
   // it never yanks a view the reader paged to themselves, because `anchorView`
   // stays put whenever the current grid holds anything.
-  const dayKeySignature = dayKeys.join(',');
-  const lastSignature = useRef(dayKeySignature);
+  //
+  // Only when a populated day has *dropped out*, which is what a search does.
+  // History arriving only ever adds days, and re-anchoring on it would yank a
+  // reader who paged into a month the venue was dark straight back to the
+  // present the moment the month before it finished loading.
+  const lastDayKeys = useRef(dayKeys);
   useEffect(() => {
-    if (lastSignature.current === dayKeySignature) return;
-    lastSignature.current = dayKeySignature;
+    const previous = lastDayKeys.current;
+    if (previous === dayKeys) return;
+    lastDayKeys.current = dayKeys;
+    const now = new Set(dayKeys);
+    if (previous.every((key) => now.has(key))) return;
     setView((current) => {
       const next = anchorView(current, dayKeys, floor, start);
       return isSameDay(next.start, current.start) && next.mode === current.mode ? current : next;
     });
-  }, [dayKeySignature, dayKeys, floor, start]);
+  }, [dayKeys, floor, start]);
 
   const days = useMemo(() => viewDays(view), [view]);
+
+  // Keyed on the months themselves, not on the array, so the caller hears
+  // about a change of month and not about every render.
+  const monthsInView = useMemo(() => monthsCovered(days), [days]);
+  const monthsSignature = monthsInView.map((m) => format(m, 'yyyy-MM')).join(',');
+  useEffect(() => {
+    onMonthsInView?.(monthsInView);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthsSignature]);
   const dividers = useMemo(() => monthDividers(days, view), [days, view]);
   const canGoBack = canStepBack(view, floor);
 
@@ -201,14 +275,27 @@ export function MonthCalendar({
   // a search that re-anchored would show "Nothing on the marquee" beside a grid
   // full of matches. Whether the old day still has showings is not the
   // question; whether it is on screen is.
+  //
+  // The same goes for a day the grid chose on paging, while that month's
+  // history is still loading: it picked the 1st for want of anything better,
+  // and once the month arrives it should say what played rather than
+  // "Nothing on the marquee". A day the reader picked stays picked.
+  const readerPicked = useRef(false);
   useEffect(() => {
-    if (days.some((d) => isSameDay(d, selectedDay))) return;
-    const firstWithItems = days.find((d) => byDay.has(format(d, 'yyyy-MM-dd')));
-    setSelectedDay(firstWithItems ?? days[0]);
+    const onScreen = days.some((d) => isSameDay(d, selectedDay));
+    if (onScreen && (readerPicked.current || byDay.has(format(selectedDay, 'yyyy-MM-dd')))) return;
+    // A month view is about its own month, so the padding days of the month
+    // before are the last choice, not the first.
+    const withItems = days.filter((d) => byDay.has(format(d, 'yyyy-MM-dd')));
+    const inMonth = view.mode === 'month' ? withItems.find((d) => isSameMonth(d, view.start)) : undefined;
+    const next = inMonth ?? withItems[0] ?? days[0];
+    if (onScreen && isSameDay(next, selectedDay)) return;
+    readerPicked.current = false;
+    setSelectedDay(next);
     // Paging is not a request to read a day, so the phone gets its scannable
     // month back rather than a panel it never asked to open.
     setExpandedKey(null);
-  }, [days, byDay, selectedDay]);
+  }, [days, byDay, selectedDay, view]);
 
   const selectedKey = format(selectedDay, 'yyyy-MM-dd');
   const selectedItems = byDay.get(selectedKey) ?? [];
@@ -232,6 +319,7 @@ export function MonthCalendar({
   // again closes it.
   const toggleDay = (day: Date) => {
     const key = format(day, 'yyyy-MM-dd');
+    readerPicked.current = true;
     setSelectedDay(day);
     setExpandedKey((current) => (current === key ? null : key));
   };
@@ -253,6 +341,15 @@ export function MonthCalendar({
             <div>
               <p className="font-serif text-sm text-muted-foreground">
                 Click on a day to see what's playing
+              </p>
+              {/* Polite and always mounted, so a screen reader hears the
+                  change rather than a region appearing. */}
+              <p className="font-serif text-sm italic text-muted-foreground min-h-[1.25rem]" aria-live="polite">
+                {historyLoading
+                  ? 'Loading what played…'
+                  : historyFailed
+                    ? 'Could not load what played this month. Try again in a moment.'
+                    : ''}
               </p>
             </div>
           ) : (
@@ -335,6 +432,10 @@ export function MonthCalendar({
                         const today = isToday(day);
                         const hasItems = dayItems.length > 0;
                         const dayExpanded = expandedKey === key;
+                        // Before the venue's today: everything in it has
+                        // played. Tonight's finished early show is marked per
+                        // item instead, by `ended`.
+                        const past = key < todayKey;
 
                         // A floor, not a fixed height. Every day used to be the same
                         // box, which meant a third showing could not be drawn and became
@@ -381,6 +482,10 @@ export function MonthCalendar({
                               'hover:border-primary/60',
                               'border-accent/20',
                               shaded ? 'bg-muted' : 'bg-card',
+                              // Shape, not colour, says "this has happened":
+                              // a dashed edge survives every kind of colour
+                              // blindness and greyscale print alike.
+                              past && 'border-dashed',
                               selected && 'border-primary bg-primary/10 ring-1 ring-primary',
                               today && !selected && 'border-accent/60',
                             )}
@@ -397,7 +502,7 @@ export function MonthCalendar({
                                 // user nothing about what they are opening.
                                 aria-label={
                                   hasItems
-                                    ? `${format(day, 'EEEE, MMMM d')}, ${dayItems.length} ${dayItems.length === 1 ? 'showing' : 'showings'}`
+                                    ? `${format(day, 'EEEE, MMMM d')}, ${dayItems.length} ${dayItems.length === 1 ? 'showing' : 'showings'}${past ? ', past' : ''}`
                                     : `${format(day, 'EEEE, MMMM d')}, nothing on`
                                 }
                                 aria-expanded={dayExpanded}
@@ -415,7 +520,14 @@ export function MonthCalendar({
                                 {format(day, 'd')}
                               </button>
                               {hasItems && (
-                                <span className="hidden md:inline-block text-xs font-semibold px-1.5 rounded-full bg-primary text-primary-foreground">
+                                <span
+                                  className={cn(
+                                    'hidden md:inline-block text-xs font-semibold px-1.5 rounded-full',
+                                    past
+                                      ? 'border border-dashed border-accent/60 text-muted-foreground'
+                                      : 'bg-primary text-primary-foreground',
+                                  )}
+                                >
                                   {dayItems.length}
                                 </span>
                               )}
@@ -429,9 +541,19 @@ export function MonthCalendar({
                                     key={it.id}
                                     className={cn(
                                       'rounded-full w-1.5 h-1.5',
-                                      it.type === 'movie' && 'bg-primary',
-                                      it.type === 'event' && 'bg-accent',
-                                      it.type === 'concert' && 'bg-foreground',
+                                      // Ended: a ring, not a filled dot.
+                                      it.ended
+                                        ? cn(
+                                            'border',
+                                            it.type === 'movie' && 'border-primary',
+                                            it.type === 'event' && 'border-accent',
+                                            it.type === 'concert' && 'border-foreground',
+                                          )
+                                        : cn(
+                                            it.type === 'movie' && 'bg-primary',
+                                            it.type === 'event' && 'bg-accent',
+                                            it.type === 'concert' && 'bg-foreground',
+                                          ),
                                     )}
                                   />
                                 ))}
@@ -451,7 +573,26 @@ export function MonthCalendar({
                                 drawer, one tap away. */}
                             {hasItems && (
                               <div className="mt-1 hidden md:flex flex-col gap-1">
-                                {sorted.map((it) => (
+                                {sorted.map((it) => it.ended ? (
+                                  // History: the title as text, in the
+                                  // solid muted token (never faded), with a
+                                  // dashed rule. A click falls through to the
+                                  // cell and opens the day, which is the
+                                  // read-only record of what played.
+                                  <div
+                                    key={it.id}
+                                    className={cn(
+                                      'pl-1.5 border-l-2 border-dashed min-h-6',
+                                      it.type === 'movie' && 'border-primary',
+                                      it.type === 'event' && 'border-accent',
+                                      it.type === 'concert' && 'border-foreground',
+                                    )}
+                                  >
+                                    <div className="font-serif text-sm leading-tight line-clamp-2 lg:line-clamp-3 text-muted-foreground">
+                                      {it.title}
+                                    </div>
+                                  </div>
+                                ) : (
                                   <button
                                     key={it.id}
                                     type="button"
@@ -524,7 +665,7 @@ export function MonthCalendar({
                                   {isToday(selectedDay) ? 'Tonight' : format(selectedDay, 'EEEE')}
                                 </p>
                                 <h3 className="font-display text-xl uppercase tracking-wide">
-                                  {format(selectedDay, 'MMMM d')}
+                                  {dayHeading(selectedDay)}
                                 </h3>
                               </div>
                               <Button
@@ -571,7 +712,7 @@ export function MonthCalendar({
               {isToday(selectedDay) ? 'Tonight' : format(selectedDay, 'EEEE')}
             </p>
             <h2 className="font-display text-2xl uppercase tracking-wide mb-4">
-              {format(selectedDay, 'MMMM d')}
+              {dayHeading(selectedDay)}
             </h2>
             <DayShowings items={selectedItems} onSelect={onSelect} />
           </div>
