@@ -1,12 +1,13 @@
 ---
 brief: calendar-past-listings
 title: The /calendar month grid pages back through the last twelve months of showings, read-only
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-09
-verified: false
-evidence: src/hooks/useCalendarHistory.ts; checked on staging data 2026-10-09/10 (opens on this week, back arrow stops at the 12-month cutoff month, axe 0 violations, home page makes no history request)
+shipped_in: ["#376"]
+shipped_at: 2026-10-10
+verified: true
+evidence: "#376 squash-merged as aa0c5fe; prod Worker c753b0a6 (rollback ca27a222), staging ccbc65be (rollback 631c325f); kenworthy.org checked 2026-10-10: calendar opens on Oct–Nov 2026 and the back arrow stops at October 2025; past titles are text, not buttons, and a click opens no drawer; the home page reads showings + events only"
 ---
 
 # Brief: Show all past listings on the calendar

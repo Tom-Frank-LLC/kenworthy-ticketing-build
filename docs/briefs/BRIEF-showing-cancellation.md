@@ -1,12 +1,13 @@
 ---
 brief: showing-cancellation
 title: Staff can cancel a showing, and a cancelled showing disappears from every public listing
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-10
-verified: false
-evidence: migration 20261011005202 applied to staging 2026-10-11 (anon surface 0 rows); on staging, cancelling an upcoming and a past showing removed each from the calendar, the upcoming one's direct link showed the cancellation notice, price_ticket_order refused it (PT409); both restored
+shipped_in: ["#378"]
+shipped_at: 2026-10-11
+verified: true
+evidence: "#378 squash-merged as 3840dc9; migration 20261011005202 applied to production 2026-10-11 (column, CHECK and policy verified; anon surface 0 rows); prod Worker 1093cc24 (rollback c753b0a6); staging 8b24250f; Tom tested Cancel/Restore on staging; kenworthy.org showing heads 200 with EventScheduled, calendar history loads"
 ---
 
 # Brief: Cancel a showing
@@ -96,6 +97,5 @@ history would fail to load. `db push` to production, verify the column, then
   showing was cancelled" with no buy flow, and `price_ticket_order` refused it
   (PT409). A cancelled past showing disappeared from the calendar history.
   Both were restored afterwards; their `updated_at` moved.
-- Not exercised in a browser: the admin Cancel/Restore buttons themselves
-  (they need a staff sign-in). They send exactly the update tested above, and
-  `ProductionShowings.test.tsx` covers the row.
+- The admin Cancel/Restore buttons: Tom tested them on staging (2026-10-11)
+  and confirmed they work.
