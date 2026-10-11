@@ -2552,6 +2552,7 @@ export type Database = {
       }
       showings: {
         Row: {
+          cancelled_at: string | null
           created_at: string
           event_id: string | null
           id: string
@@ -2571,6 +2572,7 @@ export type Database = {
           venue_id: string | null
         }
         Insert: {
+          cancelled_at?: string | null
           created_at?: string
           event_id?: string | null
           id?: string
@@ -2590,6 +2592,7 @@ export type Database = {
           venue_id?: string | null
         }
         Update: {
+          cancelled_at?: string | null
           created_at?: string
           event_id?: string | null
           id?: string

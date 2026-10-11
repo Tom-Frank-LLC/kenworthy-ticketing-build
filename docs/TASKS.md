@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**134 briefs** — 119 shipped, 8 built, 7 open, 0 needs triage, 0 closed.
+**135 briefs** — 120 shipped, 8 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -32,6 +32,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Staff can cancel a showing, and a cancelled showing disappears from every public listing**<br>`feature` — `#378` — [brief](briefs/BRIEF-showing-cancellation.md)
 - **The /calendar month grid pages back through the last twelve months of showings, read-only**<br>`feature` — `#376` — [brief](briefs/BRIEF-calendar-past-listings.md)
 - **The blank rental contract is a fillable worksheet that downloads whatever has been typed, with empty fields as ruled lines**<br>`feature` — `#375` — [brief](briefs/BRIEF-fillable-blank-contract.md)
 - **A blank printable contract, a point person on each rental request, and Print that produces the same PDF as Download**<br>`feature` — `#373` — [brief](briefs/BRIEF-contract-blank-assignee-print.md)

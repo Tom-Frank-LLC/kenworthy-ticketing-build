@@ -76,6 +76,7 @@ describe('showingJsonLd', () => {
     manually_sold_out: false,
     no_ticket_required: false,
     is_active: true,
+    cancelled_at: null,
     created_at: '2026-08-01T00:00:00Z',
     updated_at: null,
     movies: { title: 'Casablanca', description: '<p>Play it, Sam.</p>', poster_url: 'https://x/p.jpg', duration_minutes: 102 },
@@ -103,6 +104,13 @@ describe('showingJsonLd', () => {
     expect(free.isAccessibleForFree).toBe(true);
     expect((free.offers as Record<string, unknown>).price).toBe('0.00');
     expect((showingJsonLd(base, 'https://k', after)!.offers as Record<string, unknown>).availability).toBe('https://schema.org/Discontinued');
+  });
+
+  it('says a cancelled showing is cancelled and no longer on offer, even when sold out', () => {
+    const ld = showingJsonLd({ ...base, is_active: false, cancelled_at: '2026-09-05T00:00:00Z', manually_sold_out: true }, 'https://k', before)!;
+    expect(ld.eventStatus).toBe('https://schema.org/EventCancelled');
+    expect((ld.offers as Record<string, unknown>).availability).toBe('https://schema.org/Discontinued');
+    expect(showingJsonLd(base, 'https://k', before)!.eventStatus).toBe('https://schema.org/EventScheduled');
   });
 
   it('uses the lowest active tier when tiers exist', () => {

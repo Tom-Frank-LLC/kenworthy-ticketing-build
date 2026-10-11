@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Calendar, Edit, Lock, LockOpen, Trash2 } from 'lucide-react';
+import { Ban, Calendar, Edit, Lock, LockOpen, Trash2, Undo2 } from 'lucide-react';
 import { formatShowtime } from '@/lib/datetime';
 
 /**
@@ -66,6 +66,7 @@ export function ProductionShowings({
   getScanned,
   onOpenAttendees,
   onToggleSoldOut,
+  onToggleCancelled,
   onDeleteShowing,
 }: {
   showings: any[];
@@ -76,6 +77,8 @@ export function ProductionShowings({
   getScanned: (showingId: string) => number;
   onOpenAttendees: (title: string, showingIds: string[], capacity: number) => void;
   onToggleSoldOut: (showing: any) => void;
+  /** Cancel, or restore a cancelled showing. `sold` is for the confirm. */
+  onToggleCancelled: (showing: any, sold: number) => void;
   onDeleteShowing: (showingId: string) => void;
 }) {
   if (showings.length === 0) return null;
@@ -97,8 +100,11 @@ export function ProductionShowings({
             {/* Said on the row as well as in the toggle's tooltip. A closed
                 showing looks identical to an open one otherwise, and the
                 difference matters most when scanning the list. */}
-            {showing.manually_sold_out && (
+            {showing.manually_sold_out && !showing.cancelled_at && (
               <Badge variant="destructive" className="text-xs">Sold Out</Badge>
+            )}
+            {showing.cancelled_at && (
+              <Badge variant="outline" className="text-xs">Cancelled</Badge>
             )}
           </div>
           <div className="flex items-center gap-1">
@@ -116,7 +122,8 @@ export function ProductionShowings({
             />
             {/* Not offered on a walk-in night: nothing is issued, so there is
                 nothing to sell out. */}
-            {!showing.no_ticket_required && (
+            {/* A cancelled night sells nothing, so selling out means nothing. */}
+            {!showing.no_ticket_required && !showing.cancelled_at && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -137,6 +144,25 @@ export function ProductionShowings({
                 </TooltipContent>
               </Tooltip>
             )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={showing.cancelled_at ? 'Restore showing' : 'Cancel showing'}
+                  onClick={() => onToggleCancelled(showing, getSold(showing.id))}
+                >
+                  {showing.cancelled_at
+                    ? <Undo2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    : <Ban className="h-3.5 w-3.5 text-muted-foreground" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {showing.cancelled_at
+                  ? 'Restore. The showing goes back on the website and on sale.'
+                  : 'Cancel. Takes it off the website and the calendar and stops sales. Sold tickets are not refunded.'}
+              </TooltipContent>
+            </Tooltip>
             <Button variant="ghost" size="sm" asChild>
               <Link to={`/admin/showings/${showing.id}`}><Edit className="h-3.5 w-3.5" /></Link>
             </Button>
