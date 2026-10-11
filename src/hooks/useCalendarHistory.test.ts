@@ -17,7 +17,7 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: (table: string) => {
       const chain: any = {};
-      for (const op of ['select', 'eq', 'gte', 'lt', 'order', 'limit', 'in']) {
+      for (const op of ['select', 'eq', 'is', 'gte', 'lt', 'order', 'limit', 'in']) {
         chain[op] = (...args: unknown[]) => {
           calls.push({ table, op, args });
           return chain;
@@ -72,6 +72,12 @@ describe('fetchHistoryMonth', () => {
 
     const showingFilters = calls.filter((c) => c.table === 'showings' && c.op === 'eq');
     expect(showingFilters).toEqual([]);
+  });
+
+  it('leaves out cancelled showings, which history cannot tell apart by the flag', async () => {
+    await fetchHistoryMonth('2026-10', NOW);
+    const is = calls.find((c) => c.table === 'showings' && c.op === 'is');
+    expect(is?.args).toEqual(['cancelled_at', null]);
   });
 
   it('asks for the venue month, up to now, not past it', async () => {

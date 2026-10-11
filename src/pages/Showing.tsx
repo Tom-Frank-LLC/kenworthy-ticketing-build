@@ -154,6 +154,38 @@ function PassedNotice({ startTime }: { startTime: string }) {
 }
 
 /**
+ * A showing staff cancelled.
+ *
+ * Listed nowhere (cancelling also makes it inactive, which every listing
+ * filters on), so a reader only lands here from a direct link, most likely the
+ * one in their ticket email. "Not found" would be the wrong answer to them;
+ * this says what happened. Refunds are handled by the box office, so the page
+ * does not promise one. See docs/briefs/BRIEF-showing-cancellation.md.
+ */
+function CancelledNotice({ startTime }: { startTime: string }) {
+  return (
+    <div
+      role="status"
+      className="rounded-lg border border-border bg-secondary/40 p-6 text-center"
+    >
+      <p className="font-display text-lg font-semibold">This showing was cancelled.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        It was scheduled for {formatShowtime(startTime, "EEEE, MMMM d, yyyy 'at' h:mm a")}. If you
+        bought tickets, contact the box office.
+      </p>
+      <div className="mt-4 flex flex-wrap justify-center gap-3">
+        <Button variant="outline" asChild>
+          <Link to="/">See what&rsquo;s playing now</Link>
+        </Button>
+        <Button variant="ghost" asChild>
+          <Link to="/calendar">Browse the calendar</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * A showing whose tickets are not sold here.
  *
  * Two facts share this panel because they share a consequence — nothing to
@@ -1051,6 +1083,9 @@ export default function Showing() {
   // guard above so the film's runtime is in hand: the cutoff is the end of the
   // show, and that end falls back to production.duration_minutes (film or event).
   const hasPassed = isPast(showing, production);
+  // Cancelled outranks passed: a cancelled night did not play, so "has
+  // passed" would be the wrong sentence once its date goes by.
+  const isCancelled = !!showing.cancelled_at;
   // Free and open: no purchase panel at all. Read from the showing row rather
   // than inferred from a $0 price — a $0 showing with this false is still
   // ticketed, and the reserve flow it gets is the correct one. See
@@ -1224,14 +1259,16 @@ export default function Showing() {
         currentMode="mark"
         currentVenueName={venue?.name ?? null}
         headingId="showing-showtimes"
-        heading={hasPassed ? 'Upcoming showtimes' : 'Showtimes'}
+        heading={hasPassed || isCancelled ? 'Upcoming showtimes' : 'Showtimes'}
         className="mt-0 mb-8"
       />
 
       {/* Everything below is the buy flow, and a past showing has none. The
           block is left at its original indentation rather than shifted a level
           to keep this change legible as the one-line rule it is. */}
-      {hasPassed ? (
+      {isCancelled ? (
+        <CancelledNotice startTime={showing.start_time} />
+      ) : hasPassed ? (
         <PassedNotice startTime={showing.start_time} />
       ) : !soldHere ? (
         <ExternalTicketingPanel production={production} productionType={productionType} />
@@ -1620,7 +1657,7 @@ export default function Showing() {
       {/* Mobile order bar. On phones the summary column stacks below the seat
           map, so the running total and the way to checkout would otherwise be
           a full screen of scrolling away from the seat the buyer just tapped. */}
-      {ticketCount > 0 && !soldOut && !hasPassed && !noTicket && (
+      {ticketCount > 0 && !soldOut && !hasPassed && !isCancelled && !noTicket && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-accent/20 glass px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div className="min-w-0">

@@ -524,6 +524,52 @@ export default function AdminDashboard() {
     loadData();
   };
 
+  /**
+   * Cancel a showing, or restore one cancelled by mistake.
+   *
+   * Cancelled is not Deactivate and not Sold out: the night is not happening.
+   * The showing leaves every public listing, the calendar's history included,
+   * and stops selling. Its tickets stay on record, to refund through Square.
+   * The two columns move together because the database refuses a cancelled
+   * showing that is still active (showings_cancelled_is_inactive), which is
+   * what keeps every `is_active = true` listing honest without each one asking.
+   * See docs/briefs/BRIEF-showing-cancellation.md.
+   *
+   * Restore makes it active again. A showing someone had hidden *before*
+   * cancelling comes back visible; with a single Cancel control and no hidden
+   * showings since the archive import, that is the case worth optimising for.
+   */
+  const toggleCancelled = async (showing: any, sold: number) => {
+    const cancelling = !showing.cancelled_at;
+    const when = formatShowtime(showing.start_time, 'EEE MMM d, h:mm a');
+    const question = cancelling
+      ? `Cancel the ${when} showing? It comes off the website and the calendar and stops selling.` +
+        (sold > 0
+          ? `\n\n${sold} ${sold === 1 ? 'ticket has' : 'tickets have'} already been sold. Cancelling does not refund ${sold === 1 ? 'it' : 'them'}: refund through Square.`
+          : '')
+      : `Restore the ${when} showing? It goes back on the website and on sale.`;
+    if (!confirm(question)) return;
+
+    const { data, error } = await supabase
+      .from('showings')
+      .update(
+        cancelling
+          ? { cancelled_at: new Date().toISOString(), is_active: false }
+          : { cancelled_at: null, is_active: true },
+      )
+      .eq('id', showing.id)
+      .select('id');
+
+    if (error) { toast.error(error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error('That did not save — you may not have permission to change this showing.');
+      return;
+    }
+
+    toast.success(cancelling ? 'Showing cancelled — it is off the website' : 'Showing restored — it is back on sale');
+    loadData();
+  };
+
 
   /*
    * The search and filter controls, rendered at the top of whichever listing
@@ -1154,6 +1200,7 @@ export default function AdminDashboard() {
                         getScanned={getScannedForShowing}
                         onOpenAttendees={openAttendees}
                         onToggleSoldOut={toggleSoldOut}
+                        onToggleCancelled={toggleCancelled}
                         onDeleteShowing={id => deleteItem('showings', id, 'Showing')}
                       />
                     </CardContent>
@@ -1300,6 +1347,7 @@ export default function AdminDashboard() {
                         getScanned={getScannedForShowing}
                         onOpenAttendees={openAttendees}
                         onToggleSoldOut={toggleSoldOut}
+                        onToggleCancelled={toggleCancelled}
                         onDeleteShowing={id => deleteItem('showings', id, 'Showing')}
                       />
                     </CardContent>

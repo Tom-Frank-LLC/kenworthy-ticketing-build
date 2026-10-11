@@ -397,12 +397,22 @@ function ShowingsManager({
               <span className="text-sm">{formatShowtime(s.start_time, 'EEE MMM d, yyyy • h:mm a')}</span>
               <Badge variant="secondary">${Number(s.ticket_price).toFixed(2)}</Badge>
               <Badge variant="outline">{ticketCounts[s.id] || 0} tickets</Badge>
-              {!s.is_active && <Badge variant="outline">Hidden</Badge>}
+              {s.cancelled_at ? (
+                <Badge variant="outline">Cancelled</Badge>
+              ) : (
+                !s.is_active && <Badge variant="outline">Hidden</Badge>
+              )}
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={() => toggleActive(s)}>
-                {s.is_active ? 'Hide' : 'Show'}
-              </Button>
+              {/* Not offered on a cancelled showing: showing it again would make
+                  it active while cancelled, which the database refuses
+                  (showings_cancelled_is_inactive). Restoring is done from the
+                  admin dashboard. */}
+              {!s.cancelled_at && (
+                <Button variant="ghost" size="sm" onClick={() => toggleActive(s)}>
+                  {s.is_active ? 'Hide' : 'Show'}
+                </Button>
+              )}
               <Button variant="ghost" size="sm" onClick={() => removeShowing(s.id)}>
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>

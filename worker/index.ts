@@ -103,6 +103,9 @@ async function resolveHead(env: Env, path: string): Promise<Resolved> {
             `Tickets for ${production.title} at Kenworthy Performing Arts Centre in Moscow, Idaho on ${when}.`,
           image: production.poster || base.image,
           ogType: 'event',
+          // Served (a ticket holder's link must still work) but not indexed:
+          // a cancelled night is listed nowhere, search results included.
+          noindex: !!showing.cancelled_at,
           jsonLd: ld ? [ld] : [],
         },
       };

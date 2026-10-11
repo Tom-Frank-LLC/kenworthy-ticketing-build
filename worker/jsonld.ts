@@ -67,7 +67,10 @@ export function showingJsonLd(showing: ShowingRow, siteUrl: string, now: number 
   const soldOut = isManuallySoldOut(showing);
   const free = needsNoTicket(showing) || lowestPrice(showing) === 0;
 
-  const availability = soldOut
+  const cancelled = !!showing.cancelled_at;
+  const availability = cancelled
+    ? 'https://schema.org/Discontinued'
+    : soldOut
     ? 'https://schema.org/SoldOut'
     : past
       ? 'https://schema.org/Discontinued'
@@ -86,7 +89,7 @@ export function showingJsonLd(showing: ShowingRow, siteUrl: string, now: number 
     url,
     startDate: showing.start_time,
     endDate,
-    eventStatus: 'https://schema.org/EventScheduled',
+    eventStatus: cancelled ? 'https://schema.org/EventCancelled' : 'https://schema.org/EventScheduled',
     eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
     isAccessibleForFree: free,
     location: {
