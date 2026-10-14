@@ -1,10 +1,13 @@
 ---
 brief: backstage-enquiry-form
 title: "Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-08-25
+shipped_in: ["#224"]
+shipped_at: 2026-08-28
+verified: true
+evidence: kenworthy.org/backstage-enquiry renders the scoped form with the venue locked to Backstage Speakeasy; the /backstage chunk in production links to /backstage-enquiry and no longer to /rental-request
 ---
 
 # Brief (for Claude Code): "Enquire about booking Backstage" should open a Backstage-specific form
@@ -124,3 +127,18 @@ something nobody was asked.
 queue), and the 375/768 breakpoints — the driven Chrome tab's viewport is pinned
 at 1280. The layout is the existing form's responsive grid with two sections
 removed, so nothing new was introduced at those widths.
+
+## Shipped
+
+In production as of 28 Aug 2026, in #224.
+
+Production was already carrying #224 before this session's deploy — another
+session's deploy had picked it up. Confirmed on the live site rather than
+inferred: `kenworthy.org/backstage-enquiry` renders the scoped form with the
+venue locked to Backstage Speakeasy, Ticketing kept, and Equipment and
+Film / Media gone; the production `Backstage` chunk contains
+`backstage-enquiry` and no longer contains `/rental-request`, so the neon
+sign's button goes to the right place. Also live on staging.
+
+The two "not verified" items above are still not verified. Neither is blocked —
+they need a real submission and a viewport the driven browser cannot produce.
