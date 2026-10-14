@@ -1,11 +1,12 @@
 ---
 brief: contract-term-extra-days
 title: The blank contract's Term can list extra days (rehearsal, load-in) each with its own date and hours
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-14
-verified: false
+shipped_in: ["#379"]
+shipped_at: 2026-10-14
+verified: true
 ---
 
 # Brief: Term clause — add a separate rehearsal/load-in day
