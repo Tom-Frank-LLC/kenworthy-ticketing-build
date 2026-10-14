@@ -221,6 +221,99 @@ describe('filling in the blank contract', () => {
   });
 });
 
+describe('another day in the Term', () => {
+  const type = (label: string, value: string) =>
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  const day = (n: number) => within(screen.getByRole('group', { name: `Another day in the Term (${n})` }));
+  const typeDay = (n: number, label: string, value: string) =>
+    fireEvent.change(day(n).getByLabelText(label), { target: { value } });
+  const term = () => document.querySelector('[data-term-day]')!.closest('p')!.textContent!.replace(/\s+/g, ' ');
+
+  it('adds a day with its own date and hours after the event', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    type('Event date', '2026-11-13');
+    type('Start time', '18:00');
+    type('End time', '20:30');
+    fireEvent.click(screen.getByRole('button', { name: /add another day/i }));
+    typeDay(1, 'Date', '2026-11-12');
+    typeDay(1, 'Start time', '18:00');
+    typeDay(1, 'End time', '21:00');
+
+    expect(term()).toContain(
+      'shall include Friday November 13th, 2026, from 6:00 PM to 8:30 PM, '
+      + 'and for rehearsal / load-in Thursday November 12th, 2026, from 6:00 PM to 9:00 PM. '
+      + 'Term is assessed from the time in which KPAC staff begins preparations',
+    );
+  });
+
+  it('an empty added day is three ruled blanks, not a placeholder', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    fireEvent.click(screen.getByRole('button', { name: /add another day/i }));
+    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(18 + 3);
+    expect(contractText()).not.toContain('0:00');
+
+    // Times without a date, and a cleared label: the date stays a line, no "for".
+    typeDay(1, 'For', '');
+    typeDay(1, 'Start time', '09:00');
+    expect(term()).toContain(', and , from 9:00 AM to');
+    expect(document.querySelectorAll('[data-term-day] [data-blank-fill]').length).toBe(2);
+  });
+
+  it('removes a day, keeps the rest, and Clear empties them all', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    const add = screen.getByRole('button', { name: /add another day/i });
+    fireEvent.click(add);
+    fireEvent.click(add);
+    typeDay(1, 'For', 'load-in');
+    typeDay(2, 'For', 'tech rehearsal');
+    fireEvent.click(day(1).getByRole('button', { name: /remove this day/i }));
+    expect(contractText()).not.toContain('load-in');
+    expect(contractText()).toContain('for tech rehearsal');
+
+    fireEvent.click(editor().getByRole('button', { name: /clear form/i }));
+    expect(document.querySelector('[data-term-day]')).toBeNull();
+    expect(window.sessionStorage.getItem(BLANK_DRAFT_KEY)).toBeNull();
+  });
+
+  it('survives a refresh', async () => {
+    const first = renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    fireEvent.click(screen.getByRole('button', { name: /add another day/i }));
+    typeDay(1, 'Date', '2026-11-12');
+    first.unmount();
+
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    expect(contractText()).toContain('for rehearsal / load-in Thursday November 12th, 2026');
+  });
+
+  it('an added day with nothing typed is still a draft worth keeping', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    fireEvent.click(screen.getByRole('button', { name: /add another day/i }));
+    typeDay(1, 'For', '');
+    await waitFor(() => expect(window.sessionStorage.getItem(BLANK_DRAFT_KEY)).not.toBeNull());
+  });
+
+  it('ignores a malformed saved draft rather than crashing', async () => {
+    window.sessionStorage.setItem(BLANK_DRAFT_KEY, JSON.stringify({ name: 'Jane', extra_days: [null, { date: 5 }] }));
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    expect(contractText()).toContain('Jane');
+    expect(document.querySelectorAll('[data-term-day]').length).toBe(2);
+  });
+
+  it('is not on a real contract', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(screen.queryByRole('button', { name: /add another day/i })).toBeNull();
+    expect(document.querySelector('[data-term-day]')).toBeNull();
+  });
+});
+
 describe('the buttons below the contract', () => {
   const bottom = () => screen.queryByTestId('contract-bottom-actions');
 

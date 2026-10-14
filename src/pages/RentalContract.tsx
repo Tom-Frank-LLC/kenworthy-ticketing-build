@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, Printer, Save, ShieldCheck, BadgeCheck, Eraser } from 'lucide-react';
+import { Download, Printer, Save, ShieldCheck, BadgeCheck, Eraser, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { formatClockTime, formatPlainDate } from '@/lib/datetime';
@@ -68,7 +68,19 @@ export type BlankFields = {
   concessions_fee: string;
   av_fee: string;
   alcohol_addendum: '' | 'served' | 'not_served';
+  /**
+   * Days in the Term besides the event, each with its own hours: a rehearsal
+   * on the Thursday before a Friday show. Not the same thing as `end_date`,
+   * which is one run of consecutive days at the same hours.
+   */
+  extra_days: TermDay[];
 };
+
+export type TermDay = { label: string; date: string; start: string; end: string };
+
+// Reads inside the Term sentence ("…, and for rehearsal / load-in Thursday…"),
+// so it starts lower-case. The staffer can change or clear it.
+const NEW_TERM_DAY: TermDay = { label: 'rehearsal / load-in', date: '', start: '', end: '' };
 
 export const EMPTY_BLANK: BlankFields = {
   name: '', organization: '', email: '', phone: '',
@@ -77,7 +89,11 @@ export const EMPTY_BLANK: BlankFields = {
   hourly_rate: '', base_hours: '', additional_hours_rate: '', additional_hours: '',
   staff_rate: '', staff_hours: '', concessions_fee: '', av_fee: '',
   alcohol_addendum: '',
+  extra_days: [],
 };
+
+type BlankText = Exclude<keyof BlankFields, 'extra_days'>;
+const TEXT_KEYS = Object.keys(EMPTY_BLANK).filter(k => k !== 'extra_days') as BlankText[];
 
 // sessionStorage, not localStorage: the draft survives a refresh, which is what
 // a long fill needs, and is gone when the tab closes. The page is public and
@@ -91,8 +107,14 @@ function loadBlankDraft(): BlankFields {
     if (!raw) return EMPTY_BLANK;
     const saved = JSON.parse(raw);
     const out = { ...EMPTY_BLANK };
-    for (const k of Object.keys(EMPTY_BLANK) as (keyof BlankFields)[]) {
-      if (typeof saved?.[k] === 'string') (out as Record<string, string>)[k] = saved[k];
+    for (const k of TEXT_KEYS) {
+      if (typeof saved?.[k] === 'string') (out as Record<BlankText, string>)[k] = saved[k];
+    }
+    if (Array.isArray(saved?.extra_days)) {
+      out.extra_days = saved.extra_days.map((d: Partial<Record<keyof TermDay, unknown>>) => {
+        const str = (v: unknown) => (typeof v === 'string' ? v : '');
+        return { label: str(d?.label), date: str(d?.date), start: str(d?.start), end: str(d?.end) };
+      });
     }
     return out;
   } catch {
@@ -123,7 +145,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   useEffect(() => {
     if (!blank) return;
     try {
-      if (Object.values(fields).some(Boolean)) {
+      if (TEXT_KEYS.some(k => fields[k]) || fields.extra_days.length) {
         window.sessionStorage.setItem(BLANK_DRAFT_KEY, JSON.stringify(fields));
       } else {
         window.sessionStorage.removeItem(BLANK_DRAFT_KEY);
@@ -317,7 +339,11 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const showNoAlcohol = blank ? fields.alcohol_addendum !== 'served' : !alcoholYes;
   const money = (v: number | undefined) => (v === undefined ? '' : `$${v.toFixed(2)}`);
   const subtotal = blank ? blankTotals.subtotal : totals.subtotal;
-  const set = (k: keyof BlankFields) => (v: string) => setFields(f => ({ ...f, [k]: v }));
+  const set = (k: BlankText) => (v: string) => setFields(f => ({ ...f, [k]: v }));
+  const setDay = (i: number, k: keyof TermDay) => (v: string) =>
+    setFields(f => ({ ...f, extra_days: f.extra_days.map((d, j) => (j === i ? { ...d, [k]: v } : d)) }));
+  const addDay = () => setFields(f => ({ ...f, extra_days: [...f.extra_days, NEW_TERM_DAY] }));
+  const removeDay = (i: number) => setFields(f => ({ ...f, extra_days: f.extra_days.filter((_, j) => j !== i) }));
 
   return (
     <div className="min-h-screen bg-background print:bg-white">
@@ -381,6 +407,27 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
                 <BlankField label="Start time" type="time" value={fields.start_time} onChange={set('start_time')} />
                 <BlankField label="End time" type="time" value={fields.end_time} onChange={set('end_time')} />
               </FieldGroup>
+              {fields.extra_days.map((d, i) => (
+                <FieldGroup key={i} legend={`Another day in the Term (${i + 1})`}>
+                  <BlankField label="For" value={d.label} onChange={setDay(i, 'label')} />
+                  <BlankField label="Date" type="date" value={d.date} onChange={setDay(i, 'date')} />
+                  <BlankField label="Start time" type="time" value={d.start} onChange={setDay(i, 'start')} />
+                  <BlankField label="End time" type="time" value={d.end} onChange={setDay(i, 'end')} />
+                  <div className="flex items-end">
+                    <Button size="sm" variant="outline" onClick={() => removeDay(i)}>
+                      <X className="h-4 w-4 mr-1" /> Remove this day
+                    </Button>
+                  </div>
+                </FieldGroup>
+              ))}
+              <div>
+                <Button size="sm" variant="outline" onClick={addDay}>
+                  <Plus className="h-4 w-4 mr-1" /> Add another day
+                </Button>
+                <p className="font-serif text-sm text-muted-foreground mt-1">
+                  For a rehearsal or load-in on a different day, with its own hours. For consecutive days at the same hours, use End date.
+                </p>
+              </div>
               <FieldGroup legend="What">
                 <BlankField label="Purpose" value={fields.purpose} onChange={set('purpose')} />
                 <BlankField label="Max attendees" type="number" value={fields.max_attendees} onChange={set('max_attendees')} />
@@ -495,7 +542,15 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
         <H2>2. Term</H2>
         <p>
           The term of this Agreement (the &ldquo;Term&rdquo;) shall include {blank
-            ? <><Fill width="16em">{eventDate}</Fill>, from <Fill width="5em">{formatClockTime(b.start_time)}</Fill> to <Fill width="5em">{formatClockTime(b.end_time)}</Fill></>
+            ? <>
+                <Fill width="16em">{eventDate}</Fill>, from <Fill width="5em">{formatClockTime(b.start_time)}</Fill> to <Fill width="5em">{formatClockTime(b.end_time)}</Fill>
+                {b.extra_days.map((d, i) => (
+                  <span key={i} data-term-day="">
+                    , and {d.label && <>for <Fill>{d.label}</Fill> </>}
+                    <Fill width="16em">{eventDays(d.date, '')}</Fill>, from <Fill width="5em">{formatClockTime(d.start)}</Fill> to <Fill width="5em">{formatClockTime(d.end)}</Fill>
+                  </span>
+                ))}
+              </>
             : <Fill>{eventDate}, from {timeRange}</Fill>}.
           Term is assessed from the time in which KPAC staff begins preparations for event and ends when staff completes clean-up after event.
         </p>
@@ -697,7 +752,10 @@ function num(v: number | undefined) {
 
 function trimmed(f: BlankFields): BlankFields {
   const out = { ...f };
-  for (const k of Object.keys(out) as (keyof BlankFields)[]) (out as Record<string, string>)[k] = out[k].trim();
+  for (const k of TEXT_KEYS) (out as Record<BlankText, string>)[k] = out[k].trim();
+  out.extra_days = f.extra_days.map(d => ({
+    label: d.label.trim(), date: d.date.trim(), start: d.start.trim(), end: d.end.trim(),
+  }));
   return out;
 }
 
