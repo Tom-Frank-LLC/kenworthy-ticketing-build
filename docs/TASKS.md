@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**136 briefs** — 121 shipped, 8 built, 7 open, 0 needs triage, 0 closed.
+**137 briefs** — 122 shipped, 8 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -33,6 +33,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Shipped
 
 - **The blank contract's Term can list extra days (rehearsal, load-in) each with its own date and hours**<br>`feature` — `#379` — [brief](briefs/BRIEF-contract-term-extra-days.md)
+- **A request's contract can set its own Term (date, hours, extra days), and Save says when it did not save**<br>`feature` — `#380` — [brief](briefs/BRIEF-contract-term-request.md)
 - **Staff can cancel a showing, and a cancelled showing disappears from every public listing**<br>`feature` — `#378` — [brief](briefs/BRIEF-showing-cancellation.md)
 - **The /calendar month grid pages back through the last twelve months of showings, read-only**<br>`feature` — `#376` — [brief](briefs/BRIEF-calendar-past-listings.md)
 - **The blank rental contract is a fillable worksheet that downloads whatever has been typed, with empty fields as ruled lines**<br>`feature` — `#375` — [brief](briefs/BRIEF-fillable-blank-contract.md)

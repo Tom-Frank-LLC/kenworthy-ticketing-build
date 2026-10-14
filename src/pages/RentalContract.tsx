@@ -26,7 +26,17 @@ type ContractData = {
   av_fee?: number;
   max_attendees?: number;
   alcohol_addendum?: 'served' | 'not_served';
+  // The Term as staff set it. The request holds what the renter asked for; the
+  // Term runs from prep to clean-up, so it is often wider. Absent means "as
+  // requested". An empty string is a deliberate blank and prints as one.
+  term_date?: string;
+  term_end_date?: string;
+  term_start?: string;
+  term_end?: string;
+  extra_days?: TermDay[];
 };
+
+const TERM_OVERRIDES = ['term_date', 'term_end_date', 'term_start', 'term_end', 'extra_days'] as const;
 
 const DEFAULTS: ContractData = {
   hourly_rate: 180,
@@ -110,16 +120,21 @@ function loadBlankDraft(): BlankFields {
     for (const k of TEXT_KEYS) {
       if (typeof saved?.[k] === 'string') (out as Record<BlankText, string>)[k] = saved[k];
     }
-    if (Array.isArray(saved?.extra_days)) {
-      out.extra_days = saved.extra_days.map((d: Partial<Record<keyof TermDay, unknown>>) => {
-        const str = (v: unknown) => (typeof v === 'string' ? v : '');
-        return { label: str(d?.label), date: str(d?.date), start: str(d?.start), end: str(d?.end) };
-      });
-    }
+    out.extra_days = termDays(saved?.extra_days);
     return out;
   } catch {
     return EMPTY_BLANK;
   }
+}
+
+// Saved by a browser (the draft) or in a jsonb column (contract_data); trust
+// neither to be the shape we wrote.
+function termDays(v: unknown): TermDay[] {
+  if (!Array.isArray(v)) return [];
+  const str = (x: unknown) => (typeof x === 'string' ? x : '');
+  return v.map((d: Partial<Record<keyof TermDay, unknown>> | null) => (
+    { label: str(d?.label), date: str(d?.date), start: str(d?.start), end: str(d?.end) }
+  ));
 }
 
 /**
@@ -164,7 +179,8 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
       const row = rows?.[0] || null;
       setRequest(row);
       if (row?.contract_data) {
-        setData({ ...DEFAULTS, ...(row.contract_data as ContractData) });
+        const saved = row.contract_data as ContractData;
+        setData({ ...DEFAULTS, ...saved, ...(saved.extra_days !== undefined && { extra_days: termDays(saved.extra_days) }) });
       }
       setLoading(false);
     })();
@@ -184,13 +200,23 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   async function save() {
     if (!request) return;
     setSaving(true);
-    const { error } = await supabase
+    const error = await writeContractData();
+    setSaving(false);
+    if (error) toast.error(error);
+    else toast.success('Contract saved');
+  }
+
+  // An update RLS refuses comes back as success with no rows, so ask for the
+  // row back and count it. Returns why it failed, or null.
+  async function writeContractData(): Promise<string | null> {
+    const { data: rows, error } = await supabase
       .from('rental_requests')
       .update({ contract_data: data as any })
-      .eq('id', request.id);
-    setSaving(false);
-    if (error) toast.error(error.message);
-    else toast.success('Contract saved');
+      .eq('id', request.id)
+      .select('id');
+    if (error) return error.message;
+    if (rows?.length !== 1) return 'Contract not saved: this account cannot update this rental.';
+    return null;
   }
 
   const blankLicensee = (fields.name.trim() || fields.organization.trim());
@@ -271,8 +297,10 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
     if (!request) return;
     setSigning(true);
     try {
-      // Save latest contract data first so the signed PDF reflects it
-      await supabase.from('rental_requests').update({ contract_data: data as any }).eq('id', request.id);
+      // Save latest contract data first so the signed PDF reflects it, and do
+      // not sign a document whose terms were not saved.
+      const saveError = await writeContractData();
+      if (saveError) throw new Error(saveError);
 
       const blob = await renderPdfBlob();
       const pdf_base64 = await blobToBase64(blob);
@@ -321,13 +349,13 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
     : data.agreement_date
       ? formatPlainDate(data.agreement_date)
       : format(new Date(request.created_at), 'MMMM d, yyyy');
-  const eventDate = blank
-    ? eventDays(b.event_date, b.end_date === b.event_date ? '' : b.end_date)
-    : eventDays(request.proposed_date, request.end_date) || '__________';
-  const timeRange = blank
-    ? ''
-    : [formatClockTime(request.event_start_time), formatClockTime(request.event_end_time)].filter(Boolean).join('–') ||
-      '__________';
+  const term = blank
+    ? { date: b.event_date, endDate: b.end_date, start: b.start_time, end: b.end_time, days: b.extra_days }
+    : requestTerm(data, request);
+  const eventDate = eventDays(term.date, term.endDate === term.date ? '' : term.endDate);
+  // A blank form rules an empty line; a real contract has always printed
+  // underscores there, and still does.
+  const termFill = (v: string, width: string) => (blank ? <Fill width={width}>{v}</Fill> : <Fill>{v || '__________'}</Fill>);
   const licensee = blank ? blankLicensee : request.applicant_name || request.organization_name || '__________';
   const contact = blank
     ? [b.name, b.organization, b.email, b.phone].filter(Boolean).join(', ')
@@ -340,10 +368,8 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const money = (v: number | undefined) => (v === undefined ? '' : `$${v.toFixed(2)}`);
   const subtotal = blank ? blankTotals.subtotal : totals.subtotal;
   const set = (k: BlankText) => (v: string) => setFields(f => ({ ...f, [k]: v }));
-  const setDay = (i: number, k: keyof TermDay) => (v: string) =>
-    setFields(f => ({ ...f, extra_days: f.extra_days.map((d, j) => (j === i ? { ...d, [k]: v } : d)) }));
-  const addDay = () => setFields(f => ({ ...f, extra_days: [...f.extra_days, NEW_TERM_DAY] }));
-  const removeDay = (i: number) => setFields(f => ({ ...f, extra_days: f.extra_days.filter((_, j) => j !== i) }));
+  const asRequested = request && requestTerm({}, request);
+  const termEdited = TERM_OVERRIDES.some(k => data[k] !== undefined);
 
   return (
     <div className="min-h-screen bg-background print:bg-white">
@@ -407,27 +433,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
                 <BlankField label="Start time" type="time" value={fields.start_time} onChange={set('start_time')} />
                 <BlankField label="End time" type="time" value={fields.end_time} onChange={set('end_time')} />
               </FieldGroup>
-              {fields.extra_days.map((d, i) => (
-                <FieldGroup key={i} legend={`Another day in the Term (${i + 1})`}>
-                  <BlankField label="For" value={d.label} onChange={setDay(i, 'label')} />
-                  <BlankField label="Date" type="date" value={d.date} onChange={setDay(i, 'date')} />
-                  <BlankField label="Start time" type="time" value={d.start} onChange={setDay(i, 'start')} />
-                  <BlankField label="End time" type="time" value={d.end} onChange={setDay(i, 'end')} />
-                  <div className="flex items-end">
-                    <Button size="sm" variant="outline" onClick={() => removeDay(i)}>
-                      <X className="h-4 w-4 mr-1" /> Remove this day
-                    </Button>
-                  </div>
-                </FieldGroup>
-              ))}
-              <div>
-                <Button size="sm" variant="outline" onClick={addDay}>
-                  <Plus className="h-4 w-4 mr-1" /> Add another day
-                </Button>
-                <p className="font-serif text-sm text-muted-foreground mt-1">
-                  For a rehearsal or load-in on a different day, with its own hours. For consecutive days at the same hours, use End date.
-                </p>
-              </div>
+              <TermDayRows days={fields.extra_days} onChange={days => setFields(f => ({ ...f, extra_days: days }))} />
               <FieldGroup legend="What">
                 <BlankField label="Purpose" value={fields.purpose} onChange={set('purpose')} />
                 <BlankField label="Max attendees" type="number" value={fields.max_attendees} onChange={set('max_attendees')} />
@@ -502,6 +508,35 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
                 />
               </div>
             </CardContent>
+            <CardContent className="p-4 pt-0 space-y-4">
+              <FieldGroup legend="Term">
+                <BlankField label="Event date" type="date" value={term.date} onChange={v => setData({ ...data, term_date: v })} />
+                <BlankField label="End date" type="date" value={term.endDate} onChange={v => setData({ ...data, term_end_date: v })} />
+                <BlankField label="Start time" type="time" value={term.start} onChange={v => setData({ ...data, term_start: v })} />
+                <BlankField label="End time" type="time" value={term.end} onChange={v => setData({ ...data, term_end: v })} />
+              </FieldGroup>
+              <p className="font-serif text-sm text-muted-foreground">
+                Requested: {[eventDays(asRequested.date, asRequested.endDate), [asRequested.start, asRequested.end].map(formatClockTime).filter(Boolean).join('–')].filter(Boolean).join(', ') || 'no date or time'}.
+                {' '}The Term runs from prep to clean-up, so set it wider than the event where it needs to be.
+                {termEdited && (
+                  <>
+                    {' '}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setData(d => {
+                        const out = { ...d };
+                        for (const k of TERM_OVERRIDES) delete out[k];
+                        return out;
+                      })}
+                    >
+                      Reset Term to the request
+                    </Button>
+                  </>
+                )}
+              </p>
+              <TermDayRows days={term.days} onChange={days => setData({ ...data, extra_days: days })} />
+            </CardContent>
           </Card>
         </div>
       )}
@@ -541,17 +576,13 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
 
         <H2>2. Term</H2>
         <p>
-          The term of this Agreement (the &ldquo;Term&rdquo;) shall include {blank
-            ? <>
-                <Fill width="16em">{eventDate}</Fill>, from <Fill width="5em">{formatClockTime(b.start_time)}</Fill> to <Fill width="5em">{formatClockTime(b.end_time)}</Fill>
-                {b.extra_days.map((d, i) => (
-                  <span key={i} data-term-day="">
-                    , and {d.label && <>for <Fill>{d.label}</Fill> </>}
-                    <Fill width="16em">{eventDays(d.date, '')}</Fill>, from <Fill width="5em">{formatClockTime(d.start)}</Fill> to <Fill width="5em">{formatClockTime(d.end)}</Fill>
-                  </span>
-                ))}
-              </>
-            : <Fill>{eventDate}, from {timeRange}</Fill>}.
+          The term of this Agreement (the &ldquo;Term&rdquo;) shall include {termFill(eventDate, '16em')}, from {termFill(formatClockTime(term.start), '5em')} to {termFill(formatClockTime(term.end), '5em')}
+          {term.days.map((d, i) => (
+            <span key={i} data-term-day="">
+              , and {d.label.trim() && <>for <Fill>{d.label.trim()}</Fill> </>}
+              {termFill(eventDays(d.date, ''), '16em')}, from {termFill(formatClockTime(d.start), '5em')} to {termFill(formatClockTime(d.end), '5em')}
+            </span>
+          ))}.
           Term is assessed from the time in which KPAC staff begins preparations for event and ends when staff completes clean-up after event.
         </p>
 
@@ -903,6 +934,51 @@ function Row({ label, value }: { label: React.ReactNode; value: string }) {
       <td className="py-1.5">{label}</td>
       <td className="py-1.5 text-right">{value || '\u00a0'}</td>
     </tr>
+  );
+}
+
+// The request's date and times, unless staff have set the Term themselves.
+// Times are stored as `HH:mm:ss`; the time input and formatClockTime want `HH:mm`.
+function requestTerm(data: ContractData, request: any) {
+  const hm = (t: string | null | undefined) => (t ?? '').slice(0, 5);
+  return {
+    date: data.term_date ?? request.proposed_date ?? '',
+    endDate: data.term_end_date ?? request.end_date ?? '',
+    start: data.term_start ?? hm(request.event_start_time),
+    end: data.term_end ?? hm(request.event_end_time),
+    days: data.extra_days ?? [],
+  };
+}
+
+// The Term's other days, in both editors: a rehearsal or load-in on a
+// different day from the event, with its own hours.
+function TermDayRows({ days, onChange }: { days: TermDay[]; onChange: (days: TermDay[]) => void }) {
+  const setDay = (i: number, k: keyof TermDay) => (v: string) =>
+    onChange(days.map((d, j) => (j === i ? { ...d, [k]: v } : d)));
+  return (
+    <>
+      {days.map((d, i) => (
+        <FieldGroup key={i} legend={`Another day in the Term (${i + 1})`}>
+          <BlankField label="For" value={d.label} onChange={setDay(i, 'label')} />
+          <BlankField label="Date" type="date" value={d.date} onChange={setDay(i, 'date')} />
+          <BlankField label="Start time" type="time" value={d.start} onChange={setDay(i, 'start')} />
+          <BlankField label="End time" type="time" value={d.end} onChange={setDay(i, 'end')} />
+          <div className="flex items-end">
+            <Button size="sm" variant="outline" onClick={() => onChange(days.filter((_, j) => j !== i))}>
+              <X className="h-4 w-4 mr-1" /> Remove this day
+            </Button>
+          </div>
+        </FieldGroup>
+      ))}
+      <div>
+        <Button size="sm" variant="outline" onClick={() => onChange([...days, NEW_TERM_DAY])}>
+          <Plus className="h-4 w-4 mr-1" /> Add another day
+        </Button>
+        <p className="font-serif text-sm text-muted-foreground mt-1">
+          For a rehearsal or load-in on a different day, with its own hours. For consecutive days at the same hours, use End date.
+        </p>
+      </div>
+    </>
   );
 }
 

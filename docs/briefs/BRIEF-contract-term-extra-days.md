@@ -46,9 +46,11 @@ time window. There was no way to say "Thursday rehearsal 6–9 PM, Friday event
 
 1. **Repeatable list**, not a single fixed second day.
 2. **Blank contract only.** The request-backed contract at `/contract/:token`
-   is untouched; it would need new columns on `rental_requests`, a regen of
-   `types.ts`, RLS, and a way to enter them in the request/review UI. Spec
-   separately if wanted.
+   was left for later. **Correction:** this brief said that would need new
+   columns on `rental_requests`, a `types.ts` regen and RLS. It did not —
+   `contract_data` (jsonb) already holds the contract's own terms, is saved by
+   the admin editor and returned by the token RPC. Done that way in
+   `BRIEF-contract-term-request.md`.
 3. **`end_date` kept** for consecutive days at the same hours; extra days are for
    days with different hours. The editor says so under the button.
 4. **Default label `rehearsal / load-in`**, lower-case because it reads

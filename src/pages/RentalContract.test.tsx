@@ -21,9 +21,27 @@ import RentalContract, { BLANK_DRAFT_KEY, EMPTY_BLANK, blankCosts } from './Rent
  */
 
 const rpc = vi.fn();
+// rental_requests.update(...).eq(...).select('id'): record the patch, answer
+// with whatever `updated` holds — [] is what an RLS refusal looks like.
+const update = vi.fn();
+let updated: { data: unknown[] | null; error: { message: string } | null } = { data: [{ id: 'req_1' }], error: null };
+const invoke = vi.fn().mockResolvedValue({ data: { error: 'stop here' }, error: null });
 vi.mock('@/integrations/supabase/client', () => ({
-  supabase: { rpc: (...args: unknown[]) => rpc(...args) },
+  supabase: {
+    rpc: (...args: unknown[]) => rpc(...args),
+    from: () => ({
+      update: (patch: unknown) => {
+        update(patch);
+        return { eq: () => ({ select: () => Promise.resolve(updated) }) };
+      },
+    }),
+    functions: { invoke: (...args: unknown[]) => invoke(...args) },
+  },
 }));
+
+const toastError = vi.fn();
+const toastSuccess = vi.fn();
+vi.mock('sonner', () => ({ toast: { error: (m: string) => toastError(m), success: (m: string) => toastSuccess(m) } }));
 
 let isAdmin = true;
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ isAdmin }) }));
@@ -83,6 +101,11 @@ function contractText() {
 beforeEach(() => {
   isAdmin = true;
   rpc.mockReset().mockResolvedValue({ data: [REQUEST], error: null });
+  update.mockClear();
+  invoke.mockClear();
+  toastError.mockClear();
+  toastSuccess.mockClear();
+  updated = { data: [{ id: 'req_1' }], error: null };
   outputPdf.mockClear();
   save.mockClear();
   set.mockClear();
@@ -306,11 +329,16 @@ describe('another day in the Term', () => {
     expect(document.querySelectorAll('[data-term-day]').length).toBe(2);
   });
 
-  it('is not on a real contract', async () => {
+  it('a renter opening a real contract can read the Term but not edit it', async () => {
+    isAdmin = false;
+    rpc.mockResolvedValue({
+      data: [{ ...REQUEST, contract_data: { extra_days: [{ label: 'load-in', date: '2026-11-13', start: '', end: '' }] } }],
+      error: null,
+    });
     renderAt('/contract/tok_1');
-    await screen.findByText(/Contract Editor/);
+    await screen.findByText('License Agreement');
     expect(screen.queryByRole('button', { name: /add another day/i })).toBeNull();
-    expect(document.querySelector('[data-term-day]')).toBeNull();
+    expect(contractText()).toContain('and for load-in Friday November 13th, 2026');
   });
 });
 
@@ -355,6 +383,102 @@ describe('a real contract', () => {
     expect(document.querySelectorAll('[data-blank-fill]').length).toBe(0);
     // The blank form's "no Save" assertion is only worth something if this one has it.
     expect(screen.getByRole('button', { name: /^save$/i })).toBeTruthy();
+  });
+});
+
+describe('the Term on a real contract', () => {
+  const term = () => contractText().match(/shall include (.*?)\. Term is assessed/s)![1].replace(/\s+/g, ' ');
+  const termEditor = () => within(screen.getByRole('group', { name: 'Term' }));
+  const withRequest = (r: Record<string, unknown>) => rpc.mockResolvedValue({ data: [{ ...REQUEST, ...r }], error: null });
+
+  it('is the requested date and hours until staff change it', async () => {
+    withRequest({ event_start_time: '18:00:00', event_end_time: '22:00:00' });
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(term()).toBe('Saturday November 14th, 2026, from 6:00 PM to 10:00 PM');
+    expect(screen.queryByRole('button', { name: /reset term/i })).toBeNull();
+  });
+
+  it('takes staff hours over the request, and Save writes them', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    fireEvent.change(termEditor().getByLabelText('Start time'), { target: { value: '16:00' } });
+    fireEvent.change(termEditor().getByLabelText('End time'), { target: { value: '23:30' } });
+    fireEvent.click(screen.getByRole('button', { name: /add another day/i }));
+    fireEvent.change(
+      within(screen.getByRole('group', { name: 'Another day in the Term (1)' })).getByLabelText('Date'),
+      { target: { value: '2026-11-13' } },
+    );
+    expect(term()).toBe(
+      'Saturday November 14th, 2026, from 4:00 PM to 11:30 PM, '
+      + 'and for rehearsal / load-in Friday November 13th, 2026, from __________ to __________',
+    );
+    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Contract saved'));
+    expect(update).toHaveBeenCalledWith({
+      contract_data: expect.objectContaining({
+        term_start: '16:00',
+        term_end: '23:30',
+        extra_days: [{ label: 'rehearsal / load-in', date: '2026-11-13', start: '', end: '' }],
+      }),
+    });
+    expect(update.mock.calls[0][0].contract_data).not.toHaveProperty('term_date');
+  });
+
+  it('reads a saved Term back, and Reset returns to the request', async () => {
+    withRequest({
+      contract_data: {
+        term_date: '2026-11-13', term_start: '17:00', term_end: '21:00',
+        extra_days: [{ label: 'load-in', date: '2026-11-12', start: '09:00', end: '12:00' }, null],
+      },
+    });
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(term()).toBe(
+      'Friday November 13th, 2026, from 5:00 PM to 9:00 PM, '
+      + 'and for load-in Thursday November 12th, 2026, from 9:00 AM to 12:00 PM, '
+      + 'and __________, from __________ to __________',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /reset term to the request/i }));
+    expect(term()).toBe('Saturday November 14th, 2026, from 6:00 PM to 10:00 PM');
+  });
+
+  it('a cleared field is a deliberate blank, not the request', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    fireEvent.change(termEditor().getByLabelText('End time'), { target: { value: '' } });
+    expect(term()).toBe('Saturday November 14th, 2026, from 6:00 PM to __________');
+  });
+});
+
+describe('saving a real contract', () => {
+  it('says so when the write was refused, which looks like success', async () => {
+    updated = { data: [], error: null };
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/not saved/i)));
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it('does not sign terms it could not save', async () => {
+    updated = { data: [], error: null };
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    fireEvent.click(screen.getByRole('button', { name: /sign & download/i }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/not saved/i)));
+    expect(invoke).not.toHaveBeenCalled();
+    expect(outputPdf).not.toHaveBeenCalled();
+  });
+
+  it('signs once the save went through', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    fireEvent.click(screen.getByRole('button', { name: /sign & download/i }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('sign-contract', expect.anything()));
   });
 });
 
