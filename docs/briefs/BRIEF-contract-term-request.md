@@ -1,11 +1,12 @@
 ---
 brief: contract-term-request
 title: A request's contract can set its own Term (date, hours, extra days), and Save says when it did not save
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-14
-verified: false
+shipped_in: ["#380"]
+shipped_at: 2026-10-14
+verified: true
 ---
 
 # Brief: The Term on a request's contract
