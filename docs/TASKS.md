@@ -5,30 +5,26 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**137 briefs** — 122 shipped, 8 built, 7 open, 0 needs triage, 0 closed.
+**138 briefs** — 127 shipped, 4 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
-- `P0` **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md) · [notes](briefs/confirmed%20from%20production%20logs%2028%20Aug%202026)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
-- `P2` **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
-- `P2` **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
-- `P2` **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open
 
-- `P0` **Cut the live domain over to kenworthy.org**<br>`ops` — [brief](briefs/BRIEF-golive-domain-cutover.md) · [notes](briefs/../RUNBOOK-golive-kenworthy-org.md)
 - `P1` **Everyone who signs in needs an authenticator code, enforced on the server, not only asked for in the browser**<br>`security` — [brief](briefs/BRIEF-admin-mfa.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - `P2` **Comp tickets are issued but never delivered to the person receiving them**<br>`bug` — [brief](briefs/BRIEF-comp-ticket-delivery.md)
 - `P2` **The Mailchimp campaign has never been able to send, because it queries a column that does not exist**<br>`bug` — [brief](briefs/BRIEF-mailchimp-campaign-dead-column.md)
 - `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)
 - `P2` **Establish whether Section 504 applies to the Kenworthy, and put the record behind it in place**<br>`ops` — [brief](briefs/BRIEF-section-504-compliance.md) · [notes](briefs/../accessibility-audit.md)
 - `P3` **Anyone who signs in can add a passkey as a second factor, keeping their authenticator app as the backup**<br>`security` — [brief](briefs/BRIEF-admin-passkeys.md)
+- **Capture SMS consent at the box office**<br>`feature` — [brief](briefs/BRIEF-counter-sms-optin.md)
 
 ## Shipped
 
@@ -66,6 +62,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - **One SQL function prices and writes every paid ticket order, so the arithmetic exists once**<br>`ops` — `#316`, `#317`, `#318`, `#320`, `#324` — [brief](briefs/BRIEF-pricing-rpc.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - **Staff can add ticket discounts (percent, $ per ticket, $ per order) that reconcile with Square to the cent**<br>`feature` — `#311`, `#312`, `#314` — [brief](briefs/BRIEF-ticket-discounts.md) · [notes](briefs/FINDINGS-square-order-arithmetic.md)
 - **Admins manage staff and host accounts; only a superadmin touches admins and superadmins**<br>`security` — `#305` — [brief](briefs/BRIEF-admin-account-role-management.md)
+- **Every pay button and the ticket receipt state the refund policy, and Terms §6 says the same thing**<br>`ux` — `#309` — [brief](briefs/BRIEF-nonrefundable-microcopy-scan.md) · [notes](briefs/../FINDINGS-nonrefundable-contradiction-scan.md)
 - **Staff are emailed about every marquee and rental request, and admins choose who**<br>`feature` — `#307` — [brief](briefs/BRIEF-staff-notifications.md)
 - **Links to past showings land on a real page instead of a 404 or a silent bounce**<br>`bug` — `#299` — [brief](briefs/BRIEF-past-event-graceful.md) · [notes](briefs/FINDINGS-past-event-visibility.md)
 - **Crawlers and share previews see each page's own title, card and JSON-LD**<br>`feature` — `#294` — [brief](briefs/BRIEF-seo-crawlability.md)
@@ -81,12 +78,16 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - **Month calendar opens with the current week as the top row**<br>`ux` — `#242` — [brief](briefs/BRIEF-calendar-current-week-top.md)
 - **On a phone, a tapped calendar day opens under its own week**<br>`ux` — `#249` — [brief](briefs/BRIEF-calendar-mobile-day-accordion.md)
 - **An online gift requires an email, and a stuck gift can be given one**<br>`bug` — `#245` — [brief](briefs/BRIEF-donation-requires-email.md)
+- **"Enquire about booking Backstage" opens a Backstage-scoped form, not the theatre rental sheet**<br>`ux` — `#224` — [brief](briefs/BRIEF-backstage-enquiry-form.md)
+- **Cut the live domain over to kenworthy.org**<br>`ops` — `#230` — [brief](briefs/BRIEF-golive-domain-cutover.md) · [notes](briefs/../RUNBOOK-golive-kenworthy-org.md)
 - **Live Events manages its own showings, and one door replaces two create buttons**<br>`ux` — `#226` — [brief](briefs/BRIEF-live-events-section-ux.md)
 - **A page with nothing to sell can be a curator's pick**<br>`feature` — `#218`, `#220`, `#222`, `#223` — [brief](briefs/BRIEF-manual-curator-slide.md)
 - **Port the type bump and rentals hero to phone widths**<br>`ux` — `#235` — [brief](briefs/BRIEF-mobile-layout-pass.md)
+- **Every online sale registers in Square as "Custom Amount" — the DIGITAL fulfillment is malformed**<br>`bug` — `#233` — [brief](briefs/BRIEF-square-order-falls-back-to-bare-payment.md)
 - **Shorter hero, larger site-wide type, and a preview pane that clears the nav**<br>`ux` — `#228`, `#195` — [brief](briefs/BRIEF-ui-polish-hero-fonts-sticky.md)
 - **An admin adds a whole run of showtimes in one pass, and is told exactly which ones landed**<br>`feature` — `#203`, `#208` — [brief](briefs/BRIEF-batch-showtimes.md)
 - **Give each film pass its own purchase page**<br>`ux` — `#207` — [brief](briefs/BRIEF-film-pass-detail-pages.md)
+- **A free showing can be marked "no ticket needed", and then says Free instead of offering a purchase**<br>`feature` — `#206` — [brief](briefs/BRIEF-free-no-ticket-showings.md)
 - **The Support menu sits on top of the Tickets button at tablet width**<br>`bug` — `#216` — [brief](briefs/BRIEF-header-nav-overlap-768.md)
 - **An admin can mark a showing sold out by hand, which closes online sales without hiding the showing**<br>`feature` — `#213` — [brief](briefs/BRIEF-manual-sold-out.md)
 - **A production can carry more than one genre, stored the way the DVD library already stores them**<br>`feature` — `#199`, `#200`, `#204` — [brief](briefs/BRIEF-multiple-genres.md) · [notes](briefs/../FINDINGS-genre-backfill.md)

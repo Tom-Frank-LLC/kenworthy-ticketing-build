@@ -1,17 +1,19 @@
 ---
 brief: golive-domain-cutover
 title: Cut the live domain over to kenworthy.org
-status: in-progress
+status: shipped
 track: ops
 severity: P0
 date: 2026-08-18
+shipped_in: ["#230"]
+shipped_at: 2026-08-28
 verified: true
 findings: ../RUNBOOK-golive-kenworthy-org.md
 ---
 
 # Brief (for Claude Code): Go live — cut the domain over to kenworthy.org
 
-**Status:** 🟡 In progress — readiness verified, code prepared, blocked on Cloudflare account access.
+**Status:** ✅ Shipped — kenworthy.org serves the new build since 28 Aug 2026 (#230). The original plan follows.
 **Execution runbook (authoritative from here on): `docs/RUNBOOK-golive-kenworthy-org.md`.** It supersedes the
 step order below, which flipped DNS last and would have pointed live ticket links at a WordPress 404.
 
