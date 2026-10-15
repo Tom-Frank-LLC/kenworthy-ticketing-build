@@ -62,8 +62,8 @@ export default function PatronDisplay({ factory }: { factory?: ChannelFactory })
 
   return (
     <main className="min-h-screen bg-background text-foreground flex flex-col px-2 sm:px-4 py-3 sm:py-6">
-      <div className="w-full max-w-2xl mx-auto flex-1 flex flex-col">
-        <KenworthyLogo size="custom" loading="eager" className="h-10 sm:h-16 md:h-20 mx-auto mb-3 sm:mb-6" />
+      <div className="w-full max-w-2xl lg:max-w-6xl mx-auto flex-1 flex flex-col">
+        <KenworthyLogo size="custom" loading="eager" className="h-10 sm:h-16 mx-auto mb-3 sm:mb-6" />
         {code
           ? <PairedDisplay code={code} factory={factory} onLeave={leave} />
           : <CodeEntry onJoin={join} />}
@@ -77,7 +77,7 @@ function CodeEntry({ onJoin }: { onJoin: (code: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   return (
     <form
-      className="flex-1 flex flex-col justify-center gap-4"
+      className="flex-1 flex flex-col justify-center gap-4 w-full max-w-xl mx-auto"
       onSubmit={(e) => {
         e.preventDefault();
         const c = normalizeCode(raw);
@@ -183,8 +183,7 @@ function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cen
   }
 
   return (
-    <SaleFrame>
-      <ShowCard snapshot={snapshot} />
+    <SaleFrame show={<ShowCard snapshot={snapshot} />}>
       <Breakdown snapshot={snapshot} />
       {/* Keyed on the sale so a half-typed amount never carries over to the
           next patron. The value shown is the till's, not this screen's. */}
@@ -204,10 +203,15 @@ function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cen
  * brought in from the panel weight: that is sized for a wide page, and here
  * the frame is the whole screen of a phone.
  */
-function SaleFrame({ children }: { children: React.ReactNode }) {
+function SaleFrame({ show, children }: { show: React.ReactNode; children: React.ReactNode }) {
+  // Two columns on a wide screen — the show beside the money. An iPad on its
+  // side is 820px tall, and stacked, the gift buttons ended ~250px below it.
   return (
-    <MarqueeFrame className="bg-card/30 rounded-sm space-y-4 sm:space-y-6 [--mq-inset:1.25rem] sm:[--mq-inset:2rem]">
-      {children}
+    <MarqueeFrame className="bg-card/30 rounded-sm [--mq-inset:1.25rem] sm:[--mq-inset:4rem]">
+      <div className="space-y-4 sm:space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-12 lg:items-start">
+        {show}
+        <div className="space-y-4 sm:space-y-6">{children}</div>
+      </div>
     </MarqueeFrame>
   );
 }
@@ -249,7 +253,12 @@ function ShowCard({ snapshot, compact }: { snapshot: SaleSnapshot; compact?: boo
               measured at 375 × 812, it pushed the donation buttons ~170px
               below the fold, and the gift is what this screen is for. */}
           {!compact && p?.description && (
-            <p className="hidden sm:block text-base text-muted-foreground line-clamp-5">{p.description}</p>
+            // The breakpoint toggles a wrapper, not the paragraph: `sm:block`
+            // on the paragraph overrides the -webkit-box that line-clamp
+            // needs, and the clamp silently stops clamping.
+            <div className="hidden sm:block">
+              <p className="text-base text-muted-foreground line-clamp-4">{p.description}</p>
+            </div>
           )}
         </div>
       </div>
@@ -291,8 +300,7 @@ function Breakdown({ snapshot, large }: { snapshot: SaleSnapshot; large?: boolea
 function FinalTotal({ snapshot, onChange }: { snapshot: SaleSnapshot; onChange?: () => void }) {
   const paying = snapshot.phase === 'paying';
   return (
-    <SaleFrame>
-      <ShowCard snapshot={snapshot} compact />
+    <SaleFrame show={<ShowCard snapshot={snapshot} compact />}>
       <Breakdown snapshot={snapshot} large />
       {snapshot.donationCents > 0 && (
         <p className="text-xl text-center">Thank you for your {dollars(snapshot.donationCents)} gift!</p>
