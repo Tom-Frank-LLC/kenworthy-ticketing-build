@@ -206,7 +206,7 @@ function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cen
  */
 function SaleFrame({ children }: { children: React.ReactNode }) {
   return (
-    <MarqueeFrame className="bg-card/30 rounded-sm space-y-4 sm:space-y-6 [--mq-inset:0.75rem] sm:[--mq-inset:1.25rem]">
+    <MarqueeFrame className="bg-card/30 rounded-sm space-y-4 sm:space-y-6 [--mq-inset:1.25rem] sm:[--mq-inset:2rem]">
       {children}
     </MarqueeFrame>
   );
@@ -234,7 +234,7 @@ function ShowCard({ snapshot, compact }: { snapshot: SaleSnapshot; compact?: boo
             src={poster}
             alt=""
             onError={() => setPosterFailed(true)}
-            className={`${compact ? 'w-16 sm:w-28' : 'w-20 sm:w-40'} aspect-[2/3] shrink-0 rounded-sm object-cover shadow-lg`}
+            className={`${compact ? 'w-14 sm:w-28' : 'w-16 sm:w-40'} aspect-[2/3] shrink-0 rounded-sm object-cover shadow-lg`}
           />
         )}
         <div className="min-w-0 space-y-2">
