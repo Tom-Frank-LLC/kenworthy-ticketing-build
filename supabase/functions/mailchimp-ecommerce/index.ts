@@ -39,7 +39,8 @@ const corsHeaders = {
  * was reachable by anyone who read either.
  *
  * What that bought an attacker, once a store exists: arbitrary addresses
- * written into the Kenworthy audience as customers with opt_in_status true,
+ * written into the Kenworthy audience as customers with opt_in_status true
+ * (true for every caller until 2026-10-14; now always false — see OPT_IN),
  * invented orders and revenue in the e-commerce reports the theatre reads, and
  * products carrying attacker-chosen titles that Mailchimp's own automations
  * then put in front of real subscribers. Mailchimp has no sandbox here —
@@ -123,12 +124,23 @@ Deno.serve(async (req) => {
 
   // Ensure customer exists (upsert)
   const customerId = email; // deterministic
+
+  // Always false. A purchase is not consent to email, and this runs for every
+  // ticket buyer and donor whatever they answered the newsletter box. Per
+  // Mailchimp, opt_in_status applies only to list members the e-commerce API
+  // adds: true made each new buyer a subscriber, false adds them as a
+  // transactional member, who cannot be sent marketing. It "will never
+  // overwrite the opt-in status of a pre-existing Mailchimp list member", so
+  // false does not unsubscribe anyone who signed up. The buyer's own "yes"
+  // arrives through mailchimp-subscribe, which steps a transactional contact
+  // up to pending (this call usually gets there first).
+  const OPT_IN = false;
   await mc(`/ecommerce/stores/${storeId}/customers/${encodeURIComponent(customerId)}`, {
     method: "PUT",
     body: JSON.stringify({
       id: customerId,
       email_address: email,
-      opt_in_status: true,
+      opt_in_status: OPT_IN,
       first_name: body.first_name || undefined,
       last_name: body.last_name || undefined,
     }),
@@ -154,7 +166,7 @@ Deno.serve(async (req) => {
   // Idempotent order create (409 on duplicate id is fine)
   const orderPayload = {
     id: String(order.id),
-    customer: { id: customerId, email_address: email, opt_in_status: true },
+    customer: { id: customerId, email_address: email, opt_in_status: OPT_IN },
     currency_code: "USD",
     order_total: Number(order.total) || 0,
     lines: order.lines.map((l: any, i: number) => ({

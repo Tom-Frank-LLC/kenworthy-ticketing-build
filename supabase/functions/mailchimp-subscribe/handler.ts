@@ -15,7 +15,9 @@
 //      and status_if_new only governs the add, so an anonymous PUT rewrote an
 //      existing subscriber's FNAME/LNAME and tags. Anonymous sign-ups now POST,
 //      which can only create; "Member Exists" is answered exactly like success,
-//      so the form is not a membership oracle either.
+//      so the form is not a membership oracle either. The one existing member
+//      a sign-up does change is a transactional one (a buyer who has not
+//      opted in), which goes to pending, as a new sign-up would.
 
 import { createHash } from 'node:crypto';
 import { z } from 'npm:zod@3.23.8';
@@ -136,6 +138,24 @@ export function createHandler(deps: SubscribeDeps) {
       ...(first_name ? { FNAME: first_name } : {}),
       ...(last_name ? { LNAME: last_name } : {}),
     };
+    const memberUrl = `${base}/lists/${audienceId}/members/${hash}`;
+
+    // A transactional contact is one Mailchimp holds only because they bought
+    // something: mailchimp-ecommerce creates every buyer and donor that way
+    // unless they opted in. They are on the list but cannot be sent marketing,
+    // and status_if_new / a create-only POST both leave them there, so a
+    // sign-up from them would vanish. Asking for email is the step up they
+    // have not had yet; this takes it, and touches nothing else.
+    async function optInTransactional(to: 'pending' | 'subscribed'): Promise<boolean> {
+      const res = await deps.fetch(memberUrl, {
+        method: 'PATCH',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: to }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) log('[mailchimp-subscribe] transactional opt-in failed:', summarise(res.status, j));
+      return res.ok;
+    }
 
     // ---- Anonymous: create-only -------------------------------------------
     if (kind === 'anonymous') {
@@ -163,10 +183,34 @@ export function createHandler(deps: SubscribeDeps) {
         }),
       });
       const resJson = await res.json().catch(() => ({}));
+      if (res.ok) return json({ ok: true, id: hash });
 
       // An existing member is left exactly as it was, and the caller cannot
-      // tell: the same answer as a fresh sign-up.
-      if (res.ok || (res.status === 400 && resJson?.title === 'Member Exists')) {
+      // tell: the same answer as a fresh sign-up. The one exception is a
+      // transactional contact, which goes to pending — Mailchimp's
+      // confirmation email, the same thing a fresh sign-up gets — with the
+      // same allowlisted tags. Names are not touched. This is the ordinary
+      // path for a guest who ticks the box at checkout: ticket-checkout's
+      // purchase sync has already created them, before the browser gets here.
+      if (res.status === 400 && resJson?.title === 'Member Exists') {
+        const existing = await deps.fetch(`${memberUrl}?fields=status`, {
+          headers: { Authorization: auth },
+        });
+        const current = await existing.json().catch(() => ({}));
+        if (existing.ok && current?.status === 'transactional' && (await optInTransactional('pending'))) {
+          const tagRes = await deps.fetch(`${memberUrl}/tags`, {
+            method: 'POST',
+            headers: { Authorization: auth, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tags: [...new Set([...tags, ...sourceTags])].map((name) => ({ name, status: 'active' })),
+            }),
+          });
+          if (!tagRes.ok) {
+            log('[mailchimp-subscribe] tagging failed:', summarise(tagRes.status, await tagRes.json().catch(() => ({}))));
+          } else {
+            await tagRes.text();
+          }
+        }
         return json({ ok: true, id: hash });
       }
       log('[mailchimp-subscribe] anonymous create failed:', summarise(res.status, resJson));
@@ -208,6 +252,9 @@ export function createHandler(deps: SubscribeDeps) {
       log('[mailchimp-subscribe] upsert failed:', summary);
       return json({ error: 'Mailchimp upsert failed', detail: summary }, 502);
     }
+    // status_if_new left an existing transactional contact transactional.
+    // Stepping up to what was asked for is not a downgrade of anything.
+    if (memberJson?.status === 'transactional') await optInTransactional(status);
 
     const allTags = [...new Set([...parsed.data.tags, ...sourceTags])];
     if (allTags.length) {
