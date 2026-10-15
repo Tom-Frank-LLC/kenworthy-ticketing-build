@@ -64,13 +64,40 @@ Deno.test('M7: an anonymous caller can only create — POST, pending, names, all
   assertEquals('interests' in c.body, false);
 });
 
+const EXISTS: [number, unknown] = [400, { title: 'Member Exists', detail: 'patron@example.com is already a list member.' }];
+
 Deno.test('M7: an existing member is left untouched, and the answer is the same as success', async () => {
-  const mc = mailchimp([[400, { title: 'Member Exists', detail: 'patron@example.com is already a list member.' }]]);
-  const res = await handler('anonymous', mc)(post({ email: 'patron@example.com', first_name: 'Rewritten' }));
+  for (const status of ['subscribed', 'unsubscribed', 'pending', 'cleaned']) {
+    const mc = mailchimp([EXISTS, [200, { status }]]);
+    const res = await handler('anonymous', mc)(post({ email: 'patron@example.com', first_name: 'Rewritten' }));
+    assertEquals(res.status, 200);
+    assertEquals((await res.json()).ok, true);
+    // A create, then a read of the status. No PUT, no PATCH, no tag write.
+    assertEquals(mc.calls.map((c) => c.method), ['POST', 'GET'], status);
+    assertEquals(mc.calls[1].url, 'https://us1.api.mailchimp.com/3.0/lists/aud/members/7facaebd3084b8cd6dc7f4bc67769e45?fields=status');
+  }
+});
+
+// mailchimp-ecommerce adds every buyer as transactional, before the browser
+// sends the ticked box here. Without this step the sign-up was lost.
+Deno.test('a transactional contact (a buyer who has not opted in) goes to pending, with allowlisted tags only', async () => {
+  const mc = mailchimp([EXISTS, [200, { status: 'transactional' }], [200, { status: 'pending' }], [200, {}]]);
+  const res = await handler('anonymous', mc)(post({ ...HOSTILE, tags: ['ticket-buyer', 'vip'], source: 'showing-checkout' }));
   assertEquals(res.status, 200);
-  assertEquals((await res.json()).ok, true);
-  // One call, a create. No PUT, no PATCH, no tag write followed it.
-  assertEquals(mc.calls.map((c) => c.method), ['POST']);
+  assertEquals(mc.calls.map((c) => c.method), ['POST', 'GET', 'PATCH', 'POST']);
+  assertEquals(mc.calls[2].body, { status: 'pending' }); // no names, no merge fields, never 'subscribed'
+  assertEquals(mc.calls[3].url.endsWith('/tags'), true);
+  assertEquals(mc.calls[3].body.tags.map((t: any) => t.name), ['ticket-buyer', 'source:showing-checkout']);
+});
+
+Deno.test('a failed step-up is logged without the address, and still answers like success', async () => {
+  const logs: unknown[][] = [];
+  const mc = mailchimp([EXISTS, [200, { status: 'transactional' }], [400, { title: 'Invalid Resource', detail: 'patron@example.com x' }]]);
+  const res = await handler('anonymous', mc, logs)(post({ email: 'patron@example.com' }));
+  assertEquals(res.status, 200);
+  assertEquals(mc.calls.map((c) => c.method), ['POST', 'GET', 'PATCH']); // no tags after a failed PATCH
+  assertEquals(JSON.stringify(logs).includes('patron@example.com'), false);
+  assertEquals(JSON.stringify(logs).includes('400 Invalid Resource'), true);
 });
 
 Deno.test('M1: an anonymous caller cannot unsubscribe anyone', async () => {
@@ -113,6 +140,19 @@ Deno.test('trusted callers keep the upsert, merge fields, interests and tags', a
   assertEquals(mc.calls[0].body.merge_fields, { FNAME: 'Pat', LTV_TICKETS: 12 });
   assertEquals(mc.calls[0].body.interests, { abc: true });
   assertEquals(mc.calls[1].body.tags.map((t: any) => t.name), ['ticket-buyer', 'source:backfill']);
+});
+
+Deno.test('trusted: an existing transactional contact steps up to the status asked for', async () => {
+  const mc = mailchimp([[200, { id: 'm1', status: 'transactional' }], [200, { status: 'subscribed' }], [200, {}]]);
+  await handler('trusted', mc)(post({ email: 'p@example.com', tags: ['newsletter'] }));
+  assertEquals(mc.calls.map((c) => c.method), ['PUT', 'PATCH', 'POST']);
+  assertEquals(mc.calls[1].body, { status: 'subscribed' });
+});
+
+Deno.test('trusted: any other existing status is left to status_if_new', async () => {
+  const mc = mailchimp([[200, { id: 'm1', status: 'unsubscribed' }], [200, {}]]);
+  await handler('trusted', mc)(post({ email: 'p@example.com', tags: ['newsletter'] }));
+  assertEquals(mc.calls.map((c) => c.method), ['PUT', 'POST']);
 });
 
 Deno.test('even trusted callers cannot mint a free-form source tag', async () => {
