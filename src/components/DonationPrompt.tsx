@@ -22,9 +22,11 @@ interface DonationPromptProps {
   className?: string;
   /**
    * Box-office wording differs from the buyer-facing page. `display` is the
-   * patron's own screen at the box office (/pos/display): the patron's words,
+   * patron-facing display at the box office (/pos/display): the patron's words,
    * bigger targets, and no link off the page — it is a kiosk, and the staff
-   * member takes any email.
+   * member takes any email. There every `onChange` is a decision the screen
+   * moves on from, so a typed amount waits for its own button rather than
+   * being sent a keystroke at a time ("25" would otherwise send $2 first).
    */
   variant?: 'customer' | 'staff' | 'display';
 }
@@ -41,6 +43,17 @@ interface DonationPromptProps {
  * absence of one — a prompt that makes declining feel like an omission is the
  * kind that gets a theatre complained about.
  */
+/** A typed dollar amount as a gift in cents; 0 for anything that is not one. */
+function customCents(raw: string): number {
+  const dollars = Number(raw);
+  if (!raw.trim() || !Number.isFinite(dollars) || dollars <= 0) return 0;
+  const cents = Math.min(Math.round(dollars * 100), MAX_BUNDLED_DONATION_CENTS);
+  // Under a dollar is not a donation the server can record — the donations
+  // table itself refuses it — so it counts as no donation rather than as an
+  // error the buyer has to solve at the pay button.
+  return cents < 100 ? 0 : cents;
+}
+
 export function DonationPrompt({
   valueCents,
   onChange,
@@ -60,17 +73,9 @@ export function DonationPrompt({
 
   const handleCustom = (raw: string) => {
     setCustom(raw);
-    const dollars = Number(raw);
-    if (!raw.trim() || !Number.isFinite(dollars) || dollars <= 0) {
-      onChange(0);
-      return;
-    }
-    const cents = Math.min(Math.round(dollars * 100), MAX_BUNDLED_DONATION_CENTS);
-    // Under a dollar is not a donation the server can record — the donations
-    // table itself refuses it — so it counts as no donation rather than as an
-    // error the buyer has to solve at the pay button.
-    onChange(cents < 100 ? 0 : cents);
+    if (variant !== 'display') onChange(customCents(raw));
   };
+  const typedCents = customCents(custom);
 
   return (
     <div className={`border-t border-border pt-3 ${className ?? ''}`}>
@@ -131,6 +136,16 @@ export function DonationPrompt({
           onChange={(e) => handleCustom(e.target.value)}
           className={big ? 'h-14 text-lg' : 'h-9'}
         />
+        {variant === 'display' && (
+          <button
+            type="button"
+            disabled={disabled || typedCents === 0}
+            onClick={() => onChange(typedCents)}
+            className={`${buttonSize} shrink-0 px-4 rounded-md border border-primary bg-primary text-primary-foreground disabled:opacity-50`}
+          >
+            {typedCents > 0 ? `Add $${(typedCents / 100).toFixed(2)}` : 'Add'}
+          </button>
+        )}
       </div>
 
       {/* Said here, where the gift is chosen, rather than only at the email
@@ -144,7 +159,7 @@ export function DonationPrompt({
         </p>
       )}
 
-      {valueCents >= MAX_BUNDLED_DONATION_CENTS && !isPreset && variant === 'display' && (
+      {typedCents >= MAX_BUNDLED_DONATION_CENTS && variant === 'display' && (
         <p className="text-sm text-muted-foreground mt-2">
           For a gift larger than ${MAX_BUNDLED_DONATION_CENTS / 100}, please ask at the window so we
           can thank you properly.

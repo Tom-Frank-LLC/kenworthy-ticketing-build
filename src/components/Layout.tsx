@@ -104,7 +104,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     window.location.href = '/auth';
   };
 
-  // The box office's customer display is handed to the public outside the
+  // The box office's patron-facing display is handed to the public outside the
   // glass: no header, footer or menus — nothing that leads off the page.
   if (BARE_PATHS.has(location.pathname)) return <>{children}</>;
 

@@ -6,11 +6,11 @@ import { MemoryRouter } from 'react-router-dom';
 // Every channel here is the in-memory bus below; the real client is never reached.
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
-import CustomerDisplay from '@/pages/CustomerDisplay';
+import PatronDisplay from '@/pages/PatronDisplay';
 import {
   acceptableProposal, CODE_LENGTH, newPairingCode, normalizeCode, useTillDisplay,
   type ChannelFactory, type DisplayChannel, type SaleSnapshot, type TillDisplay,
-} from './customerDisplay';
+} from './patronDisplay';
 
 /**
  * An in-memory Realtime: endpoints on the same topic hear each other's
@@ -93,7 +93,7 @@ function renderPair(initial: SaleSnapshot = baseSale) {
   const code = api.till.code!;
   render(
     <MemoryRouter initialEntries={[`/pos/display?code=${code}`]}>
-      <CustomerDisplay factory={factory} />
+      <PatronDisplay factory={factory} />
     </MemoryRouter>,
   );
   return { api: () => api, code, factory };
@@ -150,21 +150,50 @@ describe('till ↔ display', () => {
     expect(screen.getAllByText('$19.08').length).toBeGreaterThan(0);
   });
 
-  it('a gift the patron taps becomes the till’s donation, and the total follows', async () => {
+  it('a gift the patron taps becomes the till’s donation, and the screen moves to the final total', async () => {
     const { api } = renderPair();
     fireEvent.click(await screen.findByRole('button', { name: '$5' }));
     await waitFor(() => expect(screen.getByTestId('till-donation')).toHaveTextContent(/^500$/));
-    // Shown because the till said so, not because the button was tapped.
-    expect(await screen.findByText('Your donation')).toBeInTheDocument();
-    expect(screen.getByText('$24.08')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '$5' })).toHaveAttribute('aria-pressed', 'true');
+    // The prompt is gone: the patron has answered it.
+    expect(screen.queryByRole('button', { name: '$5' })).not.toBeInTheDocument();
+    // Figures shown because the till said so, not because the button was tapped.
+    expect(await screen.findByText('$24.08')).toBeInTheDocument();
+    expect(screen.getByText('Thank you for your $5.00 gift!')).toBeInTheDocument();
+    expect(screen.getByText(/getting your payment ready/)).toBeInTheDocument();
     expect(api().donation()).toBe(500);
   });
 
-  it('a custom amount round-trips too', async () => {
+  it('“No thanks” moves on to the final total too, with no gift', async () => {
     renderPair();
-    fireEvent.change(await screen.findByLabelText('Custom donation amount'), { target: { value: '12' } });
-    await waitFor(() => expect(screen.getByTestId('till-donation')).toHaveTextContent(/^1200$/));
+    fireEvent.click(await screen.findByRole('button', { name: 'No thanks' }));
+    expect(await screen.findByText(/getting your payment ready/)).toBeInTheDocument();
+    expect(screen.queryByText(/Thank you for your/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('till-donation')).toHaveTextContent(/^0$/);
+  });
+
+  it('the patron can change their mind until the sale goes to the reader', async () => {
+    const { api } = renderPair();
+    fireEvent.click(await screen.findByRole('button', { name: '$10' }));
+    await waitFor(() => expect(screen.getByTestId('till-donation')).toHaveTextContent(/^1000$/));
+    fireEvent.click(screen.getByRole('button', { name: 'Change my donation' }));
+    fireEvent.click(await screen.findByRole('button', { name: '$1' }));
+    await waitFor(() => expect(screen.getByTestId('till-donation')).toHaveTextContent(/^100$/));
+
+    act(() => api().set({ phase: 'paying' }));
+    expect(await screen.findByText('Please pay on the card reader at the window.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change my donation' })).not.toBeInTheDocument();
+  });
+
+  it('a typed amount is sent only when the patron adds it, not a keystroke at a time', async () => {
+    renderPair();
+    const field = await screen.findByLabelText('Custom donation amount');
+    fireEvent.change(field, { target: { value: '2' } });
+    fireEvent.change(field, { target: { value: '25' } });
+    await act(async () => { await settle(); });
+    expect(screen.getByTestId('till-donation')).toHaveTextContent(/^0$/);
+    fireEvent.click(screen.getByRole('button', { name: 'Add $25.00' }));
+    await waitFor(() => expect(screen.getByTestId('till-donation')).toHaveTextContent(/^2500$/));
+    expect(await screen.findByText('Thank you for your $25.00 gift!')).toBeInTheDocument();
   });
 
   // The control for the two refusals below: the same out-of-band send, for
@@ -228,7 +257,7 @@ describe('till ↔ display', () => {
     const other = api.till.code === 'ZZZZZZ' ? 'YYYYYY' : 'ZZZZZZ';
     render(
       <MemoryRouter initialEntries={[`/pos/display?code=${other}`]}>
-        <CustomerDisplay factory={factory} />
+        <PatronDisplay factory={factory} />
       </MemoryRouter>,
     );
     expect(await screen.findByText(/Connecting to the box office/)).toBeInTheDocument();

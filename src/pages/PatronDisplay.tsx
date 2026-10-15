@@ -8,11 +8,11 @@ import { formatShowtime } from '@/lib/datetime';
 import {
   CODE_LENGTH, normalizeCode, useDisplayChannel,
   type ChannelFactory, type SaleSnapshot,
-} from '@/lib/customerDisplay';
+} from '@/lib/patronDisplay';
 
 /**
- * The patron's own screen at the box office — the device outside the glass.
- * See docs/briefs/BRIEF-pos-customer-display.md and @/lib/customerDisplay.
+ * The patron-facing display at the box office — the device outside the glass.
+ * See docs/briefs/BRIEF-pos-patron-facing-display.md and @/lib/patronDisplay.
  *
  * It is handed to the public, so it is built to be safe in anyone's hands:
  * no sign-in, no site chrome, no links off the page, and no call to anything
@@ -39,7 +39,7 @@ const NOT_FOUND_AFTER_MS = 6000;
 /** How long the thank-you stays up when no new sale replaces it. */
 const THANKS_FOR_MS = 10000;
 
-export default function CustomerDisplay({ factory }: { factory?: ChannelFactory }) {
+export default function PatronDisplay({ factory }: { factory?: ChannelFactory }) {
   const [params, setParams] = useSearchParams();
   const [code, setCode] = useState<string | null>(() => {
     const fromLink = normalizeCode(params.get('code') ?? '');
@@ -155,6 +155,10 @@ function PairedDisplay({ code, factory, onLeave }: { code: string; factory?: Cha
 }
 
 function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cents: number) => void }) {
+  // Which sale the patron has made their choice for. Keyed on the sale, so the
+  // next patron starts at the prompt without anything having to reset it.
+  const [decidedFor, setDecidedFor] = useState<string | null>(null);
+
   if (snapshot.phase === 'idle') {
     return (
       <div className="flex-1 flex flex-col justify-center text-center gap-3">
@@ -164,56 +168,102 @@ function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cen
     );
   }
 
-  const paying = snapshot.phase === 'paying';
+  // Once the patron has chosen — or the till has gone to the reader without
+  // waiting — the gift is settled and the screen says what will be charged.
+  if (decidedFor === snapshot.saleId || snapshot.phase === 'paying') {
+    return (
+      <FinalTotal
+        snapshot={snapshot}
+        onChange={snapshot.phase === 'open' ? () => setDecidedFor(null) : undefined}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <p className="font-display text-3xl">{snapshot.title}</p>
-        {snapshot.showtime && (
-          <p className="text-lg text-muted-foreground">{formatShowtime(snapshot.showtime, 'EEEE, MMMM d · h:mm a')}</p>
-        )}
-      </div>
+      <SaleHeading snapshot={snapshot} />
+      <Breakdown snapshot={snapshot} />
+      {/* Keyed on the sale so a half-typed amount never carries over to the
+          next patron. The value shown is the till's, not this screen's. */}
+      <DonationPrompt
+        key={snapshot.saleId}
+        variant="display"
+        valueCents={snapshot.donationCents}
+        onChange={(cents) => { onPropose(cents); setDecidedFor(snapshot.saleId); }}
+      />
+    </div>
+  );
+}
 
-      <dl className="text-lg space-y-2">
-        <div className="flex justify-between">
-          <dt>{snapshot.ticketCount} {snapshot.ticketCount === 1 ? 'ticket' : 'tickets'}, with tax</dt>
-          <dd>{dollars(snapshot.ticketsCents)}</dd>
-        </div>
-        {/* Always laid out, hidden at zero: the line appearing under a
-            patron's finger would push the gift buttons down mid-tap. */}
-        <div
-          className={`flex justify-between ${snapshot.donationCents > 0 ? '' : 'invisible'}`}
-          aria-hidden={snapshot.donationCents > 0 ? undefined : true}
-        >
-          <dt className="flex items-center gap-2"><Heart className="h-5 w-5 text-primary" aria-hidden="true" /> Your donation</dt>
-          <dd>{dollars(snapshot.donationCents)}</dd>
-        </div>
-        <div className="flex justify-between border-t border-border pt-3 text-2xl font-bold">
-          <dt>Total</dt>
-          <dd>{dollars(snapshot.totalCents)}</dd>
-        </div>
-      </dl>
-
-      {paying ? (
-        <div className="rounded-lg border border-border p-4 flex items-center gap-3 text-lg" role="status">
-          <CreditCard className="h-6 w-6 shrink-0" aria-hidden="true" />
-          {snapshot.payment === 'card'
-            ? 'Please pay on the card reader at the window.'
-            : 'Please pay at the window.'}
-        </div>
-      ) : (
-        // Keyed on the sale so a half-typed amount never carries over to the
-        // next patron. The value shown is the till's, not this screen's: a
-        // choice lights up once the till has taken it.
-        <DonationPrompt
-          key={snapshot.saleId}
-          variant="display"
-          valueCents={snapshot.donationCents}
-          onChange={onPropose}
-        />
+function SaleHeading({ snapshot }: { snapshot: SaleSnapshot }) {
+  return (
+    <div>
+      <p className="font-display text-3xl">{snapshot.title}</p>
+      {snapshot.showtime && (
+        <p className="text-lg text-muted-foreground">{formatShowtime(snapshot.showtime, 'EEEE, MMMM d · h:mm a')}</p>
       )}
-      {!paying && snapshot.donationCents > 0 && (
-        <p className="text-lg text-center">Thank you! Your gift is added to this purchase.</p>
+    </div>
+  );
+}
+
+function Breakdown({ snapshot, large }: { snapshot: SaleSnapshot; large?: boolean }) {
+  return (
+    <dl className="text-lg space-y-2">
+      <div className="flex justify-between">
+        <dt>{snapshot.ticketCount} {snapshot.ticketCount === 1 ? 'ticket' : 'tickets'}, with tax</dt>
+        <dd>{dollars(snapshot.ticketsCents)}</dd>
+      </div>
+      {/* Always laid out, hidden at zero: the line appearing under a
+          patron's finger would push the gift buttons down mid-tap. */}
+      <div
+        className={`flex justify-between ${snapshot.donationCents > 0 ? '' : 'invisible'}`}
+        aria-hidden={snapshot.donationCents > 0 ? undefined : true}
+      >
+        <dt className="flex items-center gap-2"><Heart className="h-5 w-5 text-primary" aria-hidden="true" /> Your donation</dt>
+        <dd>{dollars(snapshot.donationCents)}</dd>
+      </div>
+      <div className={`flex justify-between border-t border-border pt-3 font-bold ${large ? 'text-4xl' : 'text-2xl'}`}>
+        <dt>Total</dt>
+        <dd>{dollars(snapshot.totalCents)}</dd>
+      </div>
+    </dl>
+  );
+}
+
+/**
+ * The patron's last screen before paying: what will be charged, and what
+ * happens next. It holds from the moment the gift is chosen until the till
+ * says the sale went through, so the patron is never left on a prompt they
+ * have already answered. Its figures are still the till's, live — if staff
+ * add a ticket, the total here follows.
+ */
+function FinalTotal({ snapshot, onChange }: { snapshot: SaleSnapshot; onChange?: () => void }) {
+  const paying = snapshot.phase === 'paying';
+  return (
+    <div className="flex-1 flex flex-col justify-center space-y-8">
+      <SaleHeading snapshot={snapshot} />
+      <Breakdown snapshot={snapshot} large />
+      {snapshot.donationCents > 0 && (
+        <p className="text-xl text-center">Thank you for your {dollars(snapshot.donationCents)} gift!</p>
+      )}
+      <div className="rounded-lg border border-border p-4 flex items-center gap-3 text-lg" role="status">
+        {paying
+          ? <CreditCard className="h-6 w-6 shrink-0" aria-hidden="true" />
+          : <Loader2 className="h-6 w-6 shrink-0 animate-spin" aria-hidden="true" />}
+        {paying
+          ? snapshot.payment === 'card'
+            ? 'Please pay on the card reader at the window.'
+            : 'Please pay at the window.'
+          : 'One moment — the box office is getting your payment ready.'}
+      </div>
+      {/* Until the sale goes to the reader, a mis-tap can be undone here
+          rather than by asking through the glass. */}
+      {onChange && (
+        <div className="text-center">
+          <button type="button" onClick={onChange} className="text-lg underline underline-offset-4">
+            Change my donation
+          </button>
+        </div>
       )}
     </div>
   );

@@ -28,8 +28,8 @@ import { TodaysPresales } from '@/components/pos/TodaysPresales';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { releaseCardSale } from '@/lib/posRelease';
 import { TerminalReaderPicker } from '@/components/pos/TerminalReaderPicker';
-import { CustomerDisplayPairing } from '@/components/pos/CustomerDisplayPairing';
-import { useTillDisplay, type SaleSnapshot } from '@/lib/customerDisplay';
+import { PatronDisplayPairing } from '@/components/pos/PatronDisplayPairing';
+import { useTillDisplay, type SaleSnapshot } from '@/lib/patronDisplay';
 import { useTerminalReader } from '@/lib/terminalReader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
@@ -97,10 +97,10 @@ export default function StaffPOS() {
   // combined amount to the terminal, or one handful of cash — and is recorded
   // as contribution income, untaxed, exactly like the online path.
   const [donationCents, setDonationCents] = useState(0);
-  // Who set it: shown beside the amount, so a gift chosen on the customer
+  // Who set it: shown beside the amount, so a gift chosen on the patron-facing
   // display is never a surprise to the person about to charge it.
   const [donationFromDisplay, setDonationFromDisplay] = useState(false);
-  // Names this sale to the customer display, so a tap that arrives after the
+  // Names this sale to the patron-facing display, so a tap that arrives after the
   // sale cleared cannot land on the next patron's. New on every reset.
   const [saleId, setSaleId] = useState(() => crypto.randomUUID());
   // Set the moment a sale is rung, before React re-renders: the amount handed
@@ -360,7 +360,7 @@ export default function StaffPOS() {
   // and is never part of it. This is the number the terminal is handed.
   const chargeTotal = Math.round(grandTotal * 100 + donationCents) / 100;
 
-  // What the customer display shows: the show, the count and the money —
+  // What the patron-facing display shows: the show, the count and the money —
   // never the patron's contact details or seat numbers.
   const inFlight = selling || paymentStatus === 'processing';
   const displaySnapshot = useMemo<SaleSnapshot>(() => ({
@@ -377,17 +377,17 @@ export default function StaffPOS() {
 
   useEffect(() => { if (!inFlight) donationHeldRef.current = false; }, [inFlight]);
 
-  const customerDisplay = useTillDisplay(displaySnapshot, useCallback((cents: number) => {
+  const patronDisplay = useTillDisplay(displaySnapshot, useCallback((cents: number) => {
     if (donationHeldRef.current) return;
     setDonationCents(cents);
     setDonationFromDisplay(true);
-    if (cents > 0) toast.info(`The patron added a $${(cents / 100).toFixed(2)} donation on the display.`);
+    if (cents > 0) toast.info(`The patron added a $${(cents / 100).toFixed(2)} donation on the patron-facing display.`);
   }, []));
   // Read at completion rather than captured at the click: the card path
   // finishes inside a polling closure made several renders earlier.
   const displaySnapshotRef = useRef(displaySnapshot);
   displaySnapshotRef.current = displaySnapshot;
-  const { announceComplete: announceToDisplay } = customerDisplay;
+  const { announceComplete: announceToDisplay } = patronDisplay;
   const announceComplete = useCallback(
     () => announceToDisplay(displaySnapshotRef.current),
     [announceToDisplay],
@@ -950,7 +950,7 @@ export default function StaffPOS() {
       <div className="mb-4 space-y-3">
         <TimeClockWidget />
         <TerminalReaderPicker reader={reader} />
-        <CustomerDisplayPairing display={customerDisplay} />
+        <PatronDisplayPairing display={patronDisplay} />
       </div>
 
       <PosTodayStats />
@@ -1258,7 +1258,7 @@ export default function StaffPOS() {
                     {donationCents > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">
-                          Donation (not taxed){donationFromDisplay ? ' — chosen on the display' : ''}
+                          Donation (not taxed){donationFromDisplay ? ' — chosen on the patron-facing display' : ''}
                         </span>
                         <span>${(donationCents / 100).toFixed(2)}</span>
                       </div>

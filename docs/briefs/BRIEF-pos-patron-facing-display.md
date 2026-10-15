@@ -1,6 +1,6 @@
 ---
-brief: pos-customer-display
-title: A patron-facing screen at the box office mirrors the sale and lets the patron choose their own donation
+brief: pos-patron-facing-display
+title: A patron-facing display at the box office mirrors the sale and lets the patron choose their own donation
 status: built
 track: feature
 severity: P2
@@ -54,16 +54,34 @@ All five took the brief's recommendation:
 
 ## As built
 
-- `src/lib/customerDisplay.ts` — the protocol, both hooks (`useTillDisplay`,
+- `src/lib/patronDisplay.ts` — the protocol, both hooks (`useTillDisplay`,
   `useDisplayChannel`) and the Realtime transport. The header comment carries
   the security reasoning.
-- `src/pages/CustomerDisplay.tsx` — the display. Rendered without site chrome
+- `src/pages/PatronDisplay.tsx` — the display. Rendered without site chrome
   (`BARE_PATHS` in `Layout.tsx`). Keeps the screen awake (Wake Lock, best effort).
-- `src/components/pos/CustomerDisplayPairing.tsx` — the till's pair / show code /
+- `src/components/pos/PatronDisplayPairing.tsx` — the till's pair / show code /
   new code / turn off control, beside the card-reader picker.
 - `DonationPrompt` gained `variant="display"`: patron wording, bigger targets,
   and no link to `/donate` (the display is a kiosk).
 - `/pos` is `noindex` (worker `PRIVATE_PREFIXES`) and disallowed in `robots.txt`.
+
+### Revised after Tom's first staging test (15 Oct 2026)
+
+- **Name:** it is the **patron-facing display** — in the till's UI, the code
+  (`patronDisplay.ts`, `PatronDisplay.tsx`, `PatronDisplayPairing.tsx`) and this
+  brief. Not "customer display", not "the patron's screen".
+- **A final total screen.** Choosing a gift (or "No thanks") used to say thank
+  you and leave the prompt up, which read as unfinished. The display now moves
+  to a final total — breakdown, a large total, a thank-you for any gift, and
+  "One moment — the box office is getting your payment ready" — which becomes
+  "Please pay on the card reader" when the till sends the sale to the reader,
+  and gives way to the thank-you screen when the sale completes. "Change my
+  donation" returns to the prompt until the sale goes to the reader. If the
+  till charges before the patron chooses, the display goes straight to the
+  final total.
+- **A typed amount now has its own Add button** on the display. Because every
+  choice moves the screen on, sending a typed amount per keystroke would send
+  $2 on the way to $25 and leave the prompt after the first digit.
 
 ### Things established while building it
 
@@ -89,7 +107,7 @@ All five took the brief's recommendation:
 
 ### Verified
 
-- `src/lib/customerDisplay.test.tsx` (15 tests) wires the real till hook to the
+- `src/lib/patronDisplay.test.tsx` (15 tests) wires the real till hook to the
   real display page through an in-memory bus. Each refusal (wrong sale, paying
   phase) was mutation-checked: removing it fails both its unit test and its
   integration test. (The first version of those tests passed with the guards

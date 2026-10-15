@@ -5,7 +5,7 @@ import { MAX_BUNDLED_DONATION_CENTS } from '@/components/DonationPrompt';
 /**
  * The patron-facing screen at the box office: the iPhone or iPad outside the
  * glass that mirrors the sale and lets the patron choose their own donation.
- * See docs/briefs/BRIEF-pos-customer-display.md.
+ * See docs/briefs/BRIEF-pos-patron-facing-display.md.
  *
  * The two screens talk over a Supabase Realtime *broadcast* channel named by a
  * pairing code. Nothing is stored: a sale is transient, and the till already
