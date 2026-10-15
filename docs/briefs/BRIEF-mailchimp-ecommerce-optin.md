@@ -1,17 +1,20 @@
 ---
 brief: mailchimp-ecommerce-optin
 title: A ticket purchase or gift no longer subscribes the buyer to the newsletter
-status: built
+status: shipped
 track: bug
-severity: P1
 date: 2026-10-14
-verified: false
+shipped_in: ["#382"]
+shipped_at: 2026-10-14
+verified: true
+evidence: both functions deployed from 77d31cb to staging and production (prod mailchimp-subscribe v10, mailchimp-ecommerce v11)
 ---
 
 # Brief: a purchase is not a newsletter sign-up
 
-**Status:** built, not deployed. Edge functions only: `mailchimp-ecommerce`,
-`mailchimp-subscribe`.
+**Status:** shipped 2026-10-14 (#382), deployed to staging and production.
+Edge functions only: `mailchimp-ecommerce`, `mailchimp-subscribe`. Rollback:
+redeploy both from `2c4fc64`.
 
 ## The bug
 
@@ -29,8 +32,11 @@ including the ones who unticked the box.
 
 It has been dormant only because the sync returns early until
 `mailchimp-bootstrap` has created a store (`app_config.mailchimp_store`).
-Staging has no store and no Mailchimp keys. Production was not checked from this
-session (the read was blocked); see *Verify* below.
+**It never reached a buyer.** Production `app_config` was read on 2026-10-15:
+8 keys, `mfa_required` among them (proof that the query can see the table), and
+none starting with `mailchimp`. No store has ever been bootstrapped there, so the
+sync has always returned at `Store not bootstrapped`. Staging has no store and
+no Mailchimp keys.
 
 ## Why the one-line fix is not enough
 
@@ -71,9 +77,9 @@ Tests: `supabase/functions/mailchimp-subscribe/handler_test.ts` (12 pass).
   `[mailchimp-subscribe] transactional opt-in failed: <status> <title>` and the
   buyer stays transactional. That fails safe: no unwanted email, but the
   sign-up is lost.
-- Whether a production store exists:
-  `select key, value from app_config where key like 'mailchimp%';` against
-  production. No `mailchimp_store` row means none of this has ever fired.
+- Production has no store yet (above), so neither path has run against real
+  Mailchimp. **Before running `mailchimp-bootstrap` in production, test the
+  step-up** with the two purchases below.
 
 ## Verify after deploy (once a store exists)
 
