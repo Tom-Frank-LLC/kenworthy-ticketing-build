@@ -89,10 +89,9 @@ export function DonationPrompt({
           : 'Every gift helps keep the marquee lit. Tax-deductible, and not taxed.'}
       </p>
 
-      {/* Two by two wherever the display's column is narrow — a phone, or
-          the right-hand column of a landscape tablet: four across, "No thanks"
-          at display size does not fit its button and breaks mid-word. */}
-      <div className={`grid gap-2 ${big ? 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-2' : 'grid-cols-4'}`}>
+      {/* Two by two on a phone-sized display: four across, "No thanks" at
+          display size does not fit its button and breaks mid-word. */}
+      <div className={`grid gap-2 ${big ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-4'}`}>
         <button
           type="button"
           disabled={disabled}

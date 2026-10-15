@@ -112,24 +112,19 @@ All five took the brief's recommendation:
 
 ### Layout, measured (15 Oct 2026)
 
-Tom asked for the bulb inset doubled. At 4rem it suits a tablet; on a 375px
-phone it squeezed the text column to ~150px and put the gift buttons
-100–175px below the screen, so (Tom's call) the phone keeps 1.25rem and
-`sm` and up get 4rem.
+Tom asked for the space between the text and the bulbs doubled: `--mq-inset`
+is 4rem from `sm` up (was 2rem). The frame's own width is unchanged
+(`max-w-2xl`) — a two-column, wider frame for landscape tablets was tried and
+reverted at Tom's request; he wanted only the inner padding doubled. On a
+375px phone 4rem squeezed the text column to ~150px and put the gift buttons
+off screen, so (Tom's call) the phone keeps 1.25rem.
 
-Checking that exposed two things I had missed:
-
-- **iPad landscape never fit.** At 1180×820 the gift buttons ended ~1027px
-  down even before the doubling (1063 after) — I had only measured portrait.
-  On `lg` the frame is now two columns: the show on the left, the money and
-  the prompt on the right, amounts two-by-two in that column.
 - **The description was never clamped above a phone.** `sm:block` on the
-  paragraph overrides the `display: -webkit-box` that `line-clamp` needs; the
+  paragraph overrode the `display: -webkit-box` that `line-clamp` needs; the
   breakpoint now toggles a wrapper. It is 4 lines.
-
-Bottom of the last gift control, measured in a sized iframe: phone 375×812 —
-amounts 784, custom row below the fold; iPad portrait 820×1180 — 1012; iPad
-landscape 1180×820 — 764 (final-total screen 676).
+- **iPad in landscape (1180×820) does not fit the prompt** without scrolling —
+  the gift buttons sit below 820px. True before the doubling too. Portrait
+  fits. Open question for Tom if the iPad will be used on its side.
 
 ### Things established while building it
 
