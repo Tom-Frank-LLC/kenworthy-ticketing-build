@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
@@ -28,6 +28,13 @@ import { TodaysPresales } from '@/components/pos/TodaysPresales';
 import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { releaseCardSale } from '@/lib/posRelease';
 import { TerminalReaderPicker } from '@/components/pos/TerminalReaderPicker';
+import { PatronDisplayPairing } from '@/components/pos/PatronDisplayPairing';
+import {
+  useTillDisplay, safePosterUrl, toDisplayDescription,
+  type DisplayProduction, type SaleSnapshot,
+} from '@/lib/patronDisplay';
+import { displayedRuntime } from '@/components/ProductionMedia';
+import { htmlToPlainText } from '@/lib/plainText';
 import { useTerminalReader } from '@/lib/terminalReader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
@@ -61,9 +68,25 @@ interface ShowingOption {
    * can see the show exists — but greyed out rather than selectable.
    */
   not_sold_reason: CounterRefusal | null;
+  /** What the patron-facing display shows about the show. */
+  production: DisplayProduction | null;
 }
 
+/** The production columns the patron-facing display needs, on each kind. */
+const DISPLAY_COLUMNS = 'poster_url, rating, genre, duration_minutes, show_runtime, description';
+
 type PaymentStatus = 'idle' | 'processing' | 'completed' | 'failed';
+
+function toDisplayProduction(p: any): DisplayProduction | null {
+  if (!p) return null;
+  return {
+    posterUrl: safePosterUrl(p.poster_url),
+    rating: p.rating || null,
+    genre: p.genre || null,
+    runtimeMinutes: displayedRuntime(p) ?? null,
+    description: toDisplayDescription(htmlToPlainText(p.description)),
+  };
+}
 
 export default function StaffPOS() {
   const { isAdmin, isStaff, loading: authLoading } = useAuth();
@@ -95,6 +118,17 @@ export default function StaffPOS() {
   // combined amount to the terminal, or one handful of cash — and is recorded
   // as contribution income, untaxed, exactly like the online path.
   const [donationCents, setDonationCents] = useState(0);
+  // Who set it: shown beside the amount, so a gift chosen on the patron-facing
+  // display is never a surprise to the person about to charge it.
+  const [donationFromDisplay, setDonationFromDisplay] = useState(false);
+  // Names this sale to the patron-facing display, so a tap that arrives after the
+  // sale cleared cannot land on the next patron's. New on every reset.
+  const [saleId, setSaleId] = useState(() => crypto.randomUUID());
+  // Set the moment a sale is rung, before React re-renders: the amount handed
+  // to the reader is read from this render, so a gift proposed in the gap
+  // must not move the screen off it. Cleared by the effect below the
+  // payment state, once the sale is no longer in flight.
+  const donationHeldRef = useRef(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
@@ -142,7 +176,7 @@ export default function StaffPOS() {
       const { data } = await fetchAllRows<any, unknown>((from, to) =>
         supabase
           .from('showings')
-          .select('id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee, ticket_type), events(title, ticket_type), live_performances(title, ticket_type)')
+          .select(`id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee, ticket_type, ${DISPLAY_COLUMNS}), events(title, ticket_type, ${DISPLAY_COLUMNS}), live_performances(title, ticket_type, ${DISPLAY_COLUMNS})`)
           .eq('is_active', true)
           .gte('start_time', new Date().toISOString())
           .order('start_time')
@@ -172,6 +206,7 @@ export default function StaffPOS() {
             s.movies ? 'movie' : s.events ? 'event' : 'concert',
             s.movies ?? s.events ?? s.live_performances,
           ),
+          production: toDisplayProduction(s.movies ?? s.events ?? s.live_performances),
         }))
       );
     }
@@ -346,6 +381,40 @@ export default function StaffPOS() {
   // Tax was computed from the ticket lines above; the gift is added after it
   // and is never part of it. This is the number the terminal is handed.
   const chargeTotal = Math.round(grandTotal * 100 + donationCents) / 100;
+
+  // What the patron-facing display shows: the show, the count and the money —
+  // never the patron's contact details or seat numbers.
+  const inFlight = selling || paymentStatus === 'processing';
+  const displaySnapshot = useMemo<SaleSnapshot>(() => ({
+    saleId,
+    phase: ticketCount === 0 || quoteError ? 'idle' : inFlight ? 'paying' : 'open',
+    payment: paymentMethod === 'card' ? 'card' : 'cash',
+    title: selectedShowing?.movie_title ?? null,
+    showtime: selectedShowing?.start_time ?? null,
+    production: selectedShowing?.production ?? null,
+    ticketCount,
+    ticketsCents: Math.round(grandTotal * 100),
+    donationCents,
+    totalCents: Math.round(chargeTotal * 100),
+  }), [saleId, ticketCount, quoteError, inFlight, paymentMethod, selectedShowing, grandTotal, donationCents, chargeTotal]);
+
+  useEffect(() => { if (!inFlight) donationHeldRef.current = false; }, [inFlight]);
+
+  const patronDisplay = useTillDisplay(displaySnapshot, useCallback((cents: number) => {
+    if (donationHeldRef.current) return;
+    setDonationCents(cents);
+    setDonationFromDisplay(true);
+    if (cents > 0) toast.info(`The patron added a $${(cents / 100).toFixed(2)} donation on the patron-facing display.`);
+  }, []));
+  // Read at completion rather than captured at the click: the card path
+  // finishes inside a polling closure made several renders earlier.
+  const displaySnapshotRef = useRef(displaySnapshot);
+  displaySnapshotRef.current = displaySnapshot;
+  const { announceComplete: announceToDisplay } = patronDisplay;
+  const announceComplete = useCallback(
+    () => announceToDisplay(displaySnapshotRef.current),
+    [announceToDisplay],
+  );
 
   const toggleSeat = (seatId: string) => {
     if (takenSeatIds.has(seatId)) return;
@@ -580,12 +649,15 @@ export default function StaffPOS() {
     setPatronEmail('');
     setPatronPhone('');
     setDonationCents(0);
+    setDonationFromDisplay(false);
+    setSaleId(crypto.randomUUID());
     setPaymentStatus('idle');
     setSquareCheckoutId(null);
     setIsSimulated(false);
   }, []);
 
   const handleCashSale = async () => {
+    donationHeldRef.current = true;
     setSelling(true);
     try {
       const { ticketIds, orderToken } = await createTickets('cash');
@@ -620,6 +692,7 @@ export default function StaffPOS() {
           : `${ticketCount} ticket(s) sold (cash)!`,
         { duration: 5000 },
       );
+      announceComplete();
       await recordDonation('cash', null, orderToken);
       await deliverPos(orderToken);
       resetForm();
@@ -655,6 +728,7 @@ export default function StaffPOS() {
    * amount; nothing here names a price.
    */
   const handleCardSale = async () => {
+    donationHeldRef.current = true;
     setSelling(true);
     setPaymentStatus('processing');
     let orderToken: string | null = null;
@@ -662,6 +736,7 @@ export default function StaffPOS() {
     let readerReached = false;
 
     if (!reader.chosenId) {
+      donationHeldRef.current = false;
       setSelling(false); setPaymentStatus('idle');
       toast.error('Choose this station\'s card reader first (top of the page).');
       return;
@@ -713,6 +788,7 @@ export default function StaffPOS() {
           setPaymentStatus('completed');
           addTransaction(ticketIds, 'card', orderToken);
           toast.success(`Payment complete! ${ticketIds.length} ticket(s) sold.`);
+          announceComplete();
           await recordDonation('terminal', data.payment_id ?? null, orderToken);
           await deliverPos(orderToken);
           resetForm();
@@ -742,7 +818,7 @@ export default function StaffPOS() {
     };
 
     poll();
-  }, [addTransaction, resetForm, refreshAfterSale, recordDonation, deliverPos, releaseHeldSale]);
+  }, [addTransaction, resetForm, refreshAfterSale, recordDonation, deliverPos, releaseHeldSale, announceComplete]);
 
   const handleSell = () => {
     if (!selectedShowingId || ticketCount === 0) {
@@ -897,6 +973,7 @@ export default function StaffPOS() {
       <div className="mb-4 space-y-3">
         <TimeClockWidget />
         <TerminalReaderPicker reader={reader} />
+        <PatronDisplayPairing display={patronDisplay} />
       </div>
 
       <PosTodayStats />
@@ -1203,7 +1280,9 @@ export default function StaffPOS() {
                     )}
                     {donationCents > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Donation (not taxed)</span>
+                        <span className="text-muted-foreground">
+                          Donation (not taxed){donationFromDisplay ? ' — chosen on the patron-facing display' : ''}
+                        </span>
                         <span>${(donationCents / 100).toFixed(2)}</span>
                       </div>
                     )}
@@ -1216,7 +1295,7 @@ export default function StaffPOS() {
                   <DonationPrompt
                     variant="staff"
                     valueCents={donationCents}
-                    onChange={setDonationCents}
+                    onChange={(cents) => { setDonationCents(cents); setDonationFromDisplay(false); }}
                     disabled={selling || paymentStatus === 'processing'}
                   />
 

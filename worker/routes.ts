@@ -141,6 +141,7 @@ const STATIC: Record<string, StaticMeta> = {
 const PRIVATE_PREFIXES = [
   '/admin',
   '/staff',
+  '/pos',
   '/host',
   '/superadmin',
   '/auth',

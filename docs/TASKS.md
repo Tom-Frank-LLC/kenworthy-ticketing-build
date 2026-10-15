@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**139 briefs** — 128 shipped, 4 built, 7 open, 0 needs triage, 0 closed.
+**140 briefs** — 129 shipped, 4 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -28,6 +28,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A patron-facing display at the box office mirrors the sale and lets the patron choose their own donation**<br>`feature` — `#384` — [brief](briefs/BRIEF-pos-patron-facing-display.md)
 - **The blank contract's Term can list extra days (rehearsal, load-in) each with its own date and hours**<br>`feature` — `#379` — [brief](briefs/BRIEF-contract-term-extra-days.md)
 - **A request's contract can set its own Term (date, hours, extra days), and Save says when it did not save**<br>`feature` — `#380` — [brief](briefs/BRIEF-contract-term-request.md)
 - **A ticket purchase or gift no longer subscribes the buyer to the newsletter**<br>`bug` — `#382` — [brief](briefs/BRIEF-mailchimp-ecommerce-optin.md)

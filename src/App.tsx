@@ -59,6 +59,7 @@ const Terms = lazyWithRecovery(() => import("./pages/Terms"));
 // first one should not have to walk through the second.
 const StaffDashboard = lazyWithRecovery(() => import("./pages/staff/StaffDashboard"));
 const StaffPOS = lazyWithRecovery(() => import("./pages/staff/StaffPOS"));
+const PatronDisplay = lazyWithRecovery(() => import("./pages/PatronDisplay"));
 const TicketScanner = lazyWithRecovery(() => import("./pages/staff/TicketScanner"));
 const PrintQrs = lazyWithRecovery(() => import("./pages/staff/PrintQrs"));
 
@@ -169,6 +170,11 @@ const App = () => (
                     element={<StaffOnly allowHost><TicketScanner /></StaffOnly>}
                   />
                   <Route path="/staff/print-qr" element={<StaffOnly><PrintQrs /></StaffOnly>} />
+                  {/* The patron-facing display outside the box-office glass. Public on
+                      purpose: it signs nobody in and calls nothing privileged —
+                      it mirrors the till and proposes a donation, and the till
+                      decides. See src/lib/patronDisplay.ts. */}
+                  <Route path="/pos/display" element={<PatronDisplay />} />
                   <Route path="/host" element={<MfaGate><HostDashboard /></MfaGate>} />
                   <Route path="/sponsors" element={<Sponsors />} />
                   <Route path="/history" element={<HistoryPage />} />
