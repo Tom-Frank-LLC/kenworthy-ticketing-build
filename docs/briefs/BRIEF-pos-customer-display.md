@@ -1,0 +1,115 @@
+---
+brief: pos-customer-display
+title: A patron-facing screen at the box office mirrors the sale and lets the patron choose their own donation
+status: built
+track: feature
+severity: P2
+date: 2026-10-15
+verified: false
+---
+
+# Brief: Patron-facing box-office display with a self-serve donation (Option A)
+
+**Requested by:** Tom, 15 Oct 2026. The box office runs a Square Terminal under
+the glass; the patron cannot see their transaction or add a donation
+themselves. Put a patron-facing donation on a second device outside the glass
+(prototyped with an iPad for staff and an iPhone for the patron).
+
+## Why this is the only missing piece
+
+- **The Terminal can't host the button.** It runs Square's own checkout UI; we
+  hand it an amount. A Square *tip* is not a tax-deductible gift
+  (`BRIEF-donations.md`, Part E). So the prompt lives in our UI — it already
+  does, in `StaffPOS`.
+- **The gap is whose screen shows it.** Today staff tap the gift on the
+  counter-facing screen after asking out loud. This gives the patron their own
+  screen. Payment capture does not change.
+
+## The change (as asked)
+
+1. A patron-facing route (`/pos/display`): read-only view of the sale plus the
+   `DonationPrompt`. No staff chrome, no seat map, no contact fields, no sign-in,
+   no privileged call.
+2. Pair the two screens with a short-lived per-station code.
+3. Sync over a Supabase Realtime broadcast channel keyed by the code.
+4. The patron's amount becomes the till's `donationCents`; everything downstream
+   (`chargeTotal`, the Terminal, `recordDonation` → `square-donation
+   record_in_person`, LGL) is unchanged. The staff-side prompt stays as the
+   fallback.
+5. A thank-you state on the display; the card is only ever taken on the Terminal.
+
+## Decisions taken
+
+All five took the brief's recommendation:
+
+1. **Sync:** Realtime broadcast, no schema.
+2. **Pairing:** a 6-character code on the till — **plus a QR of the same link**,
+   because `qrcode.react` was already installed and scanning is faster than
+   typing on a phone. The code is the same either way.
+3. **What the display shows:** show title and time, ticket count, tickets-with-tax,
+   donation, total. No seat numbers, no tier breakdown. Presets + custom.
+4. **Rollout:** additive. A till with no display paired opens no channel at all
+   (tested), so the live box office is unchanged until a station pairs.
+5. **Device:** either; it is display-only.
+
+## As built
+
+- `src/lib/customerDisplay.ts` — the protocol, both hooks (`useTillDisplay`,
+  `useDisplayChannel`) and the Realtime transport. The header comment carries
+  the security reasoning.
+- `src/pages/CustomerDisplay.tsx` — the display. Rendered without site chrome
+  (`BARE_PATHS` in `Layout.tsx`). Keeps the screen awake (Wake Lock, best effort).
+- `src/components/pos/CustomerDisplayPairing.tsx` — the till's pair / show code /
+  new code / turn off control, beside the card-reader picker.
+- `DonationPrompt` gained `variant="display"`: patron wording, bigger targets,
+  and no link to `/donate` (the display is a kiosk).
+- `/pos` is `noindex` (worker `PRIVATE_PREFIXES`) and disallowed in `robots.txt`.
+
+### Things established while building it
+
+- **Anon Realtime broadcast works on both projects** with no configuration
+  (probed 15 Oct 2026, staging and production): the publishable key can join
+  any public topic by name. So **the code is the only thing scoping a channel**.
+  It is 6 characters from a 31-character alphabet (~8.9 × 10⁸), random, and
+  expires after 16 hours (`CODE_TTL_MS`). A stranger who guessed one could read
+  a title and a total, or propose a gift — which the till refuses outside
+  $1–$1,000, refuses for any sale but the current one, refuses once the sale
+  has gone to the reader, and toasts to staff when it accepts. The reader shows
+  the full amount before the patron taps.
+- **The till is the only source of truth.** The display never shows its own tap;
+  a choice lights up when the till's next snapshot says it took it.
+- **A proposal carries the sale's id.** `saleId` rotates on every `resetForm`, so
+  a late tap cannot land on the next patron's sale.
+- **Race closed at the Charge click.** The amount sent to the reader is read from
+  the render the click happened in; a proposal arriving before React re-renders
+  would have moved the screen's donation off it. `donationHeldRef` is set
+  synchronously in both sale handlers. Charge and record were already
+  consistent with each other (same closure); this keeps the screen honest too.
+- `CSP connect-src` already allowed `wss://*.supabase.co`.
+
+### Verified
+
+- `src/lib/customerDisplay.test.tsx` (15 tests) wires the real till hook to the
+  real display page through an in-memory bus. Each refusal (wrong sale, paying
+  phase) was mutation-checked: removing it fails both its unit test and its
+  integration test. (The first version of those tests passed with the guards
+  removed — `toHaveTextContent('0')` is a substring match and `1000` contains
+  `0`. Now exact.)
+- End to end over **real staging Realtime**: the display page in Chrome, with a
+  scripted till on the same channel. Mirror, $5 round trip, paying lock,
+  thank-you, return to Welcome, reload rejoins from storage, unknown code says
+  so after 6 s.
+
+### Not yet verified
+
+- `StaffPOS` itself driving the display in a browser (needs a staff sign-in with
+  MFA). Its wiring is type-checked and mirrors the harness, but the real
+  two-device run — iPad till, iPhone display, Terminal sandbox — is the
+  remaining test.
+
+### Known limits
+
+- Two `/staff/pos` tabs in one browser share the station's code and would both
+  answer the display. One till tab per station.
+- Donation-only (no tickets) is still unsupported at the counter, as before.
+- Concessions and film-pass sales leave the display on Welcome.

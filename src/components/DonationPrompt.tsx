@@ -20,8 +20,13 @@ interface DonationPromptProps {
   onChange: (cents: number) => void;
   disabled?: boolean;
   className?: string;
-  /** Box-office wording differs from the buyer-facing page. */
-  variant?: 'customer' | 'staff';
+  /**
+   * Box-office wording differs from the buyer-facing page. `display` is the
+   * patron's own screen at the box office (/pos/display): the patron's words,
+   * bigger targets, and no link off the page — it is a kiosk, and the staff
+   * member takes any email.
+   */
+  variant?: 'customer' | 'staff' | 'display';
 }
 
 /**
@@ -45,6 +50,8 @@ export function DonationPrompt({
 }: DonationPromptProps) {
   const [custom, setCustom] = useState('');
   const isPreset = PRESETS_CENTS.includes(valueCents);
+  const big = variant === 'display';
+  const buttonSize = big ? 'h-14 text-lg' : 'h-10 text-sm';
 
   const pick = (cents: number) => {
     setCustom('');
@@ -83,7 +90,7 @@ export function DonationPrompt({
           disabled={disabled}
           onClick={() => pick(0)}
           aria-pressed={valueCents === 0}
-          className={`h-10 text-sm border rounded-md transition-colors disabled:opacity-50 ${
+          className={`${buttonSize} border rounded-md transition-colors disabled:opacity-50 ${
             valueCents === 0
               ? 'border-primary bg-primary text-primary-foreground'
               : 'border-border hover:border-primary/60'
@@ -98,7 +105,7 @@ export function DonationPrompt({
             disabled={disabled}
             onClick={() => pick(cents)}
             aria-pressed={valueCents === cents}
-            className={`h-10 text-sm border rounded-md transition-colors disabled:opacity-50 ${
+            className={`${buttonSize} border rounded-md transition-colors disabled:opacity-50 ${
               valueCents === cents
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-border hover:border-primary/60'
@@ -122,7 +129,7 @@ export function DonationPrompt({
           value={custom}
           disabled={disabled}
           onChange={(e) => handleCustom(e.target.value)}
-          className="h-9"
+          className={big ? 'h-14 text-lg' : 'h-9'}
         />
       </div>
 
@@ -137,7 +144,14 @@ export function DonationPrompt({
         </p>
       )}
 
-      {valueCents >= MAX_BUNDLED_DONATION_CENTS && !isPreset && (
+      {valueCents >= MAX_BUNDLED_DONATION_CENTS && !isPreset && variant === 'display' && (
+        <p className="text-sm text-muted-foreground mt-2">
+          For a gift larger than ${MAX_BUNDLED_DONATION_CENTS / 100}, please ask at the window so we
+          can thank you properly.
+        </p>
+      )}
+
+      {valueCents >= MAX_BUNDLED_DONATION_CENTS && !isPreset && variant !== 'display' && (
         <p className="text-sm text-muted-foreground mt-2">
           For a gift larger than ${MAX_BUNDLED_DONATION_CENTS / 100}, visit our{' '}
           <a href="/donate" className="underline underline-offset-2">

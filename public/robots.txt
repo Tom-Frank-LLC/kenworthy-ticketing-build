@@ -20,6 +20,7 @@ Content-Signal: search=yes,ai-train=no,use=reference
 Allow: /
 Disallow: /admin
 Disallow: /staff
+Disallow: /pos
 Disallow: /host
 Disallow: /auth
 Disallow: /profile

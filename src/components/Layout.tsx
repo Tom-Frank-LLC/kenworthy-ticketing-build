@@ -41,6 +41,9 @@ const supportLinks: Array<[string, string]> = [
   ['Volunteer', '/volunteer'],
 ];
 
+/** Routes rendered without the site chrome. See the note at the early return. */
+const BARE_PATHS = new Set(['/pos/display']);
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, isStaff, isHost, isSuperadmin, signOut } = useAuth();
   const colorLab = useColorLab();
@@ -100,6 +103,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
     // Use direct location change for cross-browser reliability (Firefox races navigate + reload)
     window.location.href = '/auth';
   };
+
+  // The box office's customer display is handed to the public outside the
+  // glass: no header, footer or menus — nothing that leads off the page.
+  if (BARE_PATHS.has(location.pathname)) return <>{children}</>;
 
   return (
     <div
