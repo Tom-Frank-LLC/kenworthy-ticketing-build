@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**139 briefs** — 127 shipped, 5 built, 7 open, 0 needs triage, 0 closed.
+**139 briefs** — 128 shipped, 4 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -13,7 +13,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
-- `P1` **A ticket purchase or gift no longer subscribes the buyer to the newsletter**<br>`bug` — [brief](briefs/BRIEF-mailchimp-ecommerce-optin.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
@@ -31,6 +30,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - **The blank contract's Term can list extra days (rehearsal, load-in) each with its own date and hours**<br>`feature` — `#379` — [brief](briefs/BRIEF-contract-term-extra-days.md)
 - **A request's contract can set its own Term (date, hours, extra days), and Save says when it did not save**<br>`feature` — `#380` — [brief](briefs/BRIEF-contract-term-request.md)
+- **A ticket purchase or gift no longer subscribes the buyer to the newsletter**<br>`bug` — `#382` — [brief](briefs/BRIEF-mailchimp-ecommerce-optin.md)
 - **Staff can cancel a showing, and a cancelled showing disappears from every public listing**<br>`feature` — `#378` — [brief](briefs/BRIEF-showing-cancellation.md)
 - **The /calendar month grid pages back through the last twelve months of showings, read-only**<br>`feature` — `#376` — [brief](briefs/BRIEF-calendar-past-listings.md)
 - **The blank rental contract is a fillable worksheet that downloads whatever has been typed, with empty fields as ruled lines**<br>`feature` — `#375` — [brief](briefs/BRIEF-fillable-blank-contract.md)
