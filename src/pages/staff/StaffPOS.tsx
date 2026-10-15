@@ -29,7 +29,12 @@ import { TimeClockWidget } from '@/components/pos/TimeClockWidget';
 import { releaseCardSale } from '@/lib/posRelease';
 import { TerminalReaderPicker } from '@/components/pos/TerminalReaderPicker';
 import { PatronDisplayPairing } from '@/components/pos/PatronDisplayPairing';
-import { useTillDisplay, type SaleSnapshot } from '@/lib/patronDisplay';
+import {
+  useTillDisplay, safePosterUrl, toDisplayDescription,
+  type DisplayProduction, type SaleSnapshot,
+} from '@/lib/patronDisplay';
+import { displayedRuntime } from '@/components/ProductionMedia';
+import { htmlToPlainText } from '@/lib/plainText';
 import { useTerminalReader } from '@/lib/terminalReader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
@@ -63,9 +68,25 @@ interface ShowingOption {
    * can see the show exists — but greyed out rather than selectable.
    */
   not_sold_reason: CounterRefusal | null;
+  /** What the patron-facing display shows about the show. */
+  production: DisplayProduction | null;
 }
 
+/** The production columns the patron-facing display needs, on each kind. */
+const DISPLAY_COLUMNS = 'poster_url, rating, genre, duration_minutes, show_runtime, description';
+
 type PaymentStatus = 'idle' | 'processing' | 'completed' | 'failed';
+
+function toDisplayProduction(p: any): DisplayProduction | null {
+  if (!p) return null;
+  return {
+    posterUrl: safePosterUrl(p.poster_url),
+    rating: p.rating || null,
+    genre: p.genre || null,
+    runtimeMinutes: displayedRuntime(p) ?? null,
+    description: toDisplayDescription(htmlToPlainText(p.description)),
+  };
+}
 
 export default function StaffPOS() {
   const { isAdmin, isStaff, loading: authLoading } = useAuth();
@@ -155,7 +176,7 @@ export default function StaffPOS() {
       const { data } = await fetchAllRows<any, unknown>((from, to) =>
         supabase
           .from('showings')
-          .select('id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee, ticket_type), events(title, ticket_type), live_performances(title, ticket_type)')
+          .select(`id, start_time, ticket_price, total_seats, requires_seat_selection, movies(title, pass_processing_fee, ticket_type, ${DISPLAY_COLUMNS}), events(title, ticket_type, ${DISPLAY_COLUMNS}), live_performances(title, ticket_type, ${DISPLAY_COLUMNS})`)
           .eq('is_active', true)
           .gte('start_time', new Date().toISOString())
           .order('start_time')
@@ -185,6 +206,7 @@ export default function StaffPOS() {
             s.movies ? 'movie' : s.events ? 'event' : 'concert',
             s.movies ?? s.events ?? s.live_performances,
           ),
+          production: toDisplayProduction(s.movies ?? s.events ?? s.live_performances),
         }))
       );
     }
@@ -369,6 +391,7 @@ export default function StaffPOS() {
     payment: paymentMethod === 'card' ? 'card' : 'cash',
     title: selectedShowing?.movie_title ?? null,
     showtime: selectedShowing?.start_time ?? null,
+    production: selectedShowing?.production ?? null,
     ticketCount,
     ticketsCents: Math.round(grandTotal * 100),
     donationCents,

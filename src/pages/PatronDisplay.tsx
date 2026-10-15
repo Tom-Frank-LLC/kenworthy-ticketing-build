@@ -4,9 +4,12 @@ import { CreditCard, Heart, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DonationPrompt } from '@/components/DonationPrompt';
+import { KenworthyLogo } from '@/components/brand/KenworthyLogo';
+import { MarqueeFrame } from '@/components/MarqueeFrame';
+import { ProductionMetaBadges } from '@/components/ProductionMedia';
 import { formatShowtime } from '@/lib/datetime';
 import {
-  CODE_LENGTH, normalizeCode, useDisplayChannel,
+  CODE_LENGTH, normalizeCode, safePosterUrl, useDisplayChannel,
   type ChannelFactory, type SaleSnapshot,
 } from '@/lib/patronDisplay';
 
@@ -58,9 +61,9 @@ export default function PatronDisplay({ factory }: { factory?: ChannelFactory })
   const leave = () => { storeDeviceCode(null); setCode(null); };
 
   return (
-    <main className="min-h-screen bg-background text-foreground flex flex-col px-4 py-6">
-      <div className="w-full max-w-xl mx-auto flex-1 flex flex-col">
-        <p className="font-display text-2xl tracking-wide text-center mb-6">The Kenworthy</p>
+    <main className="min-h-screen bg-background text-foreground flex flex-col px-2 sm:px-4 py-3 sm:py-6">
+      <div className="w-full max-w-2xl mx-auto flex-1 flex flex-col">
+        <KenworthyLogo size="custom" loading="eager" className="h-10 sm:h-16 md:h-20 mx-auto mb-3 sm:mb-6" />
         {code
           ? <PairedDisplay code={code} factory={factory} onLeave={leave} />
           : <CodeEntry onJoin={join} />}
@@ -180,8 +183,8 @@ function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cen
   }
 
   return (
-    <div className="space-y-6">
-      <SaleHeading snapshot={snapshot} />
+    <SaleFrame>
+      <ShowCard snapshot={snapshot} />
       <Breakdown snapshot={snapshot} />
       {/* Keyed on the sale so a half-typed amount never carries over to the
           next patron. The value shown is the till's, not this screen's. */}
@@ -191,24 +194,72 @@ function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cen
         valueCents={snapshot.donationCents}
         onChange={(cents) => { onPropose(cents); setDecidedFor(snapshot.saleId); }}
       />
-    </div>
+    </SaleFrame>
   );
 }
 
-function SaleHeading({ snapshot }: { snapshot: SaleSnapshot }) {
+/**
+ * The transaction, framed in the marquee's ring of bulbs — the same
+ * `MarqueeFrame` the concessions menu and the booth note wear. The inset is
+ * brought in from the panel weight: that is sized for a wide page, and here
+ * the frame is the whole screen of a phone.
+ */
+function SaleFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <MarqueeFrame className="bg-card/30 rounded-sm space-y-4 sm:space-y-6 [--mq-inset:0.75rem] sm:[--mq-inset:1.25rem]">
+      {children}
+    </MarqueeFrame>
+  );
+}
+
+/**
+ * The show the tickets are for: its poster, title, time, rating / genre /
+ * runtime, and — while the patron is still choosing — a few lines of what it
+ * is. The same facts the public showing page prints.
+ *
+ * The poster URL is checked again here, not only at the till: this screen
+ * renders whatever arrives on its channel. A broken image hides itself rather
+ * than leaving a torn-picture icon in front of a patron.
+ */
+function ShowCard({ snapshot, compact }: { snapshot: SaleSnapshot; compact?: boolean }) {
+  const p = snapshot.production;
+  const poster = safePosterUrl(p?.posterUrl);
+  const [posterFailed, setPosterFailed] = useState(false);
+  useEffect(() => setPosterFailed(false), [poster]);
   return (
     <div>
-      <p className="font-display text-3xl">{snapshot.title}</p>
-      {snapshot.showtime && (
-        <p className="text-lg text-muted-foreground">{formatShowtime(snapshot.showtime, 'EEEE, MMMM d · h:mm a')}</p>
-      )}
+      <div className="flex gap-3 sm:gap-4 items-start">
+        {poster && !posterFailed && (
+          <img
+            src={poster}
+            alt=""
+            onError={() => setPosterFailed(true)}
+            className={`${compact ? 'w-16 sm:w-28' : 'w-20 sm:w-40'} aspect-[2/3] shrink-0 rounded-sm object-cover shadow-lg`}
+          />
+        )}
+        <div className="min-w-0 space-y-2">
+          <p className="font-display text-2xl sm:text-3xl leading-tight break-words">{snapshot.title}</p>
+          {snapshot.showtime && (
+            <p className="text-base sm:text-lg text-muted-foreground">
+              {formatShowtime(snapshot.showtime, 'EEE, MMM d · h:mm a')}
+            </p>
+          )}
+          <ProductionMetaBadges rating={p?.rating} genre={p?.genre} durationMinutes={p?.runtimeMinutes} />
+          {/* Text, never HTML: see toDisplayDescription. Not on a phone:
+              measured at 375 × 812, it pushed the donation buttons ~170px
+              below the fold, and the gift is what this screen is for. */}
+          {!compact && p?.description && (
+            <p className="hidden sm:block text-base text-muted-foreground line-clamp-5">{p.description}</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 function Breakdown({ snapshot, large }: { snapshot: SaleSnapshot; large?: boolean }) {
   return (
-    <dl className="text-lg space-y-2">
+    <dl className="text-base sm:text-lg space-y-1 sm:space-y-2">
       <div className="flex justify-between">
         <dt>{snapshot.ticketCount} {snapshot.ticketCount === 1 ? 'ticket' : 'tickets'}, with tax</dt>
         <dd>{dollars(snapshot.ticketsCents)}</dd>
@@ -222,7 +273,7 @@ function Breakdown({ snapshot, large }: { snapshot: SaleSnapshot; large?: boolea
         <dt className="flex items-center gap-2"><Heart className="h-5 w-5 text-primary" aria-hidden="true" /> Your donation</dt>
         <dd>{dollars(snapshot.donationCents)}</dd>
       </div>
-      <div className={`flex justify-between border-t border-border pt-3 font-bold ${large ? 'text-4xl' : 'text-2xl'}`}>
+      <div className={`flex justify-between border-t border-border pt-2 sm:pt-3 font-bold ${large ? 'text-3xl sm:text-4xl' : 'text-xl sm:text-2xl'}`}>
         <dt>Total</dt>
         <dd>{dollars(snapshot.totalCents)}</dd>
       </div>
@@ -240,8 +291,8 @@ function Breakdown({ snapshot, large }: { snapshot: SaleSnapshot; large?: boolea
 function FinalTotal({ snapshot, onChange }: { snapshot: SaleSnapshot; onChange?: () => void }) {
   const paying = snapshot.phase === 'paying';
   return (
-    <div className="flex-1 flex flex-col justify-center space-y-8">
-      <SaleHeading snapshot={snapshot} />
+    <SaleFrame>
+      <ShowCard snapshot={snapshot} compact />
       <Breakdown snapshot={snapshot} large />
       {snapshot.donationCents > 0 && (
         <p className="text-xl text-center">Thank you for your {dollars(snapshot.donationCents)} gift!</p>
@@ -265,7 +316,7 @@ function FinalTotal({ snapshot, onChange }: { snapshot: SaleSnapshot; onChange?:
           </button>
         </div>
       )}
-    </div>
+    </SaleFrame>
   );
 }
 

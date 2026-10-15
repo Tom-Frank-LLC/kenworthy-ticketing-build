@@ -64,7 +64,7 @@ export function DonationPrompt({
   const [custom, setCustom] = useState('');
   const isPreset = PRESETS_CENTS.includes(valueCents);
   const big = variant === 'display';
-  const buttonSize = big ? 'h-14 text-lg' : 'h-10 text-sm';
+  const buttonSize = big ? 'h-12 sm:h-14 text-lg' : 'h-10 text-sm';
 
   const pick = (cents: number) => {
     setCustom('');
@@ -89,7 +89,9 @@ export function DonationPrompt({
           : 'Every gift helps keep the marquee lit. Tax-deductible, and not taxed.'}
       </p>
 
-      <div className="grid grid-cols-4 gap-2">
+      {/* Two by two on a phone-sized display: four across, "No thanks" at
+          display size does not fit its button and breaks mid-word. */}
+      <div className={`grid gap-2 ${big ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-4'}`}>
         <button
           type="button"
           disabled={disabled}
@@ -134,14 +136,14 @@ export function DonationPrompt({
           value={custom}
           disabled={disabled}
           onChange={(e) => handleCustom(e.target.value)}
-          className={big ? 'h-14 text-lg' : 'h-9'}
+          className={big ? 'h-12 sm:h-14 text-lg' : 'h-9'}
         />
         {variant === 'display' && (
           <button
             type="button"
             disabled={disabled || typedCents === 0}
             onClick={() => onChange(typedCents)}
-            className={`${buttonSize} shrink-0 px-4 rounded-md border border-primary bg-primary text-primary-foreground disabled:opacity-50`}
+            className={`${buttonSize} shrink-0 px-3 rounded-md border border-primary bg-primary text-primary-foreground disabled:opacity-50`}
           >
             {typedCents > 0 ? `Add $${(typedCents / 100).toFixed(2)}` : 'Add'}
           </button>

@@ -83,6 +83,31 @@ All five took the brief's recommendation:
   choice moves the screen on, sending a typed amount per keystroke would send
   $2 on the way to $25 and leave the prompt after the first digit.
 
+### Revised again (15 Oct 2026): logo, marquee, the show
+
+- **Logo:** `KenworthyLogo` (the date-chosen lockup the site header uses)
+  replaces the "The Kenworthy" text.
+- **Marquee:** the sale and final-total screens sit inside `MarqueeFrame`, the
+  ring of bulbs the concessions menu wears, with the inset brought in
+  (`--mq-inset` 0.75rem on a phone, 1.25rem above) because here the frame is the
+  whole screen.
+- **The show:** poster, title, date and time, rating / genre / runtime
+  (`ProductionMetaBadges`, runtime hidden when the admin hid it), and — on a
+  tablet — up to five lines of the description. The till fetches these with the
+  showing list (`DISPLAY_COLUMNS` in `StaffPOS`) and sends them in the snapshot.
+- **Two guards, because the display renders whatever arrives on its channel:**
+  the description travels as plain text and is rendered as text (never
+  `RichText`/HTML), and the poster must be https from `www.kenworthy.org` or
+  our Supabase storage (`safePosterUrl`, checked at both ends) — the only two
+  hosts any production poster uses (checked 15 Oct 2026 against production).
+- **Phone fit, measured at 375 × 812:** with the description and full-size type,
+  the donation buttons sat at 977px. Without the description on a phone, a
+  smaller logo, tighter spacing and the amounts two-by-two, all four amounts
+  are on screen (bottom at 793px); the custom-amount row is just below the
+  fold. Safari's own toolbars take more, so on an iPhone in the browser the
+  patron may need to scroll for "Other amount". Adding the page to the Home
+  Screen removes the toolbars.
+
 ### Things established while building it
 
 - **Anon Realtime broadcast works on both projects** with no configuration

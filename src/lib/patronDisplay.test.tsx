@@ -8,7 +8,8 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 
 import PatronDisplay from '@/pages/PatronDisplay';
 import {
-  acceptableProposal, CODE_LENGTH, newPairingCode, normalizeCode, useTillDisplay,
+  acceptableProposal, CODE_LENGTH, DESCRIPTION_MAX, newPairingCode, normalizeCode,
+  safePosterUrl, toDisplayDescription, useTillDisplay,
   type ChannelFactory, type DisplayChannel, type SaleSnapshot, type TillDisplay,
 } from './patronDisplay';
 
@@ -66,6 +67,13 @@ const baseSale: SaleSnapshot = {
   payment: 'card',
   title: 'Nosferatu',
   showtime: '2026-10-31T02:00:00.000Z',
+  production: {
+    posterUrl: 'https://www.kenworthy.org/posters/nosferatu.jpg',
+    rating: 'NR',
+    genre: 'Horror, Silent',
+    runtimeMinutes: 94,
+    description: 'Murnau’s vampire, with a live score.',
+  },
   ticketCount: 2,
   ticketsCents: 1908,
   donationCents: 0,
@@ -120,6 +128,33 @@ describe('pairing codes', () => {
   });
 });
 
+describe('safePosterUrl', () => {
+  it('takes posters from the theatre’s site and our storage', () => {
+    expect(safePosterUrl('https://www.kenworthy.org/wp-content/uploads/a.jpg')).toBe('https://www.kenworthy.org/wp-content/uploads/a.jpg');
+    expect(safePosterUrl('https://vlmslygnimfbamrtwvyo.supabase.co/storage/v1/object/public/posters/a.jpg')).toContain('/storage/v1/');
+  });
+  it('refuses anything else a stranger on the channel could send', () => {
+    expect(safePosterUrl('https://example.com/a.jpg')).toBeNull();
+    expect(safePosterUrl('http://www.kenworthy.org/a.jpg')).toBeNull();
+    expect(safePosterUrl('https://www.kenworthy.org.evil.com/a.jpg')).toBeNull();
+    expect(safePosterUrl('https://x.supabase.co/rest/v1/movies')).toBeNull();
+    expect(safePosterUrl('javascript:alert(1)')).toBeNull();
+    expect(safePosterUrl(42)).toBeNull();
+  });
+});
+
+describe('toDisplayDescription', () => {
+  it('collapses whitespace and leaves a short one whole', () => {
+    expect(toDisplayDescription('  A  silent\n film. ')).toBe('A silent film.');
+    expect(toDisplayDescription('')).toBeNull();
+  });
+  it('cuts a long one at a word', () => {
+    const out = toDisplayDescription('word '.repeat(200))!;
+    expect(out.length).toBeLessThanOrEqual(DESCRIPTION_MAX + 1);
+    expect(out.endsWith('word…')).toBe(true);
+  });
+});
+
 describe('acceptableProposal', () => {
   const open = { saleId: 's', phase: 'open' as const };
   it('takes nothing, or a gift the counter could take', () => {
@@ -143,9 +178,13 @@ describe('acceptableProposal', () => {
 });
 
 describe('till ↔ display', () => {
-  it('mirrors the sale on the display', async () => {
+  it('mirrors the sale on the display, with the show’s poster and details', async () => {
     renderPair();
     expect(await screen.findByText('Nosferatu')).toBeInTheDocument();
+    expect(document.querySelector('img[src="https://www.kenworthy.org/posters/nosferatu.jpg"]')).not.toBeNull();
+    expect(screen.getByText('NR')).toBeInTheDocument();
+    expect(screen.getByText('Silent')).toBeInTheDocument();
+    expect(screen.getByText('Murnau’s vampire, with a live score.')).toBeInTheDocument();
     expect(screen.getByText('2 tickets, with tax')).toBeInTheDocument();
     expect(screen.getAllByText('$19.08').length).toBeGreaterThan(0);
   });
@@ -263,6 +302,12 @@ describe('till ↔ display', () => {
     expect(await screen.findByText(/Connecting to the box office/)).toBeInTheDocument();
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(screen.queryByText('Nosferatu')).not.toBeInTheDocument();
+  });
+
+  it('a poster from anywhere else is not shown', async () => {
+    renderPair({ ...baseSale, production: { ...baseSale.production!, posterUrl: 'https://example.com/x.jpg' } });
+    await screen.findByText('Nosferatu');
+    expect(document.querySelector('img[src="https://example.com/x.jpg"]')).toBeNull();
   });
 
   it('an unpaired till opens no channel at all', () => {

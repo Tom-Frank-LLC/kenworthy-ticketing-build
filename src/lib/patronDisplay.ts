@@ -85,6 +85,21 @@ export interface DisplayLine {
   cents: number;
 }
 
+/**
+ * The show being sold, as the patron-facing display presents it — the same
+ * facts the public showing page prints, nothing a patron could not read there.
+ */
+export interface DisplayProduction {
+  /** Checked with `safePosterUrl` on both ends; null when there is none. */
+  posterUrl: string | null;
+  rating: string | null;
+  genre: string | null;
+  /** Null when the admin hid the runtime (`show_runtime = false`). */
+  runtimeMinutes: number | null;
+  /** Plain text, never HTML, and cut short — see `toDisplayDescription`. */
+  description: string | null;
+}
+
 /** What the till sends. Deliberately free of anything that names the patron. */
 export interface SaleSnapshot {
   /** Changes when the till clears; a proposal must carry the current one. */
@@ -99,6 +114,7 @@ export interface SaleSnapshot {
   payment: 'card' | 'cash';
   title: string | null;
   showtime: string | null;
+  production: DisplayProduction | null;
   ticketCount: number;
   /** Tickets with tax, discount and any card fee — everything but the gift. */
   ticketsCents: number;
@@ -109,6 +125,40 @@ export interface SaleSnapshot {
 export interface DonationProposal {
   saleId: string;
   cents: number;
+}
+
+/**
+ * Where poster art may come from. The display renders whatever arrives on its
+ * channel, and anyone who has the code can send to it, so it will not load an
+ * image from just anywhere — a public screen is the wrong place to find out
+ * what a stranger can put on it. The two hosts are where every poster in
+ * production lives (checked 15 Oct 2026): the theatre's own site and the
+ * project's Supabase storage.
+ */
+export function safePosterUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  let url: URL;
+  try { url = new URL(raw); } catch { return null; }
+  if (url.protocol !== 'https:') return null;
+  if (url.hostname === 'www.kenworthy.org' || url.hostname === 'kenworthy.org') return url.href;
+  if (url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/storage/v1/')) return url.href;
+  return null;
+}
+
+/** Long enough to say what the show is; short enough to sit beside a total. */
+export const DESCRIPTION_MAX = 320;
+
+/**
+ * A production's description as the display shows it: plain text, never HTML
+ * (the display renders it as text, so nothing on the channel is ever markup),
+ * cut at a word boundary.
+ */
+export function toDisplayDescription(plain: string | null | undefined): string | null {
+  const text = (plain ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  if (text.length <= DESCRIPTION_MAX) return text;
+  const cut = text.slice(0, DESCRIPTION_MAX);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), DESCRIPTION_MAX - 40)).trimEnd()}…`;
 }
 
 export const EVENTS = {
