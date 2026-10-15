@@ -1,11 +1,14 @@
 ---
 brief: pos-patron-facing-display
 title: A patron-facing display at the box office mirrors the sale and lets the patron choose their own donation
-status: built
+status: shipped
 track: feature
 severity: P2
 date: 2026-10-15
-verified: false
+shipped_in: ["#384"]
+shipped_at: 2026-10-15
+verified: true
+evidence: "Production Worker deploy 15 Oct 2026; rollback 3d6f82ce"
 ---
 
 # Brief: Patron-facing box-office display with a self-serve donation (Option A)
@@ -161,12 +164,10 @@ off screen, so (Tom's call) the phone keeps 1.25rem.
   thank-you, return to Welcome, reload rejoins from storage, unknown code says
   so after 6 s.
 
-### Not yet verified
+### Verified by Tom on staging
 
-- `StaffPOS` itself driving the display in a browser (needs a staff sign-in with
-  MFA). Its wiring is type-checked and mirrors the harness, but the real
-  two-device run — iPad till, iPhone display, Terminal sandbox — is the
-  remaining test.
+- The real two-device run: `StaffPOS` on one device driving the display on
+  another, through the revisions above.
 
 ### Known limits
 
