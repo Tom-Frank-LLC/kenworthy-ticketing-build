@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**143 briefs** — 131 shipped, 5 built, 7 open, 0 needs triage, 0 closed.
+**143 briefs** — 132 shipped, 4 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -13,7 +13,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
-- `P2` **A filled-in blank contract is linked to an existing rental request or creates one, so it gets a renter link, signing and review without duplicate requests**<br>`feature` — [brief](briefs/BRIEF-blank-contract-link-request.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
@@ -29,6 +28,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A filled-in blank contract is linked to an existing rental request or creates one, so it gets a renter link, signing and review without duplicate requests**<br>`feature` — `#390` — [brief](briefs/BRIEF-blank-contract-link-request.md)
 - **Rentals → Contracts lists every contract, blanks can be saved, contracts keep a version history and signed PDFs are archived, and downloads are named YYYY_MM_DD_Title**<br>`feature` — `#387` — [brief](briefs/BRIEF-contracts-tab.md)
 - **Rental contract cost lines — rehearsal line, unused lines dropped, DCP fees TBD, no "(3.5%)", non-profit discount**<br>`feature` — `#386` — [brief](briefs/BRIEF-contract-cost-lines.md)
 - **A patron-facing display at the box office mirrors the sale and lets the patron choose their own donation**<br>`feature` — `#384` — [brief](briefs/BRIEF-pos-patron-facing-display.md)
