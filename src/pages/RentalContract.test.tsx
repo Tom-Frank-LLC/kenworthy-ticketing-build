@@ -134,8 +134,9 @@ describe('blank contract', () => {
     expect(text).not.toContain('Ada');
 
     // Date ×2, licensee, contact, term date + start + end time, consideration,
-    // purpose, attendees, three rate × hours pairs, estimated and total cost.
-    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(18);
+    // purpose, attendees, two rate × hours pairs (theater, staff; additional
+    // hours and rehearsal are dropped until typed), estimated and total cost.
+    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(16);
   });
 
   it('keeps the boilerplate, and carries both addenda for the writer to choose', async () => {
@@ -178,8 +179,8 @@ describe('filling in the blank contract', () => {
     expect(text).toContain('Jane Doe');
     expect(text).not.toContain('$0.00');
     expect(text).not.toContain('2026');
-    // Licensee and correspondence lines are filled; the other 16 stay ruled.
-    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(16);
+    // Licensee and correspondence lines are filled; the other 14 stay ruled.
+    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(14);
 
     fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
     await waitFor(() => expect(save).toHaveBeenCalled());
@@ -239,7 +240,7 @@ describe('filling in the blank contract', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /clear form/i }));
     expect(contractText()).not.toContain('Jane Doe');
-    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(18);
+    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(16);
     expect(window.sessionStorage.getItem(BLANK_DRAFT_KEY)).toBeNull();
   });
 });
@@ -274,7 +275,7 @@ describe('another day in the Term', () => {
     renderAt('/contract/blank');
     await screen.findByText('License Agreement');
     fireEvent.click(screen.getByRole('button', { name: /add another day/i }));
-    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(18 + 3);
+    expect(document.querySelectorAll('[data-blank-fill]').length).toBe(16 + 3);
     expect(contractText()).not.toContain('0:00');
 
     // Times without a date, and a cleared label: the date stays a line, no "for".
@@ -360,7 +361,126 @@ describe('the buttons below the contract', () => {
   });
 });
 
+describe('cost lines', () => {
+  const type = (label: string, value: string) =>
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  const costs = () => document.querySelector('#contract-body table')!.textContent!;
+  const subtotalRow = () => screen.getByText('Subtotal').closest('tr')!.textContent!;
+
+  it('drops additional hours, rehearsal and discount from a blank form until typed', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    expect(costs()).not.toContain('Additional Hours');
+    expect(costs()).not.toContain('Rehearsal');
+    expect(costs()).not.toContain('Discount');
+    expect(costs()).toContain('Concessions Fees');
+
+    // A rate alone brings the line back, with its hours still to write in.
+    type("Add'l hour rate", '50');
+    expect(costs()).toContain('Additional Hours');
+    type('Rehearsal rate ($/hr)', '90');
+    expect(costs()).toContain('Rehearsal');
+    // Zero hours is no line at all.
+    type("Add'l hours", '0');
+    expect(costs()).not.toContain('Additional Hours');
+  });
+
+  it('adds rehearsal and takes off the discount, on a blank form', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    type('Hourly rate ($/hr)', '180');
+    type('Base hours', '4');
+    type('Rehearsal rate ($/hr)', '90');
+    type('Rehearsal hours', '2');
+    type('Non-profit discount ($)', '100');
+    expect(costs()).toContain('Rehearsal ($90/hr × 2)$180.00');
+    expect(costs()).toContain('Non-Profit Discount-$100.00');
+    expect(subtotalRow()).toContain('$800.00');           // 720 + 180 − 100
+    expect(contractText()).toContain('Total Rental Cost: $800.00');
+  });
+
+  it('prints TBD for an unset DCP fee and leaves it out of the subtotal', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(costs()).toContain('LCD / DVD / DCP FeesTBD');
+    expect(subtotalRow()).toContain('$720.00');
+
+    type('LCD/DVD/DCP fee', '75');
+    expect(costs()).toContain('LCD / DVD / DCP Fees$75.00');
+    expect(subtotalRow()).toContain('$795.00');
+  });
+
+  it('a blank form prints TBD for the DCP fee too', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    expect(costs()).toContain('LCD / DVD / DCP FeesTBD');
+  });
+
+  it('a real contract shows rehearsal and discount only when set, and saves them', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(costs()).not.toContain('Rehearsal');
+    expect(costs()).not.toContain('Discount');
+
+    type('Rehearsal rate ($/hr)', '60');
+    type('Rehearsal hours', '3');
+    type('Non-profit discount ($)', '50');
+    expect(costs()).toContain('Rehearsal ($60/hr × 3)$180.00');
+    expect(costs()).toContain('Non-Profit Discount-$50.00');
+    expect(subtotalRow()).toContain('$850.00');           // 720 + 180 − 50
+    expect(contractText()).toContain('Estimated Rental Cost: $850.00');
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Contract saved'));
+    expect(update).toHaveBeenCalledWith({
+      contract_data: expect.objectContaining({ rehearsal_rate: 60, rehearsal_hours: 3, nonprofit_discount: 50 }),
+    });
+  });
+
+  it('reads saved rehearsal and discount back', async () => {
+    rpc.mockResolvedValue({
+      data: [{ ...REQUEST, contract_data: { rehearsal_rate: 50, rehearsal_hours: 2, nonprofit_discount: 20 } }],
+      error: null,
+    });
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(subtotalRow()).toContain('$800.00');           // 720 + 100 − 20
+  });
+
+  it('the ticketing clause no longer quotes 3.5%', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(contractText()).not.toContain('3.5%');
+    expect(contractText()).toContain('assessed at cost plus labor for listings, service, and web management: 5% gross ticketing revenue.');
+  });
+
+  it('the new blank fields survive a refresh, and Clear empties them', async () => {
+    const first = renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    type('Rehearsal hours', '2');
+    type('Non-profit discount ($)', '40');
+    first.unmount();
+
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    expect(costs()).toContain('Rehearsal');
+    expect(costs()).toContain('-$40.00');
+    fireEvent.click(editor().getByRole('button', { name: /clear form/i }));
+    expect(costs()).not.toContain('Rehearsal');
+    expect(costs()).not.toContain('Discount');
+  });
+});
+
 describe('blankCosts', () => {
+  it('adds rehearsal and subtracts the discount', () => {
+    const c = blankCosts({
+      ...EMPTY_BLANK, hourly_rate: '180', base_hours: '4', rehearsal_rate: '90', rehearsal_hours: '2', nonprofit_discount: '100',
+    });
+    expect(c.rehearsal).toBe(180);
+    expect(c.discount).toBe(100);
+    expect(c.subtotal).toBe(800);
+  });
+
   it('leaves a line without an amount until all of it is typed', () => {
     const c = blankCosts({ ...EMPTY_BLANK, hourly_rate: '180', staff_rate: '30', staff_hours: '2', av_fee: '0' });
     expect(c.base).toBeUndefined();     // rate with no hours is not $0
