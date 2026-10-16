@@ -1,12 +1,13 @@
 ---
 brief: contracts-tab
 title: Rentals → Contracts lists every contract, blanks can be saved, contracts keep a version history and signed PDFs are archived, and downloads are named YYYY_MM_DD_Title
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-16
-verified: false
-evidence: supabase/migrations/20261016204420_contracts_list_and_versions.sql; applied on staging 2026-10-16
+shipped_in: ["#387"]
+shipped_at: 2026-10-16
+verified: true
+evidence: prod Worker e6bd00ee (rollback 62b50643); migration 20261016204420 applied on prod and staging
 ---
 
 # Brief: Contracts tab, saved blanks, version history, download names
@@ -77,5 +78,6 @@ per signing. Nothing reads versions except an opened History panel.
   request filenames, History lazy-load/view/back.
 - `supabase/tests/contracts/run.sh`: full migration replay, 30 cases covering
   roles, triggers, the bucket and cascade.
-- Not done: a click-through as an admin in a browser. Signing on staging,
-  which would exercise the upload, has not been run.
+- Deployed 2026-10-16: prod Worker e6bd00ee (rollback 62b50643), sign-contract
+  deployed to both environments. The live chunks matched the build byte for byte.
+  Tom is testing the admin flows and a signing on production.
