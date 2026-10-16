@@ -59,6 +59,8 @@ export type BlankContractSource = {
 export type ContractListRow = {
   key: string;
   kind: 'request' | 'blank';
+  /** The rental request's id, or the blank contract's. */
+  id: string;
   title: string;
   eventDate: string | null;
   signed: boolean;
@@ -87,6 +89,7 @@ export function contractRows(
     ...requests.map((r): ContractListRow => ({
       key: `request:${r.id}`,
       kind: 'request',
+      id: r.id,
       title: r.event_title || 'Untitled rental',
       eventDate: requestContractDate(r.contract_data, r.proposed_date),
       signed: !!r.signed_at,
@@ -99,6 +102,7 @@ export function contractRows(
     ...blanks.map((b): ContractListRow => ({
       key: `blank:${b.id}`,
       kind: 'blank',
+      id: b.id,
       title: b.title || 'Untitled blank contract',
       eventDate: b.event_date,
       signed: false,

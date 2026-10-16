@@ -660,7 +660,7 @@ describe('saving a blank contract', () => {
       expect.objectContaining({ title: 'Piano recital', event_date: '2026-11-20', fields: expect.objectContaining({ purpose: 'Piano recital' }) }),
     );
     expect(writtenTo).toEqual(['blank_contracts']);
-    expect(replace.mock.calls.at(-1)?.[2]).toBe('/contract/blank/blank_1');
+    expect(replace.mock.calls[replace.mock.calls.length - 1]?.[2]).toBe('/contract/blank/blank_1');
     // The row is the copy now; the tab's draft would only resurrect it on a new blank.
     expect(window.sessionStorage.getItem(BLANK_DRAFT_KEY)).toBeNull();
 
@@ -770,6 +770,24 @@ describe('History', () => {
     expect(from).not.toHaveBeenCalledWith('contract_versions');
     fireEvent.click(screen.getByRole('button', { name: /^history$/i }));
     await waitFor(() => expect(from).toHaveBeenCalledWith('contract_versions'));
+  });
+
+  it('?version= opens showing that version, with History open', async () => {
+    rows.contract_versions = { data: [VERSION], error: null };
+    renderAt('/contract/tok_1?version=v1');
+    await screen.findByText(/Contract Editor/);
+    await waitFor(() => expect(contractText()).toContain('Ada Byron'));
+    expect(screen.getByRole('status').textContent).toMatch(/Showing the version saved/);
+    expect(screen.getByRole('button', { name: /hide history/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /back to the current version/i }));
+    expect(contractText()).toContain('Ada Lovelace');
+  });
+
+  it('?version= of a version it cannot find says so and shows the current contract', async () => {
+    renderAt('/contract/tok_1?version=nope');
+    await screen.findByText(/Contract Editor/);
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/not found/i)));
+    expect(contractText()).toContain('Ada Lovelace');
   });
 
   it('shows a version as it was, will not sign it, and goes back', async () => {
