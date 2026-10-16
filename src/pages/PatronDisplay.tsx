@@ -61,9 +61,9 @@ export default function PatronDisplay({ factory }: { factory?: ChannelFactory })
   const leave = () => { storeDeviceCode(null); setCode(null); };
 
   return (
-    <main className="min-h-screen bg-background text-foreground flex flex-col px-2 sm:px-4 py-3 sm:py-6">
+    <main className="min-h-screen bg-background text-foreground flex flex-col px-2 sm:px-4 py-3 sm:py-6 short:py-3">
       <div className="w-full max-w-2xl mx-auto flex-1 flex flex-col">
-        <KenworthyLogo size="custom" loading="eager" className="h-10 sm:h-16 mx-auto mb-3 sm:mb-6" />
+        <KenworthyLogo size="custom" loading="eager" className="h-10 sm:h-16 short:h-8 mx-auto mb-3 sm:mb-6 short:mb-2" />
         {code
           ? <PairedDisplay code={code} factory={factory} onLeave={leave} />
           : <CodeEntry onJoin={join} />}
@@ -203,10 +203,14 @@ function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cen
  * `MarqueeFrame` the concessions menu and the booth note wear. The inset is
  * brought in from the panel weight: that is sized for a wide page, and here
  * the frame is the whole screen of a phone.
+ *
+ * On a short screen (an iPad on its side) the clearance above and below the
+ * text halves to 2rem and the sides keep 4rem: measured at 1180 × 820, the
+ * full 4rem all round left the custom amount ~80px past what Safari shows.
  */
 function SaleFrame({ children }: { children: React.ReactNode }) {
   return (
-    <MarqueeFrame className="bg-card/30 rounded-sm space-y-4 sm:space-y-6 [--mq-inset:1.25rem] sm:[--mq-inset:4rem]">
+    <MarqueeFrame className="bg-card/30 rounded-sm space-y-4 sm:space-y-6 short:space-y-3 [--mq-inset:1.25rem] sm:[--mq-inset:4rem] short:py-[calc(var(--mq-band)+2rem)]">
       {children}
     </MarqueeFrame>
   );
@@ -234,7 +238,7 @@ function ShowCard({ snapshot, compact }: { snapshot: SaleSnapshot; compact?: boo
             src={poster}
             alt=""
             onError={() => setPosterFailed(true)}
-            className={`${compact ? 'w-14 sm:w-28' : 'w-16 sm:w-40'} aspect-[2/3] shrink-0 rounded-sm object-cover shadow-lg`}
+            className={`${compact ? 'w-14 sm:w-28 short:w-16' : 'w-16 sm:w-40 short:w-20'} aspect-[2/3] shrink-0 rounded-sm object-cover shadow-lg`}
           />
         )}
         <div className="min-w-0 space-y-2">
@@ -252,7 +256,7 @@ function ShowCard({ snapshot, compact }: { snapshot: SaleSnapshot; compact?: boo
             // The breakpoint toggles a wrapper, not the paragraph: `sm:block`
             // on the paragraph overrides the -webkit-box that line-clamp
             // needs, and the clamp silently stops clamping.
-            <div className="hidden sm:block">
+            <div className="hidden sm:block short:hidden">
               <p className="text-base text-muted-foreground line-clamp-4">{p.description}</p>
             </div>
           )}
