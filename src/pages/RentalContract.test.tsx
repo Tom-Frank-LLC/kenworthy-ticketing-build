@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import RentalContract, { BLANK_DRAFT_KEY, EMPTY_BLANK, blankCosts, parseBlankFields } from './RentalContract';
 
 /**
@@ -39,7 +39,7 @@ vi.mock('@/integrations/supabase/client', () => ({
       const chain: Record<string, unknown> = {
         update: (patch: unknown) => { update(patch); writtenTo.push(table); write = true; return chain; },
         insert: (row: unknown) => { insert(row); writtenTo.push(table); write = true; return chain; },
-        select: () => chain, eq: () => chain, in: () => chain, order: () => chain, limit: () => chain,
+        select: () => chain, eq: () => chain, in: () => chain, order: () => chain, limit: () => chain, range: () => chain,
         then: (ok: (r: Result) => unknown, fail: (e: unknown) => unknown) =>
           Promise.resolve(write ? updated : rows[table] ?? { data: [], error: null }).then(ok, fail),
       };
@@ -87,6 +87,19 @@ const REQUEST = {
   contract_data: null,
 };
 
+// Where the router ended up, for a link that moves to the request's contract.
+let location = '';
+function LocationProbe() {
+  const l = useLocation();
+  location = l.pathname + l.search;
+  return null;
+}
+
+// The link step's "Not now", for tests about what a standalone blank does.
+async function notNow() {
+  fireEvent.click(await screen.findByRole('button', { name: /not now/i }));
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -95,6 +108,7 @@ function renderAt(path: string) {
         <Route path="/contract/blank/:blankId" element={<RentalContract blank />} />
         <Route path="/contract/:token" element={<RentalContract />} />
       </Routes>
+      <LocationProbe />
     </MemoryRouter>,
   );
 }
@@ -198,6 +212,7 @@ describe('filling in the blank contract', () => {
     expect(document.querySelectorAll('[data-blank-fill]').length).toBe(14);
 
     fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await notNow();
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: 'Jane_Doe.pdf' }));
   });
@@ -655,6 +670,7 @@ describe('saving a blank contract', () => {
     expect(window.sessionStorage.getItem(BLANK_DRAFT_KEY)).not.toBeNull();
 
     fireEvent.click(editor().getByRole('button', { name: /save to contracts/i }));
+    await notNow();
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Saved to Contracts'));
     expect(insert).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Piano recital', event_date: '2026-11-20', fields: expect.objectContaining({ purpose: 'Piano recital' }) }),
@@ -678,6 +694,7 @@ describe('saving a blank contract', () => {
     type('Purpose', 'Piano recital');
     type('Event date', '2026-11-20');
     fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await notNow();
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(insert).toHaveBeenCalledTimes(1);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: '2026_11_20_Piano_recital.pdf' }));
@@ -699,6 +716,7 @@ describe('saving a blank contract', () => {
     await screen.findByText('License Agreement');
     type('Licensee name', 'Jane Doe');
     fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await notNow();
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/not saved to contracts/i));
   });
@@ -711,6 +729,7 @@ describe('saving a blank contract', () => {
     expect(editor().getByRole('button', { name: /new blank contract/i })).toBeTruthy();
 
     fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await notNow();
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(insert).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
@@ -805,5 +824,110 @@ describe('History', () => {
     fireEvent.click(screen.getByRole('button', { name: /back to the current version/i }));
     expect(contractText()).toContain('Ada Lovelace');
     expect((screen.getByRole('button', { name: /sign & download/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe('linking a blank to a rental request', () => {
+  const type = (label: string, value: string) =>
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  const EXISTING = {
+    id: 'req_9', event_title: 'Piano night', applicant_name: 'J. Doe', organization_name: null, email: 'jane@x.test',
+    phone: null, event_description: null, proposed_date: '2026-11-20', end_date: null, event_start_time: null,
+    event_end_time: null, signed_at: null, status: 'pending', submitted_at: '2026-10-01T00:00:00Z', invite_token: 'tok_9',
+  };
+  let linkArgs: Record<string, unknown> | null;
+
+  beforeEach(() => {
+    linkArgs = null;
+    updated = { data: [{ id: 'blank_1' }], error: null };
+    rpc.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === 'link_blank_contract') {
+        linkArgs = args;
+        return Promise.resolve({ data: [{ request_id: 'req_new', invite_token: 'tok_new' }], error: null });
+      }
+      return Promise.resolve({ data: [REQUEST], error: null });
+    });
+  });
+
+  it('is not asked about an empty form, and Not now is asked once per visit', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    type('Licensee name', 'Jane Doe');
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await notNow();
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(3));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('creates the request from what was typed, then downloads from its contract', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    type('Licensee name', 'Jane Doe');
+    type('Email', 'jane@x.test');
+    type('Purpose', 'Piano recital');
+    type('Event date', '2026-11-20');
+    type('Hourly rate ($/hr)', '150');
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+
+    const dialog = within(await screen.findByRole('dialog'));
+    fireEvent.click(await dialog.findByRole('button', { name: /create a new request/i }));
+    expect((dialog.getByLabelText(/event title/i) as HTMLInputElement).value).toBe('Piano recital');
+    fireEvent.click(dialog.getByRole('button', { name: /create the request/i }));
+
+    await waitFor(() => expect(linkArgs).not.toBeNull());
+    expect(insert).toHaveBeenCalledTimes(1);  // the blank is kept first, so it can be linked
+    expect(linkArgs).toMatchObject({
+      p_blank_id: 'blank_1', p_request_id: null,
+      p_new: expect.objectContaining({ event_title: 'Piano recital', applicant_name: 'Jane Doe', email: 'jane@x.test', proposed_date: '2026-11-20' }),
+      p_contract_data: { hourly_rate: 150 },
+    });
+    await waitFor(() => expect(location).toBe('/contract/tok_new?download=1'));
+    await screen.findByText(/Contract Editor/);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  });
+
+  it('offers the request already in, and keeps only the differences chosen', async () => {
+    rows.rental_requests = { data: [EXISTING], error: null };
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    type('Licensee name', 'Jane Doe');
+    type('Email', 'jane@x.test');
+    type('Event date', '2026-11-21');
+    fireEvent.click(editor().getByRole('button', { name: /save to contracts/i }));
+
+    const dialog = within(await screen.findByRole('dialog'));
+    const match = within(await dialog.findByRole('region', { name: /possible matches/i }));
+    expect(match.getByText(/same email/)).toBeTruthy();
+    fireEvent.click(match.getByRole('button', { name: /use piano night/i }));
+
+    // Name and date differ; the request's are chosen until changed.
+    fireEvent.click(within(dialog.getByRole('radiogroup', { name: 'Licensee name' })).getByLabelText(/typed/i));
+    expect((within(dialog.getByRole('radiogroup', { name: 'Event date' })).getByLabelText(/request/i) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(dialog.getByRole('button', { name: /link and open/i }));
+
+    await waitFor(() => expect(linkArgs).not.toBeNull());
+    expect(linkArgs).toMatchObject({ p_request_id: 'req_9', p_new: null, p_patch: { applicant_name: 'Jane Doe' } });
+    expect(linkArgs!.p_contract_data).not.toHaveProperty('term_date');
+    await waitFor(() => expect(location).toBe('/contract/tok_new'));
+  });
+
+  it('takes a linked blank to its request, unless a version of it was asked for', async () => {
+    rows.blank_contracts = { data: [{ id: 'blank_1', fields: { ...EMPTY_BLANK, name: 'Jane' }, linked_request_id: 'req_1' }], error: null };
+    rows.rental_requests = { data: [{ invite_token: 'tok_1' }], error: null };
+    const first = renderAt('/contract/blank/blank_1');
+    await waitFor(() => expect(location).toBe('/contract/tok_1'));
+    first.unmount();
+
+    renderAt('/contract/blank/blank_1?version=v1');
+    expect(await screen.findByText(/now a rental request.s contract/i)).toBeTruthy();
+    expect(location).toBe('/contract/blank/blank_1?version=v1');
+    expect((editor().getByRole('button', { name: /save to contracts/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(editor().queryByRole('button', { name: /link to a rental request/i })).toBeNull();
   });
 });

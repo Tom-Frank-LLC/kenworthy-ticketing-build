@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, Printer, Save, ShieldCheck, BadgeCheck, Eraser, Plus, X } from 'lucide-react';
+import { Download, Printer, Save, ShieldCheck, BadgeCheck, Eraser, Link2, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { formatClockTime, formatPlainDate } from '@/lib/datetime';
@@ -14,8 +14,12 @@ import { formatClockTime, formatPlainDate } from '@/lib/datetime';
 import html2pdf from 'html2pdf.js';
 import { withHtml2CanvasBaseline } from '@/lib/html2canvasBaseline';
 import { blankTitle, contractFilename } from '@/lib/contracts';
+import { EMPTY_BLANK, type BlankFields, type TermDay } from '@/lib/blankFields';
+
+export { EMPTY_BLANK, type BlankFields, type TermDay };
 import ContractHistory, { type ContractVersion } from '@/components/contract/ContractHistory';
 import { fetchContractVersion } from '@/components/contract/ContractVersionList';
+import LinkToRequestDialog from '@/components/contract/LinkToRequestDialog';
 
 type ContractData = {
   agreement_date?: string;
@@ -59,62 +63,12 @@ const DEFAULTS: ContractData = {
   alcohol_addendum: 'not_served',
 };
 
-/**
- * What a staffer has typed into the blank contract. Strings throughout, numbers
- * included: an empty field must stay empty and print as a ruled line, where a
- * number would fall back to 0 and print "$0.00" for someone to cross out.
- * `alcohol_addendum` empty means undecided, and the form carries both addenda.
- */
-export type BlankFields = {
-  name: string;
-  organization: string;
-  email: string;
-  phone: string;
-  agreement_date: string;
-  event_date: string;
-  end_date: string;
-  start_time: string;
-  end_time: string;
-  purpose: string;
-  max_attendees: string;
-  hourly_rate: string;
-  base_hours: string;
-  additional_hours_rate: string;
-  additional_hours: string;
-  rehearsal_rate: string;
-  rehearsal_hours: string;
-  staff_rate: string;
-  staff_hours: string;
-  concessions_fee: string;
-  av_fee: string;
-  nonprofit_discount: string;
-  alcohol_addendum: '' | 'served' | 'not_served';
-  /**
-   * Days in the Term besides the event, each with its own hours: a rehearsal
-   * on the Thursday before a Friday show. Not the same thing as `end_date`,
-   * which is one run of consecutive days at the same hours.
-   */
-  extra_days: TermDay[];
-};
-
-export type TermDay = { label: string; date: string; start: string; end: string };
-
 // Reads inside the Term sentence ("…, and for rehearsal / load-in Thursday…"),
 // so it starts lower-case. The staffer can change or clear it.
 const NEW_TERM_DAY: TermDay = { label: 'rehearsal / load-in', date: '', start: '', end: '' };
 
-export const EMPTY_BLANK: BlankFields = {
-  name: '', organization: '', email: '', phone: '',
-  agreement_date: '', event_date: '', end_date: '', start_time: '', end_time: '',
-  purpose: '', max_attendees: '',
-  hourly_rate: '', base_hours: '', additional_hours_rate: '', additional_hours: '',
-  rehearsal_rate: '', rehearsal_hours: '',
-  staff_rate: '', staff_hours: '', concessions_fee: '', av_fee: '', nonprofit_discount: '',
-  alcohol_addendum: '',
-  extra_days: [],
-};
-
 type BlankText = Exclude<keyof BlankFields, 'extra_days'>;
+type BlankAction = 'save' | 'download' | 'print';
 const TEXT_KEYS = Object.keys(EMPTY_BLANK).filter(k => k !== 'extra_days') as BlankText[];
 
 // sessionStorage, not localStorage: the draft survives a refresh, which is what
@@ -202,6 +156,15 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const [viewing, setViewing] = useState<ContractVersion | null>(null);
   const beforeViewing = useRef<{ data: ContractData; fields: BlankFields } | null>(null);
   const autoDownloaded = useRef(false);
+  // A blank linked to a rental request is that request's contract now
+  // (link_blank_contract): its address goes to the request's, and only a
+  // version of it from History is still shown here.
+  const [linkedRequestId, setLinkedRequestId] = useState<string | null>(null);
+  const [linkedToken, setLinkedToken] = useState<string | null>(null);
+  // The link step, with what was being done when it was asked for: it runs
+  // after "Not now", and after a link the request's page takes it over.
+  const [linkPrompt, setLinkPrompt] = useState<{ action: BlankAction | null } | null>(null);
+  const [linkSkipped, setLinkSkipped] = useState(false);
 
   useEffect(() => {
     if (!blank || blankId) return;
@@ -222,7 +185,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
         if (routeBlankId) {
           const { data: rows, error } = await supabase
             .from('blank_contracts')
-            .select('id, fields')
+            .select('id, fields, linked_request_id')
             .eq('id', routeBlankId)
             .limit(1);
           if (error) toast.error(error.message);
@@ -231,6 +194,15 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
             const saved = parseBlankFields(row.fields);
             setFields(saved);
             setSavedFields(JSON.stringify(saved));
+            if (row.linked_request_id) {
+              setLinkedRequestId(row.linked_request_id);
+              const { data: req } = await supabase
+                .from('rental_requests')
+                .select('invite_token')
+                .eq('id', row.linked_request_id)
+                .limit(1);
+              setLinkedToken(req?.[0]?.invite_token ?? null);
+            }
           } else {
             setBlankMissing(true);
           }
@@ -254,6 +226,21 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   // it, so "Back to the current version" has the current one to return to.
   const versionParam = searchParams.get('version');
   const openedVersion = useRef(false);
+
+  // A linked blank's own address now opens the request's contract, unless it
+  // was asked for a version of the blank from before the link.
+  useEffect(() => {
+    if (linkedToken && !versionParam) navigate(`/contract/${linkedToken}`, { replace: true });
+  }, [linkedToken, versionParam, navigate]);
+
+  // ?link=1 (the Contracts list's "Link to a request"): the step, straight away.
+  const askedToLink = useRef(false);
+  useEffect(() => {
+    if (searchParams.get('link') !== '1' || loading || !isAdmin || !blank || askedToLink.current) return;
+    if (blankMissing || linkedRequestId) return;
+    askedToLink.current = true;
+    setLinkPrompt({ action: null });
+  }, [searchParams, loading, isAdmin, blank, blankMissing, linkedRequestId]);
   useEffect(() => {
     if (!versionParam || loading || openedVersion.current || !isAdmin) return;
     const source = blank ? (blankId ? { blank_contract_id: blankId } : null) : request ? { rental_request_id: request.id } : null;
@@ -302,7 +289,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
 
   async function saveBlank() {
     setSaving(true);
-    const error = await writeBlank();
+    const { error } = await writeBlank();
     setSaving(false);
     if (error) toast.error(error);
     else { toast.success('Saved to Contracts'); setViewing(null); }
@@ -312,15 +299,15 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   // after. Returns why it failed, or null. Every write here leaves a version
   // in contract_versions (a trigger does it), so nothing is skipped but an
   // unchanged form.
-  async function writeBlank(): Promise<string | null> {
+  async function writeBlank(): Promise<{ error: string | null; id: string | null }> {
     const json = JSON.stringify(fields);
-    if (blankId && json === savedFields) return null;
+    if (blankId && json === savedFields) return { error: null, id: blankId };
     const row = { title: blankTitle(fields), event_date: fields.event_date.trim() || null, fields: fields as any };
     const { data: rows, error } = blankId
       ? await supabase.from('blank_contracts').update(row).eq('id', blankId).select('id')
       : await supabase.from('blank_contracts').insert(row).select('id');
-    if (error) return error.message;
-    if (rows?.length !== 1) return 'Contract not saved: this account cannot save contracts.';
+    if (error) return { error: error.message, id: null };
+    if (rows?.length !== 1) return { error: 'Contract not saved: this account cannot save contracts.', id: null };
     if (!blankId) {
       setBlankId(rows[0].id);
       // The address a refresh or a bookmark needs, without a router navigation:
@@ -330,16 +317,57 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
       try { window.sessionStorage.removeItem(BLANK_DRAFT_KEY); } catch { /* blocked: nothing to clear */ }
     }
     setSavedFields(json);
-    return null;
+    return { error: null, id: rows[0].id };
   }
 
   // A download or print of a filled-in blank keeps it in Contracts, as Save
   // would. A form with nothing typed is the paper worksheet, and not a record;
   // a version being looked at from History is not made current by printing it.
   async function recordBlankForExport() {
-    if (!blank || !isAdmin || viewing || !typedAnything(fields)) return;
-    const error = await writeBlank();
+    if (!blank || !isAdmin || viewing || linkedRequestId || !typedAnything(fields)) return;
+    const { error } = await writeBlank();
     if (error) toast.error(`Not saved to Contracts: ${error}`);
+  }
+
+  // Save, Download and Print on a filled-in blank first ask which rental
+  // request it is for, once per visit unless linked. An empty form is the
+  // paper worksheet and is never asked about; a renter is never asked.
+  function blankAction(action: BlankAction) {
+    if (blank && isAdmin && !viewing && !linkedRequestId && !linkSkipped && typedAnything(fields)) {
+      setLinkPrompt({ action });
+      return;
+    }
+    runBlankAction(action);
+  }
+
+  function runBlankAction(action: BlankAction) {
+    if (action === 'save') saveBlank();
+    else if (action === 'download') exportPdf();
+    else printPdf();
+  }
+
+  async function ensureBlankId(): Promise<string> {
+    const { error, id } = await writeBlank();
+    if (error || !id) throw new Error(error || 'Contract not saved');
+    return id;
+  }
+
+  // Called from the dialog's button, so a Print still opens its tab inside the click.
+  function skipLink() {
+    const action = linkPrompt?.action ?? null;
+    setLinkSkipped(true);
+    setLinkPrompt(null);
+    if (action) runBlankAction(action);
+  }
+
+  function linked(token: string) {
+    const action = linkPrompt?.action ?? null;
+    setLinkPrompt(null);
+    try { window.sessionStorage.removeItem(BLANK_DRAFT_KEY); } catch { /* blocked: nothing to clear */ }
+    toast.success(action === 'print'
+      ? "Linked. This is the request's contract now; print it from here."
+      : "Linked. This is the request's contract now.");
+    navigate(`/contract/${token}${action === 'download' ? '?download=1' : ''}`);
   }
 
   function viewVersion(v: ContractVersion) {
@@ -557,10 +585,10 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
               )}
             </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={blank ? saveBlank : save} disabled={saving}>
+              <Button size="sm" onClick={blank ? () => blankAction('save') : save} disabled={saving || !!linkedRequestId}>
                 <Save className="h-4 w-4 mr-1" /> {saving ? 'Saving…' : 'Save'}
               </Button>
-              <Button size="sm" variant="outline" onClick={exportPdf} disabled={exporting}>
+              <Button size="sm" variant="outline" onClick={blank ? () => blankAction('download') : exportPdf} disabled={exporting}>
                 <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : blank ? 'Download PDF' : 'Draft PDF'}
               </Button>
               {/* Not while a past version is showing: the PDF would carry the
@@ -571,11 +599,20 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
                   <ShieldCheck className="h-4 w-4 mr-1" /> {signing ? 'Signing…' : 'Sign & Download'}
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={printPdf} disabled={exporting}>
+              <Button size="sm" variant="outline" onClick={blank ? () => blankAction('print') : printPdf} disabled={exporting}>
                 <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {blank && linkedRequestId && (
+        <div className="print:hidden container max-w-5xl px-4 mt-4">
+          <p className="font-serif text-sm" role="status">
+            This blank contract is now a rental request&rsquo;s contract, and is edited and signed there.
+            {linkedToken && <>{' '}<a className="underline" href={`/contract/${linkedToken}`}>Open the request&rsquo;s contract</a>.</>}
+          </p>
         </div>
       )}
 
@@ -642,15 +679,20 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
                     <Eraser className="h-4 w-4 mr-1" /> Clear form
                   </Button>
                 )}
+                {isAdmin && !linkedRequestId && (
+                  <Button size="sm" variant="outline" onClick={() => setLinkPrompt({ action: null })}>
+                    <Link2 className="h-4 w-4 mr-1" /> Link to a rental request
+                  </Button>
+                )}
                 {isAdmin && (
-                  <Button size="sm" variant="outline" onClick={saveBlank} disabled={saving}>
+                  <Button size="sm" variant="outline" onClick={() => blankAction('save')} disabled={saving || !!linkedRequestId}>
                     <Save className="h-4 w-4 mr-1" /> {saving ? 'Saving…' : 'Save to Contracts'}
                   </Button>
                 )}
-                <Button size="sm" variant="outline" onClick={exportPdf} disabled={exporting}>
+                <Button size="sm" variant="outline" onClick={() => blankAction('download')} disabled={exporting}>
                   <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
                 </Button>
-                <Button size="sm" variant="outline" onClick={printPdf} disabled={exporting}>
+                <Button size="sm" variant="outline" onClick={() => blankAction('print')} disabled={exporting}>
                   <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
                 </Button>
               </div>
@@ -735,6 +777,19 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           onView={viewVersion}
           onBackToCurrent={backToCurrent}
           defaultOpen={!!versionParam}
+          linkedBlanksOf={blank ? undefined : request?.id}
+        />
+      )}
+
+      {blank && isAdmin && (
+        <LinkToRequestDialog
+          open={!!linkPrompt}
+          fields={fields}
+          ensureBlankId={ensureBlankId}
+          onLinked={linked}
+          onSkip={skipLink}
+          onClose={() => setLinkPrompt(null)}
+          canSkip={!!linkPrompt?.action}
         />
       )}
 
@@ -971,10 +1026,10 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           the contract's white sheet the outline one was dark-on-dark. */}
       {(!isAdmin || blank) && (
         <div data-testid="contract-bottom-actions" className="print:hidden container max-w-3xl px-4 py-8 flex flex-wrap justify-center gap-2">
-          <Button onClick={exportPdf} disabled={exporting}>
+          <Button onClick={blank ? () => blankAction('download') : exportPdf} disabled={exporting}>
             <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
           </Button>
-          <Button variant="outline" onClick={printPdf} disabled={exporting}>
+          <Button variant="outline" onClick={blank ? () => blankAction('print') : printPdf} disabled={exporting}>
             <Printer className="h-4 w-4 mr-1" /> Print / Save PDF
           </Button>
         </div>

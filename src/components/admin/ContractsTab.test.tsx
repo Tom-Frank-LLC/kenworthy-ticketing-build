@@ -37,7 +37,10 @@ beforeEach(() => {
       id: 'req_1', event_title: 'Harvest Gala', proposed_date: '2026-11-14', contract_data: null,
       signed_at: '2026-10-16T18:00:00Z', signed_pdf_path: 'req_1/abc.pdf', assigned_to: null, invite_token: 'tok_1', status: 'approved',
     }],
-    blank_contracts: [{ id: 'blank_1', title: 'Piano recital', event_date: '2026-11-20' }],
+    blank_contracts: [
+      { id: 'blank_1', title: 'Piano recital', event_date: '2026-11-20', linked_request_id: null },
+      { id: 'blank_2', title: 'Became the gala', event_date: '2026-11-14', linked_request_id: 'req_1' },
+    ],
     contract_versions: [
       { id: 'v2', event: 'signed', saved_by: null, saved_at: '2026-10-16T18:00:00Z', signed_pdf_path: 'req_1/abc.pdf', contract_data: {}, request_snapshot: {}, signed_pdf_sha256: 'abc' },
       { id: 'v1', event: 'saved', saved_by: null, saved_at: '2026-10-15T18:00:00Z', signed_pdf_path: null, contract_data: {}, request_snapshot: {}, signed_pdf_sha256: null },
@@ -83,5 +86,17 @@ describe('Contracts list History', () => {
     const list = await row('Piano recital').findByRole('list', { name: /versions/i });
     expect(versionQueries).toEqual([[['blank_contract_id', 'blank_1']]]);
     expect(within(list).getAllByRole('link', { name: /open/i })[0].getAttribute('href')).toBe('/contract/blank/blank_1?version=v2');
+  });
+});
+
+describe('Contracts list blanks', () => {
+  it('lists an unlinked blank as not linked, with a way to link it, and hides a linked one', async () => {
+    render(<ContractsTab />);
+    await screen.findByText('Piano recital');
+    expect(screen.queryByText('Became the gala')).toBeNull();
+    expect(row('Piano recital').getByText(/not linked to a request/i)).toBeTruthy();
+    expect(row('Piano recital').getByRole('link', { name: /link to a request/i }).getAttribute('href'))
+      .toBe('/contract/blank/blank_1?link=1');
+    expect(row('Harvest Gala').queryByRole('link', { name: /link to a request/i })).toBeNull();
   });
 });

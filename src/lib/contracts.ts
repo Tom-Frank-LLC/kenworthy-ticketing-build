@@ -53,6 +53,8 @@ export type BlankContractSource = {
   id: string;
   title: string;
   event_date: string | null;
+  /** Set once the blank became a request's contract; the request's row stands for it. */
+  linked_request_id?: string | null;
 };
 
 /** One row of the Contracts list, from either source. */
@@ -77,8 +79,9 @@ export type ContractListRow = {
 export type ContractFilter = 'all' | 'draft' | 'signed';
 
 /**
- * Every request's contract and every saved blank, latest event first. Rows
- * with no date go last: they are mostly blanks still being filled in.
+ * Every request's contract and every saved blank not yet linked to a request,
+ * latest event first. Rows with no date go last: they are mostly blanks still
+ * being filled in.
  */
 export function contractRows(
   requests: RequestContractSource[],
@@ -99,7 +102,7 @@ export function contractRows(
       renterPath: `/contract/${r.invite_token}`,
       signedPdfPath: r.signed_pdf_path,
     })),
-    ...blanks.map((b): ContractListRow => ({
+    ...blanks.filter(b => !b.linked_request_id).map((b): ContractListRow => ({
       key: `blank:${b.id}`,
       kind: 'blank',
       id: b.id,

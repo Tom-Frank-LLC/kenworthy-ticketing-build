@@ -77,6 +77,11 @@ describe('contractRows', () => {
     expect(rows[3].title).toBe('Untitled blank contract');
   });
 
+  it('leaves out a blank that became a request\'s contract: the request stands for it', () => {
+    const linked = [...blanks, { id: 'b3', title: 'Linked', event_date: '2026-11-21', linked_request_id: 'r2' }];
+    expect(contractRows(requests, linked).map(r => r.key)).toEqual(['request:r2', 'blank:b1', 'request:r1', 'blank:b2']);
+  });
+
   it('filters by signed and draft; a blank is never signed', () => {
     expect(contractRows(requests, blanks, 'signed').map(r => r.key)).toEqual(['request:r1']);
     expect(contractRows(requests, blanks, 'draft').map(r => r.key)).toEqual(['request:r2', 'blank:b1', 'blank:b2']);

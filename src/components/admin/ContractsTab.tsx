@@ -52,7 +52,7 @@ export default function ContractsTab() {
       fetchAllRows<BlankContractSource>((from, to) =>
         supabase
           .from('blank_contracts')
-          .select('id, title, event_date')
+          .select('id, title, event_date, linked_request_id')
           .order('id')
           .range(from, to) as any),
     ]);
@@ -146,7 +146,7 @@ export default function ContractsTab() {
                         ) : (
                           <Badge variant="outline" className="text-xs">Not signed</Badge>
                         )}
-                        {r.kind === 'blank' && <Badge variant="secondary" className="text-xs">Blank</Badge>}
+                        {r.kind === 'blank' && <Badge variant="secondary" className="text-xs">Blank — not linked to a request</Badge>}
                         {r.assignedTo && (
                           <Badge variant="outline" className="text-xs">
                             <UserRound className="h-3 w-3 mr-1" aria-hidden="true" />
@@ -187,6 +187,13 @@ export default function ContractsTab() {
                         aria-expanded={expanded.has(r.key)} aria-controls={`history-${r.key}`}>
                         <History className="h-4 w-4 mr-1" /> {expanded.has(r.key) ? 'Hide history' : 'History'}
                       </Button>
+                      {r.kind === 'blank' && (
+                        <Button size="sm" variant="outline" asChild title="Make it a rental request's contract: link it, or create the request">
+                          <a href={`${r.path}?link=1`} target="_blank" rel="noreferrer">
+                            <Link2 className="h-4 w-4 mr-1" /> Link to a request
+                          </a>
+                        </Button>
+                      )}
                       {r.kind === 'blank' && (
                         <Button size="sm" variant="ghost" className="text-destructive" title="Delete this blank contract" aria-label={`Delete ${r.title}`}
                           onClick={() => deleteBlank(r)}>

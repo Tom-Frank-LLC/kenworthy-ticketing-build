@@ -218,6 +218,7 @@ export type Database = {
           event_date: string | null
           fields: Json
           id: string
+          linked_request_id: string | null
           title: string
           updated_at: string
         }
@@ -227,6 +228,7 @@ export type Database = {
           event_date?: string | null
           fields?: Json
           id?: string
+          linked_request_id?: string | null
           title?: string
           updated_at?: string
         }
@@ -236,10 +238,19 @@ export type Database = {
           event_date?: string | null
           fields?: Json
           id?: string
+          linked_request_id?: string | null
           title?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "blank_contracts_linked_request_id_fkey"
+            columns: ["linked_request_id"]
+            isOneToOne: false
+            referencedRelation: "rental_requests"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chart_of_accounts: {
         Row: {
@@ -3797,6 +3808,19 @@ export type Database = {
         Returns: boolean
       }
       is_protected_user: { Args: { _user_id: string }; Returns: boolean }
+      link_blank_contract: {
+        Args: {
+          p_blank_id: string
+          p_contract_data: Json
+          p_new: Json
+          p_patch: Json
+          p_request_id: string | null
+        }
+        Returns: {
+          invite_token: string
+          request_id: string
+        }[]
+      }
       log_failed_staff_login: { Args: { p_email: string }; Returns: undefined }
       my_mfa_required: { Args: never; Returns: boolean }
       order_tax_cents: { Args: { base_cents: number }; Returns: number }
