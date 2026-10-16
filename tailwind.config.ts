@@ -19,6 +19,14 @@ export default {
       },
     },
     extend: {
+      screens: {
+        // Wide but not tall: an iPad on its side, a laptop. The patron-facing
+        // display (/pos/display) stacks the sale in one column, and at 1180 x
+        // 820 that put the donation buttons below the fold. Media queries
+        // measure px against the browser's 16px, not our 18px root, so this
+        // is in px. Declared after the default screens, so it wins over `sm:`.
+        short: { raw: "(min-width: 640px) and (max-height: 1060px)" },
+      },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         serif: ['Fraunces', 'Georgia', 'serif'],
