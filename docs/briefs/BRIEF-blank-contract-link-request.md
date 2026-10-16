@@ -1,12 +1,13 @@
 ---
 brief: blank-contract-link-request
 title: A filled-in blank contract is linked to an existing rental request or creates one, so it gets a renter link, signing and review without duplicate requests
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-16
-verified: false
-evidence: supabase/migrations/20261016215241_link_blank_contract_to_request.sql; applied on staging 2026-10-16
+shipped_in: ["#390"]
+shipped_at: 2026-10-16
+verified: true
+evidence: prod Worker 64d4fade (rollback 662549e2); migration 20261016215241 applied on prod and staging
 ---
 
 # Brief: Link a blank contract to a rental request
@@ -68,4 +69,5 @@ to the existing request, or create a new one, without making duplicates.
 - `supabase/tests/contracts/run.sh`: 46/46 with the link cases (roles,
   validation, twice refused, signed refused, allowlisted columns, Term vs
   requested date, version written, delete → standalone).
-- Not done: a click-through in a browser.
+- Tom checked it on staging, 2026-10-16. Deployed to prod the same day: Worker
+  64d4fade (rollback 662549e2); the live chunks matched the build byte for byte.
