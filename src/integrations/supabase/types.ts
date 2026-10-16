@@ -211,6 +211,36 @@ export type Database = {
           },
         ]
       }
+      blank_contracts: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          event_date: string | null
+          fields: Json
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          event_date?: string | null
+          fields?: Json
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          event_date?: string | null
+          fields?: Json
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       chart_of_accounts: {
         Row: {
           account_type: Database["public"]["Enums"]["coa_account_type"]
@@ -466,6 +496,60 @@ export type Database = {
             columns: ["showing_id"]
             isOneToOne: false
             referencedRelation: "showings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_versions: {
+        Row: {
+          blank_contract_id: string | null
+          contract_data: Json | null
+          event: string
+          id: string
+          rental_request_id: string | null
+          request_snapshot: Json | null
+          saved_at: string
+          saved_by: string | null
+          signed_pdf_path: string | null
+          signed_pdf_sha256: string | null
+        }
+        Insert: {
+          blank_contract_id?: string | null
+          contract_data?: Json | null
+          event: string
+          id?: string
+          rental_request_id?: string | null
+          request_snapshot?: Json | null
+          saved_at?: string
+          saved_by?: string | null
+          signed_pdf_path?: string | null
+          signed_pdf_sha256?: string | null
+        }
+        Update: {
+          blank_contract_id?: string | null
+          contract_data?: Json | null
+          event?: string
+          id?: string
+          rental_request_id?: string | null
+          request_snapshot?: Json | null
+          saved_at?: string
+          saved_by?: string | null
+          signed_pdf_path?: string | null
+          signed_pdf_sha256?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_versions_blank_contract_id_fkey"
+            columns: ["blank_contract_id"]
+            isOneToOne: false
+            referencedRelation: "blank_contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_versions_rental_request_id_fkey"
+            columns: ["rental_request_id"]
+            isOneToOne: false
+            referencedRelation: "rental_requests"
             referencedColumns: ["id"]
           },
         ]
@@ -2213,6 +2297,7 @@ export type Database = {
           signed_by: string | null
           signed_by_name: string | null
           signed_by_title: string | null
+          signed_pdf_path: string | null
           signed_pdf_sha256: string | null
           special_needs: string | null
           square_invoice_created_at: string | null
@@ -2267,6 +2352,7 @@ export type Database = {
           signed_by?: string | null
           signed_by_name?: string | null
           signed_by_title?: string | null
+          signed_pdf_path?: string | null
           signed_pdf_sha256?: string | null
           special_needs?: string | null
           square_invoice_created_at?: string | null
@@ -2321,6 +2407,7 @@ export type Database = {
           signed_by?: string | null
           signed_by_name?: string | null
           signed_by_title?: string | null
+          signed_pdf_path?: string | null
           signed_pdf_sha256?: string | null
           special_needs?: string | null
           square_invoice_created_at?: string | null

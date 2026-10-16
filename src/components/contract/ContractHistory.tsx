@@ -1,0 +1,128 @@
+import { useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { BadgeCheck, Eye, History } from 'lucide-react';
+import { toast } from 'sonner';
+import { openSignedContractPdf } from '@/lib/signedContractPdf';
+import { format } from 'date-fns';
+
+export type ContractVersion = {
+  id: string;
+  event: 'saved' | 'signed';
+  contract_data: unknown;
+  request_snapshot: Record<string, unknown> | null;
+  signed_pdf_sha256: string | null;
+  signed_pdf_path: string | null;
+  saved_by: string | null;
+  saved_at: string;
+};
+
+/**
+ * A contract's versions, newest first, read only when this is opened: the
+ * contract page itself, the Contracts list and every public page load none.
+ *
+ * View puts a version's terms back in the editor, where Download prints it and
+ * Save makes it current again. A signed version also has the file itself, the
+ * only copy /verify will confirm; a PDF drawn again from the same terms is a
+ * new rasterisation and never matches the hash.
+ */
+export default function ContractHistory({ source, viewing, onView, onBackToCurrent }: {
+  source: { rental_request_id: string } | { blank_contract_id: string };
+  viewing: ContractVersion | null;
+  onView: (v: ContractVersion) => void;
+  onBackToCurrent: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [versions, setVersions] = useState<ContractVersion[] | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const viewingId = viewing?.id ?? null;
+
+  async function load() {
+    const query = supabase
+      .from('contract_versions')
+      .select('id, event, contract_data, request_snapshot, signed_pdf_sha256, signed_pdf_path, saved_by, saved_at');
+    const { data, error } = await ('rental_request_id' in source
+      ? query.eq('rental_request_id', source.rental_request_id)
+      : query.eq('blank_contract_id', source.blank_contract_id))
+      .order('saved_at', { ascending: false })
+      .limit(200);
+    if (error) { toast.error(error.message); return; }
+    const rows = (data || []) as ContractVersion[];
+    setVersions(rows);
+    const ids = [...new Set(rows.map(v => v.saved_by).filter((x): x is string => !!x))];
+    if (ids.length) {
+      const { data: profiles } = await supabase.from('profiles').select('id, display_name, email').in('id', ids);
+      setNames(Object.fromEntries((profiles || []).map(p => [p.id, p.display_name || p.email || 'Unnamed'])));
+    }
+  }
+
+  function toggle() {
+    if (!open) load();
+    setOpen(!open);
+  }
+
+  return (
+    <div className="print:hidden container max-w-5xl px-4 mt-4">
+      <Card className="glass">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <Button size="sm" variant="outline" onClick={toggle} aria-expanded={open}>
+              <History className="h-4 w-4 mr-1" /> {open ? 'Hide history' : 'History'}
+            </Button>
+            {viewing && (
+              <Button size="sm" onClick={onBackToCurrent}>Back to the current version</Button>
+            )}
+          </div>
+          {viewing && (
+            <p className="font-serif text-sm" role="status">
+              Showing the version {viewing.event === 'signed' ? 'signed' : 'saved'} {format(new Date(viewing.saved_at), 'MMM d, yyyy h:mm a')}.
+              {' '}Download prints it as it was. Save makes its terms the current contract again
+              {'rental_request_id' in source && "; the renter's name, dates and purpose stay as the request has them now"}.
+            </p>
+          )}
+          {open && (
+            versions === null ? (
+              <p className="font-serif text-sm text-muted-foreground">Loading…</p>
+            ) : versions.length === 0 ? (
+              <p className="font-serif text-sm text-muted-foreground">
+                No saved versions yet. History starts with the first save after 16 October 2026.
+              </p>
+            ) : (
+              <ol className="space-y-2" aria-label="Versions, newest first">
+                {versions.map(v => (
+                  <li key={v.id} className="flex items-center justify-between gap-3 flex-wrap rounded-md border border-border/40 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="font-serif text-sm">
+                        {format(new Date(v.saved_at), 'MMM d, yyyy h:mm a')}
+                        {' '}
+                        {v.event === 'signed'
+                          ? <Badge className="text-xs ml-1"><BadgeCheck className="h-3 w-3 mr-1" aria-hidden="true" />Signed</Badge>
+                          : <Badge variant="outline" className="text-xs ml-1">Saved</Badge>}
+                        {viewingId === v.id && <Badge variant="secondary" className="text-xs ml-1">Showing</Badge>}
+                      </p>
+                      <p className="font-serif text-xs text-muted-foreground">
+                        {v.saved_by ? names[v.saved_by] || '…' : 'Unknown'}
+                      </p>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button size="sm" variant="outline" onClick={() => onView(v)} disabled={viewingId === v.id}>
+                        <Eye className="h-4 w-4 mr-1" /> View
+                      </Button>
+                      {v.signed_pdf_path && (
+                        <Button size="sm" variant="outline" onClick={() => openSignedContractPdf(v.signed_pdf_path!)} title="The file as it was signed">
+                          <BadgeCheck className="h-4 w-4 mr-1" /> Signed PDF
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

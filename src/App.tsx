@@ -199,6 +199,7 @@ const App = () => (
                       header link and bookmarks. The page decides what to show by role. */}
                   <Route path="/superadmin" element={<AdminOnly><AccountsRoles /></AdminOnly>} />
                   <Route path="/contract/blank" element={<RentalContract blank />} />
+                  <Route path="/contract/blank/:blankId" element={<RentalContract blank />} />
                   <Route path="/contract/:token" element={<RentalContract />} />
                   <Route path="/verify/:id" element={<VerifyContract />} />
                   <Route path="*" element={<NotFound />} />

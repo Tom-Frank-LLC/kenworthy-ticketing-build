@@ -8,22 +8,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Copy, ExternalLink, Trash2, Eye, FileText, Link2, Receipt, RefreshCw, UserRound } from 'lucide-react';
+import { ExternalLink, Trash2, Eye, FileText, Link2, Receipt, RefreshCw, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { formatClockTime, formatPlainDateRange } from '@/lib/datetime';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { invokeFunction } from '@/lib/functions';
-import { TEAM_ROLES } from '@/lib/roleRules';
+import { useTeamRoster, type TeamMember } from './useTeamRoster';
 import RentalInvoiceLines from './RentalInvoiceLines';
 
 type RentalRequest = any;
 
 const STATUS_OPTIONS = ['pending', 'reviewing', 'approved', 'declined', 'archived'] as const;
-
-// A team member who can own a request. Same source as the Team tab's roster:
-// anyone holding a TEAM_ROLES role, named from their profile.
-type TeamMember = { id: string; name: string };
 
 const UNASSIGNED = 'unassigned';
 
@@ -42,7 +38,7 @@ export default function RentalRequestsTab() {
   const [open, setOpen] = useState<RentalRequest | null>(null);
   const [lineCounts, setLineCounts] = useState<Record<string, number>>({});
   const [generating, setGenerating] = useState<string | null>(null);
-  const [team, setTeam] = useState<TeamMember[]>([]);
+  const { team, teamName } = useTeamRoster();
 
   async function load() {
     setLoading(true);
@@ -116,36 +112,8 @@ export default function RentalRequestsTab() {
     }
   }
 
-  // The roster for the "Assigned to" picker. Reading every user_roles row and
-  // every profile is an admin-or-above read under RLS, which is who this tab
-  // is for (/admin is AdminOnly).
-  async function loadTeam() {
-    const { data: roles, error } = await supabase
-      .from('user_roles')
-      .select('user_id')
-      .in('role', [...TEAM_ROLES]);
-    if (error) { toast.error(error.message); return; }
-    const ids = [...new Set((roles || []).map(r => r.user_id))];
-    if (!ids.length) { setTeam([]); return; }
-    const { data: profiles, error: pErr } = await supabase
-      .from('profiles')
-      .select('id, email, display_name')
-      .in('id', ids);
-    if (pErr) { toast.error(pErr.message); return; }
-    setTeam(
-      (profiles || [])
-        .map(p => ({ id: p.id, name: p.display_name || p.email || 'Unnamed' }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    );
-  }
 
-  useEffect(() => { load(); loadTeam(); }, []);
-
-  // Until the roster arrives every id would read as a former member.
-  const teamName = (id: string | null | undefined) =>
-    !id ? null : team.find(m => m.id === id)?.name ?? (team.length ? 'Former team member' : '…');
-
-  const publicFormUrl = `${window.location.origin}/rental-request`;
+  useEffect(() => { load(); }, []);
 
   const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter);
 
@@ -181,35 +149,8 @@ export default function RentalRequestsTab() {
     else { toast.success('Deleted'); setOpen(null); load(); }
   }
 
-  function copyLink(token?: string) {
-    const url = token ? `${publicFormUrl}?token=${token}` : publicFormUrl;
-    navigator.clipboard.writeText(url);
-    toast.success('Link copied to clipboard');
-  }
-
   return (
     <div className="space-y-4">
-      <CollapsibleSection id="rentals.public-form" title="Public rental form">
-        <p className="font-serif text-xs text-muted-foreground break-all">{publicFormUrl}</p>
-        <div className="flex gap-2 flex-wrap">
-          <Button size="sm" variant="outline" onClick={() => copyLink()}>
-            <Copy className="h-4 w-4 mr-1" /> Copy link
-          </Button>
-          <Button size="sm" variant="outline" asChild>
-            <a href={publicFormUrl} target="_blank" rel="noreferrer">
-              <ExternalLink className="h-4 w-4 mr-1" /> Open
-            </a>
-          </Button>
-          {/* For the rare rental done on paper: the full contract with every
-              fill-in a ruled line, to download or print and complete by hand. */}
-          <Button size="sm" variant="outline" asChild title="The contract with every fill-in left blank, to complete by hand">
-            <a href="/contract/blank" target="_blank" rel="noreferrer">
-              <FileText className="h-4 w-4 mr-1" /> Blank contract
-            </a>
-          </Button>
-        </div>
-      </CollapsibleSection>
-
       <CollapsibleSection
         id="rentals.requests"
         title="Rental Requests"

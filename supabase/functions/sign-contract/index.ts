@@ -203,8 +203,22 @@ Deno.serve(async (req: Request) => {
     const sigBytes = new Uint8Array(await crypto.subtle.sign('Ed25519', privKey, stamped));
     const signatureB64 = b64encode(sigBytes);
 
-    // Record on the rental request
-    await admin
+    // Keep the file before recording the signing. A PDF rebuilt later from
+    // contract_data never matches this hash (it is a fresh rasterisation, with
+    // no verify page), so this upload is the only copy /verify can confirm
+    // besides the one the staffer downloads. If it fails, nothing is recorded
+    // and nothing is handed back: a signing without its file is what this
+    // replaced. Named by hash, so a retry of the same bytes overwrites itself.
+    const signedPdfPath = `${rental.id}/${sha256}.pdf`;
+    const { error: uploadErr } = await admin.storage
+      .from('signed-contracts')
+      .upload(signedPdfPath, stamped, { contentType: 'application/pdf', upsert: true });
+    if (uploadErr) throw new Error(`Could not archive the signed PDF: ${uploadErr.message}`);
+
+    // Record on the rental request. A trigger snapshots the contract into
+    // contract_versions as a 'signed' version. Ask for the row back: an update
+    // that matched nothing is not an error.
+    const { data: recorded, error: recordErr } = await admin
       .from('rental_requests')
       .update({
         signed_at: signedAtIso,
@@ -212,10 +226,14 @@ Deno.serve(async (req: Request) => {
         signed_by_name: signerName,
         signed_by_title: signerTitle,
         signed_pdf_sha256: sha256,
+        signed_pdf_path: signedPdfPath,
         signature_serial: signatureB64,
         contract_status: 'signed',
       })
-      .eq('id', request_id);
+      .eq('id', request_id)
+      .select('id');
+    if (recordErr) throw new Error(`Could not record the signing: ${recordErr.message}`);
+    if (recorded?.length !== 1) throw new Error('Could not record the signing: rental request not updated');
 
     return new Response(
       JSON.stringify({
