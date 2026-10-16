@@ -68,6 +68,7 @@ const ChartOfAccountsTab = lazyWithRecovery(() => import('@/components/admin/acc
 const AccountMappingsTab = lazyWithRecovery(() => import('@/components/admin/accounting/AccountMappingsTab'));
 const QboExportTab = lazyWithRecovery(() => import('@/components/admin/accounting/QboExportTab'));
 const RentalRequestsTab = lazyWithRecovery(() => import('@/components/admin/RentalRequestsTab'));
+const ContractsTab = lazyWithRecovery(() => import('@/components/admin/ContractsTab'));
 const BoxOfficeReceiptsTab = lazyWithRecovery(() => import('@/components/admin/BoxOfficeReceiptsTab'));
 const LaborTab = lazyWithRecovery(() => import('@/components/admin/LaborTab'));
 const SponsorsTab = lazyWithRecovery(() => import('@/components/admin/SponsorsTab'));
@@ -1546,16 +1547,22 @@ export default function AdminDashboard() {
           </Suspense>
         </TabsContent>
 
-        {/* Rentals Tab (with Hosts sub-tab) */}
+        {/* Rentals Tab (with Contracts and Hosts sub-tabs) */}
         <TabsContent value="rentals" className="space-y-6">
           <Tabs defaultValue="requests" className="space-y-4">
             <TabsList>
               <TabsTrigger value="requests"><KeyRound className="h-4 w-4 mr-1 inline" />Requests</TabsTrigger>
+              <TabsTrigger value="contracts"><FileText className="h-4 w-4 mr-1 inline" />Contracts</TabsTrigger>
               <TabsTrigger value="hosts"><Users className="h-4 w-4 mr-1 inline" />Hosts</TabsTrigger>
             </TabsList>
             <TabsContent value="requests" className="space-y-6">
               <Suspense fallback={<TabFallback />}>
                 <RentalRequestsTab />
+              </Suspense>
+            </TabsContent>
+            <TabsContent value="contracts" className="space-y-6">
+              <Suspense fallback={<TabFallback />}>
+                <ContractsTab />
               </Suspense>
             </TabsContent>
             <TabsContent value="hosts" className="space-y-6">

@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ import { formatClockTime, formatPlainDate } from '@/lib/datetime';
 // @ts-ignore - no types
 import html2pdf from 'html2pdf.js';
 import { withHtml2CanvasBaseline } from '@/lib/html2canvasBaseline';
+import { blankTitle, contractFilename } from '@/lib/contracts';
+import ContractHistory, { type ContractVersion } from '@/components/contract/ContractHistory';
 
 type ContractData = {
   agreement_date?: string;
@@ -123,17 +125,31 @@ export const BLANK_DRAFT_KEY = 'kenworthy.blankContract.v1';
 function loadBlankDraft(): BlankFields {
   try {
     const raw = window.sessionStorage.getItem(BLANK_DRAFT_KEY);
-    if (!raw) return EMPTY_BLANK;
-    const saved = JSON.parse(raw);
-    const out = { ...EMPTY_BLANK };
-    for (const k of TEXT_KEYS) {
-      if (typeof saved?.[k] === 'string') (out as Record<BlankText, string>)[k] = saved[k];
-    }
-    out.extra_days = termDays(saved?.extra_days);
-    return out;
+    return raw ? parseBlankFields(JSON.parse(raw)) : EMPTY_BLANK;
   } catch {
     return EMPTY_BLANK;
   }
+}
+
+/** A blank contract's fields from a draft, a blank_contracts row or a version of one. */
+export function parseBlankFields(saved: unknown): BlankFields {
+  const s = (saved ?? {}) as Record<string, unknown>;
+  const out = { ...EMPTY_BLANK };
+  for (const k of TEXT_KEYS) {
+    if (typeof s[k] === 'string') (out as Record<BlankText, string>)[k] = s[k] as string;
+  }
+  out.extra_days = termDays(s.extra_days);
+  return out;
+}
+
+function typedAnything(f: BlankFields) {
+  return TEXT_KEYS.some(k => f[k].trim()) || f.extra_days.length > 0;
+}
+
+// contract_data as saved, over the defaults. Shared by the load and History.
+function contractDataFrom(saved: unknown): ContractData {
+  const d = (saved ?? {}) as ContractData;
+  return { ...DEFAULTS, ...d, ...(d.extra_days !== undefined && { extra_days: termDays(d.extra_days) }) };
 }
 
 // Saved by a browser (the draft) or in a jsonb column (contract_data); trust
@@ -151,12 +167,19 @@ function termDays(v: unknown): TermDay[] {
  *
  * `blank` (at /contract/blank) is the same document as a worksheet: no request
  * is loaded, an editor above it takes whatever the staffer knows, and every
- * field left empty prints as a ruled line to write on. It has nothing to save
- * or sign; only the merge fields differ, so a blank form and a real contract
- * can never drift apart in their clauses.
+ * field left empty prints as a ruled line to write on. It is never signed; only
+ * the merge fields differ, so a blank form and a real contract can never drift
+ * apart in their clauses. An admin can keep one in blank_contracts (Save, or a
+ * Download or Print of a form with anything typed in it), and it then lives at
+ * /contract/blank/:blankId and in Admin → Rentals → Contracts.
+ *
+ * `?download=1` downloads the PDF once the page has drawn: the Contracts list's
+ * Download, since the PDF can only be made from the rendered page.
  */
 export default function RentalContract({ blank = false }: { blank?: boolean }) {
-  const { token } = useParams();
+  const { token, blankId: routeBlankId } = useParams();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAdmin } = useAuth();
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -164,10 +187,21 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [signing, setSigning] = useState(false);
-  const [fields, setFields] = useState<BlankFields>(() => (blank ? loadBlankDraft() : EMPTY_BLANK));
+  // A saved blank comes from its row, not from the tab's draft.
+  const [fields, setFields] = useState<BlankFields>(() => (blank && !routeBlankId ? loadBlankDraft() : EMPTY_BLANK));
+  const [blankId, setBlankId] = useState<string | null>(routeBlankId ?? null);
+  const [blankMissing, setBlankMissing] = useState(false);
+  // The fields as last written to blank_contracts, so an unchanged form is not
+  // written again on every download.
+  const [savedFields, setSavedFields] = useState<string | null>(null);
+  // A version from History shown in place of the current contract, and what
+  // was in the editor before, for "Back to the current version".
+  const [viewing, setViewing] = useState<ContractVersion | null>(null);
+  const beforeViewing = useRef<{ data: ContractData; fields: BlankFields } | null>(null);
+  const autoDownloaded = useRef(false);
 
   useEffect(() => {
-    if (!blank) return;
+    if (!blank || blankId) return;
     try {
       if (TEXT_KEYS.some(k => fields[k]) || fields.extra_days.length) {
         window.sessionStorage.setItem(BLANK_DRAFT_KEY, JSON.stringify(fields));
@@ -181,19 +215,47 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
 
   useEffect(() => {
     (async () => {
-      if (blank) { setLoading(false); return; }
+      if (blank) {
+        if (routeBlankId) {
+          const { data: rows, error } = await supabase
+            .from('blank_contracts')
+            .select('id, fields')
+            .eq('id', routeBlankId)
+            .limit(1);
+          if (error) toast.error(error.message);
+          const row = rows?.[0];
+          if (row) {
+            const saved = parseBlankFields(row.fields);
+            setFields(saved);
+            setSavedFields(JSON.stringify(saved));
+          } else {
+            setBlankMissing(true);
+          }
+        }
+        setLoading(false);
+        return;
+      }
       if (!token) return;
       const { data: rows, error } = await supabase.rpc('get_rental_request_by_token', { p_token: token });
       if (error) toast.error(error.message);
       const row = rows?.[0] || null;
       setRequest(row);
-      if (row?.contract_data) {
-        const saved = row.contract_data as ContractData;
-        setData({ ...DEFAULTS, ...saved, ...(saved.extra_days !== undefined && { extra_days: termDays(saved.extra_days) }) });
-      }
+      if (row?.contract_data) setData(contractDataFrom(row.contract_data));
       setLoading(false);
     })();
-  }, [token, blank]);
+  }, [token, blank, routeBlankId]);
+
+  // ?download=1, once there is a contract on the page to draw. The fonts must
+  // be in first: html2canvas draws whatever face is loaded at that moment.
+  const wantsDownload = searchParams.get('download') === '1';
+  const ready = !loading && !blankMissing && (blank || !!request);
+  useEffect(() => {
+    if (!wantsDownload || !ready || autoDownloaded.current) return;
+    autoDownloaded.current = true;
+    (document.fonts?.ready ?? Promise.resolve()).then(() => requestAnimationFrame(() => { exportPdf(); }));
+    // exportPdf reads the state at the time it runs; this only decides when.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsDownload, ready]);
 
   const blankTotals = useMemo(() => blankCosts(fields), [fields]);
 
@@ -215,7 +277,62 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
     const error = await writeContractData();
     setSaving(false);
     if (error) toast.error(error);
-    else toast.success('Contract saved');
+    else { toast.success('Contract saved'); setViewing(null); }
+  }
+
+  async function saveBlank() {
+    setSaving(true);
+    const error = await writeBlank();
+    setSaving(false);
+    if (error) toast.error(error);
+    else { toast.success('Saved to Contracts'); setViewing(null); }
+  }
+
+  // Keeps the blank in blank_contracts: a new row the first time, the same row
+  // after. Returns why it failed, or null. Every write here leaves a version
+  // in contract_versions (a trigger does it), so nothing is skipped but an
+  // unchanged form.
+  async function writeBlank(): Promise<string | null> {
+    const json = JSON.stringify(fields);
+    if (blankId && json === savedFields) return null;
+    const row = { title: blankTitle(fields), event_date: fields.event_date.trim() || null, fields: fields as any };
+    const { data: rows, error } = blankId
+      ? await supabase.from('blank_contracts').update(row).eq('id', blankId).select('id')
+      : await supabase.from('blank_contracts').insert(row).select('id');
+    if (error) return error.message;
+    if (rows?.length !== 1) return 'Contract not saved: this account cannot save contracts.';
+    if (!blankId) {
+      setBlankId(rows[0].id);
+      // The address a refresh or a bookmark needs, without a router navigation:
+      // /contract/blank and /contract/blank/:blankId are separate routes, and
+      // moving between them remounts the page, mid-download if this was one.
+      window.history.replaceState(window.history.state, '', `/contract/blank/${rows[0].id}`);
+      try { window.sessionStorage.removeItem(BLANK_DRAFT_KEY); } catch { /* blocked: nothing to clear */ }
+    }
+    setSavedFields(json);
+    return null;
+  }
+
+  // A download or print of a filled-in blank keeps it in Contracts, as Save
+  // would. A form with nothing typed is the paper worksheet, and not a record;
+  // a version being looked at from History is not made current by printing it.
+  async function recordBlankForExport() {
+    if (!blank || !isAdmin || viewing || !typedAnything(fields)) return;
+    const error = await writeBlank();
+    if (error) toast.error(`Not saved to Contracts: ${error}`);
+  }
+
+  function viewVersion(v: ContractVersion) {
+    if (!viewing) beforeViewing.current = { data, fields };
+    if (blank) setFields(parseBlankFields(v.contract_data));
+    else setData(contractDataFrom(v.contract_data));
+    setViewing(v);
+  }
+
+  function backToCurrent() {
+    const was = beforeViewing.current;
+    if (was) { setData(was.data); setFields(was.fields); }
+    setViewing(null);
   }
 
   // An update RLS refuses comes back as success with no rows, so ask for the
@@ -232,17 +349,28 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   }
 
   const blankLicensee = (fields.name.trim() || fields.organization.trim());
-  const filename = blank
-    ? `Kenworthy-Contract-${slug(blankLicensee) || 'BLANK'}.pdf`
-    : `Kenworthy-Contract-${(request?.event_title || 'rental').replace(/[^a-z0-9]+/gi, '-')}.pdf`;
+  // A version from History prints with the renter's details as they were then.
+  const shownRequest = request && viewing?.request_snapshot ? { ...request, ...viewing.request_snapshot } : request;
+
+  // 2026_11_13_Harvest_Gala.pdf: the Term's first day (or the requested one)
+  // and the event title; a blank uses what has been typed.
+  function pdfFilename(signed = false) {
+    if (blank) return contractFilename({ date: fields.event_date.trim(), title: blankTitle(fields) });
+    return contractFilename({
+      date: shownRequest ? requestTerm(data, shownRequest).date : '',
+      title: shownRequest?.event_title,
+      signed,
+    });
+  }
 
   async function exportPdf() {
     const el = document.getElementById('contract-body');
     if (!el) return;
     setExporting(true);
     try {
+      await recordBlankForExport();
       await withHtml2CanvasBaseline(() => html2pdf()
-        .set({ ...PDF_OPTIONS, filename } as any)
+        .set({ ...PDF_OPTIONS, filename: pdfFilename() } as any)
         .from(breakableCopy(el))
         .save());
     } catch (e: any) {
@@ -263,6 +391,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
     const tab = window.open('', '_blank');
     setExporting(true);
     try {
+      await recordBlankForExport();
       const blob = await renderPdfBlob();
       const url = URL.createObjectURL(blob);
       if (tab) {
@@ -271,7 +400,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
         // Popups blocked: hand over the file instead of doing nothing.
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
+        a.download = pdfFilename();
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -330,7 +459,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
       const url = URL.createObjectURL(signedBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Kenworthy-Contract-${(request.event_title || 'rental').replace(/[^a-z0-9]+/gi, '-')}-signed.pdf`;
+      a.download = pdfFilename(true);
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -348,7 +477,8 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   }
 
   if (loading) return <div className="container py-16 text-center text-muted-foreground">Loading…</div>;
-  if (!request && !blank) return <div className="container py-16 text-center text-muted-foreground">Contract not found.</div>;
+  if ((!request && !blank) || blankMissing) return <div className="container py-16 text-center text-muted-foreground">Contract not found.</div>;
+  const req = shownRequest;
 
   // A blank form leaves every merge field it was not given empty — not today's
   // date, not `__________`, not $0.00 — and Fill draws a ruled line in its place.
@@ -360,20 +490,20 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
     ? formatPlainDate(b.agreement_date)
     : data.agreement_date
       ? formatPlainDate(data.agreement_date)
-      : format(new Date(request.created_at), 'MMMM d, yyyy');
+      : format(new Date(req.created_at), 'MMMM d, yyyy');
   const term = blank
     ? { date: b.event_date, endDate: b.end_date, start: b.start_time, end: b.end_time, days: b.extra_days }
-    : requestTerm(data, request);
+    : requestTerm(data, req);
   const eventDate = eventDays(term.date, term.endDate === term.date ? '' : term.endDate);
   // A blank form rules an empty line; a real contract has always printed
   // underscores there, and still does.
   const termFill = (v: string, width: string) => (blank ? <Fill width={width}>{v}</Fill> : <Fill>{v || '__________'}</Fill>);
-  const licensee = blank ? blankLicensee : request.applicant_name || request.organization_name || '__________';
+  const licensee = blank ? blankLicensee : req.applicant_name || req.organization_name || '__________';
   const contact = blank
     ? [b.name, b.organization, b.email, b.phone].filter(Boolean).join(', ')
-    : [request.applicant_name, request.email].filter(Boolean).join(', ');
-  const purpose = blank ? b.purpose : request.event_description || request.event_title || '__________';
-  const alcoholYes = data.alcohol_addendum === 'served' || request?.wants_beer_wine;
+    : [req.applicant_name, req.email].filter(Boolean).join(', ');
+  const purpose = blank ? b.purpose : req.event_description || req.event_title || '__________';
+  const alcoholYes = data.alcohol_addendum === 'served' || req?.wants_beer_wine;
   // Undecided, the blank form carries both addenda for the writer to choose.
   const showAlcohol = blank ? fields.alcohol_addendum !== 'not_served' : alcoholYes;
   const showNoAlcohol = blank ? fields.alcohol_addendum !== 'served' : !alcoholYes;
@@ -384,7 +514,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   // Consideration clause already says the total excludes items To Be Determined.
   const feeOrTbd = (v: number | undefined) => (v !== undefined && v > 0 ? money(v) : 'TBD');
   const set = (k: BlankText) => (v: string) => setFields(f => ({ ...f, [k]: v }));
-  const asRequested = request && requestTerm({}, request);
+  const asRequested = req && requestTerm({}, req);
   const termEdited = TERM_OVERRIDES.some(k => data[k] !== undefined);
 
   return (
@@ -395,7 +525,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           <div className="container max-w-5xl py-4 px-4 flex items-center justify-between gap-3">
             <div>
               <h1 className="font-display uppercase">
-                {blank ? 'Blank Contract — fill in here or by hand' : `Contract Editor — ${request.event_title}`}
+                {blank ? 'Blank Contract — fill in here or by hand' : `Contract Editor — ${req.event_title}`}
               </h1>
               {request?.signed_at && (
                 <p className="font-serif text-sm text-accent flex items-center gap-1 mt-1">
@@ -407,16 +537,17 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
               )}
             </div>
             <div className="flex gap-2">
-              {!blank && (
-                <Button size="sm" onClick={save} disabled={saving}>
-                  <Save className="h-4 w-4 mr-1" /> {saving ? 'Saving…' : 'Save'}
-                </Button>
-              )}
+              <Button size="sm" onClick={blank ? saveBlank : save} disabled={saving}>
+                <Save className="h-4 w-4 mr-1" /> {saving ? 'Saving…' : 'Save'}
+              </Button>
               <Button size="sm" variant="outline" onClick={exportPdf} disabled={exporting}>
                 <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : blank ? 'Download PDF' : 'Draft PDF'}
               </Button>
+              {/* Not while a past version is showing: the PDF would carry the
+                  renter's details as they were then, not as the request has them. */}
               {!blank && (
-                <Button size="sm" onClick={signAndDownload} disabled={signing}>
+                <Button size="sm" onClick={signAndDownload} disabled={signing || !!viewing}
+                  title={viewing ? 'Go back to the current version to sign' : undefined}>
                   <ShieldCheck className="h-4 w-4 mr-1" /> {signing ? 'Signing…' : 'Sign & Download'}
                 </Button>
               )}
@@ -435,6 +566,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
               <p className="font-serif text-sm text-muted-foreground">
                 Fill in as much or as little as you like; anything left empty prints as a line to write on.
                 Download or print at any point. Nothing here is saved to a rental.
+                {isAdmin && ' Save keeps it in Admin → Rentals → Contracts, and downloading or printing a form with anything typed in it keeps it there too.'}
               </p>
               <FieldGroup legend="Who">
                 <BlankField label="Licensee name" value={fields.name} onChange={set('name')} />
@@ -479,9 +611,22 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
               </FieldGroup>
               {/* The form is long; download and print sit where the typing ends. */}
               <div className="flex flex-wrap justify-end gap-2">
-                <Button size="sm" variant="outline" onClick={() => setFields(EMPTY_BLANK)}>
-                  <Eraser className="h-4 w-4 mr-1" /> Clear form
-                </Button>
+                {/* On a saved blank, clearing would empty the saved record on the
+                    next save; start a separate one instead. */}
+                {blankId ? (
+                  <Button size="sm" variant="outline" onClick={() => navigate('/contract/blank')}>
+                    <Plus className="h-4 w-4 mr-1" /> New blank contract
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setFields(EMPTY_BLANK)}>
+                    <Eraser className="h-4 w-4 mr-1" /> Clear form
+                  </Button>
+                )}
+                {isAdmin && (
+                  <Button size="sm" variant="outline" onClick={saveBlank} disabled={saving}>
+                    <Save className="h-4 w-4 mr-1" /> {saving ? 'Saving…' : 'Save to Contracts'}
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" onClick={exportPdf} disabled={exporting}>
                   <Download className="h-4 w-4 mr-1" /> {exporting ? 'Exporting…' : 'Download PDF'}
                 </Button>
@@ -561,6 +706,15 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {isAdmin && (blank ? blankId : request) && (
+        <ContractHistory
+          source={blank ? { blank_contract_id: blankId! } : { rental_request_id: request.id }}
+          viewing={viewing}
+          onView={viewVersion}
+          onBackToCurrent={backToCurrent}
+        />
       )}
 
       {/*
@@ -826,10 +980,6 @@ function trimmed(f: BlankFields): BlankFields {
     label: d.label.trim(), date: d.date.trim(), start: d.start.trim(), end: d.end.trim(),
   }));
   return out;
-}
-
-function slug(s: string) {
-  return s.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '');
 }
 
 // "Saturday November 14th, 2026", or "… through …" when there is an end date.

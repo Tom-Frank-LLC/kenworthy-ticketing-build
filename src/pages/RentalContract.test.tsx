@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import RentalContract, { BLANK_DRAFT_KEY, EMPTY_BLANK, blankCosts } from './RentalContract';
+import RentalContract, { BLANK_DRAFT_KEY, EMPTY_BLANK, blankCosts, parseBlankFields } from './RentalContract';
 
 /**
  * Two promises the contract page makes that only show up on paper.
@@ -21,20 +21,30 @@ import RentalContract, { BLANK_DRAFT_KEY, EMPTY_BLANK, blankCosts } from './Rent
  */
 
 const rpc = vi.fn();
-// rental_requests.update(...).eq(...).select('id'): record the patch, answer
-// with whatever `updated` holds — [] is what an RLS refusal looks like.
+// supabase.from(table): a chain that records each write and answers from
+// `updated` (an update or insert; [] is what an RLS refusal looks like) or
+// `rows[table]` (a read).
+type Result = { data: unknown[] | null; error: { message: string } | null };
 const update = vi.fn();
-let updated: { data: unknown[] | null; error: { message: string } | null } = { data: [{ id: 'req_1' }], error: null };
+const insert = vi.fn();
+let writtenTo: string[] = [];
+let updated: Result = { data: [{ id: 'req_1' }], error: null };
+let rows: Record<string, Result> = {};
 const invoke = vi.fn().mockResolvedValue({ data: { error: 'stop here' }, error: null });
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     rpc: (...args: unknown[]) => rpc(...args),
-    from: () => ({
-      update: (patch: unknown) => {
-        update(patch);
-        return { eq: () => ({ select: () => Promise.resolve(updated) }) };
-      },
-    }),
+    from: (table: string) => {
+      let write = false;
+      const chain: Record<string, unknown> = {
+        update: (patch: unknown) => { update(patch); writtenTo.push(table); write = true; return chain; },
+        insert: (row: unknown) => { insert(row); writtenTo.push(table); write = true; return chain; },
+        select: () => chain, eq: () => chain, in: () => chain, order: () => chain, limit: () => chain,
+        then: (ok: (r: Result) => unknown, fail: (e: unknown) => unknown) =>
+          Promise.resolve(write ? updated : rows[table] ?? { data: [], error: null }).then(ok, fail),
+      };
+      return chain;
+    },
     functions: { invoke: (...args: unknown[]) => invoke(...args) },
   },
 }));
@@ -82,6 +92,7 @@ function renderAt(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/contract/blank" element={<RentalContract blank />} />
+        <Route path="/contract/blank/:blankId" element={<RentalContract blank />} />
         <Route path="/contract/:token" element={<RentalContract />} />
       </Routes>
     </MemoryRouter>,
@@ -102,6 +113,9 @@ beforeEach(() => {
   isAdmin = true;
   rpc.mockReset().mockResolvedValue({ data: [REQUEST], error: null });
   update.mockClear();
+  insert.mockClear();
+  writtenTo = [];
+  rows = {};
   invoke.mockClear();
   toastError.mockClear();
   toastSuccess.mockClear();
@@ -150,19 +164,20 @@ describe('blank contract', () => {
     expect(screen.getByRole('heading', { name: 'Addendum 1 — No Alcohol Service' })).toBeTruthy();
   });
 
-  it('has nothing to save or sign', async () => {
+  it('can be saved but never signed', async () => {
     renderAt('/contract/blank');
     await screen.findByText('License Agreement');
-    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /sign/i })).toBeNull();
   });
 
-  it('downloads as Kenworthy-Contract-BLANK.pdf', async () => {
+  it('downloads an empty form as BLANK.pdf, and keeps no record of it', async () => {
     renderAt('/contract/blank');
     await screen.findByText('License Agreement');
     fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
     await waitFor(() => expect(save).toHaveBeenCalled());
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: 'Kenworthy-Contract-BLANK.pdf' }));
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: 'BLANK.pdf' }));
+    expect(insert).not.toHaveBeenCalled();
   });
 });
 
@@ -184,7 +199,7 @@ describe('filling in the blank contract', () => {
 
     fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
     await waitFor(() => expect(save).toHaveBeenCalled());
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: 'Kenworthy-Contract-Jane-Doe.pdf' }));
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: 'Jane_Doe.pdf' }));
   });
 
   for (const admin of [true, false]) {
@@ -621,4 +636,156 @@ describe('Print', () => {
       expect(print).not.toHaveBeenCalled();
     });
   }
+});
+
+describe('saving a blank contract', () => {
+  const type = (label: string, value: string) =>
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+
+  beforeEach(() => {
+    updated = { data: [{ id: 'blank_1' }], error: null };
+  });
+
+  it('Save keeps it in blank_contracts and gives it its own address', async () => {
+    const replace = vi.spyOn(window.history, 'replaceState');
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    type('Purpose', 'Piano recital');
+    type('Event date', '2026-11-20');
+    expect(window.sessionStorage.getItem(BLANK_DRAFT_KEY)).not.toBeNull();
+
+    fireEvent.click(editor().getByRole('button', { name: /save to contracts/i }));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Saved to Contracts'));
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Piano recital', event_date: '2026-11-20', fields: expect.objectContaining({ purpose: 'Piano recital' }) }),
+    );
+    expect(writtenTo).toEqual(['blank_contracts']);
+    expect(replace.mock.calls.at(-1)?.[2]).toBe('/contract/blank/blank_1');
+    // The row is the copy now; the tab's draft would only resurrect it on a new blank.
+    expect(window.sessionStorage.getItem(BLANK_DRAFT_KEY)).toBeNull();
+
+    // A second save updates the same row instead of making another.
+    type('Max attendees', '120');
+    fireEvent.click(editor().getByRole('button', { name: /save to contracts/i }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({ title: 'Piano recital' })));
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(writtenTo).toEqual(['blank_contracts', 'blank_contracts']);
+  });
+
+  it('a download of a filled-in form records it, named for its date and purpose', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    type('Purpose', 'Piano recital');
+    type('Event date', '2026-11-20');
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: '2026_11_20_Piano_recital.pdf' }));
+  });
+
+  it('a renter downloading the public blank writes nothing', async () => {
+    isAdmin = false;
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    type('Licensee name', 'Jane Doe');
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('still downloads when the record cannot be written, and says so', async () => {
+    updated = { data: [], error: null };
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    type('Licensee name', 'Jane Doe');
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/not saved to contracts/i));
+  });
+
+  it('reopens a saved blank from its row, and an unchanged download writes nothing', async () => {
+    rows.blank_contracts = { data: [{ id: 'blank_1', fields: { ...EMPTY_BLANK, name: 'Jane Doe', purpose: 'Recital' } }], error: null };
+    renderAt('/contract/blank/blank_1');
+    await screen.findByText('License Agreement');
+    expect(contractText()).toContain('Jane Doe');
+    expect(editor().getByRole('button', { name: /new blank contract/i })).toBeTruthy();
+
+    fireEvent.click(editor().getByRole('button', { name: /download pdf/i }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(insert).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('says so when a saved blank is gone', async () => {
+    renderAt('/contract/blank/missing');
+    expect(await screen.findByText('Contract not found.')).toBeTruthy();
+  });
+
+  it('round-trips its fields through jsonb, distrusting the shape', () => {
+    const typed = { ...EMPTY_BLANK, name: 'Jane', extra_days: [{ label: 'load-in', date: '2026-11-19', start: '09:00', end: '12:00' }] };
+    expect(parseBlankFields(JSON.parse(JSON.stringify(typed)))).toEqual(typed);
+    expect(parseBlankFields({ name: 7, extra_days: 'no', bogus: 'x' })).toEqual(EMPTY_BLANK);
+    expect(parseBlankFields(null)).toEqual(EMPTY_BLANK);
+  });
+});
+
+describe('request contract downloads', () => {
+  it('are named for the Term day and the event title', async () => {
+    rpc.mockResolvedValue({ data: [{ ...REQUEST, contract_data: { term_date: '2026-11-13' } }], error: null });
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    fireEvent.click(screen.getByRole('button', { name: /draft pdf/i }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: '2026_11_13_Harvest_Gala.pdf' }));
+  });
+
+  it('fall back to the requested day', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    fireEvent.click(screen.getByRole('button', { name: /draft pdf/i }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: '2026_11_14_Harvest_Gala.pdf' }));
+  });
+
+  it('?download=1 downloads once the contract has drawn', async () => {
+    renderAt('/contract/tok_1?download=1');
+    await screen.findByText(/Contract Editor/);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ filename: '2026_11_14_Harvest_Gala.pdf' }));
+  });
+});
+
+describe('History', () => {
+  const VERSION = {
+    id: 'v1', event: 'saved', saved_by: null, saved_at: '2026-10-01T18:00:00Z',
+    signed_pdf_sha256: null, signed_pdf_path: null,
+    contract_data: { hourly_rate: 100, base_hours: 2 },
+    request_snapshot: { applicant_name: 'Ada Byron', event_title: 'Harvest Gala' },
+  };
+
+  it('loads nothing until it is opened', async () => {
+    const from = vi.spyOn(await import('@/integrations/supabase/client').then(m => m.supabase), 'from');
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(from).not.toHaveBeenCalledWith('contract_versions');
+    fireEvent.click(screen.getByRole('button', { name: /^history$/i }));
+    await waitFor(() => expect(from).toHaveBeenCalledWith('contract_versions'));
+  });
+
+  it('shows a version as it was, will not sign it, and goes back', async () => {
+    rows.contract_versions = { data: [VERSION], error: null };
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(contractText()).toContain('Ada Lovelace');
+
+    fireEvent.click(screen.getByRole('button', { name: /^history$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /view/i }));
+    expect(contractText()).toContain('Ada Byron');
+    expect(contractText()).toContain('$200.00');
+    expect((screen.getByRole('button', { name: /sign & download/i }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /back to the current version/i }));
+    expect(contractText()).toContain('Ada Lovelace');
+    expect((screen.getByRole('button', { name: /sign & download/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });
