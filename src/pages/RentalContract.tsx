@@ -20,10 +20,13 @@ type ContractData = {
   base_hours?: number;
   additional_hours_rate?: number;
   additional_hours?: number;
+  rehearsal_rate?: number;
+  rehearsal_hours?: number;
   staff_rate?: number;
   staff_hours?: number;
   concessions_fee?: number;
   av_fee?: number;
+  nonprofit_discount?: number;
   max_attendees?: number;
   alcohol_addendum?: 'served' | 'not_served';
   // The Term as staff set it. The request holds what the renter asked for; the
@@ -43,10 +46,12 @@ const DEFAULTS: ContractData = {
   base_hours: 4,
   additional_hours_rate: 50,
   additional_hours: 0,
+  rehearsal_hours: 0,
   staff_rate: 30,
   staff_hours: 0,
   concessions_fee: 0,
   av_fee: 0,
+  nonprofit_discount: 0,
   max_attendees: 268,
   alcohol_addendum: 'not_served',
 };
@@ -73,10 +78,13 @@ export type BlankFields = {
   base_hours: string;
   additional_hours_rate: string;
   additional_hours: string;
+  rehearsal_rate: string;
+  rehearsal_hours: string;
   staff_rate: string;
   staff_hours: string;
   concessions_fee: string;
   av_fee: string;
+  nonprofit_discount: string;
   alcohol_addendum: '' | 'served' | 'not_served';
   /**
    * Days in the Term besides the event, each with its own hours: a rehearsal
@@ -97,7 +105,8 @@ export const EMPTY_BLANK: BlankFields = {
   agreement_date: '', event_date: '', end_date: '', start_time: '', end_time: '',
   purpose: '', max_attendees: '',
   hourly_rate: '', base_hours: '', additional_hours_rate: '', additional_hours: '',
-  staff_rate: '', staff_hours: '', concessions_fee: '', av_fee: '',
+  rehearsal_rate: '', rehearsal_hours: '',
+  staff_rate: '', staff_hours: '', concessions_fee: '', av_fee: '', nonprofit_discount: '',
   alcohol_addendum: '',
   extra_days: [],
 };
@@ -191,10 +200,13 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const totals = useMemo(() => {
     const base = (data.hourly_rate || 0) * (data.base_hours || 0);
     const extra = (data.additional_hours_rate || 0) * (data.additional_hours || 0);
+    const rehearsal = (data.rehearsal_rate || 0) * (data.rehearsal_hours || 0);
     const staff = (data.staff_rate || 0) * (data.staff_hours || 0);
     const conc = data.concessions_fee || 0;
+    // An unset fee is TBD (see feeOrTbd), and adds nothing.
     const av = data.av_fee || 0;
-    return { base, extra, staff, conc, av, subtotal: base + extra + staff + conc + av };
+    const discount = data.nonprofit_discount || 0;
+    return { base, extra, rehearsal, staff, conc, av, discount, subtotal: base + extra + rehearsal + staff + conc + av - discount };
   }, [data]);
 
   async function save() {
@@ -367,6 +379,10 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const showNoAlcohol = blank ? fields.alcohol_addendum !== 'served' : !alcoholYes;
   const money = (v: number | undefined) => (v === undefined ? '' : `$${v.toFixed(2)}`);
   const subtotal = blank ? blankTotals.subtotal : totals.subtotal;
+  const discount = (blank ? blankTotals.discount : totals.discount) ?? 0;
+  // Distributor licensing and DCP fees are rarely known at signing; the
+  // Consideration clause already says the total excludes items To Be Determined.
+  const feeOrTbd = (v: number | undefined) => (v !== undefined && v > 0 ? money(v) : 'TBD');
   const set = (k: BlankText) => (v: string) => setFields(f => ({ ...f, [k]: v }));
   const asRequested = request && requestTerm({}, request);
   const termEdited = TERM_OVERRIDES.some(k => data[k] !== undefined);
@@ -453,10 +469,13 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
                 <BlankField label="Base hours" type="number" value={fields.base_hours} onChange={set('base_hours')} />
                 <BlankField label="Add'l hour rate" type="number" value={fields.additional_hours_rate} onChange={set('additional_hours_rate')} />
                 <BlankField label="Add'l hours" type="number" value={fields.additional_hours} onChange={set('additional_hours')} />
+                <BlankField label="Rehearsal rate ($/hr)" type="number" value={fields.rehearsal_rate} onChange={set('rehearsal_rate')} />
+                <BlankField label="Rehearsal hours" type="number" value={fields.rehearsal_hours} onChange={set('rehearsal_hours')} />
                 <BlankField label="Staff rate ($/hr)" type="number" value={fields.staff_rate} onChange={set('staff_rate')} />
                 <BlankField label="Staff hours" type="number" value={fields.staff_hours} onChange={set('staff_hours')} />
                 <BlankField label="Concessions fee" type="number" value={fields.concessions_fee} onChange={set('concessions_fee')} />
                 <BlankField label="LCD/DVD/DCP fee" type="number" value={fields.av_fee} onChange={set('av_fee')} />
+                <BlankField label="Non-profit discount ($)" type="number" value={fields.nonprofit_discount} onChange={set('nonprofit_discount')} />
               </FieldGroup>
               {/* The form is long; download and print sit where the typing ends. */}
               <div className="flex flex-wrap justify-end gap-2">
@@ -483,10 +502,13 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
               <NumField label="Base hours" value={data.base_hours} onChange={v => setData({ ...data, base_hours: v })} />
               <NumField label="Add'l hour rate" value={data.additional_hours_rate} onChange={v => setData({ ...data, additional_hours_rate: v })} />
               <NumField label="Add'l hours" value={data.additional_hours} onChange={v => setData({ ...data, additional_hours: v })} />
+              <NumField label="Rehearsal rate ($/hr)" value={data.rehearsal_rate} onChange={v => setData({ ...data, rehearsal_rate: v })} />
+              <NumField label="Rehearsal hours" value={data.rehearsal_hours} onChange={v => setData({ ...data, rehearsal_hours: v })} />
               <NumField label="Staff rate ($/hr)" value={data.staff_rate} onChange={v => setData({ ...data, staff_rate: v })} />
               <NumField label="Staff hours" value={data.staff_hours} onChange={v => setData({ ...data, staff_hours: v })} />
               <NumField label="Concessions fee" value={data.concessions_fee} onChange={v => setData({ ...data, concessions_fee: v })} />
               <NumField label="LCD/DVD/DCP fee" value={data.av_fee} onChange={v => setData({ ...data, av_fee: v })} />
+              <NumField label="Non-profit discount ($)" value={data.nonprofit_discount} onChange={v => setData({ ...data, nonprofit_discount: v })} />
               <NumField label="Max attendees" value={data.max_attendees} onChange={v => setData({ ...data, max_attendees: v })} />
               <div className="space-y-1">
                 <Label className="text-sm">Alcohol addendum</Label>
@@ -616,7 +638,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
         <p><strong>C. Decorations.</strong> Licensee shall not by use of nails, screws, tacks, or any similar implement affix any item to the screen, walls, ceiling, chairs, doors or any portion thereof. Licensee shall not use glitter, feather boas, or helium filled balloons within the auditorium. Licensee may affix temporary decorations to the walls using only <strong>blue painters tape</strong>. Any other tape will not be allowed and damage to walls by tape will be assessed in the final billing. Licensee prior to vacating the theater shall remove all decorations and tape.</p>
         <p><strong>D. KPAC Equipment.</strong> All equipment, including but not limited to film projector, lights, ice machine, popcorn machine, movie screen, and stage curtain will only be operated by the Owner or Owner&rsquo;s authorized staff. Any damage to theater interior and/or breakage of theater equipment resulting from Licensee actions shall be repaired and/or replaced at the Licensee&rsquo;s expense. <strong>No patrons, props, or materials shall be placed on stage while the movie screen is in a down position.</strong> Attaching anything to the front of the stage must be approved by a KPAC staff person.</p>
         <p><strong>E. Provided during your event.</strong> Use of the building interior, including lobby, restrooms, theater, backstage areas, and a general wash lighting of the stage is included. Special equipment, additional light and sound support to be determined no later than 3 weeks prior to event. Cleaning service and trash removal included. Owner at its discretion will assess a one hundred dollar ($100.00) cleaning fee if the premises are deemed soiled beyond normal wear and tear. Concession sales may be made available during any rental; proceeds will be retained by Owner and will not be credited towards rental costs.</p>
-        <p><strong>F. Ticketing.</strong> If the Kenworthy is selling tickets for event, ticketing fees will be assessed at cost (3.5%) plus labor for listings, service, and web management: 5% gross ticketing revenue.</p>
+        <p><strong>F. Ticketing.</strong> If the Kenworthy is selling tickets for event, ticketing fees will be assessed at cost plus labor for listings, service, and web management: 5% gross ticketing revenue.</p>
 
         <H2>Itemized Breakdown of Rental Costs</H2>
         <table className="w-full border-collapse text-sm my-4">
@@ -624,7 +646,12 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
             {blank ? (
               <>
                 <Row label={<>Theater Rental ($<Fill width="3em">{b.hourly_rate}</Fill>/hr × <Fill width="2em">{b.base_hours}</Fill>)</>} value={money(blankTotals.base)} />
-                <Row label={<>Additional Hours ($<Fill width="3em">{b.additional_hours_rate}</Fill>/hr × <Fill width="2em">{b.additional_hours}</Fill>)</>} value={money(blankTotals.extra)} />
+                {hasLine(blankTotals.extra, b.additional_hours_rate, b.additional_hours) && (
+                  <Row label={<>Additional Hours ($<Fill width="3em">{b.additional_hours_rate}</Fill>/hr × <Fill width="2em">{b.additional_hours}</Fill>)</>} value={money(blankTotals.extra)} />
+                )}
+                {hasLine(blankTotals.rehearsal, b.rehearsal_rate, b.rehearsal_hours) && (
+                  <Row label={<>Rehearsal ($<Fill width="3em">{b.rehearsal_rate}</Fill>/hr × <Fill width="2em">{b.rehearsal_hours}</Fill>)</>} value={money(blankTotals.rehearsal)} />
+                )}
                 <Row label={<>Additional KPAC Staff ($<Fill width="3em">{b.staff_rate}</Fill>/hr × <Fill width="2em">{b.staff_hours}</Fill>)</>} value={money(blankTotals.staff)} />
               </>
             ) : (
@@ -633,11 +660,15 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
                 {totals.extra > 0 && (
                   <Row label={`Additional Hours ($${num(data.additional_hours_rate)}/hr × ${num(data.additional_hours)})`} value={money(totals.extra)} />
                 )}
+                {totals.rehearsal > 0 && (
+                  <Row label={`Rehearsal ($${num(data.rehearsal_rate)}/hr × ${num(data.rehearsal_hours)})`} value={money(totals.rehearsal)} />
+                )}
                 <Row label={`Additional KPAC Staff ($${num(data.staff_rate)}/hr × ${num(data.staff_hours)})`} value={money(totals.staff)} />
               </>
             )}
             <Row label="Concessions Fees" value={money(blank ? blankTotals.conc : totals.conc)} />
-            <Row label="LCD / DVD / DCP Fees" value={money(blank ? blankTotals.av : totals.av)} />
+            <Row label="LCD / DVD / DCP Fees" value={feeOrTbd(blank ? blankTotals.av : totals.av)} />
+            {discount > 0 && <Row label="Non-Profit Discount" value={`-${money(discount)}`} />}
             <tr className="border-t border-neutral-400 font-semibold">
               <td className="py-2">Subtotal</td>
               <td className="py-2 text-right">{money(subtotal)}</td>
@@ -777,6 +808,13 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   );
 }
 
+// The blank form's optional lines (additional hours, rehearsal) print only once
+// something has been typed into them, and not when what was typed comes to $0:
+// an unused line is dropped from the contract rather than left as a blank.
+function hasLine(amount: number | undefined, ...typed: string[]) {
+  return typed.some(Boolean) && amount !== 0;
+}
+
 function num(v: number | undefined) {
   return v ?? 0;
 }
@@ -812,7 +850,7 @@ function amount(s: string): number | undefined {
  * made of has been typed: a rate with no hours is not a $0 line, it is a line
  * still to be filled in. The subtotal adds up the lines that have amounts, and
  * is itself blank until at least one does, which is what a staffer filling the
- * paper form by hand would write.
+ * paper form by hand would write. The discount is subtracted.
  */
 export function blankCosts(f: BlankFields) {
   const times = (a: string, b: string) => {
@@ -822,12 +860,15 @@ export function blankCosts(f: BlankFields) {
   const lines = {
     base: times(f.hourly_rate, f.base_hours),
     extra: times(f.additional_hours_rate, f.additional_hours),
+    rehearsal: times(f.rehearsal_rate, f.rehearsal_hours),
     staff: times(f.staff_rate, f.staff_hours),
     conc: amount(f.concessions_fee),
     av: amount(f.av_fee),
   };
-  const known = Object.values(lines).filter((v): v is number => v !== undefined);
-  return { ...lines, subtotal: known.length ? known.reduce((a, v) => a + v, 0) : undefined };
+  const discount = amount(f.nonprofit_discount);
+  const known = [...Object.values(lines), discount === undefined ? undefined : -discount]
+    .filter((v): v is number => v !== undefined);
+  return { ...lines, discount, subtotal: known.length ? known.reduce((a, v) => a + v, 0) : undefined };
 }
 
 function H2({ children }: { children: React.ReactNode }) {
@@ -983,10 +1024,12 @@ function TermDayRows({ days, onChange }: { days: TermDay[]; onChange: (days: Ter
 }
 
 function NumField({ label, value, onChange }: { label: string; value: number | undefined; onChange: (v: number) => void }) {
+  const id = useId();
   return (
     <div className="space-y-1">
-      <Label className="text-sm">{label}</Label>
+      <Label htmlFor={id} className="text-sm">{label}</Label>
       <Input
+        id={id}
         type="number"
         value={value ?? ''}
         onChange={e => onChange(e.target.value === '' ? 0 : parseFloat(e.target.value))}

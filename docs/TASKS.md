@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**140 briefs** — 129 shipped, 4 built, 7 open, 0 needs triage, 0 closed.
+**141 briefs** — 129 shipped, 5 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -15,6 +15,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
+- **Rental contract cost lines — rehearsal line, unused lines dropped, DCP fees TBD, no "(3.5%)", non-profit discount**<br>`feature` — [brief](briefs/BRIEF-contract-cost-lines.md)
 
 ## Open
 
