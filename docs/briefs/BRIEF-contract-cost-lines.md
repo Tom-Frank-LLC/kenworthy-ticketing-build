@@ -1,10 +1,12 @@
 ---
 brief: contract-cost-lines
 title: Rental contract cost lines — rehearsal line, unused lines dropped, DCP fees TBD, no "(3.5%)", non-profit discount
-status: built
+status: shipped
 track: feature
 date: 2026-10-16
-verified: false
+shipped_in: ["#386"]
+shipped_at: 2026-10-15
+verified: true
 ---
 
 # Brief: Rental contract cost lines
