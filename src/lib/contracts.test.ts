@@ -72,8 +72,8 @@ describe('contractRows', () => {
 
   it('links each to its own page, and only requests to a renter', () => {
     const rows = contractRows(requests, blanks);
-    expect(rows[0]).toMatchObject({ kind: 'request', path: '/contract/t2', renterPath: '/contract/t2', assignedTo: 'u1', eventDate: '2026-12-24' });
-    expect(rows[1]).toMatchObject({ kind: 'blank', path: '/contract/blank/b1', renterPath: null, signed: false });
+    expect(rows[0]).toMatchObject({ kind: 'request', id: 'r2', path: '/contract/t2', renterPath: '/contract/t2', assignedTo: 'u1', eventDate: '2026-12-24' });
+    expect(rows[1]).toMatchObject({ kind: 'blank', id: 'b1', path: '/contract/blank/b1', renterPath: null, signed: false });
     expect(rows[3].title).toBe('Untitled blank contract');
   });
 

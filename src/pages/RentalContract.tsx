@@ -15,6 +15,7 @@ import html2pdf from 'html2pdf.js';
 import { withHtml2CanvasBaseline } from '@/lib/html2canvasBaseline';
 import { blankTitle, contractFilename } from '@/lib/contracts';
 import ContractHistory, { type ContractVersion } from '@/components/contract/ContractHistory';
+import { fetchContractVersion } from '@/components/contract/ContractVersionList';
 
 type ContractData = {
   agreement_date?: string;
@@ -175,6 +176,8 @@ function termDays(v: unknown): TermDay[] {
  *
  * `?download=1` downloads the PDF once the page has drawn: the Contracts list's
  * Download, since the PDF can only be made from the rendered page.
+ * `?version=<id>` opens showing that version from History, as the Contracts
+ * list's History links do.
  */
 export default function RentalContract({ blank = false }: { blank?: boolean }) {
   const { token, blankId: routeBlankId } = useParams();
@@ -247,6 +250,23 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
 
   // ?download=1, once there is a contract on the page to draw. The fonts must
   // be in first: html2canvas draws whatever face is loaded at that moment.
+  // ?version=<id>, once the current contract is in: shown as View would show
+  // it, so "Back to the current version" has the current one to return to.
+  const versionParam = searchParams.get('version');
+  const openedVersion = useRef(false);
+  useEffect(() => {
+    if (!versionParam || loading || openedVersion.current || !isAdmin) return;
+    const source = blank ? (blankId ? { blank_contract_id: blankId } : null) : request ? { rental_request_id: request.id } : null;
+    if (!source) return;
+    openedVersion.current = true;
+    fetchContractVersion(versionParam, source).then(v => {
+      if (v) viewVersion(v);
+      else toast.error('That version of this contract was not found.');
+    });
+    // viewVersion reads the state at the time it runs; this only decides when.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versionParam, loading, isAdmin, request, blankId]);
+
   const wantsDownload = searchParams.get('download') === '1';
   const ready = !loading && !blankMissing && (blank || !!request);
   useEffect(() => {
@@ -714,6 +734,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           viewing={viewing}
           onView={viewVersion}
           onBackToCurrent={backToCurrent}
+          defaultOpen={!!versionParam}
         />
       )}
 
