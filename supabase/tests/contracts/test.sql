@@ -148,6 +148,80 @@ SELECT public.t_check('the delete is in the audit log',
   (SELECT count(*) FROM public.admin_audit_log WHERE entity_type = 'blank_contracts' AND action ILIKE '%delete%') = 1);
 
 -- =========================================================================
+-- link_blank_contract (20261016215241): a blank becomes a request's contract
+-- =========================================================================
+INSERT INTO public.blank_contracts (id, title, fields) VALUES
+  ('40000000-0000-0000-0000-000000000011', 'Recital', '{"name":"Jane"}'),
+  ('40000000-0000-0000-0000-000000000012', 'Gala again', '{"name":"Ada"}'),
+  ('40000000-0000-0000-0000-000000000013', 'Too late', '{}'),
+  ('40000000-0000-0000-0000-000000000014', 'Bad', '{}');
+INSERT INTO public.rental_requests (id, event_title, applicant_name, email, proposed_date)
+  VALUES ('30000000-0000-0000-0000-000000000002', 'Wedding', 'Bea', 'bea@x.test', '2026-12-05');
+
+SELECT public.t_as(:'staff', 'authenticated');
+SET ROLE authenticated;
+SELECT public.t_expect('link: staff refused',
+  public.t_try($q$SELECT public.link_blank_contract('40000000-0000-0000-0000-000000000011', NULL,
+    '{"event_title":"x","applicant_name":"x","email":"x@x.test"}', '{}', '{}')$q$), '42501');
+RESET ROLE;
+SELECT public.t_as(:'patron', 'authenticated');
+SET ROLE authenticated;
+SELECT public.t_expect('link: a ticket buyer refused',
+  public.t_try($q$SELECT public.link_blank_contract('40000000-0000-0000-0000-000000000011', NULL,
+    '{"event_title":"x","applicant_name":"x","email":"x@x.test"}', '{}', '{}')$q$), '42501');
+RESET ROLE;
+SELECT public.t_as(NULL, 'anon');
+SET ROLE anon;
+SELECT public.t_expect('link: anon cannot call it',
+  public.t_try($q$SELECT public.link_blank_contract('40000000-0000-0000-0000-000000000011', NULL, '{}', '{}', '{}')$q$), '42501');
+RESET ROLE;
+
+SELECT public.t_as(:'admin', 'authenticated');
+SET ROLE authenticated;
+SELECT public.t_expect('link: a new request needs an email',
+  public.t_try($q$SELECT public.link_blank_contract('40000000-0000-0000-0000-000000000014', NULL,
+    '{"event_title":"x","applicant_name":"x","email":" "}', '{}', '{}')$q$), '23502');
+SELECT public.t_expect('link: a new request needs a valid email',
+  public.t_try($q$SELECT public.link_blank_contract('40000000-0000-0000-0000-000000000014', NULL,
+    '{"event_title":"x","applicant_name":"x","email":"nope"}', '{}', '{}')$q$), '22023');
+SELECT public.t_expect('link: admin creates a request from a blank',
+  public.t_try($q$SELECT public.link_blank_contract('40000000-0000-0000-0000-000000000011', NULL,
+    '{"event_title":"Piano recital","applicant_name":"Jane Doe","email":"jane@x.test","proposed_date":"2026-11-20","event_start_time":"19:00","event_description":"Recital","wants_beer_wine":true,"status":"approved","admin_notes":"forged"}',
+    '{}', '{"hourly_rate":150,"extra_days":[]}')$q$), 'ok');
+SELECT public.t_expect('link: the same blank twice is refused',
+  public.t_try($q$SELECT public.link_blank_contract('40000000-0000-0000-0000-000000000011', NULL,
+    '{"event_title":"Piano recital","applicant_name":"Jane Doe","email":"jane@x.test"}', '{}', '{}')$q$), '23505');
+SELECT public.t_expect('link: admin links a blank to an existing request',
+  public.t_try($q$SELECT public.link_blank_contract('40000000-0000-0000-0000-000000000012', '30000000-0000-0000-0000-000000000002',
+    NULL, '{"email":"bea.new@x.test","proposed_date":"2027-01-01"}', '{"term_date":"2026-12-04","hourly_rate":120}')$q$), 'ok');
+SELECT public.t_expect('link: a signed request is refused',
+  public.t_try($q$SELECT public.link_blank_contract('40000000-0000-0000-0000-000000000013', '30000000-0000-0000-0000-000000000001',
+    NULL, '{}', '{}')$q$), '55000');
+RESET ROLE;
+
+SELECT public.t_check('link: the new request is pending, from staff, with only allowlisted columns',
+  (SELECT status = 'pending' AND contract_status = 'draft' AND admin_notes = 'Created by staff from a blank contract.'
+          AND applicant_name = 'Jane Doe' AND proposed_date = '2026-11-20' AND event_start_time = '19:00' AND wants_beer_wine
+          AND contract_data->>'hourly_rate' = '150' AND invite_token IS NOT NULL
+     FROM public.rental_requests WHERE event_title = 'Piano recital'));
+SELECT public.t_check('link: one request made, however often it was tried',
+  (SELECT count(*) FROM public.rental_requests WHERE event_title = 'Piano recital') = 1);
+SELECT public.t_check('link: the blank points at its request',
+  (SELECT b.linked_request_id = r.id FROM public.blank_contracts b, public.rental_requests r
+    WHERE b.id = '40000000-0000-0000-0000-000000000011' AND r.event_title = 'Piano recital'));
+SELECT public.t_check('link: the linked terms are a version of the request, by the admin',
+  (SELECT count(*) = 1 AND bool_and(event = 'saved' AND saved_by = '00000000-0000-0000-0000-0000000000d1')
+     FROM public.contract_versions v JOIN public.rental_requests r ON r.id = v.rental_request_id WHERE r.event_title = 'Piano recital'));
+SELECT public.t_check('link: an existing request takes the chosen detail, keeps the date the renter asked for, and the Term goes in the contract',
+  (SELECT email = 'bea.new@x.test' AND proposed_date = '2026-12-05' AND contract_data->>'term_date' = '2026-12-04'
+     FROM public.rental_requests WHERE id = '30000000-0000-0000-0000-000000000002'));
+SELECT public.t_check('link: a refused link leaves the blank unlinked',
+  (SELECT linked_request_id IS NULL FROM public.blank_contracts WHERE id = '40000000-0000-0000-0000-000000000013'));
+DELETE FROM public.rental_requests WHERE id = '30000000-0000-0000-0000-000000000002';
+SELECT public.t_check('link: deleting the request returns the blank to standalone',
+  (SELECT linked_request_id IS NULL FROM public.blank_contracts WHERE id = '40000000-0000-0000-0000-000000000012'));
+
+-- =========================================================================
 \echo
 SELECT n, CASE WHEN pass THEN 'PASS' ELSE 'FAIL' END AS verdict, name, detail FROM public.t_results ORDER BY n;
 DO $$
