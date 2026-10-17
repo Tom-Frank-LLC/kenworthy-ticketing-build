@@ -27,7 +27,9 @@ protocol or Referer behaves differently there than on `https://kenworthy.org`.
 | iOS password autofill for kenworthy.org | would match the host | **does not match** |
 
 No hostname gets both Square and Turnstile. The shipped answer is `localhost`
-plus `localhost` on the production Turnstile widget's domain list.
+plus `localhost` on the production Turnstile widget's domain list — added
+17 Oct 2026, after which a real checkout in the app showed Turnstile "Success!"
+beside a working card form.
 
 ## Square Web Payments SDK: protocol, not secure context
 
