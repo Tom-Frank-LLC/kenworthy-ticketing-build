@@ -81,10 +81,10 @@ entitlement). Tom chose Phase 1 only (16 Oct).
 
 ## Before the first TestFlight build — Tom
 
-1. **Add `localhost` to the production Turnstile widget's domains** ("Kenworthy
-   Rentals - production", `0x4AAAAAAEW68p3qHIfD2p-o`). Until then, checkout and
-   the rental form in the app stop at "Checking your browser…" with Turnstile
-   error 110200. The website is unaffected either way.
+1. ~~Add `localhost` to the production Turnstile widget~~ — **done 17 Oct 2026**
+   (Cloudflare API, at Tom's go-ahead; widget `0x4AAAAAAEW68p3qHIfD2p-o`, site key
+   and secret unchanged). Verified in the app: a real checkout's Turnstile shows
+   "Success!" and the button reads "Pay $8.48 — 1 Ticket(s)".
 2. **Sign in to `tickets@kenworthy.org` in Xcode** and select the team
    (runbook). This repo has no `DEVELOPMENT_TEAM` yet; the first signed build
    writes it.
@@ -102,10 +102,10 @@ entitlement). Tom chose Phase 1 only (16 Oct).
 | Safe areas, icon, launch image | ✅ simulator |
 | Session persists across app kill | ✅ `localStorage` survives; real staff sign-in not tried |
 | Square card form in the app | ✅ attaches and tokenises at `localhost` |
-| Turnstile in the app | ⏳ needs step 1 above; measured accepted by a widget listing `localhost` |
+| Turnstile in the app | ✅ production widget, real checkout, after step 1 |
 | Website build and PWA unchanged | ✅ `build:production` still emits `sw.js`; guard refuses it |
 | Camera scanner on a device | ⏳ device only |
-| A real purchase from the app | ⏳ after step 1, on a device |
+| A real purchase from the app | ⏳ on a device |
 | Signed archive → TestFlight | ⏳ needs step 2 |
 | Checks: vitest 1239 pass; `tsc -p tsconfig.app.json` 9 errors, all pre-existing on main (`NotificationsTab.test.tsx`); `check:worker` fails on main too (`worker-configuration.d.ts` out of date) | |
 
