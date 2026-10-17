@@ -106,7 +106,7 @@ entitlement). Tom chose Phase 1 only (16 Oct).
 | Website build and PWA unchanged | ✅ `build:production` still emits `sw.js`; guard refuses it |
 | Camera scanner on a device | ⏳ device only |
 | A real purchase from the app | ⏳ on a device |
-| Signed archive → TestFlight | ⏳ needs step 2 |
+| Signed archive → App Store Connect | ✅ 1.0.0 (417221) uploaded 17 Oct 2026; TestFlight install ⏳ |
 | Checks: vitest 1239 pass; `tsc -p tsconfig.app.json` 9 errors, all pre-existing on main (`NotificationsTab.test.tsx`); `check:worker` fails on main too (`worker-configuration.d.ts` out of date) | |
 
 ## Later, if wanted

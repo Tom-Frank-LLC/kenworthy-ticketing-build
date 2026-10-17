@@ -80,6 +80,24 @@ open ios/App/App.xcodeproj
 Product → Destination → Any iOS Device (arm64). Product → Archive. In the
 Organizer: Distribute App → App Store Connect → Upload.
 
+Or from the command line, with the Kenworthy account signed in to Xcode
+(this is how build 1.0.0 (417221) went up on 17 Oct 2026):
+
+```sh
+npm run ios:prep
+xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+  -destination 'generic/platform=iOS' -archivePath /tmp/Kenworthy.xcarchive \
+  -allowProvisioningUpdates archive
+xcodebuild -exportArchive -archivePath /tmp/Kenworthy.xcarchive \
+  -exportPath /tmp/kenworthy-export -exportOptionsPlist ios/ExportOptions.plist \
+  -allowProvisioningUpdates
+```
+
+`ios/ExportOptions.plist` uploads straight to App Store Connect and leaves the
+build number alone (`manageAppVersionAndBuildNumber` false — `ios:prep` owns
+it). Automatic signing needs at least one device registered to the team; Tom's
+iPhone is.
+
 Before uploading, confirm the archive is what you meant to ship: in the
 Organizer, Show in Finder → Show Package Contents →
 `Products/Applications/App.app/Info.plist` must carry
