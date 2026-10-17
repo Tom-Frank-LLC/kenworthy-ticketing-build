@@ -19,6 +19,7 @@ import {
 } from '@/lib/contracts';
 import { useTeamRoster } from './useTeamRoster';
 import ContractVersionList from '@/components/contract/ContractVersionList';
+import { appBaseUrl } from '@/lib/site';
 
 /**
  * Admin → Rentals → Contracts: every contract, whatever it came from.
@@ -66,7 +67,7 @@ export default function ContractsTab() {
   useEffect(() => { load(); }, []);
 
   const rows = contractRows(requests, blanks, filter);
-  const publicFormUrl = `${window.location.origin}/rental-request`;
+  const publicFormUrl = `${appBaseUrl()}/rental-request`;
 
   function toggleHistory(key: string) {
     setExpanded(prev => {
@@ -179,7 +180,7 @@ export default function ContractsTab() {
                       )}
                       {r.renterPath && (
                         <Button size="sm" variant="ghost" title="Copy contract link for renter" aria-label="Copy contract link for renter"
-                          onClick={() => copy(`${window.location.origin}${r.renterPath}`, 'Renter contract link')}>
+                          onClick={() => copy(`${appBaseUrl()}${r.renterPath}`, 'Renter contract link')}>
                           <Link2 className="h-4 w-4" />
                         </Button>
                       )}

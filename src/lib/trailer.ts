@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { safeHttpUrl } from './safeUrl';
 
 /**
@@ -93,6 +94,31 @@ export function resolveTrailer(
 
   return null;
 }
+
+/**
+ * Whether this trailer can play in an iframe here.
+ *
+ * Not a YouTube one inside the iOS app. YouTube refuses an embed that arrives
+ * with no HTTP Referer ("Video player configuration error", Error 153), and a
+ * page at capacitor://localhost sends none to an https: frame — not with a
+ * referrerpolicy, not with origin= or widget_referrer=, not on
+ * youtube-nocookie. All four measured in the iOS 27 simulator. Vimeo plays.
+ * Callers show the poster, or a link to the video on YouTube (YouTubeLinkOut).
+ */
+export function canEmbed(trailer: TrailerEmbed): boolean {
+  return !(trailer.kind === 'youtube' && Capacitor.isNativePlatform());
+}
+
+/** The video's own page on YouTube, which the app opens in YouTube or Safari. */
+export function youtubeWatchUrl(id: string): string {
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+}
+
+/** YouTube's own still for the video; every upload has one at this size. */
+export function youtubeThumbnailUrl(id: string): string {
+  return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
+}
+
 /**
  * What an admin or host form says about a trailer link before saving, or null
  * when it may be saved. Blank is fine (no trailer). Anything else must be an

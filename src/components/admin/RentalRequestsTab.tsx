@@ -16,6 +16,7 @@ import { fetchAllRows } from '@/lib/fetchAllRows';
 import { invokeFunction } from '@/lib/functions';
 import { useTeamRoster, type TeamMember } from './useTeamRoster';
 import RentalInvoiceLines from './RentalInvoiceLines';
+import { appBaseUrl } from '@/lib/site';
 
 type RentalRequest = any;
 
@@ -229,7 +230,7 @@ export default function RentalRequestsTab() {
                       </span>
                     )}
                     <Button size="sm" variant="ghost" title="Copy contract link for renter" onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/contract/${r.invite_token}`);
+                      navigator.clipboard.writeText(`${appBaseUrl()}/contract/${r.invite_token}`);
                       toast.success('Renter contract link copied');
                     }}>
                       <Link2 className="h-4 w-4" />
