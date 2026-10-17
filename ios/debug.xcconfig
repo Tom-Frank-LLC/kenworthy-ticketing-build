@@ -1,0 +1,9 @@
+CAPACITOR_DEBUG = true
+
+// CURRENT_PROJECT_VERSION (the build number) comes from Version.xcconfig, which
+// `npm run ios:prep` generates (scripts/stamp-ios-build.mjs) and git ignores.
+// The include is required, not optional, on purpose: a tree that has not been
+// prepped fails to build instead of archiving a stale bundle as build 1.
+// project.pbxproj carries "$(inherited)" for it — never type into Xcode's
+// "Build" field, which writes a literal there that silently wins.
+#include "Version.xcconfig"

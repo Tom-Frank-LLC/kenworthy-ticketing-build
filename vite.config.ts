@@ -12,6 +12,15 @@ export default defineConfig(({ mode }) => {
   // per-env in .env.staging/.env.production; falls back to the prod Worker so a
   // build is never left pointing at the retired Lovable preview domain. Flip to
   // https://kenworthy.org at domain cutover — no code change, just the env var.
+  // The Capacitor iOS app (`npm run build:native`). It ships its assets inside
+  // the binary, so it gets no service worker: a SW in the WebView would cache a
+  // shell over the bundled one and keep serving it after an app update, which is
+  // the stale-shell blank page all over again with no deploy to blame. The
+  // website keeps its PWA; only this build drops it. Output goes to its own
+  // directory so a website build in dist/ can never be copied into the app.
+  // See docs/briefs/BRIEF-capacitor-ios-app.md.
+  const native = process.env.KW_NATIVE_BUILD === '1';
+  const outDir = native ? 'dist-native' : 'dist';
   const siteUrl = (env.VITE_SITE_URL || process.env.VITE_SITE_URL || 'https://kenworthy-ticketing-build.mrtomfrank.workers.dev').replace(/\/+$/, '');
 
   return {
@@ -42,7 +51,7 @@ export default defineConfig(({ mode }) => {
           // public/ files are copied verbatim, so token-replace them on disk
           // after the build writes them out.
           for (const file of ['robots.txt']) {
-            const p = path.resolve(__dirname, 'dist', file);
+            const p = path.resolve(__dirname, outDir, file);
             try {
               const txt = fs.readFileSync(p, 'utf8');
               if (txt.includes('%SITE_URL%')) {
@@ -53,6 +62,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       VitePWA({
+        disable: native,
         // The manifest and icons are hand-maintained in public/ so they stay
         // readable and reusable by the eventual Capacitor wrapper.
         manifest: false,
@@ -174,6 +184,7 @@ export default defineConfig(({ mode }) => {
       alias: { "@": path.resolve(__dirname, "./src") },
     },
     build: {
+      outDir,
       // NOTE: deliberately no `manualChunks`. Rolldown already keeps recharts,
       // xlsx, jspdf/html2pdf and html5-qrcode in chunks reachable only from
       // the lazy admin routes. Forcing them into named vendor chunks made

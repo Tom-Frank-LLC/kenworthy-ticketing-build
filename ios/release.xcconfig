@@ -1,0 +1,2 @@
+// See debug.xcconfig for why this include is required.
+#include "Version.xcconfig"

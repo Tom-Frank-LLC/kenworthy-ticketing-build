@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { MonitorSmartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { displayUrl, type TillDisplay } from '@/lib/patronDisplay';
+import { appBaseUrl } from '@/lib/site';
 
 /**
  * Pair the patron-facing screen outside the glass with this station. Sits in
@@ -54,7 +55,7 @@ export function PatronDisplayPairing({ display }: { display: TillDisplay }) {
       {showCode && (
         <div className="flex flex-wrap items-center gap-4">
           <div className="bg-white rounded-lg p-2">
-            <QRCodeSVG value={displayUrl(window.location.origin, code)} size={120} />
+            <QRCodeSVG value={displayUrl(appBaseUrl(), code)} size={120} />
           </div>
           <div className="text-sm space-y-1">
             <p>On the patron&rsquo;s device, scan this, or open <span className="font-mono">{window.location.host}/pos/display</span> and enter:</p>

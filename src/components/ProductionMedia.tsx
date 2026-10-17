@@ -2,7 +2,8 @@ import { Badge } from '@/components/ui/badge';
 import { Clock, Film, Music, Sparkles } from 'lucide-react';
 import { formatRuntime, runtimeLabel } from '@/lib/datetime';
 import { parseGenres } from '@/lib/genres';
-import { resolveTrailer } from '@/lib/trailer';
+import { canEmbed, resolveTrailer } from '@/lib/trailer';
+import { YouTubeLinkOut } from '@/components/YouTubeLinkOut';
 
 export type ProductionMediaType = 'movie' | 'event' | 'concert';
 
@@ -58,6 +59,8 @@ export function ProductionMedia({
       <div className={`aspect-video w-full bg-black ${className ?? ''}`}>
         {trailer.kind === 'file' ? (
           <video src={trailer.src} controls className="w-full h-full object-contain" />
+        ) : trailer.kind === 'youtube' && !canEmbed(trailer) ? (
+          <YouTubeLinkOut id={trailer.id} title={title} />
         ) : (
           <iframe
             src={trailer.src}
