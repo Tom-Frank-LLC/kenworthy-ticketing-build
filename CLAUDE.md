@@ -114,6 +114,21 @@ A service worker serves the cached app shell, so a browser may show the old
 bundle after a correct deploy. Check the origin with `curl` before concluding
 the deploy failed.
 
+## The iOS app
+
+`ios/` is a Capacitor shell around the production build (`org.kenworthy.app`).
+Build it with `npm run ios:prep`, never by hand; see `docs/RUNBOOK-ios-app.md`.
+
+- **A website deploy does not update the app.** Its web code is in the binary;
+  only a new TestFlight/App Store build changes it.
+- **Its origin is `capacitor://localhost`, and that is forced.** Square's Web
+  Payments SDK refuses any page that is not `https:` or a `*localhost` host, so
+  any other hostname leaves online checkout with no card form. The production
+  Turnstile widget must list `localhost` for the same reason. Never build a
+  shareable link from `window.location.origin`; use `appBaseUrl()`
+  (`src/lib/site.ts`). YouTube refuses embeds there; `canEmbed()`.
+  See `docs/FINDINGS-ios-webview-origin.md`.
+
 ## Working in this repo
 
 **The main checkout is shared between concurrent sessions.** The branch can
