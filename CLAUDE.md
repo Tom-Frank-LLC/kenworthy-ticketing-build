@@ -116,7 +116,7 @@ the deploy failed.
 
 ## The iOS app
 
-`ios/` is a Capacitor shell around the production build (`org.kenworthy.app`).
+`ios/` is a Capacitor shell around the production build (`org.kenworthy.tickets`).
 Build it with `npm run ios:prep`, never by hand; see `docs/RUNBOOK-ios-app.md`.
 
 - **A website deploy does not update the app.** Its web code is in the binary;

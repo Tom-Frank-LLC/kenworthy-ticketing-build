@@ -5,7 +5,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   // Registered under the Kenworthy Apple Developer team. An Apple bundle id is
   // globally unique and cannot move between teams, so this must not change.
-  appId: 'org.kenworthy.app',
+  appId: 'org.kenworthy.tickets',
   appName: 'Kenworthy',
   // Not dist/: `npm run build:native` builds without the service worker into
   // its own directory, and scripts/verify-native-bundle.mjs (capacitor:copy:before)

@@ -24,7 +24,7 @@ WebView: `docs/FINDINGS-ios-webview-origin.md`.
 
 | # | Question | Decided |
 |---|---|---|
-| 1 | Bundle id, account | `org.kenworthy.app`, display name "Kenworthy", Apple account `tickets@kenworthy.org` |
+| 1 | Bundle id, account | `org.kenworthy.tickets` (`org.kenworthy.app` was chosen first; Apple reported it "not available" — another team owns it — on 17 Oct), display name "Kenworthy", Apple account `tickets@kenworthy.org` |
 | 2 | Router | `BrowserRouter` stays; deep routes measured working |
 | 3 | Square plugin | Not needed (Phase 2 dropped). For the record: `@capawesome/capacitor-square-mobile-payments` is MIT and on public npm (0.1.6, Capacitor ≥8) — no license cost |
 | 4 | Card capture | — (Phase 2 dropped) |
@@ -88,7 +88,7 @@ entitlement). Tom chose Phase 1 only (16 Oct).
 2. **Sign in to `tickets@kenworthy.org` in Xcode** and select the team
    (runbook). This repo has no `DEVELOPMENT_TEAM` yet; the first signed build
    writes it.
-3. Create the App Store Connect record for `org.kenworthy.app`, then archive and
+3. Create the App Store Connect record for `org.kenworthy.tickets`, then archive and
    upload per the runbook.
 
 ## Test plan status

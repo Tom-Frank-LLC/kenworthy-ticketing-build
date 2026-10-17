@@ -6,7 +6,7 @@ Capacitor shell (`ios/`, `capacitor.config.ts`). Why it is built the way it is:
 
 | | |
 |---|---|
-| Bundle id | `org.kenworthy.app` (permanent — Apple ids cannot move teams) |
+| Bundle id | `org.kenworthy.tickets` (permanent — Apple ids cannot move teams) |
 | Display name | Kenworthy |
 | Apple account | `tickets@kenworthy.org` (the Kenworthy developer team) |
 | Capacitor | 8.5.x, Swift Package Manager (no CocoaPods), UIScene |
@@ -66,7 +66,7 @@ Then in the project: target **App** → Signing & Capabilities → Team →
 the Kenworthy team, "Automatically manage signing" on. That writes
 `DEVELOPMENT_TEAM` into the pbxproj; commit it.
 
-Register the App ID `org.kenworthy.app` in the Apple Developer portal if
+Register the App ID `org.kenworthy.tickets` in the Apple Developer portal if
 automatic signing does not create it, and create the app record in App Store
 Connect (the API cannot create app records; the web UI can).
 
