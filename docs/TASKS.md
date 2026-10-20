@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**145 briefs** — 134 shipped, 4 built, 7 open, 0 needs triage, 0 closed.
+**146 briefs** — 134 shipped, 4 built, 7 open, 0 needs triage, 1 closed.
 
 ## Built, not deployed
 
@@ -162,6 +162,10 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - **Online Ticket & Film-Pass Purchases Take No Payment**<br>`ops` — `#103`, `9d5876a` — [brief](briefs/BRIEF-square-ticket-payments.md)
 - **Update the Handoff Doc (`PLATFORM.md`) to Match Reality**<br>`feature` — `22daa6a` — [brief](briefs/BRIEF-update-handoff-doc.md)
 - **Enrich the Showing / Ticketing Page with Drawer Elements**<br>`ux` — [brief](briefs/BRIEF-showing-page-media.md)
+
+## Closed without shipping
+
+- **A schema rebuilt from migrations after Supabase's Oct 30 change keeps every Data API grant production has** — The migrations already reproduce production's grants with no Supabase default ACL. `seats` is granted by the loop in 20260810165116, which a text search for GRANT cannot see.
 
 ## Briefs with no frontmatter
 
