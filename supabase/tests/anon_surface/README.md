@@ -21,7 +21,10 @@ sh supabase/tests/anon_surface/run.sh
 It replays every migration into a throwaway `postgres:15` twice: once with
 Supabase's legacy default privileges (`legacy_defaults.sql`, which is how
 production behaves) and once without (how staging behaves). A revoke that only
-works under one of them fails the other. In each pass it runs:
+works under one of them fails the other. The second pass is also how any
+project created after Supabase's 30 Oct 2026 change behaves, since those get no
+implicit table grants (see `docs/briefs/BRIEF-data-api-explicit-grants.md`). In
+each pass it runs:
 
 - **`surface.sql`**: the allowlist. Any row it returns is a violation, and the
   run fails.
