@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**145 briefs** — 133 shipped, 5 built, 7 open, 0 needs triage, 0 closed.
+**145 briefs** — 134 shipped, 4 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -13,7 +13,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
-- `P2` **The event drawer shows the whole poster, not a 16:9 crop, when there is no trailer**<br>`ux` — [brief](briefs/BRIEF-drawer-full-poster.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
@@ -29,6 +28,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The event drawer shows the whole poster, not a 16:9 crop, when there is no trailer**<br>`ux` — `#395` — [brief](briefs/BRIEF-drawer-full-poster.md)
 - **Create in Square works on an Event item limited to some locations, and the panel says why a showtime was not created**<br>`bug` — `#393` — [brief](briefs/BRIEF-square-create-showtime.md) · [notes](briefs/FINDINGS-square-create-showtime-locations.md)
 - **A filled-in blank contract is linked to an existing rental request or creates one, so it gets a renter link, signing and review without duplicate requests**<br>`feature` — `#390` — [brief](briefs/BRIEF-blank-contract-link-request.md)
 - **Rentals → Contracts lists every contract, blanks can be saved, contracts keep a version history and signed PDFs are archived, and downloads are named YYYY_MM_DD_Title**<br>`feature` — `#387` — [brief](briefs/BRIEF-contracts-tab.md)
