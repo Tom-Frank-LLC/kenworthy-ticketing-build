@@ -1,14 +1,19 @@
 ---
 brief: drawer-full-poster
 title: The event drawer shows the whole poster, not a 16:9 crop, when there is no trailer
-status: built
+status: shipped
 track: ux
-severity: P2
 date: 2026-10-20
-verified: false
+shipped_in: ["#395"]
+shipped_at: 2026-10-20
+verified: true
 ---
 
 # Brief: show the full poster (not a crop) in the event drawer when there's no trailer
+
+**Shipped:** #395 (`aba8693`), deployed 20 Oct 2026. Production `6bfede92`
+(rollback `b0a3a9cc`), staging `12e8a0df` (rollback `97fb85ca`). Checked live on
+kenworthy.org: the served bundle carries the change.
 
 **Requested by:** Tom. "Indivisible Moscow: What's on your ballot?" has a poster
 and no trailer, and the drawer cropped the poster to a 16:9 banner.
