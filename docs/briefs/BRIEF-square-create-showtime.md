@@ -1,11 +1,13 @@
 ---
 brief: square-create-showtime
 title: Create in Square works on an Event item limited to some locations, and the panel says why a showtime was not created
-status: built
+status: shipped
 track: bug
-severity: P1
 date: 2026-10-19
-verified: false
+shipped_in: ["#393"]
+shipped_at: 2026-10-19
+verified: true
+evidence: prod Worker b0a3a9cc (rollback 64d4fade); square-showing-variations v13
 findings: FINDINGS-square-create-showtime-locations.md
 ---
 
