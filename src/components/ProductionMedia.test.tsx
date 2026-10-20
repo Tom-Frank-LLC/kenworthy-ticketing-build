@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ProductionMetaBadges, displayedRuntime } from './ProductionMedia';
+import { ProductionMedia, ProductionMetaBadges, displayedRuntime } from './ProductionMedia';
 
 /**
  * This badge is the only place a run time reaches a patron's eye — the showing
@@ -88,5 +88,46 @@ describe('displayedRuntime', () => {
     expect(screen.getByText('Drama')).toBeTruthy();
     expect(screen.queryByText('1h 48m')).toBeNull();
     expect(container.textContent).not.toMatch(/minute/);
+  });
+});
+
+/**
+ * Poster framing. 'video' crops a poster to a 16:9 banner; 'auto' shows the
+ * whole thing. The drawer used to take the default and cropped every portrait
+ * one-sheet down to a strip of its middle.
+ */
+describe('ProductionMedia poster', () => {
+  const poster = 'https://cdn.example.com/p.jpg';
+
+  it("shows the whole poster, contained, with aspect='auto'", () => {
+    render(<ProductionMedia title="Forum" type="event" posterUrl={poster} aspect="auto" posterClassName="max-h-[65vh]" />);
+    const img = screen.getByAltText('Forum');
+    expect(img.className).toContain('object-contain');
+    expect(img.className).not.toContain('object-cover');
+    expect(img.className).toContain('max-h-[65vh]');
+    expect(img.parentElement?.className).not.toContain('aspect-video');
+  });
+
+  it("still crops to 16:9 with the default aspect", () => {
+    render(<ProductionMedia title="Forum" type="event" posterUrl={poster} />);
+    const img = screen.getByAltText('Forum');
+    expect(img.className).toContain('object-cover');
+    expect(img.parentElement?.className).toContain('aspect-video');
+  });
+
+  it("keeps a trailer at 16:9 whatever the aspect", () => {
+    const { container } = render(
+      <ProductionMedia title="Film" type="movie" posterUrl={poster} trailerUrl="https://youtu.be/dQw4w9WgXcQ" aspect="auto" />,
+    );
+    expect(container.querySelector('iframe')).toBeTruthy();
+    expect(screen.queryByAltText('Film')).toBeNull();
+    expect((container.firstChild as HTMLElement).className).toContain('aspect-video');
+  });
+
+  it('shows the icon tile when there is neither trailer nor poster', () => {
+    const { container } = render(<ProductionMedia title="Forum" type="event" aspect="auto" />);
+    expect(container.querySelector('img')).toBeNull();
+    expect((container.firstChild as HTMLElement).className).toContain('aspect-video');
+    expect(container.querySelector('svg')).toBeTruthy();
   });
 });

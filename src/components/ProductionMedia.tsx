@@ -18,12 +18,18 @@ interface ProductionMediaProps {
   posterUrl?: string | null;
   trailerUrl?: string | null;
   /**
-   * 'video' locks the block to 16:9 and crops the poster to fill it (the
-   * drawer's look). 'auto' lets a poster keep its own proportions — full-res
-   * posters are portrait, so cropping them to 16:9 throws most of the art away.
-   * Trailers are always 16:9 either way.
+   * 'video' locks the block to 16:9 and crops the poster to fill it. 'auto'
+   * lets a poster keep its own proportions — full-res posters are portrait, so
+   * cropping them to 16:9 throws most of the art away. The drawer and the
+   * ticketing page both use 'auto'. Trailers are always 16:9 either way.
    */
   aspect?: 'video' | 'auto';
+  /**
+   * Extra classes for the poster image when aspect is 'auto' — a height cap,
+   * say. The image is object-contain, so a capped poster is letterboxed on the
+   * block's background rather than cropped or stretched.
+   */
+  posterClassName?: string;
   /** 'icon' renders a placeholder tile when there is no trailer or poster. */
   fallback?: 'icon' | 'none';
   className?: string;
@@ -39,6 +45,7 @@ export function ProductionMedia({
   posterUrl,
   trailerUrl,
   aspect = 'video',
+  posterClassName,
   fallback = 'icon',
   className,
 }: ProductionMediaProps) {
@@ -78,7 +85,7 @@ export function ProductionMedia({
       </div>
     ) : (
       <div className={`w-full bg-secondary overflow-hidden ${className ?? ''}`}>
-        <img src={posterUrl} alt={title} className="w-full h-auto object-contain" />
+        <img src={posterUrl} alt={title} className={`w-full h-auto object-contain ${posterClassName ?? ''}`} />
       </div>
     );
   }
