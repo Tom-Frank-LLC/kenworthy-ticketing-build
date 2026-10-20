@@ -78,13 +78,19 @@ export function ProductionDetailDrawer({ production, open, onOpenChange }: Produ
           </SheetClose>
         </div>
 
-        {/* Poster / Trailer */}
+        {/* Poster / Trailer. The poster is shown whole, at its own proportions,
+            as on the ticketing page: cropping a portrait one-sheet to a 16:9
+            banner cut off most of it. Capped in height so a tall poster still
+            leaves the title and showtimes in view; past the cap it is
+            letterboxed, never cropped. */}
         <div className="relative">
           <ProductionMedia
             title={production.title}
             type={production.type}
             posterUrl={production.poster_url}
             trailerUrl={production.trailer_url}
+            aspect="auto"
+            posterClassName="max-h-[65vh]"
           />
         </div>
 
