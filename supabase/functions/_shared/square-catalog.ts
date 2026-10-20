@@ -232,6 +232,35 @@ export function diffPaths(a: any, b: any, prefix = "", out: string[] = []): stri
   return out;
 }
 
+/**
+ * The location fields a new variation needs to sit on `item`.
+ *
+ * Square refuses a variation that is present anywhere its item is not, and a
+ * variation sent with no location fields defaults to present at all locations.
+ * Every item made before October 2026 was itself at all locations, so leaving
+ * the fields off worked. An Event item made in the dashboard on 19 Oct 2026 was
+ * not, and every append to it came back 400 "ITEM_VARIATION is enabled at all
+ * future locations, but the referenced object … of type ITEM is not"
+ * (docs/FINDINGS-square-create-showtime-locations.md).
+ *
+ * Copying the parent's presence exactly is the one rule that always satisfies
+ * Square: the variation is sold where the item is sold, no wider and no
+ * narrower. Square treats an absent `present_at_all_locations` as true, so
+ * this does too.
+ */
+export function locationPresenceOf(item: any): {
+  present_at_all_locations: boolean;
+  present_at_location_ids?: string[];
+  absent_at_location_ids?: string[];
+} {
+  const out: ReturnType<typeof locationPresenceOf> = {
+    present_at_all_locations: item?.present_at_all_locations ?? true,
+  };
+  if (item?.present_at_location_ids?.length) out.present_at_location_ids = [...item.present_at_location_ids];
+  if (item?.absent_at_location_ids?.length) out.absent_at_location_ids = [...item.absent_at_location_ids];
+  return out;
+}
+
 /** Paths that move on every successful upsert and mean nothing. */
 export function isNoisyPath(p: string): boolean {
   const leaf = p.split(".").pop();
