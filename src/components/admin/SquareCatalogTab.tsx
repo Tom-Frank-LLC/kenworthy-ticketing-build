@@ -86,6 +86,14 @@ type Plan = {
   price_drift?: Array<{ variation_name: string; production_title: string; reason?: string; production_kind?: ProductionKind }>;
 };
 
+/** One showtime's outcome from `apply`, as `square-showing-variations` reports it. */
+type ApplyResult = {
+  action: string;
+  variation_name: string;
+  production_title?: string;
+  reason?: string;
+};
+
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
 interface SquareCatalogTabProps {
@@ -127,6 +135,8 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
    * one of them not working.
    */
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  /** Showtimes the last Create did not get into Square, and why. */
+  const [failures, setFailures] = useState<ApplyResult[]>([]);
 
   /*
    * The scope, in the shape the edge function wants. Spread into every write so
@@ -194,9 +204,18 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
     try {
       const r = await call({ action: 'apply', dry_run: false, confirm: 'WRITE', max_batch: count, ...scopeArg });
       const wrote = r.tally?.written ?? 0;
-      const bad = (r.tally?.accepted_but_not_stored ?? 0) + (r.tally?.error ?? 0) + (r.tally?.refused ?? 0);
+      /*
+       * Each showtime Square did not take, with Square's own reason. A bare
+       * "did not go through" toast is what left a staffer clicking Create on
+       * 19 Oct 2026 while every attempt came back with a 400 that named the
+       * cause exactly (docs/FINDINGS-square-create-showtime-locations.md). The
+       * reason was in the response all along; the panel just never showed it.
+       */
+      const notTaken = ((r.results ?? []) as ApplyResult[]).filter(x =>
+        x.action === 'error' || x.action === 'refused' || x.action === 'accepted_but_not_stored');
+      setFailures(notTaken);
       if (wrote) toast.success(`Created ${wrote} showtime(s) in Square.`);
-      if (bad) toast.warning(`${bad} did not go through. Re-run, or check the logs.`);
+      if (notTaken.length) toast.warning(`${notTaken.length} did not go through. The reason is listed under the showtimes.`);
       if (r.remaining) toast.info(`${r.remaining} still to do.`);
       await load();
     } catch (e: any) {
@@ -368,6 +387,23 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
               Create all {appendable}
             </Button>
           </div>
+        </Card>
+      )}
+
+      {failures.length > 0 && (
+        <Card className="p-4 space-y-2" role="alert">
+          <div className="font-medium flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" aria-hidden />
+            {failures.length} showtime(s) Square did not take
+          </div>
+          <ul className="text-sm space-y-2">
+            {failures.map((f, i) => (
+              <li key={i}>
+                <div>{f.production_title ? `${f.production_title} — ` : ''}{f.variation_name}</div>
+                <div className="text-muted-foreground">{f.reason ?? f.action}</div>
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
 

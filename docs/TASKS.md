@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**143 briefs** — 132 shipped, 4 built, 7 open, 0 needs triage, 0 closed.
+**144 briefs** — 132 shipped, 5 built, 7 open, 0 needs triage, 0 closed.
 
 ## Built, not deployed
 
@@ -13,6 +13,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
+- `P1` **Create in Square works on an Event item limited to some locations, and the panel says why a showtime was not created**<br>`bug` — [brief](briefs/BRIEF-square-create-showtime.md) · [notes](briefs/FINDINGS-square-create-showtime-locations.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 

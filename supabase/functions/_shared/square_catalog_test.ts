@@ -6,6 +6,7 @@ import {
   diffPaths,
   formatShowtime,
   isNoisyPath,
+  locationPresenceOf,
   normalizeTitle,
   parseVariationName,
   sameVariation,
@@ -43,6 +44,14 @@ Deno.test('showtime is formatted in the venue zone, not the server zone', () => 
   // not exist.
   const name = formatShowtime('2026-09-17T06:30:00Z');
   assert(name.startsWith('Wednesday, September 16 at 11:30 PM'), name);
+});
+
+Deno.test('a 7 PM showing on the fall-back day is named 7 PM, and matches itself', () => {
+  // 1 Nov 2026 is the day Pacific time falls back. 7 PM that evening is PST,
+  // so 03:00Z on 2 Nov — an hour later in UTC than a 7 PM the night before.
+  const name = variationName('General Admission', '2026-11-02T03:00:00Z');
+  assertEquals(name, 'General Admission - Sunday, November 1 at 7 PM');
+  assert(sameVariation(name, 'GA ~ Sunday, November 1 at 7 PM'));
 });
 
 Deno.test('tiered and untiered grammar', () => {
@@ -143,6 +152,30 @@ Deno.test('diffPaths reports an appended variation as a length change', () => {
   const before = { item_data: { variations: [{ id: 'a' }] } };
   const after = { item_data: { variations: [{ id: 'a' }, { id: '#new' }] } };
   assertEquals(diffPaths(before, after), ['item_data.variations.length']);
+});
+
+Deno.test('a new variation is sold exactly where its item is', () => {
+  // The 19 Oct 2026 refusal: an item limited to one location, and a variation
+  // sent with no location fields, which Square reads as every location.
+  assertEquals(
+    locationPresenceOf({ present_at_all_locations: false, present_at_location_ids: ['L1'] }),
+    { present_at_all_locations: false, present_at_location_ids: ['L1'] },
+  );
+  assertEquals(
+    locationPresenceOf({ present_at_all_locations: true, absent_at_location_ids: ['L2'] }),
+    { present_at_all_locations: true, absent_at_location_ids: ['L2'] },
+  );
+  // An item at every location, which Square may send with the field omitted.
+  assertEquals(locationPresenceOf({}), { present_at_all_locations: true });
+});
+
+Deno.test('appending a located variation is still only a length change', () => {
+  // The collateral-change guard must not mistake the copied location fields
+  // for an edit: they live on the new element, not on anything that existed.
+  const item = { present_at_all_locations: false, present_at_location_ids: ['L1'], item_data: { variations: [{ id: 'a' }] } };
+  const outgoing = structuredClone(item);
+  outgoing.item_data.variations.push({ id: '#new', ...locationPresenceOf(item) } as any);
+  assertEquals(diffPaths(item, outgoing), ['item_data.variations.length']);
 });
 
 Deno.test('version and updated_at are noise, a price is not', () => {

@@ -44,6 +44,7 @@ import {
   CATEGORY,
   diffPaths,
   isNoisyPath,
+  locationPresenceOf,
   normalizeTitle,
   storedCategoryId,
   sameVariation,
@@ -902,6 +903,7 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
     for (const p of queue) {
       const rec: any = {
         showing_id: p.showing_id, tier_name: p.tier_name,
+        production_title: p.production_title,
         variation_name: p.variation_name, item_id: p.square_item_id, action: null,
       };
       try {
@@ -937,6 +939,9 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
         outgoing.item_data.variations.push({
           type: "ITEM_VARIATION",
           id: tempId,
+          // Where the item is sold, exactly. Left off, Square defaults the
+          // variation to every location and refuses it on an item that is not.
+          ...locationPresenceOf(original),
           item_variation_data: {
             item_id: original.id,
             name: p.variation_name,
