@@ -31,6 +31,9 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         serif: ['Fraunces', 'Georgia', 'serif'],
         display: ['Anton', 'Bebas Neue', 'Impact', 'sans-serif'],
+        // The rental contract and its PDF only. A system face, so html2canvas
+        // draws the same glyphs on every machine with nothing to load.
+        contract: ['Georgia', 'serif'],
       },
       colors: {
         border: "hsl(var(--border))",

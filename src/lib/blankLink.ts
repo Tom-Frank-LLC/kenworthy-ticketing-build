@@ -85,7 +85,7 @@ function amount(s: string): number | undefined {
 }
 
 const NUMBERS = [
-  'hourly_rate', 'base_hours', 'additional_hours_rate', 'additional_hours',
+  'hourly_rate', 'base_hours', 'rental_rate_2', 'rental_hours_2', 'additional_hours_rate', 'additional_hours',
   'rehearsal_rate', 'rehearsal_hours', 'staff_rate', 'staff_hours',
   'concessions_fee', 'av_fee', 'nonprofit_discount', 'max_attendees',
 ] as const;

@@ -429,6 +429,56 @@ describe('cost lines', () => {
     expect(contractText()).toContain('Total Rental Cost: $800.00');
   });
 
+  it('a blank form bills a second rental rate only once it is typed', async () => {
+    renderAt('/contract/blank');
+    await screen.findByText('License Agreement');
+    const rentalRows = () => costs().match(/Theater Rental/g)?.length ?? 0;
+    expect(rentalRows()).toBe(1);
+    type('Hourly rate ($/hr)', '120');
+    type('Base hours', '3');
+    type('Second rental rate ($/hr)', '180');
+    expect(rentalRows()).toBe(2);           // a rate alone brings the line back
+    type('Second rental hours', '2');
+    expect(costs()).toContain('Theater Rental ($120/hr × 3)$360.00');
+    expect(costs()).toContain('Theater Rental ($180/hr × 2)$360.00');
+    expect(subtotalRow()).toContain('$720.00');
+    expect(contractText()).toContain('Total Rental Cost: $720.00');
+    type('Second rental hours', '0');
+    expect(rentalRows()).toBe(1);
+  });
+
+  it('a real contract shows a second rental rate only when set, and saves it', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    expect(costs().match(/Theater Rental/g)).toHaveLength(1);
+
+    type('Second rental rate ($/hr)', '120');
+    type('Second rental hours', '2');
+    expect(costs()).toContain('Theater Rental ($120/hr × 2)$240.00');
+    expect(subtotalRow()).toContain('$960.00');           // 720 + 240
+    expect(contractText()).toContain('Estimated Rental Cost: $960.00');
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Contract saved'));
+    expect(update).toHaveBeenCalledWith({
+      contract_data: expect.objectContaining({ rental_rate_2: 120, rental_hours_2: 2 }),
+    });
+  });
+
+  it('sets the contract in Georgia, and leaves the rest of the page alone', async () => {
+    renderAt('/contract/tok_1');
+    await screen.findByText(/Contract Editor/);
+    const body = document.getElementById('contract-body')!;
+    expect(body.className).toContain('font-contract');
+    expect(body.querySelector('.font-display, .font-serif')).toBeNull();
+    // The global h1–h6 rule is Anton in capitals; every heading here overrides it.
+    for (const h of body.querySelectorAll('h1, h2')) {
+      expect(h.className).toContain('font-contract');
+      expect(h.className).toContain('normal-case');
+    }
+    expect(screen.getByText(/Contract Editor/).className).toContain('font-display');
+  });
+
   it('prints TBD for an unset DCP fee and leaves it out of the subtotal', async () => {
     renderAt('/contract/tok_1');
     await screen.findByText(/Contract Editor/);
@@ -489,11 +539,13 @@ describe('cost lines', () => {
     await screen.findByText('License Agreement');
     type('Rehearsal hours', '2');
     type('Non-profit discount ($)', '40');
+    type('Second rental rate ($/hr)', '120');
     first.unmount();
 
     renderAt('/contract/blank');
     await screen.findByText('License Agreement');
     expect(costs()).toContain('Rehearsal');
+    expect(costs()).toContain('Theater Rental ($120/hr');
     expect(costs()).toContain('-$40.00');
     fireEvent.click(editor().getByRole('button', { name: /clear form/i }));
     expect(costs()).not.toContain('Rehearsal');
@@ -509,6 +561,15 @@ describe('blankCosts', () => {
     expect(c.rehearsal).toBe(180);
     expect(c.discount).toBe(100);
     expect(c.subtotal).toBe(800);
+  });
+
+  it('adds a second rental rate', () => {
+    const c = blankCosts({
+      ...EMPTY_BLANK, hourly_rate: '120', base_hours: '3', rental_rate_2: '180', rental_hours_2: '2',
+    });
+    expect(c.base2).toBe(360);
+    expect(c.subtotal).toBe(720);
+    expect(blankCosts({ ...EMPTY_BLANK, rental_rate_2: '180' }).base2).toBeUndefined();
   });
 
   it('leaves a line without an amount until all of it is typed', () => {
