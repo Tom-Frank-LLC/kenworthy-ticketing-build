@@ -56,8 +56,10 @@ const renderCalendar = (items: FeedItem[]) =>
  * cell in the tab order ahead of the showings. The name and aria-expanded live
  * on the button now; the box is `cellBoxFor` below.
  */
+// The comma ends the day number: every trigger is labelled "<day>, …", and
+// without it November 1 also matches November 15 (both Sundays in 2026).
 const cellFor = (d: Date) =>
-  screen.getByRole('button', { name: new RegExp(`^${dayName(d)}`) });
+  screen.getByRole('button', { name: new RegExp(`^${dayName(d)},`) });
 
 /** The cell box around that trigger — what the grid sizes and fills. */
 const cellBoxFor = (d: Date) => {
