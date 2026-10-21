@@ -1,11 +1,12 @@
 ---
 brief: contract-second-rate-classic-serif
 title: Rental contract takes an optional second theater-rental rate, and is set in Georgia at a smaller size
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-10-21
-verified: false
+shipped_in: ["#398"]
+shipped_at: 2026-10-21
+verified: true
 ---
 
 # Brief: Optional second theater-rental rate + a smaller, classic serif for the contract
