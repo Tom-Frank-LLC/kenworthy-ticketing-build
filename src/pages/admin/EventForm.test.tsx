@@ -40,6 +40,7 @@ vi.mock('sonner', () => ({
 }));
 vi.mock('@/components/admin/SeatTierEditor', () => ({ SeatTierEditor: () => null }));
 vi.mock('@/components/admin/PosterUpload', () => ({ PosterUpload: () => null }));
+vi.mock('@/components/admin/DiscountRulesEditor', () => ({ default: () => null }));
 vi.mock('@/components/ui/rich-text-editor', () => ({
   RichTextEditor: ({ id }: any) => <textarea id={id} />,
 }));
