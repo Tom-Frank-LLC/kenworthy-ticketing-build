@@ -25,6 +25,10 @@ type ContractData = {
   agreement_date?: string;
   hourly_rate?: number;
   base_hours?: number;
+  // A second theater-rental rate, for an event billed at two: $120/hr for some
+  // hours and $180/hr for the rest. Unset is no second line.
+  rental_rate_2?: number;
+  rental_hours_2?: number;
   additional_hours_rate?: number;
   additional_hours?: number;
   rehearsal_rate?: number;
@@ -268,6 +272,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
 
   const totals = useMemo(() => {
     const base = (data.hourly_rate || 0) * (data.base_hours || 0);
+    const base2 = (data.rental_rate_2 || 0) * (data.rental_hours_2 || 0);
     const extra = (data.additional_hours_rate || 0) * (data.additional_hours || 0);
     const rehearsal = (data.rehearsal_rate || 0) * (data.rehearsal_hours || 0);
     const staff = (data.staff_rate || 0) * (data.staff_hours || 0);
@@ -275,7 +280,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
     // An unset fee is TBD (see feeOrTbd), and adds nothing.
     const av = data.av_fee || 0;
     const discount = data.nonprofit_discount || 0;
-    return { base, extra, rehearsal, staff, conc, av, discount, subtotal: base + extra + rehearsal + staff + conc + av - discount };
+    return { base, base2, extra, rehearsal, staff, conc, av, discount, subtotal: base + base2 + extra + rehearsal + staff + conc + av - discount };
   }, [data]);
 
   async function save() {
@@ -656,6 +661,8 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
               <FieldGroup legend="Costs">
                 <BlankField label="Hourly rate ($/hr)" type="number" value={fields.hourly_rate} onChange={set('hourly_rate')} />
                 <BlankField label="Base hours" type="number" value={fields.base_hours} onChange={set('base_hours')} />
+                <BlankField label="Second rental rate ($/hr)" type="number" value={fields.rental_rate_2} onChange={set('rental_rate_2')} />
+                <BlankField label="Second rental hours" type="number" value={fields.rental_hours_2} onChange={set('rental_hours_2')} />
                 <BlankField label="Add'l hour rate" type="number" value={fields.additional_hours_rate} onChange={set('additional_hours_rate')} />
                 <BlankField label="Add'l hours" type="number" value={fields.additional_hours} onChange={set('additional_hours')} />
                 <BlankField label="Rehearsal rate ($/hr)" type="number" value={fields.rehearsal_rate} onChange={set('rehearsal_rate')} />
@@ -707,6 +714,8 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
             <CardContent className="p-4 grid md:grid-cols-3 gap-3">
               <NumField label="Hourly rate ($/hr)" value={data.hourly_rate} onChange={v => setData({ ...data, hourly_rate: v })} />
               <NumField label="Base hours" value={data.base_hours} onChange={v => setData({ ...data, base_hours: v })} />
+              <NumField label="Second rental rate ($/hr)" value={data.rental_rate_2} onChange={v => setData({ ...data, rental_rate_2: v })} />
+              <NumField label="Second rental hours" value={data.rental_hours_2} onChange={v => setData({ ...data, rental_hours_2: v })} />
               <NumField label="Add'l hour rate" value={data.additional_hours_rate} onChange={v => setData({ ...data, additional_hours_rate: v })} />
               <NumField label="Add'l hours" value={data.additional_hours} onChange={v => setData({ ...data, additional_hours: v })} />
               <NumField label="Rehearsal rate ($/hr)" value={data.rehearsal_rate} onChange={v => setData({ ...data, rehearsal_rate: v })} />
@@ -796,6 +805,12 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
       {/*
         Contract body — print target.
 
+        Set in Georgia (`font-contract`), not the site's Fraunces and Anton: a
+        legal document reads better in a plain book face, and Georgia is a
+        system font, so the rasterized PDF looks the same on every machine with
+        no webfont to wait for. The global h1–h6 rule makes every heading Anton
+        in capitals, so each heading in here sets its face and case itself.
+
         Black on white, deliberately outside the site theme. The site is a dark
         theme, so `bg-background text-foreground` here rendered the licence
         agreement as pale text — and the PDF export forces a white html2canvas
@@ -804,10 +819,10 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
         one on screen, in Print, and in the export, with fixed neutrals rather
         than theme tokens so no future theme change can wash it out again.
       */}
-      <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-white text-neutral-900 font-serif text-base leading-relaxed print:py-0">
+      <article id="contract-body" className="container max-w-3xl py-10 px-6 md:px-12 bg-white text-neutral-900 font-contract text-sm leading-relaxed print:py-0">
         <header className="text-center mb-8">
-          <h1 className="font-display text-3xl uppercase tracking-wider">License Agreement</h1>
-          <p className="text-neutral-600 text-sm mt-2">{agreementDate || <Fill width="10em" />}</p>
+          <h1 className="font-contract normal-case font-bold text-2xl tracking-normal">License Agreement</h1>
+          <p className="text-neutral-600 mt-2">{agreementDate || <Fill width="10em" />}</p>
         </header>
 
         <p>
@@ -876,6 +891,9 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
             {blank ? (
               <>
                 <Row label={<>Theater Rental ($<Fill width="3em">{b.hourly_rate}</Fill>/hr × <Fill width="2em">{b.base_hours}</Fill>)</>} value={money(blankTotals.base)} />
+                {hasLine(blankTotals.base2, b.rental_rate_2, b.rental_hours_2) && (
+                  <Row label={<>Theater Rental ($<Fill width="3em">{b.rental_rate_2}</Fill>/hr × <Fill width="2em">{b.rental_hours_2}</Fill>)</>} value={money(blankTotals.base2)} />
+                )}
                 {hasLine(blankTotals.extra, b.additional_hours_rate, b.additional_hours) && (
                   <Row label={<>Additional Hours ($<Fill width="3em">{b.additional_hours_rate}</Fill>/hr × <Fill width="2em">{b.additional_hours}</Fill>)</>} value={money(blankTotals.extra)} />
                 )}
@@ -887,6 +905,9 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
             ) : (
               <>
                 <Row label={`Theater Rental ($${num(data.hourly_rate)}/hr × ${num(data.base_hours)})`} value={money(totals.base)} />
+                {totals.base2 > 0 && (
+                  <Row label={`Theater Rental ($${num(data.rental_rate_2)}/hr × ${num(data.rental_hours_2)})`} value={money(totals.base2)} />
+                )}
                 {totals.extra > 0 && (
                   <Row label={`Additional Hours ($${num(data.additional_hours_rate)}/hr × ${num(data.additional_hours)})`} value={money(totals.extra)} />
                 )}
@@ -929,7 +950,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
               <p>Kenworthy Performing Arts Centre, Inc.</p>
               <div className="mt-12 border-t border-neutral-800 pt-2">
                 <p>Jordan Goins</p>
-                <p className="text-sm text-neutral-600">Operations Manager</p>
+                <p className="text-xs text-neutral-600">Operations Manager</p>
               </div>
             </div>
             <div>
@@ -950,7 +971,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           <Keep>
             <section>
               <HeadingKeep>
-                <h2 className="font-display text-xl uppercase text-center">Addendum 1 — Alcohol Agreement</h2>
+                <h2 className="font-contract normal-case font-bold text-lg tracking-normal text-center">Addendum 1 — Alcohol Agreement</h2>
               </HeadingKeep>
               <ol className="list-decimal pl-6 mt-4 space-y-2 text-sm">
                 <li>Alcohol may NOT be served at any event at the KPAC without execution of this addendum.</li>
@@ -976,7 +997,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
               <div>
                 <div className="mt-12 border-t border-neutral-800 pt-2">
                   <p>Jordan Goins</p>
-                  <p className="text-sm text-neutral-600">Operations Manager</p>
+                  <p className="text-xs text-neutral-600">Operations Manager</p>
                 </div>
               </div>
               <div>
@@ -992,7 +1013,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
           <Keep>
             <section>
               <HeadingKeep>
-                <h2 className="font-display text-xl uppercase text-center">Addendum 1 — No Alcohol Service</h2>
+                <h2 className="font-contract normal-case font-bold text-lg tracking-normal text-center">Addendum 1 — No Alcohol Service</h2>
               </HeadingKeep>
               <ol className="list-decimal pl-6 mt-4 space-y-2 text-sm">
                 <li>This addendum marks acknowledgement from Licensee that no sales of alcohol will take place during their event at the Kenworthy Performing Arts Centre.</li>
@@ -1006,7 +1027,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
               <div>
                 <div className="mt-12 border-t border-neutral-800 pt-2">
                   <p>Jordan Goins</p>
-                  <p className="text-sm text-neutral-600">Operations Manager</p>
+                  <p className="text-xs text-neutral-600">Operations Manager</p>
                 </div>
               </div>
               <div>
@@ -1038,7 +1059,7 @@ export default function RentalContract({ blank = false }: { blank?: boolean }) {
   );
 }
 
-// The blank form's optional lines (additional hours, rehearsal) print only once
+// The blank form's optional lines (second rental rate, additional hours, rehearsal) print only once
 // something has been typed into them, and not when what was typed comes to $0:
 // an unused line is dropped from the contract rather than left as a blank.
 function hasLine(amount: number | undefined, ...typed: string[]) {
@@ -1085,6 +1106,7 @@ export function blankCosts(f: BlankFields) {
   };
   const lines = {
     base: times(f.hourly_rate, f.base_hours),
+    base2: times(f.rental_rate_2, f.rental_hours_2),
     extra: times(f.additional_hours_rate, f.additional_hours),
     rehearsal: times(f.rehearsal_rate, f.rehearsal_hours),
     staff: times(f.staff_rate, f.staff_hours),
@@ -1100,7 +1122,7 @@ export function blankCosts(f: BlankFields) {
 function H2({ children }: { children: React.ReactNode }) {
   return (
     <HeadingKeep>
-      <h2 className="font-display uppercase text-base mt-6 mb-2 tracking-wide">{children}</h2>
+      <h2 className="font-contract normal-case font-bold text-base mt-6 mb-2 tracking-normal">{children}</h2>
     </HeadingKeep>
   );
 }

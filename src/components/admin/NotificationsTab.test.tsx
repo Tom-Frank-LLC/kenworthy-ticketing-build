@@ -12,6 +12,9 @@ let stored: unknown = null;
 let upsertRows: unknown[] = [{ key: 'staff_notifications' }];
 const upserts: any[] = [];
 const toasts: { kind: string; msg: string }[] = [];
+// Not `lastToast()`: the app's lib is ES2020, which has no Array.prototype.at
+// (iOS Safari before 15.4 lacks it, and Vite does not polyfill it).
+const lastToast = () => toasts[toasts.length - 1];
 
 vi.mock('sonner', () => ({
   toast: {
@@ -70,8 +73,8 @@ describe('NotificationsTab', () => {
     expect(upserts[0].value).toEqual({
       rental_request: { enabled: true, recipients: ['events@kenworthy.org', 'gm@kenworthy.org'] },
     });
-    await waitFor(() => expect(toasts.at(-1)?.kind).toBe('success'));
-    expect(toasts.at(-1)?.msg).toContain('gm@kenworthy.org');
+    await waitFor(() => expect(lastToast()?.kind).toBe('success'));
+    expect(lastToast()?.msg).toContain('gm@kenworthy.org');
   });
 
   it('refuses an address it cannot read, by name, and writes nothing', async () => {
@@ -81,8 +84,8 @@ describe('NotificationsTab', () => {
     fireEvent.change(recipientsBox(), { target: { value: 'events@kenworthy.org, front desk' } });
     fireEvent.click(saveButton());
 
-    await waitFor(() => expect(toasts.at(-1)?.kind).toBe('error'));
-    expect(toasts.at(-1)?.msg).toContain('front');
+    await waitFor(() => expect(lastToast()?.kind).toBe('error'));
+    expect(lastToast()?.msg).toContain('front');
     expect(upserts).toHaveLength(0);
   });
 
@@ -93,8 +96,8 @@ describe('NotificationsTab', () => {
     fireEvent.change(recipientsBox(), { target: { value: '   ' } });
     fireEvent.click(saveButton());
 
-    await waitFor(() => expect(toasts.at(-1)?.kind).toBe('error'));
-    expect(toasts.at(-1)?.msg).toMatch(/at least one address/i);
+    await waitFor(() => expect(lastToast()?.kind).toBe('error'));
+    expect(lastToast()?.msg).toMatch(/at least one address/i);
     expect(upserts).toHaveLength(0);
   });
 
@@ -107,7 +110,7 @@ describe('NotificationsTab', () => {
 
     await waitFor(() => expect(upserts).toHaveLength(1));
     expect(upserts[0].value.rental_request.enabled).toBe(false);
-    await waitFor(() => expect(toasts.at(-1)?.msg).toMatch(/nobody will be emailed/i));
+    await waitFor(() => expect(lastToast()?.msg).toMatch(/nobody will be emailed/i));
   });
 
   it('treats an RLS-blocked upsert (no rows back) as a failure, not a save', async () => {
@@ -118,8 +121,8 @@ describe('NotificationsTab', () => {
     fireEvent.change(recipientsBox(), { target: { value: 'gm@kenworthy.org' } });
     fireEvent.click(saveButton());
 
-    await waitFor(() => expect(toasts.at(-1)?.kind).toBe('error'));
-    expect(toasts.at(-1)?.msg).toMatch(/permission/i);
+    await waitFor(() => expect(lastToast()?.kind).toBe('error'));
+    expect(lastToast()?.msg).toMatch(/permission/i);
     // The screen still shows the old list as the saved one.
     expect(screen.getByText(/currently going to/i).textContent).toContain('events@kenworthy.org');
   });

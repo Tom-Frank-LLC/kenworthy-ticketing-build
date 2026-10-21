@@ -1,0 +1,46 @@
+# The checks from CLAUDE.md "Checks before you ship" that need neither Docker
+# nor a linked database. Until this existed the only PR check was Cloudflare's
+# `vite build`, which compiles none of the tests, none of the type errors in
+# test files, and none of supabase/functions — so tsc, check:worker, vitest
+# and deno check had all gone red on main without anyone seeing it.
+#
+# Still local only: supabase/tests/pricing_rpc and supabase/tests/boot (Docker),
+# and supabase/tests/anon_surface (a linked project).
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Not bare `tsc --noEmit`: tsconfig.json is solution-style and checks nothing.
+      - run: npx tsc -p tsconfig.app.json --noEmit
+      - run: npm run check:worker
+      - run: npx vitest run
+
+  functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # globstar: without it bash reads ** as *, and only one directory level
+      # would be checked.
+      - run: |
+          shopt -s globstar
+          deno check --node-modules-dir=none supabase/functions/**/*.ts
+      - run: deno test --node-modules-dir=none --allow-env supabase/functions

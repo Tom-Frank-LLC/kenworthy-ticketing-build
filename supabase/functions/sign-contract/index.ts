@@ -22,13 +22,13 @@ function b64encode(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
   return btoa(bin);
 }
-function b64decode(s: string): Uint8Array {
+function b64decode(s: string): Uint8Array<ArrayBuffer> {
   const bin = atob(s);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
+async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -68,7 +68,7 @@ async function stampVerifyPage(pdfBytes: Uint8Array, fields: {
   eventTitle: string;
   contractId: string;
   verifyUrl: string;
-}): Promise<Uint8Array> {
+}): Promise<Uint8Array<ArrayBuffer>> {
   const pdf = await PDFDocument.load(pdfBytes);
   const page = pdf.addPage([612, 792]); // US Letter
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -124,7 +124,10 @@ async function stampVerifyPage(pdfBytes: Uint8Array, fields: {
     x: 72, y: 48, size: 8, font, color: rgb(0.5, 0.5, 0.5),
   });
 
-  return await pdf.save();
+  // pdf-lib types this as Uint8Array<ArrayBufferLike>, but its writer fills a
+  // plain `new Uint8Array(size)`: never a SharedArrayBuffer, which is all the
+  // narrower type rules out. Web Crypto (hash and sign below) wants the narrow one.
+  return (await pdf.save()) as Uint8Array<ArrayBuffer>;
 }
 
 Deno.serve(async (req: Request) => {
