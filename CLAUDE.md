@@ -79,6 +79,13 @@ exits 0. It looks like a passing check and is not one.
 `npm run build` and `vitest` cover `src/` only. Edge functions are never
 compiled by either, so a broken function ships green.
 
+`.github/workflows/checks.yml` runs every check above except the three that
+need Docker or a linked project, on each PR and push to main. Before it existed
+(Oct 2026) the only PR check was Cloudflare's build, and tsc, check:worker,
+vitest and deno check had all gone red on main unnoticed. `wrangler` is pinned
+in `devDependencies` because `check:worker` compares against the generator's
+output: an unpinned `npx wrangler` broke it with a new release and no repo change.
+
 ## Deploying
 
 **Merging to main does not deploy.** Cloudflare Workers Builds runs on every
