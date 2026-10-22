@@ -1,11 +1,12 @@
 ---
 brief: square-link-ignore-archived
 title: Linking a production or pass to Square ignores archived items, and an archived-only title says "unarchive" instead of "create"
-status: built
+status: shipped
 track: bug
-severity: P1
 date: 2026-10-22
-verified: false
+shipped_in: ["#401"]
+shipped_at: 2026-10-22
+verified: true
 ---
 
 # Square item linking should ignore archived items
