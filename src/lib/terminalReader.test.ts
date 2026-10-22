@@ -3,13 +3,34 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 const calls = vi.hoisted(() => ({ list: { devices: [] as any[], default_id: null as string | null } }));
 vi.mock('@/lib/functions', () => ({ invokeFunction: vi.fn(async () => calls.list) }));
+const native = vi.hoisted(() => ({ app: false }));
+vi.mock('@/lib/standReader', () => ({ STAND_READER_ID: 'stand', standAvailable: () => native.app }));
 
 import { readChosenReaderId, storeChosenReaderId, useTerminalReader } from './terminalReader';
 
 const box = { id: 'device:box', name: 'Box office', status: 'AVAILABLE' };
 const conc = { id: 'device:conc', name: 'Concessions', status: 'AVAILABLE' };
 
-beforeEach(() => { localStorage.clear(); calls.list = { devices: [box, conc], default_id: null }; });
+beforeEach(() => { localStorage.clear(); native.app = false; calls.list = { devices: [box, conc], default_id: null }; });
+
+describe('useTerminalReader in the iOS app', () => {
+  it('offers the Stand first and takes it on a fresh station', async () => {
+    native.app = true;
+    calls.list = { devices: [box, conc], default_id: 'device:box' };
+    const { result } = renderHook(() => useTerminalReader());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.readers.map((r) => r.id)).toEqual(['stand', 'device:box', 'device:conc']);
+    expect(result.current.chosenId).toBe('stand');
+  });
+
+  it('keeps a Terminal a station already chose', async () => {
+    native.app = true;
+    storeChosenReaderId('device:conc');
+    const { result } = renderHook(() => useTerminalReader());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chosenId).toBe('device:conc');
+  });
+});
 
 describe('useTerminalReader', () => {
   it('starts unchosen when nothing is remembered and no default is configured', async () => {

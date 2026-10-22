@@ -23,3 +23,12 @@ verify_jwt = false
 # and handler_test.ts, which pins each gate.
 [functions.qbo-sync]
 verify_jwt = false
+
+# Square's OAuth redirect (the box-office Stand's connection) is a plain browser
+# GET with no JWT, which the gateway would refuse under verify_jwt = true. So
+# the gateway checks nothing for this function, and the function gates every
+# action itself: the callback (any GET) by its signed, single-use state; token
+# and status by requireRole staff; connect_start and disconnect by requireRole
+# admin. See supabase/functions/square-mobile/index.ts and handler_test.ts.
+[functions.square-mobile]
+verify_jwt = false

@@ -159,7 +159,11 @@ shareable link must do the same.
    stale one under `/private/tmp` refuses connections.
 3. `ios_webkit_debug_proxy -s unix:<that path>`; `curl localhost:9222/json`
    lists pages and their `webSocketDebuggerUrl`.
-4. Send `Runtime.evaluate` over that websocket. WebKit ignores `awaitPromise`,
+4. Send `Runtime.evaluate` over that websocket. **On the iOS 27 runtime the
+   page socket answers "'Runtime' domain was not found"**: commands must be
+   wrapped in `Target.sendMessageToTarget` (target id from the
+   `Target.targetCreated` event the socket sends first), and replies arrive
+   inside `Target.dispatchMessageFromTarget`. WebKit ignores `awaitPromise`,
    so for async work store the result on `window` and poll it. Do not call
    `.click()` synchronously inside an evaluate: a navigation mid-evaluate wedges
    the connection. Wrap it in `setTimeout`.

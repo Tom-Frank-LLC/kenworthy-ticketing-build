@@ -26,21 +26,18 @@ WebView: `docs/FINDINGS-ios-webview-origin.md`.
 |---|---|---|
 | 1 | Bundle id, account | `org.kenworthy.tickets` (`org.kenworthy.app` was chosen first; Apple reported it "not available" — another team owns it — on 17 Oct), display name "Kenworthy", Apple account `tickets@kenworthy.org` |
 | 2 | Router | `BrowserRouter` stays; deep routes measured working |
-| 3 | Square plugin | Not needed (Phase 2 dropped). For the record: `@capawesome/capacitor-square-mobile-payments` is MIT and on public npm (0.1.6, Capacitor ≥8) — no license cost |
-| 4 | Card capture | — (Phase 2 dropped) |
+| 3 | Square plugin | Phase 2, see `BRIEF-ios-stand-reader.md`: `@capawesome/capacitor-square-mobile-payments` is MIT and on public npm (0.1.6, Capacitor ≥8) — no license cost |
+| 4 | Card capture | Square Stand 2nd gen, Mobile Payments SDK (`BRIEF-ios-stand-reader.md`) |
 | 5 | Scope | the whole current site, public and staff, as one app |
 | 6 | Cadence | Phase 1 to TestFlight |
 
-### Phase 2 was dropped, and why
+### Phase 2: dropped on a wrong claim, now its own brief
 
-The brief assumed the box office owns a Square Stand or Reader. It owns **two
-Square Terminals** (`BRIEF-pricing-rpc.md`, "Card readers"). A Terminal cannot
-pair with the Mobile Payments SDK; it is driven only by the Terminal API —
-which is exactly what `/staff/pos` uses today, through edge functions
-(`square-terminal`), and which works from the app unchanged. So the app already
-"runs cards through the platform". Phase 2 only adds something with new
-hardware (Square Reader / Stand, 2nd gen) or Tap to Pay on iPhone (Apple
-entitlement). Tom chose Phase 1 only (16 Oct).
+This section originally dropped Phase 2 because "the box office owns two Square
+Terminals". **That was wrong.** The box-office iPad sits in a Square Stand
+(2nd gen), and driving the Stand's reader from the Staff POS was the point of
+the app. Tom chose "Phase 1 only" on the strength of that wrong claim. Phase 2
+is `BRIEF-ios-stand-reader.md` (21 Oct 2026).
 
 ## What was built
 
@@ -119,4 +116,3 @@ entitlement). Tom chose Phase 1 only (16 Oct).
 - Universal links (`applinks:`), so emailed ticket and contract links open the
   app — only after the app handles them (Centerview's
   `BUG-ios-universal-link-swallows-rsvp-invite`).
-- Phase 2 card-present, if the theatre buys a Reader/Stand or wants Tap to Pay.

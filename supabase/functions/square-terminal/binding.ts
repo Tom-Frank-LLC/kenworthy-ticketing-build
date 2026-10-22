@@ -27,6 +27,23 @@ export function checkoutMatchesOrder(
 }
 
 /**
+ * True when this Square payment was taken for this order.
+ *
+ * The box-office Stand (BRIEF-ios-stand-reader.md) takes the card on the iPad
+ * through Square's Mobile Payments SDK, with `referenceId` set to what
+ * start_sale returned: the order token, cut to 40. confirm_sale reads the
+ * payment back from Square and holds it to the same rule as a Terminal
+ * checkout, for the same reason (L1): without it, any completed payment id
+ * would confirm any order it covered. No reference, no match.
+ */
+export function paymentMatchesOrder(
+  payment: { reference_id?: unknown } | null | undefined,
+  orderToken: string,
+): boolean {
+  return checkoutMatchesOrder(payment, orderToken);
+}
+
+/**
  * An order token as it may appear in a log line.
  *
  * The token is the bearer credential behind /t/:token and the ticket QR codes,

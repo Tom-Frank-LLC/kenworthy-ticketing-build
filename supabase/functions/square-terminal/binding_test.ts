@@ -1,5 +1,5 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { checkoutMatchesOrder, logToken } from './binding.ts';
+import { checkoutMatchesOrder, logToken, paymentMatchesOrder } from './binding.ts';
 
 const token = '3f1c2b8e-9a7d-4e21-b6c3-0d5e8f7a1b2c';
 
@@ -26,4 +26,16 @@ Deno.test('logs carry 8 characters of a token, never all of it', () => {
   assertEquals(logToken(token), '3f1c2b8e…');
   assert(!logToken(token).includes(token.slice(8)));
   assertEquals(logToken(''), '(none)');
+});
+
+Deno.test('a Stand payment taken for this order confirms it; another order\'s does not', () => {
+  assert(paymentMatchesOrder({ reference_id: token }, token));
+  assert(!paymentMatchesOrder({ reference_id: 'aaaaaaaa-0000-0000-0000-000000000000' }, token));
+  assert(paymentMatchesOrder({ reference_id: 'x'.repeat(40) }, 'x'.repeat(50)));
+});
+
+Deno.test('a Stand payment with no reference is not trusted', () => {
+  assert(!paymentMatchesOrder({}, token));
+  assert(!paymentMatchesOrder(null, token));
+  assert(!paymentMatchesOrder({ reference_id: 42 }, token));
 });

@@ -3,9 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { useTerminalReader } from '@/lib/terminalReader';
+import { STAND_READER_ID } from '@/lib/standReader';
+import { StandReaderStatus } from '@/components/pos/StandReaderStatus';
 
 /** The reader this station sends card sales to. Sits in the POS header. */
-export function TerminalReaderPicker({ reader }: { reader: ReturnType<typeof useTerminalReader> }) {
+export function TerminalReaderPicker({ reader, isAdmin = false }: { reader: ReturnType<typeof useTerminalReader>; isAdmin?: boolean }) {
   const { readers, chosenId, choose, loading, error, refresh } = reader;
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
@@ -26,7 +28,8 @@ export function TerminalReaderPicker({ reader }: { reader: ReturnType<typeof use
       <Button type="button" variant="ghost" size="icon" aria-label="Refresh readers" onClick={() => refresh()} disabled={loading}>
         <RefreshCw className="h-4 w-4" />
       </Button>
-      {error && <span className="text-sm text-destructive" role="alert">{error}</span>}
+      {error && chosenId !== STAND_READER_ID && <span className="text-sm text-destructive" role="alert">{error}</span>}
+      {chosenId === STAND_READER_ID && <StandReaderStatus isAdmin={isAdmin} />}
       {!loading && !error && !chosenId && readers.length > 0 && (
         <span className="text-sm text-muted-foreground">Card sales need a reader — pick the one on this counter.</span>
       )}

@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**148 briefs** — 135 shipped, 5 built, 7 open, 0 needs triage, 1 closed.
+**149 briefs** — 135 shipped, 5 built, 8 open, 0 needs triage, 1 closed.
 
 ## Built, not deployed
 
@@ -20,6 +20,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Open
 
 - `P1` **Everyone who signs in needs an authenticator code, enforced on the server, not only asked for in the browser**<br>`security` — [brief](briefs/BRIEF-admin-mfa.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
+- `P1` **The box-office iPad takes cards through its Square Stand, from the Staff POS in the iOS app**<br>`feature` — [brief](briefs/BRIEF-ios-stand-reader.md)
 - `P2` **Comp tickets are issued but never delivered to the person receiving them**<br>`bug` — [brief](briefs/BRIEF-comp-ticket-delivery.md)
 - `P2` **The Mailchimp campaign has never been able to send, because it queries a column that does not exist**<br>`bug` — [brief](briefs/BRIEF-mailchimp-campaign-dead-column.md)
 - `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)

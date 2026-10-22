@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invokeFunction } from '@/lib/functions';
+import { STAND_READER_ID, standAvailable } from '@/lib/standReader';
 
 /**
  * Which Square Terminal this station sends card sales to.
@@ -23,6 +24,8 @@ export interface TerminalReader {
 
 const KEY = 'kenworthy.pos.terminalReaderId';
 
+const STAND_ENTRY: TerminalReader = { id: STAND_READER_ID, name: 'Square Stand (this iPad)', status: 'AVAILABLE' };
+
 export function readChosenReaderId(): string | null {
   try { return localStorage.getItem(KEY); } catch { return null; }
 }
@@ -44,17 +47,26 @@ export function useTerminalReader() {
     setLoading(true);
     try {
       const res = await invokeFunction<{ devices: TerminalReader[]; default_id: string | null }>('square-terminal', { action: 'list_devices' });
+      // In the iOS app, the Stand the iPad sits in is a reader too. It is not
+      // a Square device id: card sales to it go through the app, not the
+      // Terminal API (src/lib/standReader.ts).
+      if (standAvailable()) res.devices = [STAND_ENTRY, ...res.devices];
       setReaders(res.devices);
       setError(null);
       // A fresh station takes the configured default, if there is one and it is
-      // a reader we can see; otherwise it waits to be told.
+      // a reader we can see; otherwise it waits to be told. In the app the
+      // default is the Stand: the app is on the counter for that reason.
       setChosenId((current) => {
         if (current && res.devices.some((d) => d.id === current)) return current;
-        const fallback = res.default_id && res.devices.some((d) => d.id === res.default_id) ? res.default_id : null;
+        const fallback = standAvailable()
+          ? STAND_READER_ID
+          : res.default_id && res.devices.some((d) => d.id === res.default_id) ? res.default_id : null;
         storeChosenReaderId(fallback);
         return fallback;
       });
     } catch (err) {
+      // The Terminals could not be listed; the Stand needs no list.
+      if (standAvailable()) setReaders([STAND_ENTRY]);
       setError(err instanceof Error ? err.message : 'Could not list the card readers');
     } finally {
       setLoading(false);

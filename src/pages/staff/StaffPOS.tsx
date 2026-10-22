@@ -36,6 +36,7 @@ import {
 import { displayedRuntime } from '@/components/ProductionMedia';
 import { htmlToPlainText } from '@/lib/plainText';
 import { useTerminalReader } from '@/lib/terminalReader';
+import { ensureStandAuthorized, STAND_READER_ID, standFailureMessage, takeStandPayment } from '@/lib/standReader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
 import { type Seat, type PriceTier, type TicketLineItem, newOrderToken } from '@/lib/booking';
@@ -742,10 +743,40 @@ export default function StaffPOS() {
       return;
     }
 
+    const onStand = reader.chosenId === STAND_READER_ID;
     try {
+      // Before the rows: a Stand that cannot take a payment must not hold seats.
+      if (onStand) await ensureStandAuthorized();
+
       ({ ticketIds, orderToken } = await createTickets('card', null, 'pending'));
 
       const idempotencyKey = crypto.randomUUID();
+      if (onStand) {
+        // The server sets the amount, the Square Order and the reference; the
+        // Stand takes exactly that; confirm reads the payment back from Square.
+        const sale = await invokeFunction<{ amount_cents: number; square_order_id: string | null; reference_id: string }>(
+          'square-terminal',
+          { action: 'start_sale', order_token: orderToken, donation_cents: donationCents, idempotency_key: idempotencyKey, reader: 'stand' },
+        );
+        const result = await takeStandPayment({
+          amountCents: sale.amount_cents,
+          referenceId: sale.reference_id,
+          orderId: sale.square_order_id,
+          paymentAttemptId: idempotencyKey,
+          note: `${ticketIds.length} ticket(s)`,
+        });
+        const paymentId = result.payment?.id ?? null;
+        if (!paymentId) {
+          // Square never created a payment, so no money moved.
+          throw new Error(result.status === 'canceled' ? 'Payment was canceled on the Stand.' : standFailureMessage(result));
+        }
+        // A payment exists, even if the SDK reported a failure: only Square
+        // knows whether it went through, so the server asks it.
+        readerReached = true;
+        pollCheckoutStatus({ payment_id: paymentId }, orderToken, ticketIds);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('square-terminal', {
         body: { action: 'start_sale', order_token: orderToken, donation_cents: donationCents, idempotency_key: idempotencyKey, device_id: reader.chosenId },
       });
@@ -756,7 +787,7 @@ export default function StaffPOS() {
       const checkoutId: string = data.checkout?.id;
       setSquareCheckoutId(checkoutId);
       setIsSimulated(data.simulated || false);
-      pollCheckoutStatus(checkoutId, orderToken, ticketIds);
+      pollCheckoutStatus({ checkout_id: checkoutId }, orderToken, ticketIds);
     } catch (err: any) {
       setPaymentStatus('failed');
       toast.error(err.message || 'Payment failed');
@@ -771,7 +802,8 @@ export default function StaffPOS() {
     }
   };
 
-  const pollCheckoutStatus = useCallback(async (checkoutId: string, orderToken: string, ticketIds: string[]) => {
+  /** `paid`: a Terminal checkout, or a payment the Stand took. */
+  const pollCheckoutStatus = useCallback(async (paid: { checkout_id: string } | { payment_id: string }, orderToken: string, ticketIds: string[]) => {
     const maxAttempts = 60;
     let attempt = 0;
 
@@ -779,7 +811,7 @@ export default function StaffPOS() {
       attempt++;
       try {
         const { data, error } = await supabase.functions.invoke('square-terminal', {
-          body: { action: 'confirm_sale', order_token: orderToken, checkout_id: checkoutId },
+          body: { action: 'confirm_sale', order_token: orderToken, ...paid },
         });
         if (error) throw error;
         if (data?.error) { setPaymentStatus('failed'); toast.error(data.error, { duration: 15000 }); return; }
@@ -795,9 +827,11 @@ export default function StaffPOS() {
           await refreshAfterSale();
           return;
         }
-        if (data.status === 'CANCELED' || data.status === 'CANCEL_REQUESTED') {
+        // FAILED is a Stand payment Square declined; a Terminal checkout has no
+        // such status. Either way no money moved, so the seats go back.
+        if (data.status === 'CANCELED' || data.status === 'CANCEL_REQUESTED' || data.status === 'FAILED') {
           setPaymentStatus('failed');
-          toast.error('Payment was canceled on the terminal.');
+          toast.error(data.status === 'FAILED' ? 'The card was declined.' : 'Payment was canceled on the reader.');
           await releaseHeldSale(orderToken, ticketIds, 'Canceled on the terminal');
           return;
         }
@@ -972,7 +1006,7 @@ export default function StaffPOS() {
 
       <div className="mb-4 space-y-3">
         <TimeClockWidget />
-        <TerminalReaderPicker reader={reader} />
+        <TerminalReaderPicker reader={reader} isAdmin={isAdmin} />
         <PatronDisplayPairing display={patronDisplay} />
       </div>
 
@@ -1304,7 +1338,7 @@ export default function StaffPOS() {
                     <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/30">
                       <Loader2 className="h-5 w-5 text-primary animate-spin" />
                       <span className="text-sm text-primary font-medium">
-                        Waiting for payment on terminal...
+                        {reader.chosenId === STAND_READER_ID ? 'Waiting for the card on the Stand…' : 'Waiting for payment on terminal...'}
                       </span>
                     </div>
                   )}
@@ -1345,7 +1379,7 @@ export default function StaffPOS() {
                         )}
                         {paymentMethod === 'cash'
                           ? `Sell ${ticketCount} Ticket(s) — Cash $${chargeTotal.toFixed(2)}`
-                          : `Charge $${chargeTotal.toFixed(2)} on Terminal`
+                          : `Charge $${chargeTotal.toFixed(2)} on ${reader.chosenId === STAND_READER_ID ? 'the Stand' : 'Terminal'}`
                         }
                       </>
                     )}
