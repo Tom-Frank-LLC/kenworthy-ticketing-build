@@ -10,7 +10,7 @@ Capacitor shell (`ios/`, `capacitor.config.ts`). Why it is built the way it is:
 | Display name | Kenworthy |
 | Apple account | `tickets@kenworthy.org` (the Kenworthy developer team) |
 | Capacitor | 8.5.x, Swift Package Manager (no CocoaPods), UIScene |
-| Minimum iOS | 15.0; iPhone and iPad |
+| Minimum iOS | 16.0 (Square's Mobile Payments SDK requires it); iPhone and iPad |
 
 ## The app does not update itself
 
@@ -37,7 +37,10 @@ npm run ios:prep
    refuses a bundle that is not production-only or that carries a service
    worker. It runs on every `cap copy`/`cap sync`, however invoked.
 3. `scripts/stamp-ios-build.mjs`: writes the build number to
-   `ios/Version.xcconfig` (minutes since 2026-01-01 UTC; gitignored).
+   `ios/Version.xcconfig` (minutes since 2026-01-01 UTC; gitignored), and the
+   Square application id for the Stand (`SQUARE_APPLICATION_ID`), chosen by
+   the backend the copied bundle points at: production → Square production,
+   staging → Square sandbox.
 4. `scripts/verify-native-sync.mjs`: checks the app's copy matches
    `dist-native/` file for file, because `cap sync` can copy nothing and exit 0.
 
@@ -116,6 +119,27 @@ node scripts/stamp-ios-build.mjs
 
 The guard prints a warning and lets the staging bundle through. **Never archive
 after this**; run `npm run ios:prep` first, which rebuilds for production.
+
+## The Square Stand (Mobile Payments SDK)
+
+The box-office iPad takes cards through its Square Stand from `/staff/pos`
+(`docs/briefs/BRIEF-ios-stand-reader.md`). The SDK is in the app's own plugin,
+`native/stand-reader` (a local npm package that `cap sync` adds to
+`ios/App/CapApp-SPM`), pinned to an exact SDK version. Square retires old SDK
+versions, so check Square's current version before each App Store release and
+bump `native/stand-reader/Package.swift` deliberately.
+
+- `AppDelegate` initialises the SDK with `SquareApplicationID` from Info.plist.
+- The last build phase runs Square's `setup` script; User Script Sandboxing is
+  off for the App target because that script needs it off.
+- Info.plist carries the Stand's accessory protocols and the Bluetooth,
+  location and microphone usage strings Square requires.
+- **App Store submission** needs Square's Stand MFi approval first (Square
+  tells Apple the app may use the Stand). Put the protocols and PPIDs Square
+  sends back in the review notes. TestFlight internal testing does not wait on
+  it.
+- Production payments need the app's signature registered in Square's
+  Developer Console (bundle `org.kenworthy.tickets`, team `26H64FNAKG`).
 
 ## App Store Connect notes
 
