@@ -74,12 +74,16 @@ read-back) is untouched; this change only narrows which item a title resolves to
 - `_shared/square_catalog_test.ts` covers `exactTitleMatches`, and
   `src/lib/squareLink.test.ts` covers the `archived_match` save message.
 
-## Still to check (data, not code)
+## Production
 
-The fix only helps if the Backcountry duplicates really are **archived** in
-Square, not just old. Any still-active namesake will keep the title ambiguous;
-the remedy then is to archive it in the dashboard. Linking by hand remains
-available either way.
+Deployed 2026-10-22: Worker `c94e444f` (rollback `3bfb285e`) and function
+`square-showing-variations` v16. Tom then confirmed on production that Backcountry
+Film Festival links to its one active item, so the extra namesakes were
+archived, not just old.
+
+If a title is still flagged ambiguous, one of its namesakes is old but still
+active in Square. The fix for that is to archive the extra item in the
+dashboard, not to change the code. Linking by hand works either way.
 
 The related brief this was written against, `BRIEF-create-in-square-not-taking.md`,
 is not in the repo, so it was not cross-checked beyond the code. The append path
