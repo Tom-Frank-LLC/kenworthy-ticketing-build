@@ -66,7 +66,7 @@ interface PassRow {
   pass_type_id: string;
   name: string;
   price_cents: number;
-  status: 'linked' | 'match_found' | 'needs_item';
+  status: 'linked' | 'match_found' | 'archived_match' | 'needs_item';
   matching_items?: number;
   variations: Array<{
     id: string;
@@ -88,10 +88,11 @@ interface ProductionRow {
    * Both of these were always in the response and simply never declared here,
    * which is why this panel could only offer Dismiss. `status` separates "the
    * catalog has nothing by this name" from "it has more than one and the
-   * planner refused to choose"; `possible_matches` is the candidate list the
+   * planner refused to choose", and `archived_match` means its only item by
+   * this name is archived; `possible_matches` is the candidate list the
    * planner offers but deliberately will not act on.
    */
-  status?: 'needs_item' | 'ambiguous_item';
+  status?: 'needs_item' | 'ambiguous_item' | 'archived_match';
   possible_matches?: Array<{ id: string; name: string; why: string }>;
 }
 
@@ -131,7 +132,7 @@ interface Pending {
   /** Only a pass can be created from here; a production's item is a dashboard job. */
   canCreate: boolean;
   /** What to say when there is nothing to offer. */
-  guidance?: 'create_event_item' | 'ambiguous';
+  guidance?: 'create_event_item' | 'ambiguous' | 'archived';
   category?: string;
 }
 
@@ -270,6 +271,8 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
           title: p.name,
           detail: (p.matching_items ?? 0) > 1
             ? `${p.matching_items} Square items share this name`
+            : p.status === 'archived_match'
+            ? 'Square’s only item by this name is archived. Unarchive it in Square and refresh to link it.'
             : 'Not linked to a Square item',
           options: [...(p.variations ?? []), ...(p.category_options ?? [])].map(v => ({
             id: v.id,
@@ -299,7 +302,9 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
         mode: 'production' as const,
         kind: p.kind,
         canCreate: false,
-        guidance: p.status === 'ambiguous_item' ? ('ambiguous' as const) : ('create_event_item' as const),
+        guidance: p.status === 'ambiguous_item' ? ('ambiguous' as const)
+          : p.status === 'archived_match' ? ('archived' as const)
+          : ('create_event_item' as const),
         category: p.category,
       }));
 
@@ -392,7 +397,13 @@ export function SquareLinkPanel({ scope, title = 'Square catalog' }: Props) {
                   * every report.
                   */}
                 {p.mode === 'production' && p.options.length === 0 && (
-                  p.guidance === 'ambiguous' ? (
+                  p.guidance === 'archived' ? (
+                    <p className="text-xs text-amber-500">
+                      Square’s only item named “{p.title}” is archived. Unarchive it in Square
+                      and refresh, and it links on its own. Create a new Event item only if
+                      this is a different production from the archived one.
+                    </p>
+                  ) : p.guidance === 'ambiguous' ? (
                     <p className="text-xs text-amber-500">
                       More than one Square item is already named “{p.title}”, so nothing was
                       linked. Archive the duplicate in Square, or link it there by hand — do

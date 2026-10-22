@@ -4,6 +4,7 @@ import {
   canonicalTier,
   categoryForProduction,
   diffPaths,
+  exactTitleMatches,
   formatShowtime,
   isNoisyPath,
   locationPresenceOf,
@@ -485,4 +486,75 @@ Deno.test('parseKindFilter: a non-array is refused', () => {
   assertEquals('error' in parseKindFilter('movie'), true);
   assertEquals('error' in parseKindFilter({ kind: 'movie' }), true);
   assertEquals('error' in parseKindFilter(null), true);
+});
+
+// ---- exactTitleMatches ------------------------------------------------------
+//
+// Backcountry Film Festival, Oct 2026: one live EVENT item and archived ones
+// from earlier years, all under the same name. `/catalog/list` returns the
+// archived items too, so the planner counted three candidates, called the title
+// ambiguous, and staff could not link it.
+
+const item = (id: string, name: string, opts: { type?: string; archived?: boolean; deleted?: boolean } = {}) => ({
+  id,
+  type: 'ITEM',
+  ...(opts.deleted ? { is_deleted: true } : {}),
+  item_data: {
+    name,
+    product_type: opts.type ?? 'EVENT',
+    ...(opts.archived ? { is_archived: true } : {}),
+  },
+});
+const isEvent = (i: any) => i.item_data?.product_type === 'EVENT';
+const ids = (xs: any[]) => xs.map((x) => x.id).sort();
+
+Deno.test('one live item and archived namesakes: the live one is the only candidate', () => {
+  const items = [
+    item('LIVE', 'Backcountry Film Festival'),
+    item('OLD1', 'BACKCOUNTRY FILM FESTIVAL', { archived: true }),
+    item('OLD2', 'Backcountry Film Festival', { archived: true }),
+  ];
+  const { active, archived } = exactTitleMatches(items, 'Backcountry Film Festival', isEvent);
+  assertEquals(ids(active), ['LIVE']);
+  assertEquals(ids(archived), ['OLD1', 'OLD2']);
+});
+
+Deno.test('two live items with the title are still both candidates — that is real ambiguity', () => {
+  const items = [
+    item('A', 'Backcountry Film Festival'),
+    item('B', 'Backcountry Film Festival'),
+    item('OLD', 'Backcountry Film Festival', { archived: true }),
+  ];
+  const { active } = exactTitleMatches(items, 'Backcountry Film Festival', isEvent);
+  assertEquals(ids(active), ['A', 'B']);
+});
+
+Deno.test('an archived-only title reports the archived item rather than nothing', () => {
+  // Reporting nothing would read as "create one", which makes a duplicate.
+  const { active, archived } = exactTitleMatches(
+    [item('OLD', 'Backcountry Film Festival', { archived: true })],
+    'Backcountry Film Festival', isEvent,
+  );
+  assertEquals(active.length, 0);
+  assertEquals(ids(archived), ['OLD']);
+});
+
+Deno.test('product type, deleted items and other titles are excluded from both sets', () => {
+  const items = [
+    item('PASS', 'Backcountry Film Festival', { type: 'REGULAR' }),
+    item('PASS_OLD', 'Backcountry Film Festival', { type: 'REGULAR', archived: true }),
+    item('GONE', 'Backcountry Film Festival', { deleted: true }),
+    item('OTHER', 'Backcountry Film Festival 2025'),
+  ];
+  const events = exactTitleMatches(items, 'Backcountry Film Festival', isEvent);
+  assertEquals(events.active.length + events.archived.length, 0);
+
+  const passes = exactTitleMatches(items, 'Backcountry Film Festival', (i) => !isEvent(i));
+  assertEquals(ids(passes.active), ['PASS']);
+  assertEquals(ids(passes.archived), ['PASS_OLD']);
+});
+
+Deno.test('an empty title matches nothing', () => {
+  const { active, archived } = exactTitleMatches([item('X', '')], '', isEvent);
+  assertEquals(active.length + archived.length, 0);
 });

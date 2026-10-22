@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**147 briefs** — 135 shipped, 4 built, 7 open, 0 needs triage, 1 closed.
+**148 briefs** — 136 shipped, 4 built, 7 open, 0 needs triage, 1 closed.
 
 ## Built, not deployed
 
@@ -28,6 +28,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Linking a production or pass to Square ignores archived items, and an archived-only title says "unarchive" instead of "create"**<br>`bug` — `#401` — [brief](briefs/BRIEF-square-link-ignore-archived.md)
 - **Rental contract takes an optional second theater-rental rate, and is set in Georgia at a smaller size**<br>`feature` — `#398` — [brief](briefs/BRIEF-contract-second-rate-classic-serif.md)
 - **The event drawer shows the whole poster, not a 16:9 crop, when there is no trailer**<br>`ux` — `#395` — [brief](briefs/BRIEF-drawer-full-poster.md)
 - **Create in Square works on an Event item limited to some locations, and the panel says why a showtime was not created**<br>`bug` — `#393` — [brief](briefs/BRIEF-square-create-showtime.md) · [notes](briefs/FINDINGS-square-create-showtime-locations.md)
