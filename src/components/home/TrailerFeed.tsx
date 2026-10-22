@@ -6,7 +6,7 @@ import { Calendar, Volume2, VolumeX, Film, Sparkles, Music, Ticket } from 'lucid
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { GREEN_CTA } from '@/lib/greenCta';
-import { resolveTrailer } from '@/lib/trailer';
+import { canEmbed, resolveTrailer } from '@/lib/trailer';
 import { formatShowtime } from '@/lib/datetime';
 import { externalTicketLabel, isPast } from '@/lib/purchasable';
 import { htmlToPlainText } from '@/lib/richText';
@@ -210,10 +210,13 @@ export function TrailerFeed({ items, onSelect }: { items: FeedItem[]; onSelect?:
         {items.map((item) => {
           const Icon = TYPE_ICON[item.type];
           const isActive = item.id === activeId;
-          const trailer = resolveTrailer(item.trailerUrl, {
+          const resolved = resolveTrailer(item.trailerUrl, {
             autoplay: !reduceMotion && isActive,
             muted,
           });
+          // Ambient artwork, so a clip that cannot play here (YouTube in the
+          // iOS app) is no clip: the slide shows its poster, as with none.
+          const trailer = resolved && canEmbed(resolved) ? resolved : null;
 
           return (
             <div

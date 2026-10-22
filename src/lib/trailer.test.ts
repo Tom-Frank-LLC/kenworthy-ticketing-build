@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { resolveTrailer, trailerUrlError } from './trailer';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Capacitor } from '@capacitor/core';
+import { canEmbed, resolveTrailer, trailerUrlError, youtubeThumbnailUrl, youtubeWatchUrl } from './trailer';
 
 describe('resolveTrailer', () => {
   it('recognises the URL forms an admin actually pastes', () => {
@@ -120,5 +121,30 @@ describe('trailerUrlError', () => {
     for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'http://example.com/t.mp4', 'youtube.com/watch?v=abc']) {
       expect(trailerUrlError(bad)).not.toBeNull();
     }
+  });
+});
+
+describe('canEmbed', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const youtube = resolveTrailer('https://youtu.be/dQw4w9WgXcQ')!;
+  const vimeo = resolveTrailer('https://vimeo.com/123456789')!;
+  const file = resolveTrailer('https://cdn.example.com/trailer.mp4')!;
+
+  it('embeds everything on the web', () => {
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(false);
+    expect([youtube, vimeo, file].map(canEmbed)).toEqual([true, true, true]);
+  });
+
+  // YouTube refuses an embed with no Referer (Error 153), and the iOS app's
+  // capacitor:// page sends none. Vimeo plays there.
+  it('does not embed YouTube in the iOS app, and still embeds the rest', () => {
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+    expect([youtube, vimeo, file].map(canEmbed)).toEqual([false, true, true]);
+  });
+
+  it('links to the video page and still for the same id', () => {
+    expect(youtubeWatchUrl('dQw4w9WgXcQ')).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    expect(youtubeThumbnailUrl('dQw4w9WgXcQ')).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
   });
 });

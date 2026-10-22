@@ -13,12 +13,19 @@
     "test:watch": "vitest",
     "build:staging": "vite build --mode staging",
     "build:production": "vite build --mode production",
+    "build:native": "KW_NATIVE_BUILD=1 vite build --mode production",
+    "build:native:staging": "KW_NATIVE_BUILD=1 vite build --mode staging",
     "tasks": "node scripts/generate-tasks.mjs",
     "tasks:check": "node scripts/generate-tasks.mjs --check",
     "check:app": "tsc -p tsconfig.app.json --noEmit",
-    "check:worker": "npx wrangler types --include-runtime=false --check && tsc -p tsconfig.worker.json --noEmit"
+    "check:worker": "npx wrangler types --include-runtime=false --check && tsc -p tsconfig.worker.json --noEmit",
+    "ios:prep": "npm run build:native && npx cap sync ios && node scripts/stamp-ios-build.mjs && node scripts/verify-native-sync.mjs",
+    "capacitor:copy:before": "node scripts/verify-native-bundle.mjs \"${CAPACITOR_WEB_DIR:-dist-native}\""
   },
   "dependencies": {
+    "@capacitor/core": "~8.5.3",
+    "@capacitor/ios": "~8.5.3",
+    "@capacitor/status-bar": "^8.0.4",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -83,6 +90,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@capacitor/cli": "~8.5.3",
     "@cloudflare/workers-types": "^5.20260906.1",
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.16",
