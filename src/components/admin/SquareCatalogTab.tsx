@@ -27,7 +27,7 @@ type PassRow = {
   pass_type_id: string;
   name: string;
   price_cents: number;
-  status: 'linked' | 'match_found' | 'needs_item';
+  status: 'linked' | 'match_found' | 'archived_match' | 'needs_item';
   square_variation_id: string | null;
   square_item_name: string | null;
   variations: Array<{
@@ -38,8 +38,10 @@ type PassRow = {
     item_name?: string | null;
     archived?: boolean;
   }>;
-  /** Distinct Square items carrying this name. Above 1 means duplicate SKUs. */
+  /** Distinct live Square items carrying this name. Above 1 means duplicate SKUs. */
   matching_items?: number;
+  /** Archived Square items with this exact name, when there is no live one. */
+  archived_items?: Array<{ id: string; name: string | null }>;
   /** Everything filed under 9 Film Passes that the name did not already match. */
   category_options?: Array<{
     id: string;
@@ -65,10 +67,12 @@ type Plan = {
     /*
      * Why this production has no item. `needs_item` means the catalog has
      * nothing by this name; `ambiguous_item` means it has more than one and the
-     * planner refused to pick. The distinction decides what to tell someone,
-     * and getting it wrong is expensive in one direction — see the render.
+     * planner refused to pick; `archived_match` means its only item by this
+     * name is archived. The distinction decides what to tell someone, and
+     * getting it wrong is expensive in one direction — see the render.
      */
-    status?: 'needs_item' | 'ambiguous_item';
+    status?: 'needs_item' | 'ambiguous_item' | 'archived_match';
+    archived_items?: Array<{ id: string; name: string | null }>;
     possible_matches?: Array<{ id: string; name: string; why: string }>;
   }>;
   /*
@@ -425,6 +429,18 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
                 <span className="font-medium text-sm">{n.title}</span>
                 <Badge variant="outline" className="text-xs">{n.category}</Badge>
               </div>
+              {n.status === 'archived_match' && (
+                /*
+                 * Square has this title, archived. Without this the row fell
+                 * through to "Nothing similar — create it", and the item made
+                 * on that advice is a duplicate of the archived one.
+                 */
+                <p className="text-xs text-amber-500">
+                  Square’s only item named “{n.title}” is archived. Unarchive it in Square
+                  and refresh, and it links on its own. Create a new Event item only if
+                  this is a different production from the archived one.
+                </p>
+              )}
               {(n.possible_matches ?? []).length > 0 ? (
                 <div className="space-y-1">
                   {n.possible_matches!.map((m) => (
@@ -454,7 +470,7 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
                   linked. Archive the duplicate in Square, or link this title by hand —
                   do not create another, or the takings split across items in every report.
                 </p>
-              ) : (
+              ) : n.status === 'archived_match' ? null : (
                 <p className="text-xs text-muted-foreground">
                   Nothing similar in the catalog. Create it in Square as an
                   <strong> Event</strong> item under <strong>{n.category}</strong>, then refresh.
@@ -479,7 +495,10 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-sm">{pt.name} · {money(pt.price_cents)}</span>
                 <Badge variant={pt.status === 'linked' ? 'default' : 'outline'} className="text-xs">
-                  {pt.status === 'linked' ? 'linked' : pt.status === 'match_found' ? 'match found' : 'no item'}
+                  {pt.status === 'linked' ? 'linked'
+                    : pt.status === 'match_found' ? 'match found'
+                    : pt.status === 'archived_match' ? 'archived in Square'
+                    : 'no item'}
                 </Badge>
               </div>
               {pt.status !== 'linked' && pt.variations.length > 0 && (
@@ -542,6 +561,15 @@ export default function SquareCatalogTab({ showPasses = true, kinds }: SquareCat
                     </div>
                   ))}
                 </div>
+              )}
+
+              {pt.status === 'archived_match' && (
+                // Not offered "Create in Square": that makes a second item beside
+                // the archived one, and create_pass_item refuses it anyway.
+                <p className="text-xs text-amber-500">
+                  Square’s only item named “{pt.name}” is archived. Unarchive it in Square
+                  and refresh to link it.
+                </p>
               )}
 
               {pt.status === 'needs_item' && !pt.variations.length && (

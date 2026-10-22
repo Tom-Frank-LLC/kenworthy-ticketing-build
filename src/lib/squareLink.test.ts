@@ -90,6 +90,16 @@ describe('squareSaveOutcome', () => {
     expect(out?.message).toMatch(/More than one Square item/);
   });
 
+  // Archived items are never matched, so a title whose only item is archived
+  // links to nothing. Saying "no Square item yet" there sends someone to make a
+  // duplicate; the fix is to unarchive.
+  it('says to unarchive when the only Square item with the title is archived', () => {
+    const out = squareSaveOutcome({ counts: { archived_match: 1 } });
+    expect(out?.code).toBe('archived_match');
+    expect(out?.message).toMatch(/archived/);
+    expect(out?.message).toMatch(/unarchive/);
+  });
+
   it('warns when the linked item cannot hold showtimes', () => {
     expect(squareSaveOutcome({ counts: { not_event_item: 1 } })?.code).toBe('not_event_item');
   });
