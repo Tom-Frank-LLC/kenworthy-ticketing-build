@@ -138,6 +138,14 @@ bump `native/stand-reader/Package.swift` deliberately.
   tells Apple the app may use the Stand). Put the protocols and PPIDs Square
   sends back in the review notes. TestFlight internal testing does not wait on
   it.
+- Every upload warns "Upload Symbols Failed … did not include a dSYM" for
+  `CorePaymentCard`, `LCRCore`, `MockReaderUI`, `SquareMobilePaymentsSDK` and
+  `SquareReader`. Square ships these frameworks prebuilt without dSYMs; the
+  warning is harmless (Square frames in crash logs stay unsymbolicated) and
+  the upload still succeeds.
+- If `xcodebuild -exportArchive` fails with "App Store Connect Credentials
+  Error … Actor/relationships/providerId" (seen 21 Oct 2026), upload from the
+  Organizer instead: `open <archive>` → Distribute App → App Store Connect.
 - Production payments need the app's signature registered in Square's
   Developer Console (bundle `org.kenworthy.tickets`, team `26H64FNAKG`).
 
