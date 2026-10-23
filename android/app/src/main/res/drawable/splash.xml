@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launch screen before Android 12, which shows the launch theme's
+     background as is: the page's #0f0f0f with the mark in the middle. Android 12+
+     draws its own splash from windowSplashScreen* in styles.xml instead. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/ic_launcher_background"/>
+    <item android:drawable="@drawable/ic_launcher_foreground" android:gravity="center"
+        android:width="160dp" android:height="160dp"/>
+</layer-list>

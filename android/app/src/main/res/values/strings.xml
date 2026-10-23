@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kenworthy</string>
+    <string name="title_activity_main">Kenworthy</string>
+    <string name="package_name">org.kenworthy.tickets</string>
+    <string name="custom_url_scheme">org.kenworthy.tickets</string>
+</resources>
