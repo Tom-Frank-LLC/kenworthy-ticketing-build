@@ -19,10 +19,13 @@
     "tasks:check": "node scripts/generate-tasks.mjs --check",
     "check:app": "tsc -p tsconfig.app.json --noEmit",
     "check:worker": "npx wrangler types --include-runtime=false --check && tsc -p tsconfig.worker.json --noEmit",
-    "ios:prep": "npm run build:native && npx cap sync ios && node scripts/stamp-ios-build.mjs && node scripts/verify-native-sync.mjs",
+    "ios:prep": "npm run build:native && npx cap sync ios && node scripts/stamp-ios-build.mjs && node scripts/verify-native-sync.mjs ios",
+    "android:prep": "npm run build:native && npx cap sync android && node scripts/stamp-android-build.mjs && node scripts/verify-native-sync.mjs android",
     "capacitor:copy:before": "node scripts/verify-native-bundle.mjs \"${CAPACITOR_WEB_DIR:-dist-native}\""
   },
   "dependencies": {
+    "@capacitor/android": "~8.5.3",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/core": "~8.5.3",
     "@capacitor/ios": "~8.5.3",
     "@capacitor/status-bar": "^8.0.4",

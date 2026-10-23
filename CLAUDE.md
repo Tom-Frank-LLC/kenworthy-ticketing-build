@@ -129,6 +129,15 @@ Build it with `npm run ios:prep`, never by hand; see `docs/RUNBOOK-ios-app.md`.
   (`src/lib/site.ts`). YouTube refuses embeds there; `canEmbed()`.
   See `docs/FINDINGS-ios-webview-origin.md`.
 
+## The Android app
+
+`android/` is the same Capacitor project for Android, same application id.
+Build it with `npm run android:prep`, then Gradle; see
+`docs/RUNBOOK-android-app.md`. Its origin is `https://localhost`, which
+satisfies Square and the same Turnstile `localhost` entry
+(`docs/FINDINGS-android-webview.md`). The upload key and
+`android/keystore.properties` never go in git.
+
 ## Working in this repo
 
 **The main checkout is shared between concurrent sessions.** The branch can

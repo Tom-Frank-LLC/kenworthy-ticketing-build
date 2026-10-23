@@ -38,7 +38,7 @@ npm run ios:prep
    worker. It runs on every `cap copy`/`cap sync`, however invoked.
 3. `scripts/stamp-ios-build.mjs`: writes the build number to
    `ios/Version.xcconfig` (minutes since 2026-01-01 UTC; gitignored).
-4. `scripts/verify-native-sync.mjs`: checks the app's copy matches
+4. `scripts/verify-native-sync.mjs ios`: checks the app's copy matches
    `dist-native/` file for file, because `cap sync` can copy nothing and exit 0.
 
 Xcode never runs any of this. **Always `ios:prep` before opening Xcode.** An
