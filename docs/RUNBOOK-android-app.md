@@ -79,10 +79,12 @@ users install, and you sign uploads with an **upload key** you keep. Losing the
 upload key is recoverable (Play Console → App integrity → request an upload key
 reset); it is still a secret.
 
-1. Make the upload key, somewhere outside the repo and backed up (1Password):
+1. Make the upload key and back it up (1Password). It lives at the root of the
+   main checkout, `~/dev/kenworthy-ticketing-build/kenworthy-upload.keystore`,
+   where git ignores it (`*.keystore` in `.gitignore` and in `.git/info/exclude`):
 
    ```sh
-   keytool -genkeypair -v -keystore ~/kenworthy-upload.jks -alias upload \
+   keytool -genkeypair -v -keystore ~/dev/kenworthy-ticketing-build/kenworthy-upload.keystore -alias kenworthy-upload \
      -keyalg RSA -keysize 2048 -validity 10000
    ```
 
@@ -90,9 +92,9 @@ reset); it is still a secret.
    `*.keystore`):
 
    ```properties
-   storeFile=/Users/thecommodore/kenworthy-upload.jks
+   storeFile=/Users/thecommodore/dev/kenworthy-ticketing-build/kenworthy-upload.keystore
    storePassword=…
-   keyAlias=upload
+   keyAlias=kenworthy-upload
    keyPassword=…
    ```
 
