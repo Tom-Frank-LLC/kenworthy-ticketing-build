@@ -1,26 +1,30 @@
 #!/usr/bin/env node
 /**
- * Confirms the iOS project holds exactly the web build that was just made.
+ * Confirms a native project holds exactly the web build that was just made.
+ * Usage: verify-native-sync.mjs ios|android
  *
  * `cap sync` can copy nothing and still exit 0: on the Centerview app a
  * `# comment` typed after `npm run mobile:prep` at a zsh prompt became
  * arguments to the script's last command, `cap sync` logged "Platform # not
- * found", and the build went out with a stale bundle. Xcode never runs a sync
- * itself, so an archive simply takes whatever is in ios/App/App/public. This
- * compares it file by file with dist-native/, and takes no arguments so a stray
- * one fails loudly instead of being swallowed.
+ * found", and the build went out with a stale bundle. Neither Xcode nor Gradle
+ * runs a sync itself, so a build simply takes whatever is in the platform's
+ * public/ folder. This compares it file by file with dist-native/, and takes
+ * exactly one argument — the platform — so a stray extra one fails loudly
+ * instead of being swallowed.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-if (process.argv.length > 2) {
-  console.error(`✖ verify-native-sync: takes no arguments; got ${JSON.stringify(process.argv.slice(2))}`);
+const PUBLIC = { ios: 'ios/App/App/public', android: 'android/app/src/main/assets/public' };
+const args = process.argv.slice(2);
+if (args.length !== 1 || !Object.hasOwn(PUBLIC, args[0])) {
+  console.error(`✖ verify-native-sync: takes exactly one argument, ios or android; got ${JSON.stringify(args)}`);
   process.exit(1);
 }
 
 const SRC = 'dist-native';
-const DST = 'ios/App/App/public';
+const DST = PUBLIC[args[0]];
 const NATIVE_ONLY = new Set(['cordova.js', 'cordova_plugins.js']);
 
 function list(root) {

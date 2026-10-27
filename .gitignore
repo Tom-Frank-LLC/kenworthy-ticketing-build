@@ -63,3 +63,8 @@ deno.lock
 
 # wrangler dev state
 .wrangler
+
+# Android signing keys (docs/RUNBOOK-android-app.md). Anywhere in the tree, never committed.
+*.keystore
+*.jks
+keystore.properties
