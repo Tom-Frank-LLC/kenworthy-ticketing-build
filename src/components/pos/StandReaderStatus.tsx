@@ -45,7 +45,14 @@ export function StandReaderStatus({ isAdmin }: { isAdmin: boolean }) {
       const { url } = await invokeFunction<{ url: string }>('square-mobile', { action: 'connect_start', return_to: '/staff/pos' });
       // Off the app's origin, so the app hands it to Safari: Square's approval
       // page, then back to the website. The app picks the token up on refresh.
-      window.open(url, '_blank');
+      // A navigation, not window.open: WebKit lets a page open a window only
+      // within about a second of the tap, and this runs after a round trip to
+      // square-mobile. Measured in the iPad simulator (28 Oct 2026): window.open
+      // after 287 ms reached Safari, after 1 s nothing happened at all (the
+      // first production Connect attempts failed exactly so). A top-level
+      // navigation to another host is caught by Capacitor and opened in Safari
+      // however late it comes, and the app stays on this page.
+      window.location.assign(url);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not start the Square connection');
     } finally {
