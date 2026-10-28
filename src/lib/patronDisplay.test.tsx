@@ -9,8 +9,9 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 import PatronDisplay from '@/pages/PatronDisplay';
 import {
   acceptableProposal, CODE_LENGTH, DESCRIPTION_MAX, newPairingCode, normalizeCode,
-  safePosterUrl, toDisplayDescription, useTillDisplay,
-  type ChannelFactory, type DisplayChannel, type SaleSnapshot, type TillDisplay,
+  safePosterUrl, toDisplayDescription, useTillDisplay, useDisplayChannel, acceptablePay,
+  type ChannelFactory, type ChargeRequest, type DisplayChannel, type DisplayState, type SaleSnapshot,
+  type StandResult, type TillDisplay,
 } from './patronDisplay';
 
 /**
@@ -315,5 +316,91 @@ describe('till ↔ display', () => {
     const counting: ChannelFactory = (...args) => { opened++; return memoryBus().factory(...args); };
     render(<Till factory={counting} initial={baseSale} expose={() => {}} />);
     expect(opened).toBe(0);
+  });
+});
+
+
+// ── The Stand at the patron-facing display (BRIEF-stand-at-patron-display.md) ──
+
+describe('the Stand at the display', () => {
+  const standSale: SaleSnapshot = { ...baseSale, standAtDisplay: true };
+
+  function wire(initial: SaleSnapshot) {
+    const { factory } = memoryBus();
+    const paid: number[] = [];
+    const results: StandResult[] = [];
+    const charges: ChargeRequest[] = [];
+    let till!: TillDisplay;
+    let display!: DisplayState;
+    let setSale!: (s: SaleSnapshot) => void;
+    function TillSide() {
+      const [sale, set] = useState(initial);
+      setSale = set;
+      till = useTillDisplay(sale, () => {}, factory, {
+        onPay: () => paid.push(1),
+        onStandResult: (r) => results.push(r),
+      });
+      return null;
+    }
+    render(<TillSide />);
+    act(() => till.pair());
+    const code = till.code!;
+    function DisplaySide() {
+      display = useDisplayChannel(code, factory, { onCharge: (r) => charges.push(r) });
+      return null;
+    }
+    render(<DisplaySide />);
+    return { till: () => till, display: () => display, setSale: (s: SaleSnapshot) => act(() => setSale(s)), paid, results, charges };
+  }
+
+  it('Pay starts the till only for a card sale on the display’s Stand, while open', () => {
+    expect(acceptablePay({ saleId: 'sale-1' }, standSale)).toBe(true);
+    expect(acceptablePay({ saleId: 'sale-1' }, { ...standSale, standAtDisplay: false })).toBe(false);
+    expect(acceptablePay({ saleId: 'sale-1' }, { ...standSale, payment: 'cash' })).toBe(false);
+    expect(acceptablePay({ saleId: 'sale-1' }, { ...standSale, phase: 'paying' })).toBe(false);
+    expect(acceptablePay({ saleId: 'other' }, standSale)).toBe(false);
+  });
+
+  it('a Pay tap reaches the till', async () => {
+    const w = wire(standSale);
+    await act(settle);
+    act(() => w.display().pay());
+    await act(settle);
+    expect(w.paid).toEqual([1]);
+  });
+
+  it('a Pay tap for a till not on the display’s Stand is ignored', async () => {
+    const w = wire(baseSale);
+    await act(settle);
+    act(() => w.display().pay());
+    await act(settle);
+    expect(w.paid).toEqual([]);
+  });
+
+  it('the till’s charge reaches the display, carrying only the sale and the Square Order', async () => {
+    const w = wire(standSale);
+    await act(settle);
+    act(() => w.till().charge({ saleId: 'sale-1', squareOrderId: 'ORDER_1' }));
+    await act(settle);
+    expect(w.charges).toEqual([{ saleId: 'sale-1', squareOrderId: 'ORDER_1' }]);
+  });
+
+  it('the display’s result reaches the till for the current sale only', async () => {
+    const w = wire(standSale);
+    await act(settle);
+    act(() => w.display().sendStandResult({ saleId: 'old-sale', outcome: 'paid', paymentId: 'P0' }));
+    act(() => w.display().sendStandResult({ saleId: 'sale-1', outcome: 'paid', paymentId: 'P1' }));
+    act(() => w.display().sendStandResult({ saleId: 'sale-1', outcome: 'bogus' } as unknown as StandResult));
+    await act(settle);
+    expect(w.results).toEqual([{ saleId: 'sale-1', outcome: 'paid', paymentId: 'P1' }]);
+  });
+
+  it('the till hears whether the display’s Stand is ready', async () => {
+    const w = wire(standSale);
+    await act(settle);
+    expect(w.till().stand).toBeNull();
+    act(() => w.display().sendStandStatus({ ready: true, line: 'ready' }));
+    await act(settle);
+    expect(w.till().stand).toEqual({ ready: true, line: 'ready' });
   });
 });

@@ -20,6 +20,7 @@ import { safeRedirectPath } from '@/lib/safeUrl';
 import { MfaCodeStep } from '@/components/MfaCodeStep';
 import { readMfaState } from '@/lib/mfa';
 import type { Factor } from '@supabase/supabase-js';
+import { appBaseUrl } from '@/lib/site';
 
 /**
  * The sign-in door.
@@ -88,7 +89,7 @@ export default function Auth() {
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: `${appBaseUrl()}/reset-password`,
       });
       if (error) throw error;
       toast.success('Password reset email sent! Check your inbox.');

@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 /**
  * The canonical public origin of the ticketing site.
  *
@@ -15,3 +17,15 @@
 export const SITE_URL: string =
   import.meta.env.VITE_SITE_URL ||
   'https://kenworthy-ticketing-build.mrtomfrank.workers.dev';
+
+/**
+ * The origin to put in a link that leaves this device: one emailed, copied for
+ * a renter, or shown as a QR for another screen to open.
+ *
+ * On the web that is the page's own origin, so a staging or local tab links to
+ * itself. Inside the iOS app the page's origin is `capacitor://localhost`,
+ * which no one else can open, so the app links to the public site instead.
+ */
+export function appBaseUrl(): string {
+  return Capacitor.isNativePlatform() ? SITE_URL : window.location.origin;
+}

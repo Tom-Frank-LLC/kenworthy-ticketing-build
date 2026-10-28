@@ -6,7 +6,7 @@ import { canonicalTier, variationName } from "../_shared/square-catalog.ts";
 import { MAX_BUNDLED_DONATION_CENTS } from "../_shared/pricing.ts";
 import { actorHeaders, logStaffAction } from "../_shared/audit.ts";
 import { requireRole } from "../_shared/callers.ts";
-import { checkoutMatchesOrder, logToken } from "./binding.ts";
+import { checkoutMatchesOrder, logToken, paymentMatchesOrder, REFERENCE_ID_MAX, standChargeFromOrder } from "./binding.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -64,6 +64,9 @@ Deno.serve(async (req) => {
     }
     if (action === "confirm_sale") {
       return await confirmSale(square.config, params, corsHeaders, caller);
+    }
+    if (action === "stand_charge") {
+      return await standCharge(square.config, params, corsHeaders, caller);
     }
 
     return new Response(
@@ -248,7 +251,7 @@ async function pendingRows(db: any, orderToken: string) {
 
 async function startSale(
   config: SquareConfig,
-  params: { order_token: string; donation_cents?: number; idempotency_key: string; device_id?: string },
+  params: { order_token: string; donation_cents?: number; idempotency_key: string; device_id?: string; reader?: string },
   headers: Record<string, string>,
   caller: Caller,
 ) {
@@ -294,6 +297,20 @@ async function startSale(
     console.error("[square-terminal] order build threw; checkout goes without one", err);
   }
 
+  // The box-office Stand (BRIEF-ios-stand-reader.md): the iPad that holds it
+  // takes the card itself, through Square's Mobile Payments SDK, so there is
+  // no Terminal checkout to create. It is handed what to charge and what to
+  // reference; confirm_sale then reads the payment back from Square by id and
+  // holds it to this order before a row is confirmed.
+  if (params.reader === "stand") {
+    return jsonRes(headers, {
+      stand: true,
+      amount_cents: chargeCents,
+      square_order_id: squareOrderId ?? null,
+      reference_id: orderToken.slice(0, REFERENCE_ID_MAX),
+    });
+  }
+
   // The reader. A real one comes from SQUARE_TERMINAL_DEVICE_ID; the sandbox
   // name is only ever meaningful in the sandbox.
   const deviceId = params.device_id || Deno.env.get("SQUARE_TERMINAL_DEVICE_ID") || "SIMULATED_SANDBOX_DEVICE";
@@ -326,14 +343,18 @@ async function startSale(
 
 async function confirmSale(
   config: SquareConfig,
-  params: { order_token: string; checkout_id: string },
+  params: { order_token: string; checkout_id?: string; payment_id?: string },
   headers: Record<string, string>,
   caller: Caller,
 ) {
   const db = admin(caller.id);
   const orderToken = String(params.order_token ?? "").trim();
   const checkoutId = String(params.checkout_id ?? "").trim();
-  if (!orderToken || !checkoutId) return jsonRes(headers, { error: "order_token and checkout_id are required" }, 400);
+  const standPaymentId = String(params.payment_id ?? "").trim();
+  // A Terminal sale names its checkout; a Stand sale names its payment. Never both.
+  if (!orderToken || (!checkoutId === !standPaymentId)) {
+    return jsonRes(headers, { error: "order_token and exactly one of checkout_id or payment_id are required" }, 400);
+  }
 
   const { rows, cents } = await pendingRows(db, orderToken);
   if (rows.length === 0) return jsonRes(headers, { error: "No card sale under that order" }, 404);
@@ -342,7 +363,24 @@ async function confirmSale(
   }
 
   let status: string; let paymentId: string | null = null; let paid: number | null = null;
-  if (checkoutId.startsWith("SIM_")) {
+  if (standPaymentId) {
+    // The Stand's payment, read back from Square with the server's own
+    // credentials: what the iPad reported is not evidence.
+    const r = await squareFetch(config, `/payments/${encodeURIComponent(standPaymentId)}`);
+    if (!r.ok) return jsonRes(headers, { error: "Could not read the card payment from Square" }, 502);
+    const payment = r.data?.payment;
+    if (!paymentMatchesOrder(payment, orderToken)) {
+      console.error(`[square-terminal] payment ${standPaymentId} is not for order ${logToken(orderToken)}`);
+      return jsonRes(headers, { error: "That card payment belongs to a different sale. Start this sale again on the reader." }, 409);
+    }
+    if (payment?.location_id !== config.locationId) {
+      console.error(`[square-terminal] payment ${standPaymentId} is at location ${payment?.location_id}, not ours`);
+      return jsonRes(headers, { error: "That card payment was taken at a different Square location. Contact support." }, 409);
+    }
+    status = payment?.status;
+    paymentId = payment?.id ?? standPaymentId;
+    paid = payment?.amount_money?.amount ?? null;
+  } else if (checkoutId.startsWith("SIM_")) {
     if (config.environment === "production") return jsonRes(headers, { error: "Simulated checkouts do not exist in production" }, 400);
     status = "COMPLETED"; paid = cents;
   } else {
@@ -388,13 +426,51 @@ async function confirmSale(
     .in("id", ids)
     .select("id");
   if (error || !updated || updated.length !== ids.length) {
-    console.error("[square-terminal] confirm failed after charge", error, { order: logToken(orderToken), checkoutId, paymentId });
+    console.error("[square-terminal] confirm failed after charge", error, { order: logToken(orderToken), checkoutId, paymentId, reader: standPaymentId ? "stand" : "terminal" });
     return jsonRes(headers, { error: "The card was charged but the tickets could not be confirmed. Do not charge again — contact support.", payment_id: paymentId }, 500);
   }
   await logStaffAction(caller, "tickets.card_sale_confirmed", "tickets", {
-    ticket_ids: ids, payment_id: paymentId, checkout_id: checkoutId, amount_cents: cents, paid_cents: paid,
+    ticket_ids: ids, payment_id: paymentId, checkout_id: checkoutId || null, amount_cents: cents, paid_cents: paid,
+    reader: standPaymentId ? "stand" : "terminal",
   });
   return jsonRes(headers, { confirmed: true, ticket_ids: ids, payment_id: paymentId, amount_cents: cents });
+}
+
+/**
+ * What the Stand at the patron-facing display charges for a sale the till
+ * started (BRIEF-stand-at-patron-display.md). The till names only the Square
+ * Order, over a channel anyone with the pairing code can write to; the amount
+ * and the order token come from here, read from Square and held to the
+ * pending rows by standChargeFromOrder. Staff only, like every action here:
+ * the display iPad is signed in as staff.
+ */
+async function standCharge(
+  config: SquareConfig,
+  params: { square_order_id?: string },
+  headers: Record<string, string>,
+  caller: Caller,
+) {
+  const orderId = String(params.square_order_id ?? "").trim();
+  if (!orderId) return jsonRes(headers, { error: "square_order_id is required" }, 400);
+  const r = await squareFetch(config, `/orders/${encodeURIComponent(orderId)}`);
+  if (!r.ok) return jsonRes(headers, { error: r.status === 404 ? "No such Square order" : "Could not read the sale from Square" }, r.status === 404 ? 404 : 502);
+  const order = r.data?.order;
+  const token = typeof order?.reference_id === "string" ? order.reference_id.trim() : "";
+  const { rows, cents } = token ? await pendingRows(admin(caller.id), token) : { rows: [], cents: 0 };
+  if (rows.length === 0) return jsonRes(headers, { error: "No card sale is waiting under that order" }, 404);
+  if (rows.some((t: any) => t.status !== "pending")) return jsonRes(headers, { error: "That sale is not awaiting a card" }, 409);
+  const charge = standChargeFromOrder(order, config.locationId, cents, MAX_BUNDLED_DONATION_CENTS);
+  if (!charge.ok) {
+    console.error(`[square-terminal] stand_charge refused for ${logToken(token)}: ${charge.error}`);
+    return jsonRes(headers, { error: charge.error }, charge.status);
+  }
+  return jsonRes(headers, {
+    order_token: charge.orderToken,
+    amount_cents: charge.amountCents,
+    reference_id: charge.orderToken.slice(0, REFERENCE_ID_MAX),
+    square_order_id: orderId,
+    ticket_count: rows.length,
+  });
 }
 
 /**

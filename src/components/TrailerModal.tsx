@@ -8,7 +8,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { resolveTrailer } from '@/lib/trailer';
+import { canEmbed, resolveTrailer } from '@/lib/trailer';
+import { YouTubeLinkOut } from '@/components/YouTubeLinkOut';
 
 /**
  * A trailer, centered, with the rest of the page darkened behind it.
@@ -111,6 +112,8 @@ export function TrailerModal({
                 playsInline
                 className="h-full w-full object-contain"
               />
+            ) : trailer.kind === 'youtube' && !canEmbed(trailer) ? (
+              <YouTubeLinkOut id={trailer.id} title={title} />
             ) : (
               // Only an embed resolveTrailer built from a parsed id. There used
               // to be a fallback to the raw trailer_url here, for hosts we do

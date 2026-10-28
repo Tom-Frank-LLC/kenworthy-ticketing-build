@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**148 briefs** — 136 shipped, 4 built, 7 open, 0 needs triage, 1 closed.
+**152 briefs** — 136 shipped, 6 built, 9 open, 0 needs triage, 1 closed.
 
 ## Built, not deployed
 
@@ -13,15 +13,19 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
+- `P1` **The patron pays on the Square Stand at the patron-facing display, straight from the donation step**<br>`feature` — [brief](briefs/BRIEF-stand-at-patron-display.md)
+- `P2` **The current site ships as an iOS app (Capacitor), with online checkout working inside it**<br>`feature` — [brief](briefs/BRIEF-capacitor-ios-app.md) · [notes](briefs/../FINDINGS-ios-webview-origin.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
 
 ## Open
 
 - `P1` **Everyone who signs in needs an authenticator code, enforced on the server, not only asked for in the browser**<br>`security` — [brief](briefs/BRIEF-admin-mfa.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
+- `P1` **The box-office iPad takes cards through its Square Stand, from the Staff POS in the iOS app**<br>`feature` — [brief](briefs/BRIEF-ios-stand-reader.md)
 - `P2` **Comp tickets are issued but never delivered to the person receiving them**<br>`bug` — [brief](briefs/BRIEF-comp-ticket-delivery.md)
 - `P2` **The Mailchimp campaign has never been able to send, because it queries a column that does not exist**<br>`bug` — [brief](briefs/BRIEF-mailchimp-campaign-dead-column.md)
 - `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)
+- `P2` **A released or failed card sale stops holding its assigned seat**<br>`bug` — [brief](briefs/BRIEF-seat-release-unique-index.md)
 - `P2` **Establish whether Section 504 applies to the Kenworthy, and put the record behind it in place**<br>`ops` — [brief](briefs/BRIEF-section-504-compliance.md) · [notes](briefs/../accessibility-audit.md)
 - `P3` **Anyone who signs in can add a passkey as a second factor, keeping their authenticator app as the backup**<br>`security` — [brief](briefs/BRIEF-admin-passkeys.md)
 - **Capture SMS consent at the box office**<br>`feature` — [brief](briefs/BRIEF-counter-sms-optin.md)

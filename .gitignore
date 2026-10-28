@@ -16,6 +16,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-native
 *.local
 
 # Editor directories and files
@@ -62,3 +63,7 @@ deno.lock
 
 # wrangler dev state
 .wrangler
+
+# SwiftPM scratch for the local Stand plugin
+native/stand-reader/.build
+native/stand-reader/Package.resolved
