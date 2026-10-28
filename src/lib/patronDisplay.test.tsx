@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router-dom';
 
 // Every channel here is the in-memory bus below; the real client is never reached.
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
+// The app renders the display inside AuthProvider; here it is the signed-out website.
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ user: null, loading: false, isAdmin: false }) }));
 
 import PatronDisplay from '@/pages/PatronDisplay';
 import {
@@ -175,6 +177,8 @@ describe('acceptableProposal', () => {
     expect(acceptableProposal({ saleId: 'old', cents: 500 }, open)).toBe(false);
     expect(acceptableProposal({ saleId: 's', cents: 500 }, { saleId: 's', phase: 'paying' })).toBe(false);
     expect(acceptableProposal({ saleId: 's', cents: 500 }, { saleId: 's', phase: 'idle' })).toBe(false);
+    expect(acceptableProposal({ saleId: 's', cents: 500 }, { saleId: 's', phase: 'open', payment: 'cash' })).toBe(false);
+    expect(acceptableProposal({ saleId: 's', cents: 500 }, { saleId: 's', phase: 'open', payment: 'card' })).toBe(true);
   });
 });
 
@@ -281,6 +285,32 @@ describe('till ↔ display', () => {
     // The next patron's sale ends the thank-you.
     act(() => api().set({ phase: 'open', title: 'Metropolis', ticketCount: 1, ticketsCents: 954 }));
     expect(await screen.findByText('Metropolis')).toBeInTheDocument();
+  });
+
+  it('between sales the display just says welcome', async () => {
+    renderPair({ ...baseSale, phase: 'idle', title: null, ticketCount: 0, ticketsCents: 0 });
+    expect(await screen.findByText('Welcome')).toBeInTheDocument();
+    expect(screen.queryByText(/will appear here/)).toBeNull();
+  });
+
+  it('a cash sale asks for no gift: the patron sees the total to pay at the window', async () => {
+    const { api } = renderPair({ ...baseSale, payment: 'cash' });
+    await screen.findByText('Nosferatu');
+    expect(screen.getByText('Please pay at the window.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /no thanks/i })).toBeNull();
+    expect(screen.queryByText(/change my donation/i)).toBeNull();
+    expect(api().donation()).toBe(0);
+  });
+
+  it('staff options stay behind the logo until it is tapped', async () => {
+    renderPair();
+    await screen.findByText('Nosferatu');
+    expect(screen.queryByText('Use a different code')).toBeNull();
+    const logo = screen.getByRole('button', { name: /staff options/i });
+    fireEvent.click(logo);
+    expect(screen.getByText('Use a different code')).toBeInTheDocument();
+    fireEvent.click(logo);
+    expect(screen.queryByText('Use a different code')).toBeNull();
   });
 
   it('the till sees the display join', async () => {

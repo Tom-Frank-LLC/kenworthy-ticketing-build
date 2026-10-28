@@ -1,11 +1,13 @@
 ---
 brief: stand-at-patron-display
 title: The patron pays on the Square Stand at the patron-facing display, straight from the donation step
-status: built
+status: shipped
 track: feature
 severity: P1
 date: 2026-10-28
-verified: false
+shipped_in: ["#392"]
+shipped_at: 2026-10-28
+verified: true
 ---
 
 # Brief: the Stand is the patron-facing display
@@ -95,8 +97,37 @@ Fixed on the way:
   "paid" releases the seats, except a payment Square has not settled, which
   goes to staff.
 
-Not tested: a real Stand, a real card, production Square; the till on an iPad
-or phone (it is the same web page).
+Not tested in the sandbox: a real Stand, a real card, production Square; the
+till on an iPad or phone (it is the same web page).
+
+## Live (28 Oct 2026)
+
+Website `1c58f07` (prod Worker `66eea11e`), `square-terminal` v39, app
+1.0.0 (433148). Tom ran a real card sale on the real Stand in production,
+till on a laptop: paid, confirmed with Square's payment id, tickets emailed
+(then refunded). The first attempt said "not ready: … Not authenticated":
+the app was on the display screen signed out, which the display page allows
+and the Stand does not. The display now says so in words and offers a sign-in
+(below).
+
+## After the first live sale (Tom, 28 Oct 2026)
+
+- **Between sales the display says only "Welcome".** "Your order will appear
+  here" read oddly after a sale. The thank-you holds for 10 s, or until the
+  next sale starts.
+- **Staff options are behind the Kenworthy logo.** "Use a different code" and
+  the card-reader panel were always on screen once paired. Tapping the logo
+  opens them; they close after a minute, or when the next sale starts.
+- **Cash sales carry no donation.** Cash gifts go in the donation box and are
+  counted at the end of the night, so a cash sale offers no gift on the
+  display or the till, and none goes into the total, Square or the donation
+  record. The till derives the gift from the payment method rather than
+  clearing it, and refuses a display's gift proposal on a cash sale.
+- **Signed out says so.** The till reads "the display is not signed in as
+  staff (tap the logo on the display to sign in)", and the display's staff
+  options offer **Sign in as staff**, which returns to the display.
+
+Reaches the Stand iPad only with a new app build.
 
 ## Out of scope
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CreditCard, Heart, Loader2 } from 'lucide-react';
+import { Banknote, CreditCard, Heart, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DonationPrompt } from '@/components/DonationPrompt';
@@ -12,7 +12,7 @@ import {
   CODE_LENGTH, normalizeCode, safePosterUrl, useDisplayChannel,
   type ChannelFactory, type ChargeRequest, type SaleSnapshot, type StandResult,
 } from '@/lib/patronDisplay';
-import { cancelDisplayCharge, displayChargeRunning, displayStandStatus, runDisplayCharge } from '@/lib/displayStand';
+import { cancelDisplayCharge, DISPLAY_NOT_SIGNED_IN, displayChargeRunning, displayStandStatus, runDisplayCharge } from '@/lib/displayStand';
 import { ensureStandAuthorized, StandReader, standAvailable, type StandStatus } from '@/lib/standReader';
 import { StandReaderStatus } from '@/components/pos/StandReaderStatus';
 import { useAuth } from '@/lib/auth';
@@ -52,6 +52,8 @@ const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const NOT_FOUND_AFTER_MS = 6000;
 /** How long the thank-you stays up when no new sale replaces it. */
 const THANKS_FOR_MS = 10000;
+/** How long the staff options stay open if nobody closes them. */
+const STAFF_OPTIONS_FOR_MS = 60000;
 
 export default function PatronDisplay({ factory }: { factory?: ChannelFactory }) {
   const [params, setParams] = useSearchParams();
@@ -77,14 +79,20 @@ export default function PatronDisplay({ factory }: { factory?: ChannelFactory })
   return (
     <main className="min-h-screen bg-background text-foreground flex flex-col px-2 sm:px-4 py-3 sm:py-6 short:py-3">
       <div className="w-full max-w-2xl mx-auto flex-1 flex flex-col">
-        <KenworthyLogo size="custom" loading="eager" className="h-10 sm:h-16 short:h-8 mx-auto mb-3 sm:mb-6 short:mb-2" />
         {code
           ? <PairedDisplay code={code} factory={factory} onLeave={leave} />
-          : <CodeEntry onJoin={join} />}
+          : (
+            <>
+              <KenworthyLogo size="custom" loading="eager" className={LOGO_CLASS} />
+              <CodeEntry onJoin={join} />
+            </>
+          )}
       </div>
     </main>
   );
 }
+
+const LOGO_CLASS = 'h-10 sm:h-16 short:h-8 mx-auto mb-3 sm:mb-6 short:mb-2';
 
 function CodeEntry({ onJoin }: { onJoin: (code: string) => void }) {
   const [raw, setRaw] = useState('');
@@ -133,11 +141,16 @@ const PAID_RESENDS = 20;
  */
 function useStandAtDisplay() {
   const hasStand = standAvailable();
+  const { user, loading: authLoading } = useAuth();
+  // The display page itself needs no sign-in, so the app can sit on it signed
+  // out and look fine; the Stand cannot. Say so in words staff can act on,
+  // rather than the server's "Not authenticated" (28 Oct 2026).
+  const signedOut = !authLoading && !user;
   const [status, setStatus] = useState<StandStatus | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!hasStand) return;
+    if (!hasStand || !user) return;
     try {
       setStatus(await ensureStandAuthorized());
       setProblem(null);
@@ -145,10 +158,10 @@ function useStandAtDisplay() {
       setProblem(err instanceof Error ? err.message : String(err));
       try { setStatus(await StandReader.getStatus()); } catch { /* keep the last */ }
     }
-  }, [hasStand]);
+  }, [hasStand, user]);
 
   useEffect(() => {
-    if (!hasStand) return;
+    if (!hasStand || !user) return;
     void refresh();
     // The Stand comes and goes (the iPad lifted out, the reader asleep), and a
     // sign-in can expire; the till's picker should hear about it.
@@ -158,9 +171,14 @@ function useStandAtDisplay() {
       StandReader.getStatus().then(setStatus).catch(() => {});
     }).then((h) => { remove = () => void h.remove(); }).catch(() => {});
     return () => { clearInterval(every); remove?.(); };
-  }, [hasStand, refresh]);
+  }, [hasStand, user, refresh]);
 
-  return { hasStand, message: displayStandStatus(status, problem), refresh };
+  return {
+    hasStand,
+    signedOut,
+    message: displayStandStatus(status, signedOut ? DISPLAY_NOT_SIGNED_IN : problem),
+    refresh,
+  };
 }
 
 function PairedDisplay({ code, factory, onLeave }: { code: string; factory?: ChannelFactory; onLeave: () => void }) {
@@ -237,6 +255,17 @@ function PairedDisplay({ code, factory, onLeave }: { code: string; factory?: Cha
   }, [charging, snapshot]);
   const [notFound, setNotFound] = useState(false);
   const [thanksShown, setThanksShown] = useState(false);
+  // Staff options sit behind the logo, out of a patron's way. They close by
+  // themselves, and when the next sale starts, so they are never left open
+  // in front of the queue.
+  const [staffOpen, setStaffOpen] = useState(false);
+  useEffect(() => {
+    if (!staffOpen) return;
+    const t = setTimeout(() => setStaffOpen(false), STAFF_OPTIONS_FOR_MS);
+    return () => clearTimeout(t);
+  }, [staffOpen]);
+  const saleOnScreen = snapshot?.phase === 'idle' ? null : snapshot?.saleId ?? null;
+  useEffect(() => { if (saleOnScreen) setStaffOpen(false); }, [saleOnScreen]);
 
   useEffect(() => {
     setNotFound(false);
@@ -283,39 +312,66 @@ function PairedDisplay({ code, factory, onLeave }: { code: string; factory?: Cha
 
   return (
     <>
+      <button
+        type="button"
+        className="block mx-auto"
+        aria-expanded={staffOpen}
+        aria-controls="display-staff-options"
+        onClick={() => {
+          if (!staffOpen) void stand.refresh();
+          setStaffOpen((o) => !o);
+        }}
+      >
+        <KenworthyLogo size="custom" loading="eager" className={LOGO_CLASS} alt="Kenworthy — staff options" />
+      </button>
+      {staffOpen && (
+        <StaffOptions
+          stand={stand.hasStand ? { line: stand.message.line, ready: stand.message.ready, signedOut: stand.signedOut } : null}
+          onLeave={onLeave}
+        />
+      )}
       <div className="flex-1 flex flex-col" aria-live="polite">{body}</div>
-      {/* For staff setting the device up. A patron who taps it unpairs a
-          screen and nothing else; the till carries on with its own prompt. */}
-      <div className="pt-8 text-center">
-        <button type="button" onClick={onLeave} className="text-sm text-muted-foreground underline underline-offset-2">
-          Use a different code
-        </button>
-      </div>
-      {stand.hasStand && <StandStaffPanel line={stand.message.line} ready={stand.message.ready} onChanged={stand.refresh} />}
     </>
   );
 }
 
 /**
- * For staff setting up the Stand iPad: whether the Stand can take a card, and
- * the fixes when it cannot (Square's reader settings; an admin connecting
- * Square once). Folded away, at the foot of the screen, so a patron sees one
- * quiet line.
+ * For staff setting the device up, opened from the logo: another pairing
+ * code and, on the Stand iPad, whether the Stand can take a card and the
+ * fixes when it cannot (signing in; Square's reader settings; an admin
+ * connecting Square once). A patron who finds it can unpair the screen and
+ * nothing else; the till carries on with its own prompt.
  */
-function StandStaffPanel({ line, ready, onChanged }: { line: string; ready: boolean; onChanged: () => void }) {
+function StaffOptions({ stand, onLeave }: {
+  stand: { line: string; ready: boolean; signedOut: boolean } | null;
+  onLeave: () => void;
+}) {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   return (
-    <details className="pt-4 text-sm text-muted-foreground" onToggle={onChanged}>
-      <summary className="cursor-pointer text-center">Card reader: {ready ? 'ready' : line}</summary>
-      <div className="pt-3 flex flex-col items-center gap-3">
-        <StandReaderStatus isAdmin={isAdmin} />
-        {/* The app has no address bar: this is the way back to the rest of it. */}
+    <div id="display-staff-options" className="mb-4 rounded-lg border border-border p-4 flex flex-col items-center gap-3 text-sm">
+      {stand && (
+        <>
+          <p>Card reader: {stand.ready ? 'ready' : stand.line}</p>
+          {stand.signedOut
+            ? (
+              <Button type="button" size="sm" onClick={() => navigate(`/auth?redirect=${encodeURIComponent('/pos/display')}`)}>
+                Sign in as staff
+              </Button>
+            )
+            : <StandReaderStatus isAdmin={isAdmin} />}
+        </>
+      )}
+      <button type="button" onClick={onLeave} className="underline underline-offset-2">
+        Use a different code
+      </button>
+      {stand && (
+        // The app has no address bar: this is the way back to the rest of it.
         <Button type="button" variant="ghost" size="sm" onClick={() => { rememberDisplayMode(false); navigate('/staff'); }}>
           Stop using this iPad as the display
         </Button>
-      </div>
-    </details>
+      )}
+    </div>
   );
 }
 
@@ -336,10 +392,13 @@ function Sale({ snapshot, onPropose, canPay = false, onPay, charging = null, onR
     return (
       <div className="flex-1 flex flex-col justify-center text-center gap-3">
         <p className="font-display text-4xl">Welcome</p>
-        <p className="text-lg text-muted-foreground">Your order will appear here.</p>
       </div>
     );
   }
+
+  // A cash sale asks for no gift: cash gifts go in the donation box, counted
+  // at the end of the night, so the screen shows the total to pay.
+  if (snapshot.payment === 'cash') return <FinalTotal snapshot={snapshot} />;
 
   // Once the patron has chosen — or the till has gone to the reader without
   // waiting — the gift is settled and the screen says what will be charged.
@@ -516,14 +575,16 @@ function FinalTotal({ snapshot, onChange, standPay = false, onPay, charging = nu
         <p className="text-xl text-center">Thank you for your {dollars(snapshot.donationCents)} gift!</p>
       )}
       <div className="rounded-lg border border-border p-4 flex items-center gap-3 text-lg" role="status">
-        {paying
-          ? <CreditCard className="h-6 w-6 shrink-0" aria-hidden="true" />
-          : <Loader2 className="h-6 w-6 shrink-0 animate-spin" aria-hidden="true" />}
-        {paying
-          ? snapshot.payment === 'card'
+        {snapshot.payment === 'cash'
+          ? <Banknote className="h-6 w-6 shrink-0" aria-hidden="true" />
+          : paying
+            ? <CreditCard className="h-6 w-6 shrink-0" aria-hidden="true" />
+            : <Loader2 className="h-6 w-6 shrink-0 animate-spin" aria-hidden="true" />}
+        {snapshot.payment === 'cash'
+          ? 'Please pay at the window.'
+          : paying
             ? 'Please pay on the card reader at the window.'
-            : 'Please pay at the window.'
-          : 'One moment — the box office is getting your payment ready.'}
+            : 'One moment — the box office is getting your payment ready.'}
       </div>
       {/* Until the sale goes to the reader, a mis-tap can be undone here
           rather than by asking through the glass. */}
