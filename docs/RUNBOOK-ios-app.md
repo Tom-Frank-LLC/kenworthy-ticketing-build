@@ -10,7 +10,7 @@ Capacitor shell (`ios/`, `capacitor.config.ts`). Why it is built the way it is:
 | Display name | Kenworthy |
 | Apple account | `tickets@kenworthy.org` (the Kenworthy developer team) |
 | Capacitor | 8.5.x, Swift Package Manager (no CocoaPods), UIScene |
-| Minimum iOS | 15.0; iPhone and iPad |
+| Minimum iOS | 16.0 (Square's Mobile Payments SDK requires it); iPhone and iPad |
 
 ## The app does not update itself
 
@@ -37,7 +37,10 @@ npm run ios:prep
    refuses a bundle that is not production-only or that carries a service
    worker. It runs on every `cap copy`/`cap sync`, however invoked.
 3. `scripts/stamp-ios-build.mjs`: writes the build number to
-   `ios/Version.xcconfig` (minutes since 2026-01-01 UTC; gitignored).
+   `ios/Version.xcconfig` (minutes since 2026-01-01 UTC; gitignored), and the
+   Square application id for the Stand (`SQUARE_APPLICATION_ID`), chosen by
+   the backend the copied bundle points at: production → Square production,
+   staging → Square sandbox.
 4. `scripts/verify-native-sync.mjs`: checks the app's copy matches
    `dist-native/` file for file, because `cap sync` can copy nothing and exit 0.
 
@@ -116,6 +119,59 @@ node scripts/stamp-ios-build.mjs
 
 The guard prints a warning and lets the staging bundle through. **Never archive
 after this**; run `npm run ios:prep` first, which rebuilds for production.
+
+## The Square Stand (Mobile Payments SDK)
+
+The box-office iPad takes cards through its Square Stand from `/staff/pos`
+(`docs/briefs/BRIEF-ios-stand-reader.md`). The SDK is in the app's own plugin,
+`native/stand-reader` (a local npm package that `cap sync` adds to
+`ios/App/CapApp-SPM`), pinned to an exact SDK version. Square retires old SDK
+versions, so check Square's current version before each App Store release and
+bump `native/stand-reader/Package.swift` deliberately.
+
+- `AppDelegate` initialises the SDK with `SquareApplicationID` from Info.plist.
+- The last build phase runs Square's `setup` script; User Script Sandboxing is
+  off for the App target because that script needs it off.
+- Info.plist carries the Stand's accessory protocols and the Bluetooth,
+  location and microphone usage strings Square requires.
+- **App Store submission** needs Square's Stand MFi approval first (Square
+  tells Apple the app may use the Stand). Put the protocols and PPIDs Square
+  sends back in the review notes. TestFlight internal testing does not wait on
+  it.
+- Every upload warns "Upload Symbols Failed … did not include a dSYM" for
+  `CorePaymentCard`, `LCRCore`, `MockReaderUI`, `SquareMobilePaymentsSDK` and
+  `SquareReader`. Square ships these frameworks prebuilt without dSYMs; the
+  warning is harmless (Square frames in crash logs stay unsymbolicated) and
+  the upload still succeeds.
+- If `xcodebuild -exportArchive` fails with "App Store Connect Credentials
+  Error … Actor/relationships/providerId" (seen 21 Oct 2026), upload from the
+  Organizer instead: `open <archive>` → Distribute App → App Store Connect.
+- Production payments need the app's signature registered in Square's
+  Developer Console (bundle `org.kenworthy.tickets`, team `26H64FNAKG`).
+
+### Setting up the Stand iPad as the patron-facing display
+
+The usual setup (`docs/briefs/BRIEF-stand-at-patron-display.md`): staff ring
+up on any device; the patron chooses a donation and pays on the iPad in the
+Stand, outside the glass.
+
+1. On the Stand iPad, in the Kenworthy app: sign in as staff (for now an
+   existing staff account; later a dedicated display account). MFA applies.
+2. Staff → **Patron-facing display**. The iPad remembers it is the display and
+   reopens on it after the app is closed or updated.
+3. On the till: Card reader → **Square Stand at the patron-facing display**
+   (the default for a new station), then **Pair a patron-facing display**, and
+   type the code into the iPad.
+4. Once, ever, per environment: an admin opens the display's staff panel (the
+   "Card reader:" line at the foot of the screen) and presses **Connect
+   Square**, approving as the Kenworthy Square account in Safari.
+5. The till's picker should read **Stand ready**.
+
+The display's staff panel also has Square's reader settings and **Stop using
+this iPad as the display** (the app has no address bar; this is the way out).
+
+For a special event without a display, the till itself can run on the Stand
+iPad: Card reader → **Square Stand (this iPad)**.
 
 ## App Store Connect notes
 

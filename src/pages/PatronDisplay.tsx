@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CreditCard, Heart, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,8 +10,13 @@ import { ProductionMetaBadges } from '@/components/ProductionMedia';
 import { formatShowtime } from '@/lib/datetime';
 import {
   CODE_LENGTH, normalizeCode, safePosterUrl, useDisplayChannel,
-  type ChannelFactory, type SaleSnapshot,
+  type ChannelFactory, type ChargeRequest, type SaleSnapshot, type StandResult,
 } from '@/lib/patronDisplay';
+import { cancelDisplayCharge, displayChargeRunning, displayStandStatus, runDisplayCharge } from '@/lib/displayStand';
+import { ensureStandAuthorized, StandReader, standAvailable, type StandStatus } from '@/lib/standReader';
+import { StandReaderStatus } from '@/components/pos/StandReaderStatus';
+import { useAuth } from '@/lib/auth';
+import { rememberDisplayMode } from '@/lib/displayMode';
 
 /**
  * The patron-facing display at the box office — the device outside the glass.
@@ -21,6 +26,12 @@ import {
  * no sign-in, no site chrome, no links off the page, and no call to anything
  * privileged. It shows what the till sends and can propose one thing, a
  * donation amount; the till decides, charges and records.
+ *
+ * One exception, in the iOS app on the iPad in the Square Stand
+ * (BRIEF-stand-at-patron-display.md): there the display takes the card. That
+ * iPad is signed in as staff, and the display asks the server — never the
+ * channel — what to charge, then has the server confirm the payment with
+ * Square. On a phone or in a browser none of this exists.
  */
 
 const DEVICE_KEY = 'kenworthy.pos.displayCode';
@@ -56,6 +67,9 @@ export default function PatronDisplay({ factory }: { factory?: ChannelFactory })
   }, [params, setParams]);
 
   useWakeLock(!!code);
+
+  // The Stand iPad remembers that it is the display, so the app reopens here.
+  useEffect(() => { if (standAvailable()) rememberDisplayMode(true); }, []);
 
   const join = (c: string) => { storeDeviceCode(c); setCode(c); };
   const leave = () => { storeDeviceCode(null); setCode(null); };
@@ -104,8 +118,123 @@ function CodeEntry({ onJoin }: { onJoin: (code: string) => void }) {
   );
 }
 
+/** What the Stand under this display is doing for the current sale. */
+type Charging =
+  | { saleId: string; state: 'working' }
+  | { saleId: string; state: 'failed'; message: string; request: ChargeRequest };
+
+/** How often, and how many times, a "paid" is repeated until the till says thanks. */
+const PAID_RESEND_MS = 3000;
+const PAID_RESENDS = 20;
+
+/**
+ * The display's Stand: whether it can take a card, told to the till; and the
+ * charges the till asks for. Inert unless this is the app on a Stand iPad.
+ */
+function useStandAtDisplay() {
+  const hasStand = standAvailable();
+  const [status, setStatus] = useState<StandStatus | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!hasStand) return;
+    try {
+      setStatus(await ensureStandAuthorized());
+      setProblem(null);
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err));
+      try { setStatus(await StandReader.getStatus()); } catch { /* keep the last */ }
+    }
+  }, [hasStand]);
+
+  useEffect(() => {
+    if (!hasStand) return;
+    void refresh();
+    // The Stand comes and goes (the iPad lifted out, the reader asleep), and a
+    // sign-in can expire; the till's picker should hear about it.
+    const every = setInterval(() => { void refresh(); }, 30_000);
+    let remove: (() => void) | undefined;
+    StandReader.addListener('readersChanged', () => {
+      StandReader.getStatus().then(setStatus).catch(() => {});
+    }).then((h) => { remove = () => void h.remove(); }).catch(() => {});
+    return () => { clearInterval(every); remove?.(); };
+  }, [hasStand, refresh]);
+
+  return { hasStand, message: displayStandStatus(status, problem), refresh };
+}
+
 function PairedDisplay({ code, factory, onLeave }: { code: string; factory?: ChannelFactory; onLeave: () => void }) {
-  const { connected, snapshot, thanks, propose } = useDisplayChannel(code, factory);
+  const stand = useStandAtDisplay();
+  const [charging, setCharging] = useState<Charging | null>(null);
+  const thanksRef = useRef(false);
+  const sendRef = useRef<(r: StandResult) => void>(() => {});
+  const standMessageRef = useRef(stand.message);
+  standMessageRef.current = stand.message;
+  const sendStatusRef = useRef<() => void>(() => {});
+  // The sale the box office cancelled: its run ends without a "Try again".
+  const cancelledRef = useRef<string | null>(null);
+
+  // Each run's own screen state, so a run that ends late never clears the
+  // screen of the run after it.
+  const runSeq = useRef(0);
+  const runCharge = useCallback(async (request: ChargeRequest) => {
+    const run = ++runSeq.current;
+    const mine = (c: Charging | null) => c?.saleId === request.saleId;
+    setCharging({ saleId: request.saleId, state: 'working' });
+    const result = await runDisplayCharge(request);
+    sendRef.current(result);
+    if (result.outcome === 'paid') {
+      setCharging((c) => (run === runSeq.current && mine(c) ? null : c));
+      // Realtime is fire-and-forget: say it again until the till answers with
+      // its thank-you, so a dropped message cannot strand a paid sale.
+      for (let i = 0; i < PAID_RESENDS && !thanksRef.current && run === runSeq.current; i++) {
+        await new Promise((r) => setTimeout(r, PAID_RESEND_MS));
+        if (!thanksRef.current && run === runSeq.current) sendRef.current(result);
+      }
+    } else if (cancelledRef.current === request.saleId) {
+      // The box office cancelled: nothing to retry.
+      setCharging((c) => (run === runSeq.current && mine(c) ? null : c));
+    } else {
+      setCharging((c) => (run === runSeq.current && mine(c)
+        ? { saleId: request.saleId, state: 'failed', message: patronMessage(result), request }
+        : c));
+    }
+  }, []);
+
+  const { connected, snapshot, thanks, propose, pay, sendStandStatus, sendStandResult } = useDisplayChannel(code, factory, {
+    onCharge: (request) => {
+      if (!stand.hasStand) return;
+      // The till repeats nothing, but a reconnect can; one run at a time.
+      if (displayChargeRunning()) return;
+      cancelledRef.current = null;
+      void runCharge(request);
+    },
+    onChargeCancel: (saleId) => {
+      const answer = cancelDisplayCharge(saleId);
+      cancelledRef.current = saleId;
+      if (answer === 'running') {
+        // The run ends as cancelled (and says so) — or, if the card was
+        // already in, as paid, which the till must then complete.
+        void StandReader.cancelPayment().catch(() => {});
+        return;
+      }
+      // Nothing is running for that sale here, so no card was taken here.
+      setCharging((c) => (c?.saleId === saleId ? null : c));
+      sendRef.current({ saleId, outcome: 'canceled', message: 'Cancelled by the box office.' });
+    },
+    onJoined: () => sendStatusRef.current(),
+  });
+  sendRef.current = sendStandResult;
+  thanksRef.current = !!thanks;
+  sendStatusRef.current = () => { if (stand.hasStand) sendStandStatus(standMessageRef.current); };
+
+  const statusWire = JSON.stringify(stand.message);
+  useEffect(() => { sendStatusRef.current(); }, [statusWire]);
+
+  // A new sale ends whatever the last one left on screen.
+  useEffect(() => {
+    if (charging && snapshot && charging.saleId !== snapshot.saleId && charging.state === 'failed') setCharging(null);
+  }, [charging, snapshot]);
   const [notFound, setNotFound] = useState(false);
   const [thanksShown, setThanksShown] = useState(false);
 
@@ -127,7 +256,16 @@ function PairedDisplay({ code, factory, onLeave }: { code: string; factory?: Cha
   if (thanks && thanksShown) {
     body = <ThankYou donationCents={thanks.donationCents} />;
   } else if (snapshot) {
-    body = <Sale snapshot={snapshot} onPropose={propose} />;
+    body = (
+      <Sale
+        snapshot={snapshot}
+        onPropose={propose}
+        canPay={stand.hasStand && stand.message.ready}
+        onPay={pay}
+        charging={charging?.saleId === snapshot.saleId ? charging : null}
+        onRetry={charging?.state === 'failed' ? () => void runCharge(charging.request) : undefined}
+      />
+    );
   } else if (notFound) {
     body = (
       <div className="flex-1 flex flex-col justify-center text-center gap-4">
@@ -153,11 +291,43 @@ function PairedDisplay({ code, factory, onLeave }: { code: string; factory?: Cha
           Use a different code
         </button>
       </div>
+      {stand.hasStand && <StandStaffPanel line={stand.message.line} ready={stand.message.ready} onChanged={stand.refresh} />}
     </>
   );
 }
 
-function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cents: number) => void }) {
+/**
+ * For staff setting up the Stand iPad: whether the Stand can take a card, and
+ * the fixes when it cannot (Square's reader settings; an admin connecting
+ * Square once). Folded away, at the foot of the screen, so a patron sees one
+ * quiet line.
+ */
+function StandStaffPanel({ line, ready, onChanged }: { line: string; ready: boolean; onChanged: () => void }) {
+  const { isAdmin } = useAuth();
+  const navigate = useNavigate();
+  return (
+    <details className="pt-4 text-sm text-muted-foreground" onToggle={onChanged}>
+      <summary className="cursor-pointer text-center">Card reader: {ready ? 'ready' : line}</summary>
+      <div className="pt-3 flex flex-col items-center gap-3">
+        <StandReaderStatus isAdmin={isAdmin} />
+        {/* The app has no address bar: this is the way back to the rest of it. */}
+        <Button type="button" variant="ghost" size="sm" onClick={() => { rememberDisplayMode(false); navigate('/staff'); }}>
+          Stop using this iPad as the display
+        </Button>
+      </div>
+    </details>
+  );
+}
+
+function Sale({ snapshot, onPropose, canPay = false, onPay, charging = null, onRetry }: {
+  snapshot: SaleSnapshot;
+  onPropose: (cents: number) => void;
+  /** This display's Stand can take the card, and the till sends sales to it. */
+  canPay?: boolean;
+  onPay?: () => void;
+  charging?: Charging | null;
+  onRetry?: () => void;
+}) {
   // Which sale the patron has made their choice for. Keyed on the sale, so the
   // next patron starts at the prompt without anything having to reset it.
   const [decidedFor, setDecidedFor] = useState<string | null>(null);
@@ -177,7 +347,11 @@ function Sale({ snapshot, onPropose }: { snapshot: SaleSnapshot; onPropose: (cen
     return (
       <FinalTotal
         snapshot={snapshot}
-        onChange={snapshot.phase === 'open' ? () => setDecidedFor(null) : undefined}
+        onChange={snapshot.phase === 'open' && !charging ? () => setDecidedFor(null) : undefined}
+        standPay={canPay && snapshot.standAtDisplay === true && snapshot.payment === 'card'}
+        onPay={onPay}
+        charging={charging}
+        onRetry={onRetry}
       />
     );
   }
@@ -297,8 +471,43 @@ function Breakdown({ snapshot, large }: { snapshot: SaleSnapshot; large?: boolea
  * have already answered. Its figures are still the till's, live — if staff
  * add a ticket, the total here follows.
  */
-function FinalTotal({ snapshot, onChange }: { snapshot: SaleSnapshot; onChange?: () => void }) {
+function FinalTotal({ snapshot, onChange, standPay = false, onPay, charging = null, onRetry }: {
+  snapshot: SaleSnapshot;
+  onChange?: () => void;
+  /** The card is taken here, on this display's Stand. */
+  standPay?: boolean;
+  onPay?: () => void;
+  charging?: Charging | null;
+  onRetry?: () => void;
+}) {
   const paying = snapshot.phase === 'paying';
+  // Which sale the patron tapped Pay for; the till's next snapshot takes over.
+  const [payTappedFor, setPayTappedFor] = useState<string | null>(null);
+  if (standPay) {
+    return (
+      <SaleFrame>
+        <ShowCard snapshot={snapshot} compact />
+        <Breakdown snapshot={snapshot} large />
+        {snapshot.donationCents > 0 && (
+          <p className="text-xl text-center">Thank you for your {dollars(snapshot.donationCents)} gift!</p>
+        )}
+        <StandPayStep
+          snapshot={snapshot}
+          tapped={payTappedFor === snapshot.saleId}
+          onPay={() => { setPayTappedFor(snapshot.saleId); onPay?.(); }}
+          charging={charging}
+          onRetry={onRetry}
+        />
+        {onChange && (
+          <div className="text-center">
+            <button type="button" onClick={onChange} className="text-lg underline underline-offset-4">
+              Change my donation
+            </button>
+          </div>
+        )}
+      </SaleFrame>
+    );
+  }
   return (
     <SaleFrame>
       <ShowCard snapshot={snapshot} compact />
@@ -326,6 +535,68 @@ function FinalTotal({ snapshot, onChange }: { snapshot: SaleSnapshot; onChange?:
         </div>
       )}
     </SaleFrame>
+  );
+}
+
+/**
+ * What the patron reads after a card was not taken. The result's own message
+ * is written for staff (it goes to the till), so the patron gets plain words.
+ */
+function patronMessage(result: StandResult): string {
+  if (result.outcome === 'canceled') return 'The payment was cancelled.';
+  if (result.outcome === 'declined') {
+    return /timed out/i.test(result.message ?? '')
+      ? 'The card reader timed out.'
+      : 'The card was not accepted. Try again, or use another card.';
+  }
+  return 'The card reader could not take the payment.';
+}
+
+/**
+ * Paying on this display's Stand. The Pay button asks the till to start the
+ * sale; Square's own screen then takes over this one for the card, and comes
+ * back here with the result.
+ */
+function StandPayStep({ snapshot, tapped, onPay, charging, onRetry }: {
+  snapshot: SaleSnapshot;
+  tapped: boolean;
+  onPay: () => void;
+  charging: Charging | null;
+  onRetry?: () => void;
+}) {
+  if (charging?.state === 'failed') {
+    return (
+      <div className="space-y-3 text-center" role="alert">
+        <p className="text-xl">{charging.message}</p>
+        {onRetry && (
+          <Button type="button" size="lg" className="h-16 w-full text-xl" onClick={onRetry}>
+            <CreditCard className="mr-2 h-6 w-6" aria-hidden="true" /> Try again
+          </Button>
+        )}
+        <p className="text-muted-foreground">Or ask at the window.</p>
+      </div>
+    );
+  }
+  if (charging?.state === 'working' || snapshot.phase === 'paying') {
+    return (
+      <div className="rounded-lg border border-border p-4 flex items-center gap-3 text-lg" role="status">
+        <CreditCard className="h-6 w-6 shrink-0" aria-hidden="true" />
+        Tap, insert or swipe your card on the reader below the screen.
+      </div>
+    );
+  }
+  if (tapped) {
+    return (
+      <div className="rounded-lg border border-border p-4 flex items-center gap-3 text-lg" role="status">
+        <Loader2 className="h-6 w-6 shrink-0 animate-spin" aria-hidden="true" />
+        One moment — the box office is getting your payment ready.
+      </div>
+    );
+  }
+  return (
+    <Button type="button" size="lg" className="h-16 w-full text-xl" onClick={onPay}>
+      <CreditCard className="mr-2 h-6 w-6" aria-hidden="true" /> Pay {dollars(snapshot.totalCents)} by card
+    </Button>
   );
 }
 

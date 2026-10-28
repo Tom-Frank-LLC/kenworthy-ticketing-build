@@ -1,0 +1,12 @@
+{
+  "name": "@kenworthy/stand-reader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Square Mobile Payments SDK for the box-office Square Stand. A local Capacitor plugin; see docs/briefs/BRIEF-ios-stand-reader.md.",
+  "main": "index.js",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

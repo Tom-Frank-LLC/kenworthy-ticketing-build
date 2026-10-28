@@ -26,8 +26,16 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>The box office uses Bluetooth to connect to the Square card reader.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>The ticket scanner uses the camera to read the QR code on a patron's ticket.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Square needs the box office's location to take card payments.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Square's magstripe card readers connect through the headphone port.</string>
+	<key>SquareApplicationID</key>
+	<string>$(SQUARE_APPLICATION_ID)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -67,6 +75,13 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedExternalAccessoryProtocols</key>
+	<array>
+		<string>com.squareup.s020</string>
+		<string>com.squareup.s025</string>
+		<string>com.squareup.s089</string>
+		<string>com.squareup.protocol.stand</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>

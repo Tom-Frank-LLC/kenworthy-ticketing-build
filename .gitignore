@@ -63,3 +63,7 @@ deno.lock
 
 # wrangler dev state
 .wrangler
+
+# SwiftPM scratch for the local Stand plugin
+native/stand-reader/.build
+native/stand-reader/Package.resolved

@@ -150,6 +150,27 @@ and the password-reset email's `redirectTo`. They now use `appBaseUrl()`
 (`src/lib/site.ts`): the page origin on the web, `SITE_URL` in the app. Any new
 shareable link must do the same.
 
+## window.open after an await does nothing (28 Oct 2026)
+
+"Connect Square" fetched Square's consent URL from `square-mobile`, then
+called `window.open(url, '_blank')`. In production nothing happened: four
+connect attempts in 28 seconds left four unused OAuth states and no
+connection. Measured in the iPad simulator with buttons injected into the
+app's WebView and tapped with `axe`:
+
+| after the tap | `window.open` | `location.assign` |
+|---|---|---|
+| fetch, 287 ms | Safari opens | — |
+| `setTimeout` 1 s, 3 s, 6 s | **nothing, no error** | — |
+| `setTimeout` 3 s | — | Safari opens; the app keeps its page |
+
+WebKit allows a popup only close to the user's tap, and the round trip took
+longer. Capacitor opens a `window.open` it is allowed to see in Safari
+(`createWebViewWith`), but a blocked one never reaches it. A top-level
+navigation to another host is not gesture-gated: Capacitor's navigation policy
+cancels it and hands it to Safari. Anything that opens an external link after
+awaiting something must navigate, not `window.open`.
+
 ## Recipe: evaluating JS inside the simulator's WebView
 
 1. Build Debug for the simulator (Capacitor makes the WebView inspectable in
@@ -159,7 +180,11 @@ shareable link must do the same.
    stale one under `/private/tmp` refuses connections.
 3. `ios_webkit_debug_proxy -s unix:<that path>`; `curl localhost:9222/json`
    lists pages and their `webSocketDebuggerUrl`.
-4. Send `Runtime.evaluate` over that websocket. WebKit ignores `awaitPromise`,
+4. Send `Runtime.evaluate` over that websocket. **On the iOS 27 runtime the
+   page socket answers "'Runtime' domain was not found"**: commands must be
+   wrapped in `Target.sendMessageToTarget` (target id from the
+   `Target.targetCreated` event the socket sends first), and replies arrive
+   inside `Target.dispatchMessageFromTarget`. WebKit ignores `awaitPromise`,
    so for async work store the result on `window` and poll it. Do not call
    `.click()` synchronously inside an evaluate: a navigation mid-evaluate wedges
    the connection. Wrap it in `setTimeout`.

@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
-import { QrCode, ScanLine, ShoppingCart } from 'lucide-react';
+import { MonitorSmartphone, QrCode, ScanLine, ShoppingCart } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { standAvailable } from '@/lib/standReader';
+import { DISPLAY_PATH } from '@/lib/displayMode';
 
 /**
  * The Staff section — one home for the three things done at the counter.
@@ -43,6 +45,17 @@ const tools: Array<{
   },
 ];
 
+/**
+ * In the iOS app only: the iPad in the Square Stand outside the glass becomes
+ * the patron-facing display, and takes the card (BRIEF-stand-at-patron-display.md).
+ */
+const displayTool = {
+  to: DISPLAY_PATH,
+  label: 'Patron-facing display',
+  blurb: 'Make this iPad, in its Square Stand, the screen the patron sees and pays on.',
+  icon: MonitorSmartphone,
+};
+
 export default function StaffDashboard() {
   // The route is already wrapped in StaffOnly, so anyone rendering this has a
   // role. Read only for the greeting.
@@ -56,7 +69,7 @@ export default function StaffDashboard() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tools.map(({ to, label, blurb, icon: Icon }) => (
+        {[...tools, ...(standAvailable() ? [displayTool] : [])].map(({ to, label, blurb, icon: Icon }) => (
           <Link key={to} to={to} className="group focus-visible:outline-none">
             <Card className="glass h-full transition-colors group-hover:border-primary/60 group-focus-visible:border-primary">
               <CardContent className="p-5 space-y-2">
