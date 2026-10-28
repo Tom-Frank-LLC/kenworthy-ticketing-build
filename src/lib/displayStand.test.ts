@@ -1,12 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
+const native = vi.hoisted(() => ({ app: false }));
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => false, isPluginAvailable: () => false },
+  Capacitor: { isNativePlatform: () => native.app, isPluginAvailable: () => native.app },
   registerPlugin: () => ({}),
 }));
 
-import { cancelDisplayCharge, displayChargeRunning, runDisplayCharge, type ChargeDeps } from './displayStand';
+import {
+  cancelDisplayCharge, DISPLAY_NOT_SIGNED_IN, displayChargeRunning, displayStandStatus, runDisplayCharge, type ChargeDeps,
+} from './displayStand';
 
 const request = { saleId: 'sale-1', squareOrderId: 'ORDER_1' };
 const details = { order_token: 'tok-1', amount_cents: 2620, reference_id: 'tok-1', square_order_id: 'ORDER_1', ticket_count: 2 };
@@ -125,5 +128,17 @@ describe('cancelling a charge on the display', () => {
     expect(second.outcome).toBe('error');
     release();
     expect((await first).outcome).toBe('paid');
+  });
+});
+
+describe('displayStandStatus', () => {
+  it('tells the till the display is signed out, not the server\'s "Not authenticated"', () => {
+    native.app = true;
+    try {
+      expect(displayStandStatus(null, 'Not authenticated')).toEqual({ ready: false, line: DISPLAY_NOT_SIGNED_IN });
+      expect(displayStandStatus(null, 'Square is down')).toEqual({ ready: false, line: 'Square is down' });
+    } finally {
+      native.app = false;
+    }
   });
 });

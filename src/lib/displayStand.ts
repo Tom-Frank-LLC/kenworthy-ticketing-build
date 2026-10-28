@@ -157,10 +157,14 @@ async function charge(request: ChargeRequest, deps: ChargeDeps, me: { cancelled:
   return { ...base, outcome: 'error', paymentId, message: 'Square has not finished the payment yet. Staff: check the sale before charging again.' };
 }
 
+/** The display app is signed out, so the server will not let its Stand charge. */
+export const DISPLAY_NOT_SIGNED_IN = 'the display is not signed in as staff (tap the logo on the display to sign in)';
+
 /** The display's Stand, as the till's reader picker should describe it. */
 export function displayStandStatus(status: StandStatus | null, problem: string | null): StandStatusMessage {
   if (!standAvailable()) return { ready: false, line: 'the display is not the Kenworthy app' };
-  if (problem) return { ready: false, line: problem };
+  // The server's word for a missing or expired session.
+  if (problem) return { ready: false, line: /not authenticated/i.test(problem) ? DISPLAY_NOT_SIGNED_IN : problem };
   const stand = standOf(status);
   const ready = !!status?.authorized && status.location !== 'denied'
     && (stand?.status === 'ready' || (status.environment === 'sandbox' && (status.readers?.length ?? 0) > 0));

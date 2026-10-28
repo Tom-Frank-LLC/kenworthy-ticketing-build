@@ -139,7 +139,7 @@ export default function StaffPOS() {
   // A gift the patron adds at the counter. It rides on the same payment — one
   // combined amount to the terminal, or one handful of cash — and is recorded
   // as contribution income, untaxed, exactly like the online path.
-  const [donationCents, setDonationCents] = useState(0);
+  const [chosenDonationCents, setDonationCents] = useState(0);
   // Who set it: shown beside the amount, so a gift chosen on the patron-facing
   // display is never a surprise to the person about to charge it.
   const [donationFromDisplay, setDonationFromDisplay] = useState(false);
@@ -153,6 +153,11 @@ export default function StaffPOS() {
   const donationHeldRef = useRef(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  // A gift is rung up only on a card sale. Cash gifts go in the donation box
+  // and are counted at the end of the night, so a cash sale carries none:
+  // not in the total, not in Square, not recorded as a donation (Tom, 28 Oct
+  // 2026). Derived rather than cleared, so no render can sell cash with a gift.
+  const donationCents = paymentMethod === 'card' ? chosenDonationCents : 0;
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle');
   const [squareCheckoutId, setSquareCheckoutId] = useState<string | null>(null);
   // Which Square Terminal this station sends card sales to.
@@ -1454,12 +1459,14 @@ export default function StaffPOS() {
                     </div>
                   </div>
 
-                  <DonationPrompt
-                    variant="staff"
-                    valueCents={donationCents}
-                    onChange={(cents) => { setDonationCents(cents); setDonationFromDisplay(false); }}
-                    disabled={selling || paymentStatus === 'processing'}
-                  />
+                  {paymentMethod === 'card' && (
+                    <DonationPrompt
+                      variant="staff"
+                      valueCents={donationCents}
+                      onChange={(cents) => { setDonationCents(cents); setDonationFromDisplay(false); }}
+                      disabled={selling || paymentStatus === 'processing'}
+                    />
+                  )}
 
                   {/* Payment status indicator */}
                   {paymentStatus === 'processing' && (

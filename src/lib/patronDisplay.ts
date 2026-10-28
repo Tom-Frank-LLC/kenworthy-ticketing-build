@@ -224,12 +224,14 @@ export interface StandStatusMessage {
  */
 export function acceptableProposal(
   p: unknown,
-  current: Pick<SaleSnapshot, 'saleId' | 'phase'>,
+  current: Pick<SaleSnapshot, 'saleId' | 'phase'> & Partial<Pick<SaleSnapshot, 'payment'>>,
 ): p is DonationProposal {
   if (!p || typeof p !== 'object') return false;
   const { saleId, cents } = p as Record<string, unknown>;
   if (saleId !== current.saleId) return false;
   if (current.phase !== 'open') return false;
+  // A cash sale carries no gift: cash gifts go in the donation box.
+  if (current.payment === 'cash') return false;
   if (typeof cents !== 'number' || !Number.isInteger(cents)) return false;
   return cents === 0 || (cents >= 100 && cents <= MAX_BUNDLED_DONATION_CENTS);
 }

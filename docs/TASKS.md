@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**152 briefs** — 136 shipped, 6 built, 9 open, 0 needs triage, 1 closed.
+**152 briefs** — 137 shipped, 5 built, 9 open, 0 needs triage, 1 closed.
 
 ## Built, not deployed
 
@@ -13,7 +13,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
-- `P1` **The patron pays on the Square Stand at the patron-facing display, straight from the donation step**<br>`feature` — [brief](briefs/BRIEF-stand-at-patron-display.md)
 - `P2` **The current site ships as an iOS app (Capacitor), with online checkout working inside it**<br>`feature` — [brief](briefs/BRIEF-capacitor-ios-app.md) · [notes](briefs/../FINDINGS-ios-webview-origin.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
@@ -32,6 +31,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **The patron pays on the Square Stand at the patron-facing display, straight from the donation step**<br>`feature` — `#392` — [brief](briefs/BRIEF-stand-at-patron-display.md)
 - **Linking a production or pass to Square ignores archived items, and an archived-only title says "unarchive" instead of "create"**<br>`bug` — `#401` — [brief](briefs/BRIEF-square-link-ignore-archived.md)
 - **Rental contract takes an optional second theater-rental rate, and is set in Georgia at a smaller size**<br>`feature` — `#398` — [brief](briefs/BRIEF-contract-second-rate-classic-serif.md)
 - **The event drawer shows the whole poster, not a 16:9 crop, when there is no trailer**<br>`ux` — `#395` — [brief](briefs/BRIEF-drawer-full-poster.md)

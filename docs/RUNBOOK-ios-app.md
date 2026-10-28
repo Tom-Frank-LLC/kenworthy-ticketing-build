@@ -162,13 +162,19 @@ Stand, outside the glass.
 3. On the till: Card reader → **Square Stand at the patron-facing display**
    (the default for a new station), then **Pair a patron-facing display**, and
    type the code into the iPad.
-4. Once, ever, per environment: an admin opens the display's staff panel (the
-   "Card reader:" line at the foot of the screen) and presses **Connect
+4. Once, ever, per environment: an admin taps the **Kenworthy logo** at the
+   top of the display to open its staff options, and presses **Connect
    Square**, approving as the Kenworthy Square account in Safari.
 5. The till's picker should read **Stand ready**.
 
-The display's staff panel also has Square's reader settings and **Stop using
-this iPad as the display** (the app has no address bar; this is the way out).
+The staff options (behind the logo; they close after a minute or when a sale
+starts) also have **Sign in as staff** when the app is signed out, Square's
+reader settings, **Use a different code**, and **Stop using this iPad as the
+display** (the app has no address bar; this is the way out).
+
+If the till says the Stand is "not ready: … not signed in as staff", the app
+is sitting on the display signed out (the display page needs no sign-in; the
+Stand does). Open the staff options and sign in.
 
 For a special event without a display, the till itself can run on the Stand
 iPad: Card reader → **Square Stand (this iPad)**.
