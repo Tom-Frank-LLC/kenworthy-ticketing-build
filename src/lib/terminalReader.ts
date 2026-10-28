@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invokeFunction } from '@/lib/functions';
-import { STAND_READER_ID, standAvailable } from '@/lib/standReader';
+import { DISPLAY_STAND_READER_ID, STAND_READER_ID, standAvailable } from '@/lib/standReader';
 
 /**
  * Which Square Terminal this station sends card sales to.
@@ -25,6 +25,10 @@ export interface TerminalReader {
 const KEY = 'kenworthy.pos.terminalReaderId';
 
 const STAND_ENTRY: TerminalReader = { id: STAND_READER_ID, name: 'Square Stand (this iPad)', status: 'AVAILABLE' };
+// Listed on every till, app or browser: the display iPad takes the card, so
+// the till can be anything. Whether it is ready is the display's to say
+// (useTillDisplay().stand), shown beside the picker.
+const DISPLAY_STAND_ENTRY: TerminalReader = { id: DISPLAY_STAND_READER_ID, name: 'Square Stand at the patron-facing display', status: 'AVAILABLE' };
 
 export function readChosenReaderId(): string | null {
   try { return localStorage.getItem(KEY); } catch { return null; }
@@ -50,23 +54,20 @@ export function useTerminalReader() {
       // In the iOS app, the Stand the iPad sits in is a reader too. It is not
       // a Square device id: card sales to it go through the app, not the
       // Terminal API (src/lib/standReader.ts).
-      if (standAvailable()) res.devices = [STAND_ENTRY, ...res.devices];
+      res.devices = [DISPLAY_STAND_ENTRY, ...(standAvailable() ? [STAND_ENTRY] : []), ...res.devices];
       setReaders(res.devices);
       setError(null);
-      // A fresh station takes the configured default, if there is one and it is
-      // a reader we can see; otherwise it waits to be told. In the app the
-      // default is the Stand: the app is on the counter for that reason.
+      // A station keeps what it chose. A fresh one starts on the usual setup,
+      // the Stand at the patron-facing display; the Stand under this iPad and
+      // the Terminals are there to pick for other setups.
       setChosenId((current) => {
         if (current && res.devices.some((d) => d.id === current)) return current;
-        const fallback = standAvailable()
-          ? STAND_READER_ID
-          : res.default_id && res.devices.some((d) => d.id === res.default_id) ? res.default_id : null;
-        storeChosenReaderId(fallback);
-        return fallback;
+        storeChosenReaderId(DISPLAY_STAND_READER_ID);
+        return DISPLAY_STAND_READER_ID;
       });
     } catch (err) {
-      // The Terminals could not be listed; the Stand needs no list.
-      if (standAvailable()) setReaders([STAND_ENTRY]);
+      // The Terminals could not be listed; neither Stand needs the list.
+      setReaders([DISPLAY_STAND_ENTRY, ...(standAvailable() ? [STAND_ENTRY] : [])]);
       setError(err instanceof Error ? err.message : 'Could not list the card readers');
     } finally {
       setLoading(false);

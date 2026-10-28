@@ -149,3 +149,45 @@ run('confirm_sale: both checkout_id and payment_id, or neither, is a 400', async
   assertEquals((await handler(post({ action: 'confirm_sale', order_token: TOKEN }))).status, 400);
   assert(!calls.some((c) => c.url.pathname.startsWith('/v2/')));
 });
+
+// ── stand_charge: the Stand at the patron-facing display ────────────────────
+
+const ORDER = 'ORDER_STAND_1';
+const squareOrder = (over: Record<string, unknown> = {}): Route => (c) =>
+  c.method === 'GET' && c.url.pathname === `/v2/orders/${ORDER}`
+    ? jsonResponse({ order: { id: ORDER, state: 'OPEN', location_id: LOC, reference_id: TOKEN, total_money: { amount: 2620, currency: 'USD' }, ...over } })
+    : undefined;
+
+run('stand_charge: the amount and token come from Square’s order, held to the rows', async () => {
+  useRoutes([users, gate, pendingTickets(), noPasses, squareOrder()]);
+  const res = await handler(post({ action: 'stand_charge', square_order_id: ORDER }));
+  assertEquals(res.status, 200);
+  const j = await res.json();
+  assertEquals(j.amount_cents, 2620);
+  assertEquals(j.order_token, TOKEN);
+  assertEquals(j.reference_id, TOKEN);
+  assertEquals(j.ticket_count, 2);
+});
+
+for (const [why, over, status] of [
+  ['another location', { location_id: 'OTHER' }, 409],
+  ['not OPEN', { state: 'COMPLETED' }, 409],
+  ['short of the rows', { total_money: { amount: 2119 } }, 409],
+  ['more than rows plus the gift cap', { total_money: { amount: 2120 + 1_000_000 } }, 409],
+] as const) {
+  run(`stand_charge: an order ${why} is refused`, async () => {
+    useRoutes([users, gate, pendingTickets(), noPasses, squareOrder(over as Record<string, unknown>)]);
+    assertEquals((await handler(post({ action: 'stand_charge', square_order_id: ORDER }))).status, status);
+  });
+}
+
+run('stand_charge: rows that are no longer pending are refused', async () => {
+  useRoutes([users, gate, pendingTickets('confirmed'), noPasses, squareOrder()]);
+  assertEquals((await handler(post({ action: 'stand_charge', square_order_id: ORDER }))).status, 409);
+});
+
+run('stand_charge: an order naming no box-office sale is refused', async () => {
+  const noRows: Route = (c) => (c.url.pathname === '/rest/v1/tickets' && c.method === 'GET' ? rows(c, []) : undefined);
+  useRoutes([users, gate, pendingTickets(), noRows, noPasses, squareOrder({ reference_id: 'aaaaaaaa-0000-0000-0000-000000000000' })]);
+  assertEquals((await handler(post({ action: 'stand_charge', square_order_id: ORDER }))).status, 404);
+});

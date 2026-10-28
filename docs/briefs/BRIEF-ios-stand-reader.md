@@ -10,6 +10,12 @@ verified: false
 
 # Brief: the Square Stand's reader drives the Staff POS (iOS app, Phase 2)
 
+> **Setup corrected 28 Oct 2026:** the iPad in the Stand is the
+> **patron-facing display** outside the glass, not the till — see
+> `BRIEF-stand-at-patron-display.md`. What this brief built (the till itself on
+> the Stand iPad, "Square Stand (this iPad)") stays as the alternative setup,
+> for a special event with no display; it is no longer the default.
+
 **Requested by:** Tom. This was the purpose of the iOS app from the start: the
 box-office iPad sits in a **Square Stand (2nd generation, USB-C)**, and card
 sales rung up in `/staff/pos` should be taken by that Stand, with the

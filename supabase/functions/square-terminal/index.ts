@@ -6,7 +6,7 @@ import { canonicalTier, variationName } from "../_shared/square-catalog.ts";
 import { MAX_BUNDLED_DONATION_CENTS } from "../_shared/pricing.ts";
 import { actorHeaders, logStaffAction } from "../_shared/audit.ts";
 import { requireRole } from "../_shared/callers.ts";
-import { checkoutMatchesOrder, logToken, paymentMatchesOrder, REFERENCE_ID_MAX } from "./binding.ts";
+import { checkoutMatchesOrder, logToken, paymentMatchesOrder, REFERENCE_ID_MAX, standChargeFromOrder } from "./binding.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -64,6 +64,9 @@ Deno.serve(async (req) => {
     }
     if (action === "confirm_sale") {
       return await confirmSale(square.config, params, corsHeaders, caller);
+    }
+    if (action === "stand_charge") {
+      return await standCharge(square.config, params, corsHeaders, caller);
     }
 
     return new Response(
@@ -431,6 +434,43 @@ async function confirmSale(
     reader: standPaymentId ? "stand" : "terminal",
   });
   return jsonRes(headers, { confirmed: true, ticket_ids: ids, payment_id: paymentId, amount_cents: cents });
+}
+
+/**
+ * What the Stand at the patron-facing display charges for a sale the till
+ * started (BRIEF-stand-at-patron-display.md). The till names only the Square
+ * Order, over a channel anyone with the pairing code can write to; the amount
+ * and the order token come from here, read from Square and held to the
+ * pending rows by standChargeFromOrder. Staff only, like every action here:
+ * the display iPad is signed in as staff.
+ */
+async function standCharge(
+  config: SquareConfig,
+  params: { square_order_id?: string },
+  headers: Record<string, string>,
+  caller: Caller,
+) {
+  const orderId = String(params.square_order_id ?? "").trim();
+  if (!orderId) return jsonRes(headers, { error: "square_order_id is required" }, 400);
+  const r = await squareFetch(config, `/orders/${encodeURIComponent(orderId)}`);
+  if (!r.ok) return jsonRes(headers, { error: r.status === 404 ? "No such Square order" : "Could not read the sale from Square" }, r.status === 404 ? 404 : 502);
+  const order = r.data?.order;
+  const token = typeof order?.reference_id === "string" ? order.reference_id.trim() : "";
+  const { rows, cents } = token ? await pendingRows(admin(caller.id), token) : { rows: [], cents: 0 };
+  if (rows.length === 0) return jsonRes(headers, { error: "No card sale is waiting under that order" }, 404);
+  if (rows.some((t: any) => t.status !== "pending")) return jsonRes(headers, { error: "That sale is not awaiting a card" }, 409);
+  const charge = standChargeFromOrder(order, config.locationId, cents, MAX_BUNDLED_DONATION_CENTS);
+  if (!charge.ok) {
+    console.error(`[square-terminal] stand_charge refused for ${logToken(token)}: ${charge.error}`);
+    return jsonRes(headers, { error: charge.error }, charge.status);
+  }
+  return jsonRes(headers, {
+    order_token: charge.orderToken,
+    amount_cents: charge.amountCents,
+    reference_id: charge.orderToken.slice(0, REFERENCE_ID_MAX),
+    square_order_id: orderId,
+    ticket_count: rows.length,
+  });
 }
 
 /**

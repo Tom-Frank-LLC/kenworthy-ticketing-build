@@ -31,12 +31,12 @@ import { TerminalReaderPicker } from '@/components/pos/TerminalReaderPicker';
 import { PatronDisplayPairing } from '@/components/pos/PatronDisplayPairing';
 import {
   useTillDisplay, safePosterUrl, toDisplayDescription,
-  type DisplayProduction, type SaleSnapshot,
+  type DisplayProduction, type SaleSnapshot, type StandResult,
 } from '@/lib/patronDisplay';
 import { displayedRuntime } from '@/components/ProductionMedia';
 import { htmlToPlainText } from '@/lib/plainText';
 import { useTerminalReader } from '@/lib/terminalReader';
-import { ensureStandAuthorized, STAND_READER_ID, standFailureMessage, takeStandPayment } from '@/lib/standReader';
+import { DISPLAY_STAND_READER_ID, ensureStandAuthorized, STAND_READER_ID, standFailureMessage, takeStandPayment } from '@/lib/standReader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
 import { type Seat, type PriceTier, type TicketLineItem, newOrderToken } from '@/lib/booking';
@@ -77,6 +77,27 @@ interface ShowingOption {
 const DISPLAY_COLUMNS = 'poster_url, rating, genre, duration_minutes, show_runtime, description';
 
 type PaymentStatus = 'idle' | 'processing' | 'completed' | 'failed';
+
+/** A card sale handed to the Stand at the patron-facing display, awaiting its answer. */
+interface DisplayCharge {
+  saleId: string;
+  orderToken: string;
+  ticketIds: string[];
+  /** Staff pressed Cancel: a "canceled" from the display now releases the seats. */
+  cancelRequested: boolean;
+  /** A "paid" is being confirmed; repeats of it are ignored. */
+  confirming: boolean;
+}
+
+/** How long Cancel waits for the display to say no card was taken. */
+const DISPLAY_CANCEL_WAIT_MS = 10_000;
+
+/** The chosen reader, as the Charge button and the waiting line name it. */
+function readerLabel(id: string | null): string {
+  if (id === STAND_READER_ID) return 'the Stand';
+  if (id === DISPLAY_STAND_READER_ID) return 'the patron-facing display';
+  return 'Terminal';
+}
 
 function toDisplayProduction(p: any): DisplayProduction | null {
   if (!p) return null;
@@ -397,16 +418,33 @@ export default function StaffPOS() {
     ticketsCents: Math.round(grandTotal * 100),
     donationCents,
     totalCents: Math.round(chargeTotal * 100),
-  }), [saleId, ticketCount, quoteError, inFlight, paymentMethod, selectedShowing, grandTotal, donationCents, chargeTotal]);
+    standAtDisplay: reader.chosenId === DISPLAY_STAND_READER_ID && paymentMethod === 'card',
+  }), [saleId, ticketCount, quoteError, inFlight, paymentMethod, selectedShowing, grandTotal, donationCents, chargeTotal, reader.chosenId]);
 
   useEffect(() => { if (!inFlight) donationHeldRef.current = false; }, [inFlight]);
+
+  // The Stand at the patron-facing display (BRIEF-stand-at-patron-display.md):
+  // the sale waiting on it, and what staff have asked of it.
+  const displayChargeRef = useRef<DisplayCharge | null>(null);
+  const [displayCancel, setDisplayCancel] = useState<'idle' | 'asked' | 'unanswered'>('idle');
+  // Set once handleSell exists, further down; the patron's Pay tap calls it.
+  const handleSellRef = useRef<() => void>(() => {});
+  const onStandResultRef = useRef<(r: StandResult) => void>(() => {});
 
   const patronDisplay = useTillDisplay(displaySnapshot, useCallback((cents: number) => {
     if (donationHeldRef.current) return;
     setDonationCents(cents);
     setDonationFromDisplay(true);
     if (cents > 0) toast.info(`The patron added a $${(cents / 100).toFixed(2)} donation on the patron-facing display.`);
-  }, []));
+  }, []), undefined, {
+    // The patron's Pay is the Charge button pressed for them: the same checks
+    // (email, reader) and the same path.
+    onPay: () => {
+      toast.info('The patron is ready to pay on the patron-facing display.');
+      handleSellRef.current();
+    },
+    onStandResult: (r) => onStandResultRef.current(r),
+  });
   // Read at completion rather than captured at the click: the card path
   // finishes inside a polling closure made several renders earlier.
   const displaySnapshotRef = useRef(displaySnapshot);
@@ -744,13 +782,38 @@ export default function StaffPOS() {
     }
 
     const onStand = reader.chosenId === STAND_READER_ID;
+    const onDisplayStand = reader.chosenId === DISPLAY_STAND_READER_ID;
     try {
       // Before the rows: a Stand that cannot take a payment must not hold seats.
       if (onStand) await ensureStandAuthorized();
+      if (onDisplayStand && !patronDisplay.stand?.ready) {
+        throw new Error(
+          !patronDisplay.code ? 'Pair the patron-facing display first (top of the page).'
+            : !patronDisplay.stand ? 'The patron-facing display has not reported a card reader. It must be the Kenworthy app on the Stand iPad, signed in.'
+            : `The Stand at the patron-facing display is not ready: ${patronDisplay.stand.line}.`,
+        );
+      }
 
       ({ ticketIds, orderToken } = await createTickets('card', null, 'pending'));
 
       const idempotencyKey = crypto.randomUUID();
+      if (onDisplayStand) {
+        // The server sets the amount and creates the Square Order; the display
+        // is told only the order's id (the channel is public to anyone with
+        // the code) and asks the server what to charge for it. The answer
+        // comes back through onStandResult.
+        const sale = await invokeFunction<{ square_order_id: string | null }>(
+          'square-terminal',
+          { action: 'start_sale', order_token: orderToken, donation_cents: donationCents, idempotency_key: idempotencyKey, reader: 'stand' },
+        );
+        if (!sale.square_order_id) {
+          throw new Error('Square did not create the order the Stand charges against. Try again, use a Terminal, or take cash.');
+        }
+        displayChargeRef.current = { saleId, orderToken, ticketIds, cancelRequested: false, confirming: false };
+        setDisplayCancel('idle');
+        patronDisplay.charge({ saleId, squareOrderId: sale.square_order_id });
+        return;
+      }
       if (onStand) {
         // The server sets the amount, the Square Order and the reference; the
         // Stand takes exactly that; confirm reads the payment back from Square.
@@ -854,6 +917,66 @@ export default function StaffPOS() {
     poll();
   }, [addTransaction, resetForm, refreshAfterSale, recordDonation, deliverPos, releaseHeldSale, announceComplete]);
 
+  /** The display's Stand answered for the sale waiting on it. */
+  onStandResultRef.current = (r: StandResult) => {
+    const pending = displayChargeRef.current;
+    if (!pending || pending.saleId !== r.saleId) return;
+    if (r.outcome === 'paid' && r.paymentId) {
+      if (pending.confirming) return;
+      pending.confirming = true;
+      setDisplayCancel('idle');
+      // The server confirms from Square's own record; the display already
+      // asked, so this usually answers already_confirmed.
+      pollCheckoutStatus({ payment_id: r.paymentId }, pending.orderToken, pending.ticketIds);
+      displayChargeRef.current = null;
+      return;
+    }
+    // Once staff have cancelled, every answer but "paid" means no card was
+    // taken — Square may call it cancelled, declined or timed out — except a
+    // payment Square has not settled, which staff must look at.
+    if (pending.cancelRequested && r.outcome === 'error' && r.paymentId) {
+      setDisplayCancel('unanswered');
+      toast.warning(`Patron-facing display: ${r.message ?? 'Square has not settled the payment.'}`, { duration: 15000 });
+      return;
+    }
+    if (pending.cancelRequested) {
+      displayChargeRef.current = null;
+      setDisplayCancel('idle');
+      void releaseHeldSale(pending.orderToken, pending.ticketIds, 'Cancelled at the till (patron-facing display)');
+      setPaymentStatus('idle');
+      // A new sale id, so the display starts this patron's sale afresh.
+      setSaleId(crypto.randomUUID());
+      toast.info('Sale cancelled. No card was charged; the seats are released.');
+      return;
+    }
+    // Declined, cancelled by the patron, or an error: the patron can try again
+    // on the display, or staff cancel.
+    toast.warning(`Patron-facing display: ${r.message ?? 'the card was not taken.'} The patron can try again there, or press Cancel.`, { duration: 10000 });
+  };
+
+  const cancelDisplayCharge = () => {
+    const pending = displayChargeRef.current;
+    if (!pending) return;
+    pending.cancelRequested = true;
+    setDisplayCancel('asked');
+    patronDisplay.cancelCharge(pending.saleId);
+    setTimeout(() => {
+      if (displayChargeRef.current === pending && !pending.confirming) setDisplayCancel('unanswered');
+    }, patronDisplay.displays > 0 ? DISPLAY_CANCEL_WAIT_MS : 0);
+  };
+
+  /** Staff's word, after the display did not answer, that no card was taken. */
+  const forceReleaseDisplayCharge = async () => {
+    const pending = displayChargeRef.current;
+    if (!pending || pending.confirming) return;
+    displayChargeRef.current = null;
+    setDisplayCancel('idle');
+    await releaseHeldSale(pending.orderToken, pending.ticketIds, 'Released at the till; the patron-facing display did not answer');
+    setPaymentStatus('idle');
+    setSaleId(crypto.randomUUID());
+    toast.info('Seats released.');
+  };
+
   const handleSell = () => {
     if (!selectedShowingId || ticketCount === 0) {
       toast.error('Select a showing and at least one ticket');
@@ -881,6 +1004,11 @@ export default function StaffPOS() {
     } else {
       handleCardSale();
     }
+  };
+
+  handleSellRef.current = () => {
+    if (selling || paymentStatus === 'processing') return;
+    handleSell();
   };
 
   const openResend = (tx: SessionTransaction) => {
@@ -1006,7 +1134,7 @@ export default function StaffPOS() {
 
       <div className="mb-4 space-y-3">
         <TimeClockWidget />
-        <TerminalReaderPicker reader={reader} isAdmin={isAdmin} />
+        <TerminalReaderPicker reader={reader} isAdmin={isAdmin} display={patronDisplay} />
         <PatronDisplayPairing display={patronDisplay} />
       </div>
 
@@ -1338,8 +1466,30 @@ export default function StaffPOS() {
                     <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/30">
                       <Loader2 className="h-5 w-5 text-primary animate-spin" />
                       <span className="text-sm text-primary font-medium">
-                        {reader.chosenId === STAND_READER_ID ? 'Waiting for the card on the Stand…' : 'Waiting for payment on terminal...'}
+                        {reader.chosenId === STAND_READER_ID ? 'Waiting for the card on the Stand…'
+                          : reader.chosenId === DISPLAY_STAND_READER_ID ? 'Waiting for the patron to pay on the Stand at the patron-facing display…'
+                          : 'Waiting for payment on terminal...'}
                       </span>
+                    </div>
+                  )}
+                  {/* Only for the display's Stand: a Terminal is cancelled on
+                      the Terminal, and the Stand under the till on its own screen. */}
+                  {paymentStatus === 'processing' && displayChargeRef.current && (
+                    <div className="space-y-2">
+                      {displayCancel === 'unanswered' ? (
+                        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm space-y-2" role="alert">
+                          <p>The patron-facing display did not answer, so it is not known whether the card was charged. Check the Stand&rsquo;s screen.</p>
+                          <p>Release the seats only if no card was charged.</p>
+                          <div className="flex gap-2">
+                            <Button type="button" variant="destructive" size="sm" onClick={() => void forceReleaseDisplayCharge()}>No card was charged — release the seats</Button>
+                            <Button type="button" variant="outline" size="sm" onClick={cancelDisplayCharge}>Ask the display again</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button type="button" variant="outline" className="w-full" onClick={cancelDisplayCharge} disabled={displayCancel === 'asked'}>
+                          {displayCancel === 'asked' ? 'Cancelling on the display…' : 'Cancel sale'}
+                        </Button>
+                      )}
                     </div>
                   )}
                   {paymentStatus === 'completed' && (
@@ -1379,7 +1529,7 @@ export default function StaffPOS() {
                         )}
                         {paymentMethod === 'cash'
                           ? `Sell ${ticketCount} Ticket(s) — Cash $${chargeTotal.toFixed(2)}`
-                          : `Charge $${chargeTotal.toFixed(2)} on ${reader.chosenId === STAND_READER_ID ? 'the Stand' : 'Terminal'}`
+                          : `Charge $${chargeTotal.toFixed(2)} on ${readerLabel(reader.chosenId)}`
                         }
                       </>
                     )}

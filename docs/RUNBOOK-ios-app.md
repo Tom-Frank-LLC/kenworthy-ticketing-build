@@ -149,6 +149,30 @@ bump `native/stand-reader/Package.swift` deliberately.
 - Production payments need the app's signature registered in Square's
   Developer Console (bundle `org.kenworthy.tickets`, team `26H64FNAKG`).
 
+### Setting up the Stand iPad as the patron-facing display
+
+The usual setup (`docs/briefs/BRIEF-stand-at-patron-display.md`): staff ring
+up on any device; the patron chooses a donation and pays on the iPad in the
+Stand, outside the glass.
+
+1. On the Stand iPad, in the Kenworthy app: sign in as staff (for now an
+   existing staff account; later a dedicated display account). MFA applies.
+2. Staff → **Patron-facing display**. The iPad remembers it is the display and
+   reopens on it after the app is closed or updated.
+3. On the till: Card reader → **Square Stand at the patron-facing display**
+   (the default for a new station), then **Pair a patron-facing display**, and
+   type the code into the iPad.
+4. Once, ever, per environment: an admin opens the display's staff panel (the
+   "Card reader:" line at the foot of the screen) and presses **Connect
+   Square**, approving as the Kenworthy Square account in Safari.
+5. The till's picker should read **Stand ready**.
+
+The display's staff panel also has Square's reader settings and **Stop using
+this iPad as the display** (the app has no address bar; this is the way out).
+
+For a special event without a display, the till itself can run on the Stand
+iPad: Card reader → **Square Stand (this iPad)**.
+
 ## App Store Connect notes
 
 - **App Privacy:** camera (ticket scanner, staff only); contact info and

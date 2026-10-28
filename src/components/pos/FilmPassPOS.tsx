@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { PaymentMethodSelector, type PaymentMethod } from './PaymentMethodSelector';
 import { QrScanner } from '@/components/admin/QrScanner';
-import { STAND_READER_ID } from '@/lib/standReader';
+import { DISPLAY_STAND_READER_ID, STAND_READER_ID } from '@/lib/standReader';
 import { invokeFunction } from '@/lib/functions';
 import { formatShowtime } from '@/lib/datetime';
 import {
@@ -188,7 +188,7 @@ export function FilmPassPOS({ readerId }: { readerId: string | null }) {
     // Pass sales on the Stand are not built yet (BRIEF-ios-stand-reader.md):
     // this path is a bare-amount Terminal checkout with no order to bind a
     // Stand payment to.
-    if (readerId === STAND_READER_ID) throw new Error('Film passes cannot be paid on the Stand yet. Take cash, or use a Square Terminal.');
+    if (readerId === STAND_READER_ID || readerId === DISPLAY_STAND_READER_ID) throw new Error('Film passes cannot be paid on the Stand yet. Take cash, or use a Square Terminal.');
     const created = await invokeFunction<{
       simulated?: boolean;
       checkout?: { id?: string; status?: string };

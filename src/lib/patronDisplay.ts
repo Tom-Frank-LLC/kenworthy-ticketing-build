@@ -120,6 +120,12 @@ export interface SaleSnapshot {
   ticketsCents: number;
   donationCents: number;
   totalCents: number;
+  /**
+   * The till takes this sale's card on the Square Stand the display sits in
+   * (BRIEF-stand-at-patron-display.md), so the display offers the patron a
+   * Pay button once the gift is chosen. Absent from older tills: false.
+   */
+  standAtDisplay?: boolean;
 }
 
 export interface DonationProposal {
@@ -168,7 +174,47 @@ export const EVENTS = {
   /** The display asks for the current snapshot (on join, on wake). */
   hello: 'hello',
   donation: 'donation',
+  // The Stand at the display (BRIEF-stand-at-patron-display.md):
+  /** display → till: the patron tapped Pay. A request; the till decides. */
+  pay: 'pay',
+  /** till → display: take the card for this Square Order. */
+  charge: 'charge',
+  /** till → display: staff cancelled; stop the Stand if it is waiting. */
+  chargeCancel: 'charge-cancel',
+  /** display → till: how the card went. */
+  standResult: 'stand-result',
+  /** display → till: whether the display has a Stand that can take a card. */
+  standStatus: 'stand-status',
 } as const;
+
+/**
+ * till → display. Only the Square Order's id: anyone with the pairing code can
+ * read and write this channel, so neither the amount (which the display gets
+ * from the server, for this order) nor the order token (which opens the
+ * tickets) is ever sent on it.
+ */
+export interface ChargeRequest {
+  saleId: string;
+  squareOrderId: string;
+}
+
+/**
+ * display → till. `paid` carries the payment id; the till confirms it with the
+ * server, which reads it from Square, so a forged `paid` confirms nothing.
+ */
+export interface StandResult {
+  saleId: string;
+  outcome: 'paid' | 'declined' | 'canceled' | 'error';
+  paymentId?: string | null;
+  message?: string | null;
+}
+
+/** display → till: whether this display can take a card on its Stand. */
+export interface StandStatusMessage {
+  ready: boolean;
+  /** One line for the till's reader picker. */
+  line: string;
+}
 
 /**
  * Whether a proposal may set the till's donation. The same bounds the
@@ -186,6 +232,36 @@ export function acceptableProposal(
   if (current.phase !== 'open') return false;
   if (typeof cents !== 'number' || !Number.isInteger(cents)) return false;
   return cents === 0 || (cents >= 100 && cents <= MAX_BUNDLED_DONATION_CENTS);
+}
+
+/** Whether a Pay tap may start the till's card sale. */
+export function acceptablePay(
+  p: unknown,
+  current: Pick<SaleSnapshot, 'saleId' | 'phase' | 'payment' | 'standAtDisplay'>,
+): boolean {
+  if (!p || typeof p !== 'object') return false;
+  return (p as Record<string, unknown>).saleId === current.saleId
+    && current.phase === 'open' && current.payment === 'card' && current.standAtDisplay === true;
+}
+
+export function isStandResult(p: unknown): p is StandResult {
+  if (!p || typeof p !== 'object') return false;
+  const r = p as Record<string, unknown>;
+  return typeof r.saleId === 'string' && ['paid', 'declined', 'canceled', 'error'].includes(r.outcome as string)
+    && (r.paymentId == null || typeof r.paymentId === 'string')
+    && (r.message == null || typeof r.message === 'string');
+}
+
+export function isChargeRequest(p: unknown): p is ChargeRequest {
+  if (!p || typeof p !== 'object') return false;
+  const r = p as Record<string, unknown>;
+  return typeof r.saleId === 'string' && typeof r.squareOrderId === 'string' && r.squareOrderId.length > 0;
+}
+
+function isStandStatus(p: unknown): p is StandStatusMessage {
+  if (!p || typeof p !== 'object') return false;
+  const r = p as Record<string, unknown>;
+  return typeof r.ready === 'boolean' && typeof r.line === 'string';
 }
 
 // ── Transport ────────────────────────────────────────────────────────────────
@@ -286,6 +362,19 @@ export interface TillDisplay {
   unpair: () => void;
   /** Tell the display the sale went through. Call before clearing the sale. */
   announceComplete: (snapshot: SaleSnapshot) => void;
+  /** What the display last said about its Stand; null if it never has. */
+  stand: StandStatusMessage | null;
+  /** Ask the display to take the card for this order on its Stand. */
+  charge: (request: ChargeRequest) => void;
+  /** Staff cancelled: the display stops the Stand if it is waiting. */
+  cancelCharge: (saleId: string) => void;
+}
+
+/** What the till does when the display's Stand speaks. */
+export interface TillStandHandlers {
+  /** The patron tapped Pay; already checked against the current sale. */
+  onPay?: () => void;
+  onStandResult?: (result: StandResult) => void;
 }
 
 /**
@@ -300,10 +389,14 @@ export function useTillDisplay(
   snapshot: SaleSnapshot,
   onProposal: (cents: number) => void,
   factory: ChannelFactory = realtimeChannel,
+  standHandlers: TillStandHandlers = {},
 ): TillDisplay {
   const [pairing, setPairing] = useState<StoredPairing | null>(() => readPairing(Date.now()));
   const [connected, setConnected] = useState(false);
   const [displays, setDisplays] = useState(0);
+  const [stand, setStand] = useState<StandStatusMessage | null>(null);
+  const standHandlersRef = useRef(standHandlers);
+  standHandlersRef.current = standHandlers;
   const channelRef = useRef<DisplayChannel | null>(null);
 
   // Read by the channel's handlers, which are attached once per pairing.
@@ -330,6 +423,13 @@ export function useTillDisplay(
     ch.on(EVENTS.donation, (p) => {
       if (acceptableProposal(p, snapshotRef.current)) onProposalRef.current(p.cents);
     });
+    ch.on(EVENTS.pay, (p) => {
+      if (acceptablePay(p, snapshotRef.current)) standHandlersRef.current.onPay?.();
+    });
+    ch.on(EVENTS.standResult, (p) => {
+      if (isStandResult(p) && p.saleId === snapshotRef.current.saleId) standHandlersRef.current.onStandResult?.(p);
+    });
+    ch.on(EVENTS.standStatus, (p) => { if (isStandStatus(p)) setStand(p); });
     ch.onStatus((c) => {
       setConnected(c);
       // A display that joined while the till was reconnecting asked into the
@@ -342,8 +442,12 @@ export function useTillDisplay(
       channelRef.current = null;
       setConnected(false);
       setDisplays(0);
+      setStand(null);
     };
   }, [code, factory]);
+
+  // A display that leaves takes its Stand with it.
+  useEffect(() => { if (displays === 0) setStand(null); }, [displays]);
 
   // Serialised so a re-render that changes nothing sends nothing.
   const wire = JSON.stringify(snapshot);
@@ -366,7 +470,14 @@ export function useTillDisplay(
     channelRef.current?.send(EVENTS.complete, { totalCents: s.totalCents, donationCents: s.donationCents });
   }, []);
 
-  return { code, connected, displays, pair, unpair, announceComplete };
+  const charge = useCallback((request: ChargeRequest) => {
+    channelRef.current?.send(EVENTS.charge, request);
+  }, []);
+  const cancelCharge = useCallback((saleId: string) => {
+    channelRef.current?.send(EVENTS.chargeCancel, { saleId });
+  }, []);
+
+  return { code, connected, displays, pair, unpair, announceComplete, stand, charge, cancelCharge };
 }
 
 // ── The display's side ───────────────────────────────────────────────────────
@@ -378,9 +489,27 @@ export interface DisplayState {
   /** Set when the till announces a completed sale; cleared by the next sale. */
   thanks: { totalCents: number; donationCents: number } | null;
   propose: (cents: number) => void;
+  /** The patron tapped Pay. */
+  pay: () => void;
+  sendStandStatus: (status: StandStatusMessage) => void;
+  sendStandResult: (result: StandResult) => void;
 }
 
-export function useDisplayChannel(code: string | null, factory: ChannelFactory = realtimeChannel): DisplayState {
+/** What the display does when the till asks its Stand for something. */
+export interface DisplayStandHandlers {
+  onCharge?: (request: ChargeRequest) => void;
+  onChargeCancel?: (saleId: string) => void;
+  /** Called on every (re)join, so the till hears the Stand's state afresh. */
+  onJoined?: () => void;
+}
+
+export function useDisplayChannel(
+  code: string | null,
+  factory: ChannelFactory = realtimeChannel,
+  standHandlers: DisplayStandHandlers = {},
+): DisplayState {
+  const standHandlersRef = useRef(standHandlers);
+  standHandlersRef.current = standHandlers;
   const [connected, setConnected] = useState(false);
   const [snapshot, setSnapshot] = useState<SaleSnapshot | null>(null);
   const [thanks, setThanks] = useState<DisplayState['thanks']>(null);
@@ -402,10 +531,18 @@ export function useDisplayChannel(code: string | null, factory: ChannelFactory =
       setSnapshot(s);
     });
     ch.on(EVENTS.complete, (p) => setThanks(p as { totalCents: number; donationCents: number }));
+    ch.on(EVENTS.charge, (p) => { if (isChargeRequest(p)) standHandlersRef.current.onCharge?.(p); });
+    ch.on(EVENTS.chargeCancel, (p) => {
+      const saleId = (p as { saleId?: unknown } | null)?.saleId;
+      if (typeof saleId === 'string') standHandlersRef.current.onChargeCancel?.(saleId);
+    });
     ch.track?.();
     ch.onStatus((c) => {
       setConnected(c);
-      if (c) ch.send(EVENTS.hello, {});
+      if (c) {
+        ch.send(EVENTS.hello, {});
+        standHandlersRef.current.onJoined?.();
+      }
     });
 
     // A phone that slept has missed whatever the till sent meanwhile.
@@ -425,5 +562,16 @@ export function useDisplayChannel(code: string | null, factory: ChannelFactory =
     channelRef.current?.send(EVENTS.donation, { saleId: s.saleId, cents } satisfies DonationProposal);
   }, []);
 
-  return { connected, snapshot, thanks, propose };
+  const pay = useCallback(() => {
+    const s = snapshotRef.current;
+    if (s) channelRef.current?.send(EVENTS.pay, { saleId: s.saleId });
+  }, []);
+  const sendStandStatus = useCallback((status: StandStatusMessage) => {
+    channelRef.current?.send(EVENTS.standStatus, status);
+  }, []);
+  const sendStandResult = useCallback((result: StandResult) => {
+    channelRef.current?.send(EVENTS.standResult, result);
+  }, []);
+
+  return { connected, snapshot, thanks, propose, pay, sendStandStatus, sendStandResult };
 }

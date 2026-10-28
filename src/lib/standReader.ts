@@ -19,8 +19,19 @@ import { invokeFunction } from '@/lib/functions';
  * See docs/briefs/BRIEF-ios-stand-reader.md.
  */
 
-/** The picker's id for "the Stand this iPad is in". Not a Square device id. */
+/**
+ * The picker's id for "the Stand this iPad is in": the till itself sits in the
+ * Stand. The alternative setup, for a special event with no patron-facing
+ * display. Not a Square device id.
+ */
 export const STAND_READER_ID = 'stand';
+
+/**
+ * The picker's id for "the Stand at the patron-facing display": the usual
+ * setup (BRIEF-stand-at-patron-display.md). The till can be any device; the
+ * card is taken by the iOS app on the display iPad, paired to this station.
+ */
+export const DISPLAY_STAND_READER_ID = 'display-stand';
 
 export interface StandReaderInfo {
   id: number;
