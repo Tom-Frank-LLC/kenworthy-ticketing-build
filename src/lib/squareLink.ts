@@ -84,11 +84,14 @@ export interface SquareSaveOutcome {
 /**
  * What to tell someone who just saved a showing, about Square.
  *
- * The old rule was `counts.needs_item` and nothing else. That is one of four
+ * The old rule was `counts.needs_item` and nothing else. That is one of five
  * statuses meaning "this showing did not get a catalog item", and the other
- * three are worse, not better:
+ * four are worse, not better:
  *
- *   * `ambiguous_item`   — two Square items share the title, so the planner
+ *   * `archived_match`   — Square's only item with the title is archived.
+ *                          Archived items are never matched, so nothing was
+ *                          linked; unarchiving it is the fix, not a new item.
+ *   * `ambiguous_item`   — two live Square items share the title, so the planner
  *                          refused to guess. Visible in the unlinked list, but
  *                          the save said nothing.
  *   * `not_event_item`   — the title is linked to a REGULAR item, which cannot
@@ -114,6 +117,12 @@ export function squareSaveOutcome(response: unknown): SquareSaveOutcome | null {
   // --- the title has no usable catalog item ---
   if (counts.needs_item) {
     return warn('needs_item', 'Saved. This title has no Square item yet — link it under Square catalog.');
+  }
+  if (counts.archived_match) {
+    return warn(
+      'archived_match',
+      'Saved. Square’s only item with this title is archived, so nothing was linked — unarchive it in Square, then refresh Square catalog.',
+    );
   }
   if (counts.ambiguous_item) {
     return warn(

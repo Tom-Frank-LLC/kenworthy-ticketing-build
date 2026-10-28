@@ -581,6 +581,46 @@ export function suggestTitleMatches(
     .map(({ id, name, why }) => ({ id, name, why }));
 }
 
+/** Archived in Square: off the POS and the dashboard's item list, but still returned by `/catalog/list`. */
+export function isArchivedItem(item: any): boolean {
+  return !!item?.item_data?.is_archived;
+}
+
+/**
+ * Every catalog item carrying this exact title, split by whether it is archived.
+ *
+ * The archived ones are not candidates. `/catalog/list` returns them alongside
+ * live items, and counting them made a title with one live item and archived
+ * ones from earlier years read as duplicates, so it could not be linked at all
+ * (Backcountry Film Festival, Oct 2026). Square's archived state is
+ * `item_data.is_archived`, added at API version 2023-08-16, before the one we pin.
+ *
+ * They are returned rather than dropped because of the case where they are the
+ * ONLY match. Hiding them there would turn "Square has this, archived" into
+ * "Square has nothing", and the advice for nothing is to create an item — a
+ * fresh duplicate beside the archived one.
+ *
+ * `accept` is the caller's product-type rule: EVENT for a production, anything
+ * else for a pass.
+ */
+export function exactTitleMatches(
+  items: any[],
+  title: string,
+  accept: (item: any) => boolean,
+): { active: any[]; archived: any[] } {
+  const ours = normalizeTitle(title);
+  const active: any[] = [];
+  const archived: any[] = [];
+  if (!ours) return { active, archived };
+  for (const i of items) {
+    if (i?.is_deleted) continue;
+    if (normalizeTitle(i?.item_data?.name ?? "") !== ours) continue;
+    if (!accept(i)) continue;
+    (isArchivedItem(i) ? archived : active).push(i);
+  }
+  return { active, archived };
+}
+
 /**
  * Which field Square actually stored an item's category in.
  *

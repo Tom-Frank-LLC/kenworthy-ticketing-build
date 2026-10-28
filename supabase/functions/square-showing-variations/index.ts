@@ -50,6 +50,8 @@ import {
   sameVariation,
   suggestTitleMatches,
   desiredVariations,
+  exactTitleMatches,
+  isArchivedItem,
   type ProductionKind,
   type Desired,
   parseKindFilter,
@@ -85,7 +87,6 @@ async function sq(
   return data ?? {};
 }
 
-/** Every ITEM in the catalog, following the cursor. Includes archived items. */
 /** Every CATEGORY object, so an item's category id can be given a name. */
 async function listCategories(config: SquareConfig) {
   let cursor: string | undefined = undefined;
@@ -100,6 +101,11 @@ async function listCategories(config: SquareConfig) {
   return out;
 }
 
+/**
+ * Every ITEM in the catalog, following the cursor. Includes archived items —
+ * `item_data.is_archived` — so every title match has to set those aside itself
+ * (`exactTitleMatches`).
+ */
 async function listItems(config: SquareConfig) {
   let cursor: string | undefined = undefined;
   const items: any[] = [];
@@ -260,9 +266,13 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
         // first meant the other two never reached the screen — so the human
         // "choosing" was choosing from a list already narrowed for them, by
         // nothing more principled than catalog order.
-        const exactAll = items.filter((i) =>
-          normalizeTitle(i.item_data?.name ?? "") === normalizeTitle(t.name) &&
-          i.item_data?.product_type !== "EVENT"
+        //
+        // Live items only. An archived item of the same name is not a duplicate
+        // to choose between — it is off the POS, and a sale linked to it loses
+        // the takings in Square's reporting — so counting it made one live pass
+        // and two retired ones read as three. Kept aside for the hint below.
+        const { active: exactAll, archived: archivedSameName } = exactTitleMatches(
+          items, t.name, (i) => i.item_data?.product_type !== "EVENT",
         );
         const sources = linked?.item ? [linked.item] : exactAll;
 
@@ -277,7 +287,7 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
             price_cents: v.item_variation_data?.price_money?.amount ?? null,
             item_id: item.id,
             item_name: item.item_data?.name ?? null,
-            archived: !!item.is_deleted || !!v.is_deleted,
+            archived: isArchivedItem(item) || !!item.is_deleted || !!v.is_deleted,
           }))
         );
 
@@ -285,19 +295,31 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
           pass_type_id: t.id,
           name: t.name,
           price_cents: Math.round(Number(t.price) * 100),
-          status: linked ? "linked" : exactAll.length ? "match_found" : "needs_item",
+          // `archived_match`: Square's only item by this name is archived. Not
+          // `needs_item`, because that offers to create one, and creating one
+          // beside the archived item is how the duplicates were made.
+          status: linked ? "linked"
+            : exactAll.length ? "match_found"
+            : archivedSameName.length ? "archived_match"
+            : "needs_item",
           square_variation_id: t.square_variation_id ?? null,
           square_item_name: sources[0]?.item_data?.name ?? null,
           /** Distinct Square items carrying this name. Above 1 means duplicates. */
           matching_items: sources.length,
           variations,
+          archived_items: linked || exactAll.length ? [] : archivedSameName.map((i: any) => ({
+            id: i.id, name: i.item_data?.name ?? null,
+          })),
           possible_matches: linked || exactAll.length ? [] : suggestTitleMatches(t.name, candidates),
           // Everything filed as a pass in Square, minus whatever the name
           // already matched. Offered as real choices rather than a list of
           // names to go and look up, because a name the operator has to
           // reconcile by hand is the manual step this was meant to remove.
+          // Archived items of the same name are left out here too: they are
+          // the duplicates the name match just set aside.
           category_options: linked ? [] : inPassCategory
             .filter((i: any) => !sources.some((sx: any) => sx.id === i.id))
+            .filter((i: any) => !archivedSameName.some((ax: any) => ax.id === i.id))
             .flatMap((i: any) =>
               (i.item_data?.variations ?? []).map((v: any) => ({
                 id: v.id,
@@ -305,7 +327,7 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
                 price_cents: v.item_variation_data?.price_money?.amount ?? null,
                 item_id: i.id,
                 item_name: i.item_data?.name ?? null,
-                archived: !!i.is_deleted || !!v.is_deleted,
+                archived: isArchivedItem(i) || !!i.is_deleted || !!v.is_deleted,
               }))
             ),
         };
@@ -683,8 +705,9 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
     const itemById = new Map<string, any>(items.map((i) => [i.id, i]));
 
     // Title -> items, for productions with no stored id. Many titles repeat
-    // across years, so a title that hits more than one item is AMBIGUOUS and is
-    // handed to a human rather than guessed at.
+    // across years, so a title that hits more than one LIVE item is AMBIGUOUS
+    // and is handed to a human rather than guessed at. Archived items from
+    // those earlier years are not candidates (see exactTitleMatches).
     const itemsByTitle = new Map<string, any[]>();
     for (const i of items) {
       const key = normalizeTitle(i.item_data?.name ?? "");
@@ -693,6 +716,7 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
       list.push(i);
       itemsByTitle.set(key, list);
     }
+    const isEvent = (i: any) => i.item_data?.product_type === "EVENT";
 
     /** Resolve a production to its Square item, preferring a stored id. */
     function resolveItem(productionId: string, title: string) {
@@ -702,10 +726,12 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
         if (item) return { item, how: "stored_id" as const };
         return { item: null, how: "stored_id_missing" as const };
       }
-      const candidates = (itemsByTitle.get(normalizeTitle(title)) ?? [])
-        .filter((i) => i.item_data?.product_type === "EVENT");
-      if (candidates.length === 1) return { item: candidates[0], how: "title_match" as const };
-      if (candidates.length > 1) return { item: null, how: "ambiguous_title" as const };
+      const { active, archived } = exactTitleMatches(
+        itemsByTitle.get(normalizeTitle(title)) ?? [], title, isEvent,
+      );
+      if (active.length === 1) return { item: active[0], how: "title_match" as const };
+      if (active.length > 1) return { item: null, how: "ambiguous_title" as const };
+      if (archived.length) return { item: null, how: "archived_title" as const, archived };
       return { item: null, how: "no_item" as const };
     }
 
@@ -716,22 +742,30 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
       square_item_id?: string | null;
       square_variation_id?: string | null;
       resolved_by?: string;
+      archived_items?: Array<{ id: string; name: string | null }>;
     };
     const plans: Plan[] = [];
 
     for (const d of desired) {
       const existing = mapByKey.get(mappedKey(d.showing_id, d.tier_name));
-      const { item, how } = resolveItem(d.production_id, d.production_title);
+      const resolved = resolveItem(d.production_id, d.production_title);
+      const { item, how } = resolved;
 
       if (!item) {
         plans.push({
           ...d,
           status: how === "ambiguous_title" ? "ambiguous_item"
+            : how === "archived_title" ? "archived_match"
             : how === "stored_id_missing" ? "stored_item_gone"
             : "needs_item",
           resolved_by: how,
+          ...("archived" in resolved && resolved.archived
+            ? { archived_items: resolved.archived.map((i: any) => ({ id: i.id, name: i.item_data?.name ?? null })) }
+            : {}),
           reason: how === "ambiguous_title"
-            ? "more than one EVENT item shares this title — link it by hand"
+            ? "more than one live EVENT item shares this title — link it by hand"
+            : how === "archived_title"
+            ? "the only EVENT item with this title is archived — unarchive it in Square, or create a new one"
             : how === "stored_id_missing"
             ? "the stored square_item_id is not in the catalog"
             : "no EVENT item with this title; Connect V2 cannot create one — make it in the dashboard",
@@ -788,7 +822,9 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
     // The human work list: titles somebody must create as an Event item in the
     // Square dashboard before this can finish. One line per production.
     const needsItem = [...new Map(
-      plans.filter((p) => p.status === "needs_item" || p.status === "ambiguous_item")
+      plans.filter((p) =>
+        p.status === "needs_item" || p.status === "ambiguous_item" || p.status === "archived_match"
+      )
         .map((p) => [p.production_id, {
           production_id: p.production_id,
           kind: p.production_kind,
@@ -796,6 +832,7 @@ Deno.serve(auditedHandler(async (req: Request, audit: StaffAuditContext) => {
           category: p.category,
           showings: 0,
           status: p.status,
+          archived_items: p.archived_items ?? [],
         }])
     ).values()];
     const eventItems = items
