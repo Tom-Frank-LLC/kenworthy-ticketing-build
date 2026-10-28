@@ -66,8 +66,16 @@ export function useTerminalReader() {
         return DISPLAY_STAND_READER_ID;
       });
     } catch (err) {
-      // The Terminals could not be listed; neither Stand needs the list.
+      // The Terminals could not be listed; neither Stand needs the list. A
+      // station keeps its choice (it may be a Terminal we cannot check just
+      // now); a fresh one still starts on the usual setup rather than on
+      // nothing, which refused every card sale with "choose a reader first".
       setReaders([DISPLAY_STAND_ENTRY, ...(standAvailable() ? [STAND_ENTRY] : [])]);
+      setChosenId((current) => {
+        if (current) return current;
+        storeChosenReaderId(DISPLAY_STAND_READER_ID);
+        return DISPLAY_STAND_READER_ID;
+      });
       setError(err instanceof Error ? err.message : 'Could not list the card readers');
     } finally {
       setLoading(false);

@@ -69,5 +69,15 @@ describe('useTerminalReader', () => {
     const { result } = renderHook(() => useTerminalReader());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.readers.map((r) => r.id)).toEqual(['display-stand', 'stand']);
+    // A fresh station is not left with nothing chosen.
+    expect(result.current.chosenId).toBe('display-stand');
+  });
+
+  it('keeps a remembered choice when the Terminals cannot be listed', async () => {
+    storeChosenReaderId('device:box');
+    calls.list = Promise.reject(new Error('Square down')) as any;
+    const { result } = renderHook(() => useTerminalReader());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.chosenId).toBe('device:box');
   });
 });
