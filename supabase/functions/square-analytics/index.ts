@@ -31,6 +31,12 @@ import {
   uncategorizedQuery,
   totalsQuery,
 } from "../_shared/square-reporting.ts";
+import {
+  buildJournal,
+  journalCategoryQuery,
+  journalTotalsQuery,
+  journalUncategorizedQuery,
+} from "../_shared/square-journal.ts";
 
 declare const Deno: any;
 
@@ -81,6 +87,34 @@ Deno.serve(async (req: Request) => {
 
   const range = resolveRange(body?.range, new Date(), { start: body?.start, end: body?.end });
   const granularity = granularityFor(range);
+  const run = (label: string, query: any) =>
+    pollLoad({ environment: config.environment, accessToken: config.accessToken, query, label });
+
+  // The QBO Export's journal. Same source and gate as the Overview, so the two
+  // screens cannot disagree about what Square holds. Not cached: mappings change
+  // from the export screen itself, and a stale entry would hide that change.
+  if (body?.mode === "journal") {
+    try {
+      const [totalsRows, categoryRows, uncategorizedRows, mappingsRes, accountsRes] = await Promise.all([
+        run("journal totals", journalTotalsQuery(range)),
+        run("journal categories", journalCategoryQuery(range)),
+        run("journal uncategorized", journalUncategorizedQuery(range)),
+        admin.from("account_mappings").select("source_type,source_key,account_id"),
+        admin.from("chart_of_accounts").select("id,code,qbo_account_name,account_type"),
+      ]);
+      if (mappingsRes.error) throw new Error(`account_mappings: ${mappingsRes.error.message}`);
+      if (accountsRes.error) throw new Error(`chart_of_accounts: ${accountsRes.error.message}`);
+      const journal = buildJournal({
+        range, totalsRows, categoryRows, uncategorizedRows,
+        mappings: mappingsRes.data ?? [], accounts: accountsRes.data ?? [],
+      });
+      return json({ ...journal, environment: config.environment });
+    } catch (e: any) {
+      console.error("square-analytics journal failed", e?.message ?? e);
+      return json({ error: e?.message ?? "Square reporting read failed" }, 502);
+    }
+  }
+
   const cacheKey = `${config.environment}:${range.start}:${range.end}`;
 
   if (!body?.refresh) {
@@ -89,9 +123,6 @@ Deno.serve(async (req: Request) => {
       return json({ ...hit.value, cached: true, environment: config.environment });
     }
   }
-
-  const run = (label: string, query: any) =>
-    pollLoad({ environment: config.environment, accessToken: config.accessToken, query, label });
 
   try {
     // Five independent aggregates; Square computes each one server-side, so

@@ -97,7 +97,15 @@ interface Analytics {
     tipsCents: number;
     taxCents: number;
   };
-  revenueByDay: Array<{ date: string; ticketsCents: number; concessionsCents: number; otherCents: number; totalCents: number }>;
+  revenueByDay: Array<{
+    date: string;
+    ticketsCents: number;
+    concessionsCents: number;
+    passesCents: number;
+    rentalsCents: number;
+    otherCents: number;
+    totalCents: number;
+  }>;
   revenueByCategory: Array<{ name: string; amountCents: number; quantity: number }>;
   topPerformers: Array<{ title: string; revenueCents: number; count: number }>;
   uncategorized: Array<{ name: string; amountCents: number; quantity: number }>;
@@ -169,6 +177,10 @@ export default function AnalyticsTab() {
     date: d.date.slice(5),
     tickets: d.ticketsCents / 100,
     concessions: d.concessionsCents / 100,
+    // `?? 0`: a response cached by an isolate still on the previous version
+    // has no passes or rentals fields.
+    passes: (d.passesCents ?? 0) / 100,
+    rentals: (d.rentalsCents ?? 0) / 100,
     other: d.otherCents / 100,
   }));
 
@@ -300,7 +312,7 @@ export default function AnalyticsTab() {
           <CollapsibleSection
             id="analytics.revenue-over-time"
             title="Revenue Over Time"
-            description="Gross sales, before tax and tips — the basis Square's Item Sales report uses. Total Revenue above is what was collected, so it is higher by tax and tips."
+            description="Gross sales, before tax and tips — the basis Square's Item Sales report uses. Total Revenue above is what was collected, so it is higher by tax and tips. Other is everything outside the four named groups, including items rung up as Uncategorized."
             defaultOpen
           >
             {revenueSeries.length > 0 ? (
@@ -312,8 +324,12 @@ export default function AnalyticsTab() {
                   <Tooltip formatter={(v: number) => `$${v.toFixed(2)}`} contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
                   <Legend />
                   <Bar dataKey="tickets" stackId="rev" fill="hsl(var(--primary))" name="Tickets" />
-                  <Bar dataKey="concessions" stackId="rev" fill="hsl(var(--accent))" name="Concessions" />
-                  <Bar dataKey="other" stackId="rev" fill="hsl(210, 70%, 55%)" name="Other" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="concessions" stackId="rev" fill="hsl(var(--chart-2))" name="Concessions" />
+                  <Bar dataKey="passes" stackId="rev" fill="hsl(var(--chart-3))" name="Film passes" />
+                  <Bar dataKey="rentals" stackId="rev" fill="hsl(var(--chart-4))" name="Rentals" />
+                  {/* Neutral on purpose: Other is the catch-all, including
+                      Uncategorized items keyed in at the till. */}
+                  <Bar dataKey="other" stackId="rev" fill="hsl(var(--muted-foreground))" name="Other" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}

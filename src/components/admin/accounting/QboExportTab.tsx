@@ -9,14 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Download, Loader2, FileText, Link2, Unlink, CheckCircle2 } from 'lucide-react';
 import QboSyncStatus from './QboSyncStatus';
-import { fetchAllRows } from '@/lib/fetchAllRows';
+import { type Journal, journalCsv, journalIif, previousMonth, toDollars } from '@/lib/qboJournal';
 
-type Aggregated = { account_id: string | null; code: string; qbo_account_name: string; account_type: string; amount: number; count: number; };
-
-function csvEscape(v: any) {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
+type Account = { id: string; code: string; qbo_account_name: string; account_type: string };
 function download(name: string, content: string, mime = 'text/csv') {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -26,10 +21,13 @@ function download(name: string, content: string, mime = 'text/csv') {
 }
 
 export default function QboExportTab() {
-  const [from, setFrom] = useState(() => new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10));
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
+  // A month's summary is the common case, so the range opens on last month.
+  const [from, setFrom] = useState(() => previousMonth(new Date()).start);
+  const [to, setTo] = useState(() => previousMonth(new Date()).end);
   const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState<Aggregated[] | null>(null);
+  const [preview, setPreview] = useState<Journal | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [qbo, setQbo] = useState<{ connected: boolean; environment: string; realm_id?: string | null; token_expires_at?: string | null; configured: boolean; redirect_uri?: string | null } | null>(null);
   const [qboBusy, setQboBusy] = useState(false);
 
@@ -86,213 +84,83 @@ export default function QboExportTab() {
     } finally { setQboBusy(false); }
   }
 
-  async function aggregate(): Promise<Aggregated[]> {
-    const fromIso = new Date(from).toISOString();
-    const toIso = new Date(new Date(to).getTime() + 86400000).toISOString();
 
-    const [accountsRes, mappingsRes, ticketsRes, concRes, donRes, passRes, passOrdersRes, ptypesRes, showingsRes, rilRes] = await Promise.all([
-      supabase.from('chart_of_accounts' as any).select('id,code,qbo_account_name,account_type'),
-      supabase.from('account_mappings' as any).select('source_type,source_key,account_id,is_default'),
-      // payment_method is read so film-pass admissions can be excluded below.
-      supabase.from('tickets').select('total_price,price,tax_amount,purchased_at,showing_id,status,payment_method').gte('purchased_at', fromIso).lt('purchased_at', toIso).eq('status', 'confirmed'),
-      supabase.from('concession_sales').select('total,tax_amount,created_at').gte('created_at', fromIso).lt('created_at', toIso),
-      supabase.from('donations').select('amount_cents,created_at,status').gte('created_at', fromIso).lt('created_at', toIso).eq('status', 'completed'),
-      // Pass income is booked when the money moved, which is now two different
-      // moments. A pass bought at the counter is paid for as it is activated,
-      // so the pass row carries the date. A pass bought online is paid for at
-      // the order and collected (or posted) later — sometimes in a different
-      // month — so the *order* carries the date, and the pass row it eventually
-      // produces has to be skipped or the sale is counted twice.
-      //
-      // Every status but the unsold ones counts: filtering on 'active' alone
-      // would drop a pass sold and spent to nothing inside the same period.
-      supabase.from('user_film_passes').select('id,pass_type_id,price_paid,tax_paid,purchased_at,status,film_pass_order_id').in('status', ['active', 'depleted', 'expired', 'void', 'refunded']).gte('purchased_at', fromIso).lt('purchased_at', toIso),
-      supabase.from('film_pass_orders').select('pass_id,pass_type_id,amount_paid,tax_amount,quantity,created_at,status').in('status', ['paid', 'fulfilled']).gte('created_at', fromIso).lt('created_at', toIso),
-      supabase.from('film_pass_types').select('id,name,price'),
-      // Paged: there are ~1,800 showings and this is the map that decides which
-      // account each ticket's revenue is booked against. PostgREST truncates at
-      // 1,000 without an error, and a ticket whose showing is missing from the
-      // map falls through to the 'film' default below — so live-event and
-      // concert takings past the cut were silently booked as film revenue, in
-      // an export that looks complete.
-      fetchAllRows<{
-        id: string;
-        movie_id: string | null;
-        event_id: string | null;
-        live_performance_id: string | null;
-      }>((from, to) =>
-        supabase
-          .from('showings')
-          .select('id,movie_id,event_id,live_performance_id')
-          .order('id')
-          .range(from, to)
-      ),
-      supabase.from('rental_invoice_lines' as any).select('line_kind,quantity,unit_price,account_id,is_taxable,created_at').gte('created_at', fromIso).lt('created_at', toIso),
-    ]);
-
-    const accounts = (accountsRes.data || []) as any[];
-    const mappings = (mappingsRes.data || []) as any[];
-    const accountById = new Map(accounts.map(a => [a.id, a]));
-    function resolve(source_type: string, source_key: string): string | null {
-      const exact = mappings.find(m => m.source_type === source_type && m.source_key === source_key);
-      if (exact) return exact.account_id;
-      const def = mappings.find(m => m.source_type === source_type && m.is_default);
-      return def?.account_id ?? null;
-    }
-
-    const totals = new Map<string, Aggregated>();
-    function add(accountId: string | null, amount: number) {
-      if (!accountId) accountId = '__UNMAPPED__';
-      const a = accountById.get(accountId);
-      const key = accountId;
-      const row = totals.get(key) || {
-        account_id: accountId === '__UNMAPPED__' ? null : accountId,
-        code: a?.code || 'UNMAPPED',
-        qbo_account_name: a?.qbo_account_name || 'UNMAPPED — needs review',
-        account_type: a?.account_type || 'income',
-        amount: 0, count: 0,
-      };
-      row.amount += amount;
-      row.count += 1;
-      totals.set(key, row);
-    }
-
-    // Tickets — classify by showing type
-    const showings = new Map((showingsRes.data || []).map((s: any) => [s.id, s]));
-    for (const t of ticketsRes.data || []) {
-      // A film-pass admission mints a ticket at the screening's face value so
-      // the seat is counted, but no money changed hands at the door — the sale
-      // was booked when the pass was bought (Passes, below). Counting the
-      // ticket too would book the same $60 twice, once as a pass and again as
-      // ten $8 films.
-      if ((t as any).payment_method === 'film_pass') continue;
-      const s: any = showings.get(t.showing_id);
-      let key = 'film';
-      if (s?.event_id) key = 'live_event';
-      else if (s?.live_performance_id) key = 'live_event';
-      const acct = resolve('ticket_type', key);
-      add(acct, Number(t.price) || 0);
-      const taxAcct = resolve('sales_tax', 'collected');
-      if (Number(t.tax_amount)) add(taxAcct, Number(t.tax_amount));
-    }
-    // Concessions
-    for (const c of concRes.data || []) {
-      const net = Number(c.total) - Number(c.tax_amount || 0);
-      add(resolve('concession_category', '_all'), net);
-      if (Number(c.tax_amount)) add(resolve('sales_tax', 'collected'), Number(c.tax_amount));
-    }
-    // Donations
-    for (const d of donRes.data || []) add(resolve('donation_designation', 'individual'), Number(d.amount_cents) / 100);
-    // Passes
-    const ptypes = new Map((ptypesRes.data || []).map((p: any) => [p.id, p]));
-    const passOrders = (passOrdersRes.data as any[]) || [];
-
-    /** Which account a pass sale belongs to, from the pass type's name. */
-    function passAccount(passTypeId: string): string | null {
-      const pt: any = ptypes.get(passTypeId);
-      const nm = (pt?.name || '').toLowerCase();
-      let key = 'film_pass';
-      if (nm.includes('met')) key = 'met_live_pass';
-      else if (nm.includes('gift')) key = 'movie_night_gift';
-      else if (nm.includes('silent')) key = 'silent_film_fest';
-      return resolve('pass_type', key);
-    }
-
-    // Online orders: booked at the order, for what was actually charged.
-    //
-    // amount_paid is the GROSS charge and has contained sales tax since passes
-    // became taxable at purchase, so the tax is split out here the same way a
-    // ticket's is above. Booking the gross would report six percent of every
-    // pass sale as income that is actually owed to the state.
-    for (const o of passOrders) {
-      const passTax = Number(o.tax_amount || 0);
-      add(passAccount(o.pass_type_id), Number(o.amount_paid || 0) - passTax);
-      if (passTax) add(resolve('sales_tax', 'collected'), passTax);
-    }
-
-    // Counter sales: booked at activation, which is when the cash arrived.
-    // A pass that discharged an online order was paid for by that order, which
-    // is booked above (or in the period it was paid). `film_pass_order_id`
-    // names the order for every pass it covers; `pass_id` names only the
-    // first, so on its own it would book a 3-pass order's other two again.
-    const orderedPassIds = new Set(passOrders.map(o => o.pass_id).filter(Boolean));
-    for (const p of (passRes.data as any[]) || []) {
-      if (p.film_pass_order_id || orderedPassIds.has(p.id)) continue;
-      const pt: any = ptypes.get(p.pass_type_id);
-      // price_paid is what this pass actually sold for; the type's current
-      // price is only a fallback for rows predating that column.
-      const amount = p.price_paid !== null && p.price_paid !== undefined
-        ? Number(p.price_paid)
-        : Number(pt?.price || 0);
-      add(passAccount(p.pass_type_id), amount);
-      // price_paid is already pre-tax at a counter sale, so unlike an online
-      // order nothing is subtracted — the tax simply sits beside it.
-      const counterTax = Number(p.tax_paid || 0);
-      if (counterTax) add(resolve('sales_tax', 'collected'), counterTax);
-    }
-
-    // Rental invoice lines — honor per-line account override, else map by line_kind
-    for (const r of (rilRes.data as any[]) || []) {
-      const amt = Number(r.quantity) * Number(r.unit_price);
-      const acct = r.account_id || resolve('rental_line_kind', r.line_kind);
-      add(acct, amt);
-      if (r.is_taxable) add(resolve('sales_tax', 'collected'), amt * 0.06);
-    }
-
-    return Array.from(totals.values()).sort((a, b) => a.code.localeCompare(b.code));
+  // The journal comes from Square's reports, through the same function and gate
+  // as the Overview — not from this build's tables, most of which never see the
+  // theatre's money. See supabase/functions/_shared/square-journal.ts.
+  async function fetchJournal(): Promise<Journal> {
+    if (!from || !to || from > to) throw new Error('Choose a start date on or before the end date.');
+    const { data, error } = await supabase.functions.invoke('square-analytics', {
+      body: { mode: 'journal', range: 'custom', start: from, end: to },
+    });
+    const msg = (data as { error?: string } | null)?.error;
+    if (error || msg) throw new Error(msg || error?.message || 'Could not read Square.');
+    const j = data as Journal;
+    // Never hand the accountant a file built on a partial read.
+    if (j.truncated) throw new Error('Square returned more Uncategorized items than one read covers. Choose a shorter range.');
+    return j;
   }
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from('chart_of_accounts' as any)
+        .select('id,code,qbo_account_name,account_type')
+        .eq('is_active', true)
+        .order('sort_order');
+      if (error) toast.error(error.message);
+      setAccounts((data as any) || []);
+    })();
+  }, []);
 
   async function runPreview() {
     setBusy(true);
-    try { setPreview(await aggregate()); }
+    try { setPreview(await fetchJournal()); }
     catch (e: any) { toast.error(e.message); }
     finally { setBusy(false); }
   }
 
-  async function exportCsv() {
+  async function exportFile(kind: 'csv' | 'iif') {
     setBusy(true);
     try {
-      const rows = await aggregate();
-      const header = ['Date Range', 'QBO Account', 'Account Code', 'Account Type', 'Debit', 'Credit', 'Memo', 'Txn Count'];
-      const lines = [header.map(csvEscape).join(',')];
-      const range = `${from} to ${to}`;
-      for (const r of rows) {
-        const isIncome = r.account_type.includes('income');
-        const isContra = r.account_type.startsWith('contra');
-        const debit = !isIncome || isContra ? r.amount.toFixed(2) : '';
-        const credit = isIncome && !isContra ? r.amount.toFixed(2) : '';
-        lines.push([range, r.qbo_account_name, r.code, r.account_type, debit, credit, `Kenworthy app — ${r.count} txn(s)`, r.count].map(csvEscape).join(','));
-      }
-      download(`kenworthy-qbo-journal-${from}-to-${to}.csv`, lines.join('\n'));
-      toast.success('CSV downloaded');
+      const j = await fetchJournal();
+      setPreview(j);
+      if (kind === 'csv') download(`kenworthy-qbo-journal-${from}-to-${to}.csv`, journalCsv(j));
+      else download(`kenworthy-qbo-${from}-to-${to}.iif`, journalIif(j), 'application/octet-stream');
+      toast.success(j.unmapped || j.totals.unreconciledCents
+        ? `${kind.toUpperCase()} downloaded — it has lines to review before posting`
+        : `${kind.toUpperCase()} downloaded`);
     } catch (e: any) { toast.error(e.message); }
     finally { setBusy(false); }
   }
 
-  async function exportIif() {
-    setBusy(true);
+  /**
+   * Map one Square category (or one Uncategorized item) to an account, then
+   * re-read the journal so the preview shows the effect. An item maps by
+   * name, so "Theater Rental" can go to rentals while the rest of
+   * Uncategorized goes elsewhere.
+   */
+  async function mapSource(kind: 'category' | 'item', key: string, accountId: string) {
+    const source_type = kind === 'item' ? 'square_item' : 'square_category';
+    const source_key = key === 'Uncategorized (not itemised)' ? 'Uncategorized' : key;
+    setSavingKey(`${kind}:${key}`);
     try {
-      const rows = await aggregate();
-      const lines: string[] = [];
-      lines.push('!TRNS\tTRNSID\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tMEMO');
-      lines.push('!SPL\tSPLID\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tMEMO');
-      lines.push('!ENDTRNS');
-      const date = to.split('-').reverse().join('/');
-      const total = rows.reduce((s, r) => s + (r.account_type.includes('income') && !r.account_type.startsWith('contra') ? r.amount : -r.amount), 0);
-      lines.push(['TRNS', '', 'GENERAL JOURNAL', date, 'Undeposited Funds', total.toFixed(2), `Kenworthy ${from} to ${to}`].join('\t'));
-      for (const r of rows) {
-        const isIncome = r.account_type.includes('income') && !r.account_type.startsWith('contra');
-        const signed = isIncome ? -r.amount : r.amount;
-        lines.push(['SPL', '', 'GENERAL JOURNAL', date, r.qbo_account_name, signed.toFixed(2), `${r.count} txn(s)`].join('\t'));
-      }
-      lines.push('ENDTRNS');
-      download(`kenworthy-qbo-${from}-to-${to}.iif`, lines.join('\n'), 'application/octet-stream');
-      toast.success('IIF downloaded');
-    } catch (e: any) { toast.error(e.message); }
-    finally { setBusy(false); }
+      const { data, error } = await supabase
+        .from('account_mappings' as any)
+        .upsert({ source_type, source_key, account_id: accountId, is_default: false }, { onConflict: 'source_type,source_key' })
+        .select('id');
+      if (error) throw error;
+      // A blocked write returns no error and no row.
+      if (!data || (data as unknown[]).length !== 1) throw new Error('The mapping was not saved.');
+      setPreview(await fetchJournal());
+    } catch (e: any) { toast.error(e.message || 'The mapping was not saved.'); }
+    finally { setSavingKey(null); }
   }
 
-  const unmapped = preview?.find(p => !p.account_id);
+  const unmappedSources = preview?.sources.filter(s => !s.accountId) ?? [];
+  const unmappedCents = unmappedSources.reduce((n, s) => n + s.grossCents - s.discountCents - s.compsCents, 0);
+  const totalDebit = preview?.lines.reduce((n, l) => n + l.debitCents, 0) ?? 0;
+  const totalCredit = preview?.lines.reduce((n, l) => n + l.creditCents, 0) ?? 0;
 
   return (
     <div className="space-y-4">
@@ -354,8 +222,10 @@ export default function QboExportTab() {
 
       <CollapsibleSection id="accounting.qbo.export" title="QuickBooks Export" icon={FileText} defaultOpen>
         <p className="text-sm text-muted-foreground">
-          Aggregates app transactions (tickets, concessions, donations, passes) by QBO account for the selected range.
-          Import the CSV into QBO via a Journal Entry, or use the IIF for desktop/Online import tools.
+          One journal entry for the range, read from Square's own reports — the same source as the Overview — so it
+          covers the stand, Square Online, invoices and the till as well as this website. Income is booked by Square
+          category, net of discounts and comps; tax, tips and returns get their own lines; the money side goes to Undeposited Funds.
+          Dates are Moscow calendar days.
         </p>
         <div className="grid grid-cols-2 gap-3 max-w-md">
           <div><Label>From</Label><Input type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
@@ -365,40 +235,124 @@ export default function QboExportTab() {
           <Button onClick={runPreview} disabled={busy} variant="outline">
             {busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Preview
           </Button>
-          <Button onClick={exportCsv} disabled={busy}>
+          <Button onClick={() => exportFile('csv')} disabled={busy}>
             <Download className="h-4 w-4 mr-1" /> Journal CSV
           </Button>
-          <Button onClick={exportIif} disabled={busy} variant="outline">
+          <Button onClick={() => exportFile('iif')} disabled={busy} variant="outline">
             <Download className="h-4 w-4 mr-1" /> IIF
           </Button>
         </div>
 
-        {unmapped && (
+        {preview && unmappedSources.length > 0 && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-            <strong>{unmapped.count}</strong> transaction(s) totaling <strong>${unmapped.amount.toFixed(2)}</strong> have no account mapping.
-            Set defaults in <Badge variant="outline">Mappings</Badge> before exporting.
+            <strong>{unmappedSources.length}</strong> Square {unmappedSources.length === 1 ? 'category or item has' : 'categories or items have'} no
+            account yet, totaling <strong>${toDollars(unmappedCents)}</strong>. They export as UNMAPPED lines. Pick an
+            account for each below; the choice is saved and used for every later export.
+          </div>
+        )}
+
+        {preview && preview.totals.unreconciledCents !== 0 && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm space-y-2">
+            <p>
+              Square's total collected (${toDollars(preview.totals.collectedCents)}) differs from its item sales less
+              discounts, comps and returns, plus tax and tips, by{' '}
+              <strong>${toDollars(Math.abs(preview.totals.unreconciledCents))}</strong>. The file carries that as an
+              "Unreconciled — review before posting" line rather than hiding it.
+            </p>
+            <p className="text-muted-foreground">
+              Square's Sales Summary for the same range: gross ${toDollars(preview.totals.sales.grossCents)}, discounts
+              ${toDollars(preview.totals.sales.discountsCents)}, comps ${toDollars(preview.totals.sales.compsCents)},
+              itemized returns ${toDollars(preview.totals.sales.itemizedReturnsCents)}, refunds by amount
+              ${toDollars(preview.totals.sales.refundsByAmountCents)}, service charges
+              ${toDollars(preview.totals.sales.serviceChargesCents)}, gift card sales
+              ${toDollars(preview.totals.sales.giftCardSalesCents)}.
+            </p>
           </div>
         )}
 
         {preview && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-xs uppercase text-muted-foreground border-b">
-                <tr><th className="text-left py-2 pr-2">Code</th><th className="text-left py-2 pr-2">QBO Account</th><th className="text-left py-2 pr-2">Type</th><th className="text-right py-2 pr-2">Amount</th><th className="text-right py-2">Txns</th></tr>
-              </thead>
-              <tbody>
-                {preview.map(r => (
-                  <tr key={r.code} className="border-b border-border/40">
-                    <td className="py-2 pr-2"><Badge variant="outline" className="text-xs">{r.code}</Badge></td>
-                    <td className="py-2 pr-2">{r.qbo_account_name}</td>
-                    <td className="py-2 pr-2 text-muted-foreground text-xs">{r.account_type}</td>
-                    <td className="py-2 pr-2 text-right font-mono">${r.amount.toFixed(2)}</td>
-                    <td className="py-2 text-right text-muted-foreground">{r.count}</td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <caption className="text-left text-xs uppercase text-muted-foreground pb-2">Journal entry</caption>
+                <thead className="text-xs uppercase text-muted-foreground border-b">
+                  <tr>
+                    <th className="text-left py-2 pr-2">Code</th>
+                    <th className="text-left py-2 pr-2">QBO Account</th>
+                    <th className="text-right py-2 pr-2">Debit</th>
+                    <th className="text-right py-2">Credit</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {preview.lines.map((l, i) => (
+                    <tr key={`${l.code}-${l.name}-${i}`} className="border-b border-border/40">
+                      <td className="py-2 pr-2">{l.code && <Badge variant="outline" className="text-xs">{l.code}</Badge>}</td>
+                      <td className="py-2 pr-2">{l.name}</td>
+                      <td className="py-2 pr-2 text-right font-mono">{l.debitCents ? `$${toDollars(l.debitCents)}` : ''}</td>
+                      <td className="py-2 text-right font-mono">{l.creditCents ? `$${toDollars(l.creditCents)}` : ''}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-medium">
+                    <td className="py-2 pr-2" />
+                    <td className="py-2 pr-2">Total</td>
+                    <td className="py-2 pr-2 text-right font-mono">${toDollars(totalDebit)}</td>
+                    <td className="py-2 text-right font-mono">${toDollars(totalCredit)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <caption className="text-left text-xs uppercase text-muted-foreground pb-2">
+                  Square categories and Uncategorized items · {preview.totals.orders} orders
+                </caption>
+                <thead className="text-xs uppercase text-muted-foreground border-b">
+                  <tr>
+                    <th className="text-left py-2 pr-2">Square</th>
+                    <th className="text-right py-2 pr-2">Gross</th>
+                    <th className="text-right py-2 pr-2">Discounts &amp; comps</th>
+                    <th className="text-right py-2 pr-2">Returns</th>
+                    <th className="text-left py-2">Account</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.sources.map(s => {
+                    const k = `${s.kind}:${s.key}`;
+                    return (
+                      <tr key={k} className="border-b border-border/40">
+                        <td className="py-2 pr-2">
+                          {s.kind === 'item' && <span className="text-muted-foreground">Uncategorized · </span>}
+                          {s.key}
+                        </td>
+                        <td className="py-2 pr-2 text-right font-mono">${toDollars(s.grossCents)}</td>
+                        <td className="py-2 pr-2 text-right font-mono">{s.discountCents + s.compsCents ? `$${toDollars(s.discountCents + s.compsCents)}` : ''}</td>
+                        <td className="py-2 pr-2 text-right font-mono">{s.returnsCents ? `$${toDollars(s.returnsCents)}` : ''}</td>
+                        <td className="py-2 min-w-56">
+                          <select
+                            aria-label={`Account for ${s.key}`}
+                            value={s.kind === 'item' && s.mappedBy !== 'square_item' ? '' : (s.accountId ?? '')}
+                            disabled={savingKey !== null}
+                            onChange={e => e.target.value && void mapSource(s.kind, s.key, e.target.value)}
+                            className={`w-full h-9 rounded border bg-background px-2 text-sm ${s.accountId ? '' : 'border-destructive'}`}
+                          >
+                            <option value="">
+                              {s.kind === 'item' && s.accountId
+                                ? `As Uncategorized: ${accounts.find(a => a.id === s.accountId)?.qbo_account_name ?? '…'}`
+                                : 'UNMAPPED — choose an account'}
+                            </option>
+                            {accounts.map(a => (
+                              <option key={a.id} value={a.id}>{a.code} — {a.qbo_account_name}</option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </CollapsibleSection>
     </div>
