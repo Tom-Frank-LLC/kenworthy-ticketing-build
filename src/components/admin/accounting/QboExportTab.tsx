@@ -158,7 +158,7 @@ export default function QboExportTab() {
   }
 
   const unmappedSources = preview?.sources.filter(s => !s.accountId) ?? [];
-  const unmappedCents = unmappedSources.reduce((n, s) => n + s.grossCents - s.discountCents, 0);
+  const unmappedCents = unmappedSources.reduce((n, s) => n + s.grossCents - s.discountCents - s.compsCents, 0);
   const totalDebit = preview?.lines.reduce((n, l) => n + l.debitCents, 0) ?? 0;
   const totalCredit = preview?.lines.reduce((n, l) => n + l.creditCents, 0) ?? 0;
 
@@ -224,7 +224,7 @@ export default function QboExportTab() {
         <p className="text-sm text-muted-foreground">
           One journal entry for the range, read from Square's own reports — the same source as the Overview — so it
           covers the stand, Square Online, invoices and the till as well as this website. Income is booked by Square
-          category, net of discounts; tax, tips and returns get their own lines; the money side goes to Undeposited Funds.
+          category, net of discounts and comps; tax, tips and returns get their own lines; the money side goes to Undeposited Funds.
           Dates are Moscow calendar days.
         </p>
         <div className="grid grid-cols-2 gap-3 max-w-md">
@@ -252,11 +252,21 @@ export default function QboExportTab() {
         )}
 
         {preview && preview.totals.unreconciledCents !== 0 && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-            Square's total collected (${toDollars(preview.totals.collectedCents)}) differs from its item sales less
-            discounts and returns, plus tax and tips, by <strong>${toDollars(Math.abs(preview.totals.unreconciledCents))}</strong>.
-            The file carries that as an "Unreconciled — review before posting" line rather than hiding it. Gift card
-            sales and service charges are the usual causes.
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm space-y-2">
+            <p>
+              Square's total collected (${toDollars(preview.totals.collectedCents)}) differs from its item sales less
+              discounts, comps and returns, plus tax and tips, by{' '}
+              <strong>${toDollars(Math.abs(preview.totals.unreconciledCents))}</strong>. The file carries that as an
+              "Unreconciled — review before posting" line rather than hiding it.
+            </p>
+            <p className="text-muted-foreground">
+              Square's Sales Summary for the same range: gross ${toDollars(preview.totals.sales.grossCents)}, discounts
+              ${toDollars(preview.totals.sales.discountsCents)}, comps ${toDollars(preview.totals.sales.compsCents)},
+              itemized returns ${toDollars(preview.totals.sales.itemizedReturnsCents)}, refunds by amount
+              ${toDollars(preview.totals.sales.refundsByAmountCents)}, service charges
+              ${toDollars(preview.totals.sales.serviceChargesCents)}, gift card sales
+              ${toDollars(preview.totals.sales.giftCardSalesCents)}.
+            </p>
           </div>
         )}
 
@@ -301,7 +311,7 @@ export default function QboExportTab() {
                   <tr>
                     <th className="text-left py-2 pr-2">Square</th>
                     <th className="text-right py-2 pr-2">Gross</th>
-                    <th className="text-right py-2 pr-2">Discounts</th>
+                    <th className="text-right py-2 pr-2">Discounts &amp; comps</th>
                     <th className="text-right py-2 pr-2">Returns</th>
                     <th className="text-left py-2">Account</th>
                   </tr>
@@ -316,7 +326,7 @@ export default function QboExportTab() {
                           {s.key}
                         </td>
                         <td className="py-2 pr-2 text-right font-mono">${toDollars(s.grossCents)}</td>
-                        <td className="py-2 pr-2 text-right font-mono">{s.discountCents ? `$${toDollars(s.discountCents)}` : ''}</td>
+                        <td className="py-2 pr-2 text-right font-mono">{s.discountCents + s.compsCents ? `$${toDollars(s.discountCents + s.compsCents)}` : ''}</td>
                         <td className="py-2 pr-2 text-right font-mono">{s.returnsCents ? `$${toDollars(s.returnsCents)}` : ''}</td>
                         <td className="py-2 min-w-56">
                           <select

@@ -107,9 +107,9 @@ Deno.test('each unmapped source gets its own named line, not one anonymous total
   const j = buildJournal({ range, totalsRows: totals(2087), categoryRows, uncategorizedRows, mappings: base, accounts });
   const names = j.lines.filter(l => l.code === 'UNMAPPED').map(l => l.name).sort();
   assertEquals(names, [
-    'UNMAPPED — Fall Fundraiser Ticket',
-    'UNMAPPED — Theater Rental',
     'UNMAPPED — Uncategorized (not itemised)',
+    'UNMAPPED — Uncategorized · Fall Fundraiser Ticket',
+    'UNMAPPED — Uncategorized · Theater Rental',
   ]);
   assertEquals(j.unmapped, 3);
 });
@@ -127,6 +127,21 @@ Deno.test('an empty range is an empty, balanced entry', () => {
   assertEquals(sum(j, 'creditCents'), 0);
 });
 
+Deno.test('item queries count only paid lines', () => {
+  for (const q of [journalCategoryQuery(range), journalUncategorizedQuery(range)]) {
+    const f = q.filters?.find(f => f.member === 'ItemTransactions.revenue_recognition_state');
+    assertEquals(f?.values, ['RECOGNIZED']);
+  }
+});
+
+Deno.test('service charges are their own credit, so a surcharged invoice closes', () => {
+  const mappings = [...base, { source_type: 'service_charge', source_key: '_all', account_id: 'rent' }];
+  const t = [{ ...totals(2087 + 30)[0], 'Sales.service_charges_only_sum': 30 }];
+  const j = buildJournal({ range, totalsRows: t, categoryRows, uncategorizedRows, mappings, accounts });
+  assertEquals(j.totals.unreconciledCents, 0);
+  assertEquals(j.lines.find(l => l.memo.includes('service charges'))?.creditCents, 3000);
+});
+
 Deno.test('the journal queries carry the range and never send `order`', () => {
   for (const q of [journalCategoryQuery(range), journalUncategorizedQuery(range), journalTotalsQuery(range)]) {
     assertEquals(q.timeDimensions?.[0].dateRange, ['2026-10-01', '2026-10-31']);
@@ -134,4 +149,17 @@ Deno.test('the journal queries carry the range and never send `order`', () => {
     // One row per category or item for the whole range: no day buckets.
     assertEquals(q.timeDimensions?.[0].granularity, undefined);
   }
+});
+
+Deno.test('comps come off income like discounts, and a same-named category and item stay apart', () => {
+  const comped = { ...row('category_name', '6 Film Tickets', 1000), 'ItemTransactions.item_comps_money': -100 };
+  const rows = [comped, row('category_name', 'Film Sponsorship', 300), row('category_name', UNCATEGORIZED, 200)];
+  const items = [row('item_name', 'Film Sponsorship', 200)];
+  // 1000 - 100 + 300 + 200 + tax 117 + tips 40
+  const j = buildJournal({ range, totalsRows: totals(1557), categoryRows: rows, uncategorizedRows: items, mappings: base, accounts });
+  assertEquals(j.lines.find(l => l.code === '4710')?.creditCents, 90000);
+  assertEquals(j.totals.compsCents, 10000);
+  assertEquals(j.totals.unreconciledCents, 0);
+  const sponsorship = j.lines.filter(l => l.name.includes('Film Sponsorship')).map(l => l.creditCents).sort();
+  assertEquals(sponsorship, [20000, 30000]);
 });

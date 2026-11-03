@@ -11,6 +11,7 @@ import {
   shape,
   topPerformersQuery,
   totalsQuery,
+  uncategorizedQuery,
   venueDate,
 } from './square-reporting.ts';
 
@@ -102,9 +103,10 @@ Deno.test('the concession bucket is the whole stand', () => {
   for (const c of ['6 Film Tickets', '6 METLive Tickets', '6 NT Live Tickets', '6 Rental Tickets']) {
     assertEquals(bucketFor(c), 'tickets', c);
   }
-  // Real categories on this account that are neither.
-  assertEquals(bucketFor('Theater Rental'), 'other');
-  assertEquals(bucketFor('9 Film Passes'), 'other');
+  // Real categories on this account that are neither (passes and rentals
+  // have their own groups since Nov 2026; see the tests below).
+  assertEquals(bucketFor('Theater Rental'), 'rentals');
+  assertEquals(bucketFor('9 Film Passes'), 'passes');
   assertEquals(bucketFor('Uncategorized'), 'other');
   assertEquals(bucketFor(null), 'other');
 });
@@ -113,7 +115,7 @@ Deno.test('tickets, concessions and the day chart all reconcile with gross', () 
   const rows = [
     catRow('6 Film Tickets', 100, 10, '2026-08-11'),
     catRow('5 Popcorn', 50, 20, '2026-08-11'),
-    catRow('Theater Rental', 25, 1, '2026-08-11'),
+    catRow('7 Merch', 25, 1, '2026-08-11'),
     catRow('6 Film Tickets', 60, 6, '2026-08-12'),
   ];
   const r = run(rows);
@@ -127,7 +129,7 @@ Deno.test('tickets, concessions and the day chart all reconcile with gross', () 
   assertEquals(pieTotal, 23500);
   assertEquals(r.revenueByDay.map((d) => d.date), ['2026-08-11', '2026-08-12']);
   assertEquals(r.revenueByDay[0], {
-    date: '2026-08-11', ticketsCents: 10000, concessionsCents: 5000, otherCents: 2500, totalCents: 17500,
+    date: '2026-08-11', ticketsCents: 10000, concessionsCents: 5000, passesCents: 0, rentalsCents: 0, otherCents: 2500, totalCents: 17500,
   });
 });
 
@@ -283,4 +285,52 @@ Deno.test('queries carry the date range Square was given', () => {
     assertEquals(q.timeDimensions![0].dateRange, ['2026-07-21', '2026-08-20']);
   }
   assertEquals(categoryByDayQuery(range, 'day').timeDimensions![0].granularity, 'day');
+});
+
+Deno.test('passes and rentals are their own groups; Uncategorized stays Other', () => {
+  assertEquals(bucketFor('9 Film Passes'), 'passes');
+  assertEquals(bucketFor('Theater Rental'), 'rentals');
+  assertEquals(bucketFor('Marquee Rental'), 'rentals');
+  assertEquals(bucketFor('Film Licensing Fees'), 'rentals');
+  // Seats sold to a renter's show are tickets, so Tickets Sold counts them.
+  assertEquals(bucketFor('6 Rental Tickets'), 'tickets');
+  assertEquals(bucketFor('Uncategorized'), 'other');
+  assertEquals(bucketFor('7 Merch'), 'other');
+  assertEquals(bucketFor('Film Sponsorship'), 'other');
+  assertEquals(bucketFor(null), 'other');
+});
+
+Deno.test('a renamed category still lands by its number, not in Other', () => {
+  // October 2026: $2,898 of drinks under a name the fixed list lacked.
+  assertEquals(bucketFor('4 Cocktails & Wine'), 'concessions');
+  assertEquals(bucketFor('4 Cider'), 'concessions');
+  assertEquals(bucketFor('6 Family Matinee Tickets'), 'tickets');
+  assertEquals(bucketFor('9 Gift Passes'), 'passes');
+  assertEquals(bucketFor('Silent Film Fest Pass'), 'passes');
+});
+
+Deno.test('the day chart carries passes and rentals and still sums to gross', () => {
+  const p = shape({
+    range: { start: '2026-10-01', end: '2026-10-01' }, granularity: 'day',
+    totalsRows: TOTALS, topRows: [], uncategorizedRows: [], refundRows: [], categoryRowLimit: 10000,
+    categoryRows: [
+      catRow('6 Film Tickets', 100, 10, '2026-10-01'),
+      catRow('4 Cocktails & Wine', 50, 5, '2026-10-01'),
+      catRow('9 Film Passes', 60, 1, '2026-10-01'),
+      catRow('Theater Rental', 400, 1, '2026-10-01'),
+      catRow('Uncategorized', 30, 1, '2026-10-01'),
+    ],
+  });
+  const d = p.revenueByDay[0];
+  assertEquals([d.ticketsCents, d.concessionsCents, d.passesCents, d.rentalsCents, d.otherCents], [10000, 5000, 6000, 40000, 3000]);
+  assertEquals(d.totalCents, p.totals.grossSalesCents);
+  assertEquals(p.totals.concessionRevenueCents, 5000);
+});
+
+Deno.test('every item query counts only paid lines, never an open check', () => {
+  const r = { start: '2026-10-01', end: '2026-10-31' };
+  for (const q of [categoryByDayQuery(r, 'day'), topPerformersQuery(r), uncategorizedQuery(r)]) {
+    const f = q.filters?.find((f) => f.member === 'ItemTransactions.revenue_recognition_state');
+    assertEquals(f?.values, ['RECOGNIZED']);
+  }
 });

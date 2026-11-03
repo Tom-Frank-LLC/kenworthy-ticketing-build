@@ -31,14 +31,15 @@ Square, and less than the Reporting Overview. See the findings file for why.
 - The export screen previews the entry and every Square source with an account
   picker, opens on last month, and refuses to export a truncated read.
 
+- Every ItemTransactions query (Overview and export) counts only
+  `revenue_recognition_state = RECOGNIZED`: unpaid orders were being counted.
+- Overview: film passes and rentals are their own groups; categories fall back
+  on their number (1–5 stand, 6 tickets, 9 passes), so `4 Cocktails & Wine`
+  is concessions. Comps and service charges get their own journal treatment.
+
 ## Not done here
 
-- **Unverified against live Square.** The Reporting API is production-only, so
-  the measure names `item_discount_money`, `returns_gross_amount` and
-  `sales_net_amount` (from `/reporting/v1/meta` in Aug 2026, per
-  FINDINGS-square-reporting-api.md) have not been exercised. Check October
-  against the accountant's Square report before calling this shipped.
-- The Overview's Tickets / Concessions / Other split still uses the hard-coded
-  category lists in `_shared/square-reporting.ts`. It could read
-  `square_category` mappings instead.
+- **Not yet compared with the accountant's Square report.** Measured against
+  Square's own Sales cube instead (see findings).
+- Whether the unpaid duplicate orders come from this build's checkout.
 - Square processing fees are not in any sales report; they arrive with payouts.

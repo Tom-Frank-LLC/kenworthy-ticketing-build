@@ -15,20 +15,21 @@
 //
 // Shape of the entry, one per range:
 //
-//   credit  each Square category's account   gross − discounts
+//   credit  each Square category's account   gross − discounts − comps
 //   debit   Returns                          returns
 //   credit  Sales Tax Collected              Square's tax
 //   credit  Tips                             Square's tips
+//   credit  Service charges                  Square's service charges
 //   debit   Undeposited Funds                Square's total collected
 //
-// and, when Square's own figures do not close (gift card sales, service
-// charges, partial refunds of tax and the like are not in the item cube), one
+// and, when Square's own figures do not close (gift card sales, partial
+// refunds of tax and the like are not in the item cube), one
 // line that makes the difference visible instead of quietly absorbing it.
 //
 // Pure: queries and shaping only. The caller runs the queries and supplies the
 // mappings, so all of it is testable without Square or a database.
 
-import { type CubeQuery, cents } from "./square-reporting.ts";
+import { type CubeQuery, cents, RECOGNIZED_ONLY } from "./square-reporting.ts";
 
 const ITEM_TIME = "ItemTransactions.local_reporting_timestamp";
 const SALES_TIME = "Sales.local_reporting_timestamp";
@@ -42,6 +43,7 @@ export const DEPOSIT_ACCOUNT = "Undeposited Funds";
 const ITEM_MEASURES = [
   "ItemTransactions.sales_gross_amount",
   "ItemTransactions.item_discount_money",
+  "ItemTransactions.item_comps_money",
   "ItemTransactions.returns_gross_amount",
   "ItemTransactions.sales_net_amount",
   "ItemTransactions.items_sold_count",
@@ -53,6 +55,8 @@ export function journalCategoryQuery(range: { start: string; end: string }): Cub
     measures: ITEM_MEASURES,
     dimensions: ["ItemTransactions.category_name"],
     timeDimensions: [{ dimension: ITEM_TIME, dateRange: [range.start, range.end] }],
+    // Unpaid orders' lines are not income. See RECOGNIZED_ONLY.
+    filters: [RECOGNIZED_ONLY],
     limit: 1000,
   };
 }
@@ -68,7 +72,10 @@ export function journalUncategorizedQuery(range: { start: string; end: string })
     measures: ITEM_MEASURES,
     dimensions: ["ItemTransactions.item_name"],
     timeDimensions: [{ dimension: ITEM_TIME, dateRange: [range.start, range.end] }],
-    filters: [{ member: "ItemTransactions.category_name", operator: "equals", values: [UNCATEGORIZED] }],
+    filters: [
+      { member: "ItemTransactions.category_name", operator: "equals", values: [UNCATEGORIZED] },
+      RECOGNIZED_ONLY,
+    ],
     limit: JOURNAL_ITEM_LIMIT,
   };
 }
@@ -81,6 +88,16 @@ export function journalTotalsQuery(range: { start: string; end: string }): CubeQ
       "Sales.sales_tax_amount",
       "Sales.tips_amount",
       "Sales.order_count",
+      // Read for reconciliation only: what Square's own Sales Summary says the
+      // item cube should add up to. Names measured from /reporting/v1/meta on
+      // 3 Nov 2026 (see FINDINGS-qbo-export-from-square.md).
+      "Sales.top_line_product_sales",
+      "Sales.discounts_amount",
+      "Sales.comps_amount",
+      "Sales.itemized_returns",
+      "Sales.refunds_by_amount_amount",
+      "Sales.service_charges_only_sum",
+      "Sales.gift_card_sales_amount",
     ],
     timeDimensions: [{ dimension: SALES_TIME, dateRange: [range.start, range.end] }],
   };
@@ -95,6 +112,8 @@ export interface JournalSource {
   key: string;
   grossCents: number;
   discountCents: number;
+  /** A comp is a 100% discount; Square reports it apart from discounts. */
+  compsCents: number;
   returnsCents: number;
   /** Square's own net, carried for reconciliation; not used in the entry. */
   netCents: number;
@@ -122,14 +141,25 @@ export interface Journal {
   totals: {
     grossCents: number;
     discountCents: number;
+    compsCents: number;
     returnsCents: number;
     taxCents: number;
     tipsCents: number;
     collectedCents: number;
     squareNetSalesCents: number;
     orders: number;
-    /** credits − debits before the review line: (gross − discounts + tax + tips) − (returns + collected). 0 when Square closes. */
+    /** credits − debits before the review line: (gross − discounts − comps + tax + tips + service charges) − (returns + collected). 0 when Square closes. */
     unreconciledCents: number;
+    /** Square's Sales Summary figures, for explaining a non-zero unreconciled. */
+    sales: {
+      grossCents: number;
+      discountsCents: number;
+      compsCents: number;
+      itemizedReturnsCents: number;
+      refundsByAmountCents: number;
+      serviceChargesCents: number;
+      giftCardSalesCents: number;
+    };
   };
   unmapped: number;
   truncated: boolean;
@@ -143,6 +173,7 @@ function readSource(row: any, kind: JournalSource["kind"], key: string): Journal
     key,
     grossCents: cents(row?.["ItemTransactions.sales_gross_amount"]),
     discountCents: mag(row?.["ItemTransactions.item_discount_money"]),
+    compsCents: mag(row?.["ItemTransactions.item_comps_money"]),
     returnsCents: mag(row?.["ItemTransactions.returns_gross_amount"]),
     netCents: cents(row?.["ItemTransactions.sales_net_amount"]),
     quantity: Number(row?.["ItemTransactions.items_sold_count"]) || 0,
@@ -152,7 +183,7 @@ function readSource(row: any, kind: JournalSource["kind"], key: string): Journal
 }
 
 const isEmpty = (s: JournalSource) =>
-  s.grossCents === 0 && s.discountCents === 0 && s.returnsCents === 0;
+  s.grossCents === 0 && s.discountCents === 0 && s.compsCents === 0 && s.returnsCents === 0;
 
 export function buildJournal(input: {
   range: { start: string; end: string };
@@ -201,6 +232,7 @@ export function buildJournal(input: {
       key: `${UNCATEGORIZED} (not itemised)`,
       grossCents: whole.grossCents - items.reduce((n, s) => n + s.grossCents, 0),
       discountCents: whole.discountCents - items.reduce((n, s) => n + s.discountCents, 0),
+      compsCents: whole.compsCents - items.reduce((n, s) => n + s.compsCents, 0),
       returnsCents: whole.returnsCents - items.reduce((n, s) => n + s.returnsCents, 0),
       netCents: whole.netCents - items.reduce((n, s) => n + s.netCents, 0),
       quantity: whole.quantity - items.reduce((n, s) => n + s.quantity, 0),
@@ -240,16 +272,19 @@ export function buildJournal(input: {
     memoParts.set(l, parts);
   };
 
-  let grossCents = 0, discountCents = 0, returnsCents = 0, squareNet = 0;
+  let grossCents = 0, discountCents = 0, compsCents = 0, returnsCents = 0, squareNet = 0;
   for (const s of kept) {
     grossCents += s.grossCents;
     discountCents += s.discountCents;
+    compsCents += s.compsCents;
     returnsCents += s.returnsCents;
     squareNet += s.netCents;
     // An unmapped source gets its own line, named for itself, so the CSV says
     // exactly what needs mapping instead of one anonymous UNMAPPED total.
-    const l = line(s.accountId, `UNMAPPED — ${s.key}`, s.key);
-    l.creditCents += s.grossCents - s.discountCents;
+    // Keyed by kind too: a category and an Uncategorized item can share a name
+    // ("Film Sponsorship" is both) and need separate decisions.
+    const l = line(s.accountId, `UNMAPPED — ${s.kind === "item" ? "Uncategorized · " : ""}${s.key}`, `${s.kind}:${s.key}`);
+    l.creditCents += s.grossCents - s.discountCents - s.compsCents;
     note(l, s.key);
   }
 
@@ -267,6 +302,14 @@ export function buildJournal(input: {
     const l = line(find("sales_tax", "collected"), "UNMAPPED — Sales tax", "Sales tax");
     l.creditCents += taxCents;
     note(l, "Square sales tax");
+  }
+  // Invoice surcharges (about 3% on rental invoices). Collected money that is
+  // not an item sale, so without its own line it reads as unreconciled.
+  const serviceCents = cents(t["Sales.service_charges_only_sum"]);
+  if (serviceCents) {
+    const l = line(find("service_charge", "_all"), "UNMAPPED — Service charges", "Service charges");
+    l.creditCents += serviceCents;
+    note(l, "Square service charges (invoice surcharges)");
   }
   if (tipsCents) {
     const l = line(find("tip", "_all"), "UNMAPPED — Tips", "Tips");
@@ -305,6 +348,7 @@ export function buildJournal(input: {
     totals: {
       grossCents,
       discountCents,
+      compsCents,
       returnsCents,
       taxCents,
       tipsCents,
@@ -312,6 +356,15 @@ export function buildJournal(input: {
       squareNetSalesCents: cents(t["Sales.net_sales"]),
       orders: Number(t["Sales.order_count"]) || 0,
       unreconciledCents,
+      sales: {
+        grossCents: cents(t["Sales.top_line_product_sales"]),
+        discountsCents: mag(t["Sales.discounts_amount"]),
+        compsCents: mag(t["Sales.comps_amount"]),
+        itemizedReturnsCents: mag(t["Sales.itemized_returns"]),
+        refundsByAmountCents: mag(t["Sales.refunds_by_amount_amount"]),
+        serviceChargesCents: cents(t["Sales.service_charges_only_sum"]),
+        giftCardSalesCents: cents(t["Sales.gift_card_sales_amount"]),
+      },
     },
     unmapped: kept.filter((s) => !s.accountId).length,
     truncated: (uncategorizedRows?.length ?? 0) >= JOURNAL_ITEM_LIMIT,

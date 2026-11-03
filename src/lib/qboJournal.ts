@@ -19,6 +19,7 @@ export interface JournalSource {
   key: string;
   grossCents: number;
   discountCents: number;
+  compsCents: number;
   returnsCents: number;
   netCents: number;
   quantity: number;
@@ -33,6 +34,7 @@ export interface Journal {
   totals: {
     grossCents: number;
     discountCents: number;
+    compsCents: number;
     returnsCents: number;
     taxCents: number;
     tipsCents: number;
@@ -40,6 +42,15 @@ export interface Journal {
     squareNetSalesCents: number;
     orders: number;
     unreconciledCents: number;
+    sales: {
+      grossCents: number;
+      discountsCents: number;
+      compsCents: number;
+      itemizedReturnsCents: number;
+      refundsByAmountCents: number;
+      serviceChargesCents: number;
+      giftCardSalesCents: number;
+    };
   };
   unmapped: number;
   truncated: boolean;

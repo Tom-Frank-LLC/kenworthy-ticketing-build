@@ -73,17 +73,53 @@ export const CONCESSION_CATEGORIES = new Set([
   "3 Soda",
   "4 Beer",
   "4 Wine",
+  "4 Cocktails & Wine",
   "5 Popcorn",
   "Cafe",
   "Cocktails",
   "Concessions",
 ]);
 
-export type Bucket = "tickets" | "concessions" | "other";
+/** Film passes. "9 Film Passes" on the live account (Oct 2026). */
+export const PASS_CATEGORIES = new Set(["9 Film Passes"]);
 
+/**
+ * Renting the theatre: the hall, the marquee, film licensing and posters for
+ * a renter. Not "6 Rental Tickets" — those are seats sold to a renter's show,
+ * and stay tickets so Tickets Sold counts them.
+ */
+export const RENTAL_CATEGORIES = new Set([
+  "Theater Rental",
+  "Marquee Rental",
+  "Film Licensing Fees",
+  "Poster Print",
+]);
+
+export type Bucket = "tickets" | "concessions" | "passes" | "rentals" | "other";
+
+/**
+ * Which slice of the Overview a Square category belongs to.
+ *
+ * The named sets come first. After them, the numbered taxonomy the theatre
+ * uses in Square decides: 1–5 are the stand, 6 is tickets, 9 is passes. That
+ * fallback exists because a fixed list goes stale silently — October 2026's bar
+ * sales were rung up as "4 Cocktails & Wine", a name the list did not have, and
+ * $2,898 of drinks sat in Other and out of Concession Rev.
+ *
+ * Anything else is Other, including Square's "Uncategorized": items keyed in at
+ * the till without a category cannot be told apart by category, whatever they
+ * really are.
+ */
 export function bucketFor(category: string | null | undefined): Bucket {
-  if (category && TICKET_CATEGORIES.has(category)) return "tickets";
-  if (category && CONCESSION_CATEGORIES.has(category)) return "concessions";
+  if (!category) return "other";
+  if (TICKET_CATEGORIES.has(category)) return "tickets";
+  if (CONCESSION_CATEGORIES.has(category)) return "concessions";
+  if (PASS_CATEGORIES.has(category)) return "passes";
+  if (RENTAL_CATEGORIES.has(category)) return "rentals";
+  if (/^6\s/.test(category)) return "tickets";
+  if (/^[1-5]\s/.test(category)) return "concessions";
+  if (/^9\s/.test(category) || /\bpass(es)?\b/i.test(category)) return "passes";
+  if (/\brental\b/i.test(category)) return "rentals";
   return "other";
 }
 
@@ -209,6 +245,23 @@ export async function pollLoad(
 // docs do not list ItemTransactions' dimensions at all.
 
 const ITEM_TIME = "ItemTransactions.local_reporting_timestamp";
+
+/**
+ * Only lines Square has recognised as revenue: paid, closed checks.
+ *
+ * ItemTransactions also carries the lines of orders nobody paid for —
+ * revenue_recognition_state PROJECTED, check_state OPEN_CHECK: an abandoned
+ * online checkout (often the first of an identical pair, the second being the
+ * retry that paid), an unpaid invoice. Square's Sales cube never counts them.
+ * Unfiltered, they put $3,792.04 of September 2026 and $2,145.00 of October
+ * into the Overview and the export that no one paid. Measured order by order
+ * on 3 Nov 2026; see docs/briefs/FINDINGS-qbo-export-from-square.md.
+ */
+export const RECOGNIZED_ONLY = {
+  member: "ItemTransactions.revenue_recognition_state",
+  operator: "equals",
+  values: ["RECOGNIZED"],
+};
 const SALES_TIME = "Sales.local_reporting_timestamp";
 const PAY_TIME = "PaymentAndRefunds.reporting_timestamp";
 
@@ -235,6 +288,7 @@ export function categoryByDayQuery(
     measures: ["ItemTransactions.sales_gross_amount", "ItemTransactions.items_sold_count"],
     dimensions: ["ItemTransactions.category_name"],
     timeDimensions: [{ dimension: ITEM_TIME, dateRange: [range.start, range.end], granularity }],
+    filters: [RECOGNIZED_ONLY],
     limit,
   };
 }
@@ -253,7 +307,7 @@ export function topPerformersQuery(range: { start: string; end: string }, limit 
       member: "ItemTransactions.category_name",
       operator: "equals",
       values: [...TICKET_CATEGORIES],
-    }],
+    }, RECOGNIZED_ONLY],
     limit,
   };
 }
@@ -275,7 +329,7 @@ export function uncategorizedQuery(
     measures: ["ItemTransactions.sales_gross_amount", "ItemTransactions.items_sold_count"],
     dimensions: ["ItemTransactions.item_name"],
     timeDimensions: [{ dimension: ITEM_TIME, dateRange: [range.start, range.end] }],
-    filters: [{ member: "ItemTransactions.category_name", operator: "equals", values: [categoryName] }],
+    filters: [{ member: "ItemTransactions.category_name", operator: "equals", values: [categoryName] }, RECOGNIZED_ONLY],
     limit,
   };
 }
@@ -309,6 +363,8 @@ export interface AnalyticsPayload {
     date: string;
     ticketsCents: number;
     concessionsCents: number;
+    passesCents: number;
+    rentalsCents: number;
     otherCents: number;
     totalCents: number;
   }>;
@@ -369,9 +425,11 @@ export function shape(input: {
     const day = dayKey(row, granularity);
     if (!day) continue;
     const d = byDay.get(day) ??
-      { date: day, ticketsCents: 0, concessionsCents: 0, otherCents: 0, totalCents: 0 };
+      { date: day, ticketsCents: 0, concessionsCents: 0, passesCents: 0, rentalsCents: 0, otherCents: 0, totalCents: 0 };
     if (bucket === "tickets") d.ticketsCents += amount;
     else if (bucket === "concessions") d.concessionsCents += amount;
+    else if (bucket === "passes") d.passesCents += amount;
+    else if (bucket === "rentals") d.rentalsCents += amount;
     else d.otherCents += amount;
     d.totalCents += amount;
     byDay.set(day, d);

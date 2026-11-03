@@ -10,7 +10,7 @@ const j: Journal = {
     { accountId: null, code: 'UNMAPPED', name: 'UNMAPPED — Theater, "Main" Rental', accountType: 'income', debitCents: 0, creditCents: 40000, memo: 'x' },
     { accountId: null, code: '', name: 'Undeposited Funds', accountType: 'asset', debitCents: 133000, creditCents: 0, memo: 'Square total collected' },
   ],
-  totals: { grossCents: 0, discountCents: 0, returnsCents: 0, taxCents: 0, tipsCents: 0, collectedCents: 133000, squareNetSalesCents: 0, orders: 0, unreconciledCents: 0 },
+  totals: { grossCents: 0, discountCents: 0, compsCents: 0, returnsCents: 0, taxCents: 0, tipsCents: 0, collectedCents: 133000, squareNetSalesCents: 0, orders: 0, unreconciledCents: 0, sales: { grossCents: 0, discountsCents: 0, compsCents: 0, itemizedReturnsCents: 0, refundsByAmountCents: 0, serviceChargesCents: 0, giftCardSalesCents: 0 } },
   unmapped: 1,
   truncated: false,
 };
