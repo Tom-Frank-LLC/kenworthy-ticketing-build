@@ -38,24 +38,55 @@ import { LaborVsSales } from './labor/LaborVsSales';
  */
 const RANKED_BARS = 9;
 
-/** `folded`: the names an "Other" row stands for, so it can say which. */
-type RankedRow = { name: string; value: number; folded?: string[] };
+/** One slice of a bar, e.g. a sales channel. Values in the row's own unit. */
+type Segment = { key: string; value: number };
+
+/**
+ * `folded`: the names an "Other" row stands for, so it can say which.
+ * `segments`: when present, the bar is split by these and they sum to `value`.
+ */
+type RankedRow = { name: string; value: number; folded?: string[]; segments?: Segment[] };
 
 /** Sort descending, keep the top N, and sum the rest into one "Other" row. */
-function rankWithOther(rows: Array<{ name: string; value: number }>, keep = RANKED_BARS): RankedRow[] {
+function rankWithOther(
+  rows: Array<{ name: string; value: number; segments?: Segment[] }>,
+  keep = RANKED_BARS,
+): RankedRow[] {
   const sorted = [...rows].sort((a, b) => b.value - a.value);
   const head = sorted.length > keep + 1 ? sorted.slice(0, keep) : sorted;
   const tail = sorted.slice(head.length);
-  const out: RankedRow[] = head.map(r => ({ name: r.name, value: r.value }));
+  const out: RankedRow[] = head.map(r => ({ name: r.name, value: r.value, segments: r.segments }));
   if (tail.length > 0) {
+    // The folded row keeps its split too: summed segment by segment.
+    const sums = new Map<string, number>();
+    for (const r of tail) for (const s of r.segments ?? []) sums.set(s.key, (sums.get(s.key) ?? 0) + s.value);
     out.push({
       name: `Other (${tail.length} more)`,
       value: +tail.reduce((sum, r) => sum + r.value, 0).toFixed(2),
       folded: tail.map(r => r.name),
+      segments: sums.size ? [...sums].map(([key, value]) => ({ key, value: +value.toFixed(2) })) : undefined,
     });
   }
   return out;
 }
+
+/**
+ * Where it was sold: Square's sales channel. Fixed order and colour, so a
+ * channel looks the same on every row. The website covers this build's own
+ * box office screen and the Stand too — Square cannot tell those from online.
+ */
+const CHANNEL_ORDER = ['in_person', 'website', 'invoices', 'square_online', 'other'] as const;
+const CHANNEL_STYLE: Record<string, { short: string; color: string }> = {
+  in_person: { short: 'In person', color: 'hsl(var(--chart-1))' },
+  website: { short: 'Website', color: 'hsl(var(--chart-4))' },
+  invoices: { short: 'Invoices', color: 'hsl(var(--chart-2))' },
+  square_online: { short: 'Square Online', color: 'hsl(var(--chart-3))' },
+  other: { short: 'Other channel', color: 'hsl(var(--muted-foreground))' },
+};
+const channelRank = (k: string) => {
+  const i = (CHANNEL_ORDER as readonly string[]).indexOf(k);
+  return i === -1 ? CHANNEL_ORDER.length : i;
+};
 
 const RANGES = [
   { key: '30d', label: '30 days' },
@@ -98,7 +129,14 @@ interface Analytics {
     otherCents: number;
     totalCents: number;
   }>;
-  revenueByCategory: Array<{ name: string; amountCents: number; quantity: number }>;
+  revenueByCategory: Array<{
+    name: string;
+    amountCents: number;
+    quantity: number;
+    /** Gross per sales channel; missing on a response from an older function. */
+    channels?: Record<string, number>;
+  }>;
+  channels?: Array<{ key: string; label: string; amountCents: number }>;
   topPerformers: Array<{ title: string; revenueCents: number; count: number }>;
   uncategorized: Array<{ name: string; amountCents: number; quantity: number }>;
   meta: { orders: number; categories: number; truncated: boolean; source: string };
@@ -177,11 +215,27 @@ export default function AnalyticsTab() {
   }));
 
   const categoryData = rankWithOther(
-    (data?.revenueByCategory ?? []).map(c => ({
-      name: c.name,
-      value: +(c.amountCents / 100).toFixed(2),
-    })),
+    (data?.revenueByCategory ?? []).map(c => {
+      const segments = Object.entries(c.channels ?? {})
+        .filter(([, v]) => v)
+        .map(([key, v]) => ({ key, value: +((v as number) / 100).toFixed(2) }))
+        .sort((a, b) => channelRank(a.key) - channelRank(b.key));
+      return {
+        name: c.name,
+        value: +(c.amountCents / 100).toFixed(2),
+        segments: segments.length ? segments : undefined,
+      };
+    }),
   );
+  const channelLegend = [...(data?.channels ?? [])].sort((a, b) => channelRank(a.key) - channelRank(b.key));
+  /** "In person $3,700 · Website $60" — the split in words, not only colour. */
+  const channelText = (r: RankedRow) =>
+    r.segments && r.segments.length > 0
+      ? [...r.segments]
+          .sort((a, b) => channelRank(a.key) - channelRank(b.key))
+          .map(s => `${CHANNEL_STYLE[s.key]?.short ?? s.key} $${s.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+          .join(' · ')
+      : null;
 
   // Full titles: RankedBars wraps long names instead of cutting them.
   const topPerformers: RankedRow[] = (data?.topPerformers ?? []).map(p => ({
@@ -333,14 +387,31 @@ export default function AnalyticsTab() {
             <CollapsibleSection
               id="analytics.by-category"
               title="Revenue by Category"
-              description="Gross sales by Square reporting category, largest first."
+              description="Gross sales by Square reporting category, largest first, split by where it was sold. Website includes sales made through this site's own box office screen and the Stand."
             >
               {categoryData.length > 0 ? (
-                <RankedBars
-                  rows={categoryData}
-                  format={v => `$${v.toFixed(2)}`}
-                  detail={r => r.folded ? r.folded.join(', ') : null}
-                />
+                <div className="space-y-3">
+                  {channelLegend.length > 0 && (
+                    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm" aria-label="Where it was sold">
+                      {channelLegend.map(c => (
+                        <li key={c.key} className="flex items-center gap-1.5">
+                          <span
+                            aria-hidden="true"
+                            className="inline-block h-3 w-3 rounded-sm"
+                            style={{ background: CHANNEL_STYLE[c.key]?.color }}
+                          />
+                          {c.label} <span className="tabular-nums text-muted-foreground">{dollars(c.amountCents)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <RankedBars
+                    rows={categoryData}
+                    format={v => `$${v.toFixed(2)}`}
+                    segmentColor={k => CHANNEL_STYLE[k]?.color ?? 'hsl(var(--muted-foreground))'}
+                    detail={r => [r.folded?.join(', '), channelText(r)].filter(Boolean).join('\n') || null}
+                  />
+                </div>
               ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}
             </CollapsibleSection>
 
@@ -459,11 +530,13 @@ export default function AnalyticsTab() {
  * As rows, every bar carries its own name, long names wrap, and the text
  * follows the root font size and browser zoom like the rest of the app.
  */
-function RankedBars({ rows, format, detail }: {
+function RankedBars({ rows, format, detail, segmentColor }: {
   rows: RankedRow[];
   format: (v: number) => string;
-  /** Optional second line under a name, e.g. "142 tickets". */
+  /** Optional lines under a name, e.g. "142 tickets". Newlines start a new line. */
   detail?: (row: RankedRow) => string | null;
+  /** Colour per segment key. Without it, or without segments, the bar is one hue. */
+  segmentColor?: (key: string) => string;
 }) {
   const max = Math.max(...rows.map(r => r.value), 0);
   return (
@@ -478,11 +551,25 @@ function RankedBars({ rows, format, detail }: {
           >
             <div className="min-w-0 text-sm leading-snug">
               <span className="break-words">{r.name}</span>
-              {extra && <span className="block text-muted-foreground">{extra}</span>}
+              {extra && extra.split('\n').map((line, i) => (
+                <span key={i} className="block text-muted-foreground">{line}</span>
+              ))}
             </div>
             <div className="flex items-center gap-2 min-w-0">
               <div className="flex-1 min-w-0" aria-hidden="true">
-                <div className="h-5 rounded-r bg-primary" style={{ width: `${pct}%` }} />
+                {segmentColor && r.segments && r.segments.length > 0 ? (
+                  <div className="h-5 rounded-r overflow-hidden flex" style={{ width: `${pct}%` }}>
+                    {r.segments.map(s => (
+                      <div
+                        key={s.key}
+                        className="h-full"
+                        style={{ width: `${r.value > 0 ? (s.value / r.value) * 100 : 0}%`, background: segmentColor(s.key) }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="h-5 rounded-r bg-primary" style={{ width: `${pct}%` }} />
+                )}
               </div>
               <span className="text-sm tabular-nums shrink-0 w-24 text-right">{format(r.value)}</span>
             </div>

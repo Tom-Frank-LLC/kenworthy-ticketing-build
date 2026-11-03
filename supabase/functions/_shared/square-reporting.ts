@@ -298,6 +298,48 @@ export function categoryByDayQuery(
  * `Invalid request` and no indication of which field is at fault, so ordering
  * is done in shape() instead. `limit` on its own is accepted.
  */
+// --- where it was sold -------------------------------------------------------
+//
+// ItemTransactions carries `sales_channel_id` and nothing friendlier; the Sales
+// cube carries the channel names but no id. The four ids below were matched to
+// names on 3 Nov 2026 by amount: October's item sales per id agreed with the
+// Sales cube per channel to the dollar ($33,705 in-store, $13,920 invoices,
+// $9,563 Kenworthy Website, $381 Square Online). They are this Square account's
+// own ids and do not change; a channel not listed here shows as "Other channel"
+// rather than being dropped.
+//
+// "Kenworthy Website" is every order this build creates: online checkout, but
+// also its own box office screen and the Stand at the patron display. Square
+// cannot tell those apart, so the label says "website" and the Overview's note
+// says what that includes.
+export type ChannelKey = "in_person" | "website" | "invoices" | "square_online" | "other";
+
+export const CHANNELS: Record<Exclude<ChannelKey, "other">, { id: string; label: string }> = {
+  in_person: { id: "CH_27Kyih9oB6VUz2MepI2UDPfPjCbjCqQgAjrfYRlQuYC", label: "In person (Square POS)" },
+  website: { id: "CH_xlf4mkHhQa36aRgCeuIXO5rRflNRQ2lZRxbDhUR29945o", label: "Kenworthy website" },
+  invoices: { id: "CH_6NE27fZbC6gnoLsScI2UDPfPjCbjCqQgAjrfYRlQuYC", label: "Invoices" },
+  square_online: { id: "CH_SVZlhtagiJS8qc5oVI2UDPfPjCbjCqQgAjrfYRlQuYC", label: "Square Online" },
+};
+
+const CHANNEL_BY_ID = new Map(
+  (Object.entries(CHANNELS) as Array<[ChannelKey, { id: string }]>).map(([k, v]) => [v.id, k]),
+);
+
+export function channelFor(id: string | null | undefined): ChannelKey {
+  return (id && CHANNEL_BY_ID.get(id)) || "other";
+}
+
+/** Gross by category and channel, paid lines only. */
+export function categoryChannelQuery(range: { start: string; end: string }, limit = 2000): CubeQuery {
+  return {
+    measures: ["ItemTransactions.sales_gross_amount"],
+    dimensions: ["ItemTransactions.category_name", "ItemTransactions.sales_channel_id"],
+    timeDimensions: [{ dimension: ITEM_TIME, dateRange: [range.start, range.end] }],
+    filters: [RECOGNIZED_ONLY],
+    limit,
+  };
+}
+
 export function topPerformersQuery(range: { start: string; end: string }, limit = 500): CubeQuery {
   return {
     measures: ["ItemTransactions.sales_gross_amount", "ItemTransactions.items_sold_count"],
@@ -368,10 +410,25 @@ export interface AnalyticsPayload {
     otherCents: number;
     totalCents: number;
   }>;
-  revenueByCategory: Array<{ name: string; amountCents: number; quantity: number }>;
+  revenueByCategory: Array<{
+    name: string;
+    amountCents: number;
+    quantity: number;
+    /** Gross per channel. Sums to amountCents (same query filter, same cube). */
+    channels: Partial<Record<ChannelKey, number>>;
+  }>;
+  /** Channel totals for the range, largest first, for the legend. */
+  channels: Array<{ key: ChannelKey; label: string; amountCents: number }>;
   topPerformers: Array<{ title: string; revenueCents: number; count: number }>;
   uncategorized: Array<{ name: string; amountCents: number; quantity: number }>;
-  meta: { orders: number; categories: number; truncated: boolean; source: "reporting-api" };
+  meta: {
+    orders: number;
+    categories: number;
+    truncated: boolean;
+    source: "reporting-api";
+    /** Channel ids not in CHANNELS: what to add when "Other channel" appears. */
+    unknownChannelIds: string[];
+  };
 }
 
 const num = (row: any, key: string) => Number(row?.[key]) || 0;
@@ -391,9 +448,26 @@ export function shape(input: {
   topRows: any[];
   uncategorizedRows: any[];
   refundRows: any[];
+  /** Optional so a caller without the channel query still shapes. */
+  channelRows?: any[];
   categoryRowLimit: number;
 }): AnalyticsPayload {
   const { range, granularity, totalsRows, categoryRows, topRows, uncategorizedRows, refundRows } = input;
+
+  const byCategoryChannel = new Map<string, Partial<Record<ChannelKey, number>>>();
+  const channelTotals = new Map<ChannelKey, number>();
+  const unknownChannelIds = new Set<string>();
+  for (const row of input.channelRows ?? []) {
+    const label = row?.["ItemTransactions.category_name"] ?? "Uncategorized";
+    const rawId = row?.["ItemTransactions.sales_channel_id"];
+    const key = channelFor(rawId);
+    if (key === "other") unknownChannelIds.add(String(rawId));
+    const amount = cents(row?.["ItemTransactions.sales_gross_amount"]);
+    const m = byCategoryChannel.get(label) ?? {};
+    m[key] = (m[key] ?? 0) + amount;
+    byCategoryChannel.set(label, m);
+    channelTotals.set(key, (channelTotals.get(key) ?? 0) + amount);
+  }
 
   const t = totalsRows?.[0] ?? {};
 
@@ -456,8 +530,16 @@ export function shape(input: {
     },
     revenueByDay: [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date)),
     revenueByCategory: [...byCategory.entries()]
-      .map(([name, v]) => ({ name, ...v }))
+      .map(([name, v]) => ({ name, ...v, channels: byCategoryChannel.get(name) ?? {} }))
       .filter((c) => c.amountCents !== 0)
+      .sort((a, b) => b.amountCents - a.amountCents),
+    channels: [...channelTotals.entries()]
+      .filter(([, v]) => v !== 0)
+      .map(([key, amountCents]) => ({
+        key,
+        label: key === "other" ? "Other channel" : CHANNELS[key].label,
+        amountCents,
+      }))
       .sort((a, b) => b.amountCents - a.amountCents),
     // Ordered here rather than by Square — see topPerformersQuery.
     topPerformers: (topRows ?? [])
@@ -482,6 +564,7 @@ export function shape(input: {
       // Cube truncates at the limit silently, exactly like PostgREST does.
       truncated: (categoryRows?.length ?? 0) >= input.categoryRowLimit,
       source: "reporting-api",
+      unknownChannelIds: [...unknownChannelIds],
     },
   };
 }

@@ -12,6 +12,7 @@ const performers = [
 ];
 const categories = Array.from({ length: 12 }, (_, i) => ({
   name: `${i + 1} Category ${i + 1}`, amountCents: (12 - i) * 10000, quantity: 1,
+  channels: i === 0 ? { in_person: 90000, website: 30000 } : { in_person: (12 - i) * 10000 },
 }));
 const payload = {
   range: { start: '2026-10-01', end: '2026-10-31' },
@@ -27,6 +28,7 @@ const payload = {
     { name: "Women's World Cup", amountCents: 300000, quantity: 1 },
     { name: 'Donation', amountCents: 20200, quantity: 30 },
   ],
+  channels: [{ key: 'in_person', label: 'In person (Square POS)', amountCents: 840000 }, { key: 'website', label: 'Kenworthy website', amountCents: 30000 }],
   meta: { orders: 1, categories: 12, truncated: false, source: 'reporting-api' },
 };
 
@@ -75,5 +77,16 @@ describe('Overview ranked lists', () => {
     const cells = within(row).getAllByRole('cell').map(c => c.textContent);
     expect(cells).toEqual(['Donation', '30', '$202.00']);
     expect(screen.getByRole('columnheader', { name: 'Total' })).toBeTruthy();
+  });
+});
+
+describe('where it was sold', () => {
+  it('names the split in words under each category, and lists the channels', async () => {
+    render(<AnalyticsTab />);
+    expect(await screen.findByText('In person $900.00 · Website $300.00')).toBeTruthy();
+    const legend = screen.getByRole('list', { name: 'Where it was sold' });
+    expect(within(legend).getByText(/Kenworthy website/)).toBeTruthy();
+    // The folded "Other" row keeps its split, summed.
+    expect(screen.getAllByText('In person $600.00')).toHaveLength(2); // "7 Category 7", and Other (10+11+12)
   });
 });
