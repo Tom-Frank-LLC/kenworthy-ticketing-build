@@ -22,6 +22,7 @@ import { loadSquareConfig } from "../_shared/square.ts";
 import {
   type AnalyticsPayload,
   categoryByDayQuery,
+  categoryChannelQuery,
   granularityFor,
   pollLoad,
   refundsQuery,
@@ -125,19 +126,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Five independent aggregates; Square computes each one server-side, so
+    // Six independent aggregates; Square computes each one server-side, so
     // there is no paging and nothing to stitch together here.
-    const [totalsRows, categoryRows, topRows, uncategorizedRows, refundRows] = await Promise.all([
+    const [totalsRows, categoryRows, topRows, uncategorizedRows, refundRows, channelRows] = await Promise.all([
       run("totals", totalsQuery(range)),
       run("categories", categoryByDayQuery(range, granularity, CATEGORY_ROW_LIMIT)),
       run("topPerformers", topPerformersQuery(range)),
       run("uncategorized", uncategorizedQuery(range)),
       run("refunds", refundsQuery(range)),
+      run("channels", categoryChannelQuery(range)),
     ]);
 
     const payload = shape({
       range, granularity,
-      totalsRows, categoryRows, topRows, uncategorizedRows, refundRows,
+      totalsRows, categoryRows, topRows, uncategorizedRows, refundRows, channelRows,
       categoryRowLimit: CATEGORY_ROW_LIMIT,
     });
 

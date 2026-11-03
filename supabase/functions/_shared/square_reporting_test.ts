@@ -2,6 +2,8 @@ import { assert, assertEquals, assertRejects } from 'https://deno.land/std@0.224
 import {
   absCents,
   bucketFor,
+  categoryChannelQuery,
+  CHANNELS,
   categoryByDayQuery,
   cents,
   granularityFor,
@@ -138,7 +140,7 @@ Deno.test('a category split across days is merged in the pie', () => {
     catRow('6 Film Tickets', 100, 10, '2026-08-11'),
     catRow('6 Film Tickets', 60, 6, '2026-08-12'),
   ]);
-  assertEquals(r.revenueByCategory, [{ name: '6 Film Tickets', amountCents: 16000, quantity: 16 }]);
+  assertEquals(r.revenueByCategory, [{ name: '6 Film Tickets', amountCents: 16000, quantity: 16, channels: {} }]);
 });
 
 Deno.test('avg per ticket ignores concession revenue and survives zero tickets', () => {
@@ -333,4 +335,36 @@ Deno.test('every item query counts only paid lines, never an open check', () => 
     const f = q.filters?.find((f) => f.member === 'ItemTransactions.revenue_recognition_state');
     assertEquals(f?.values, ['RECOGNIZED']);
   }
+});
+
+Deno.test('categories are split by where they were sold, and the split sums to the category', () => {
+  const ch = (category: string, id: string, gross: number) => ({
+    'ItemTransactions.category_name': category,
+    'ItemTransactions.sales_channel_id': id,
+    'ItemTransactions.sales_gross_amount': gross,
+  });
+  const p = shape({
+    range: { start: '2026-10-01', end: '2026-10-31' }, granularity: 'day',
+    totalsRows: TOTALS, topRows: [], uncategorizedRows: [], refundRows: [], categoryRowLimit: 10000,
+    categoryRows: [catRow('9 Film Passes', 100, 4, '2026-10-01'), catRow('Theater Rental', 500, 1, '2026-10-01')],
+    channelRows: [
+      ch('9 Film Passes', CHANNELS.in_person.id, 60),
+      ch('9 Film Passes', CHANNELS.website.id, 40),
+      ch('Theater Rental', CHANNELS.invoices.id, 480),
+      ch('Theater Rental', 'CH_some_new_channel', 20),
+    ],
+  });
+  const passes = p.revenueByCategory.find((c) => c.name === '9 Film Passes')!;
+  assertEquals(passes.channels, { in_person: 6000, website: 4000 });
+  const rental = p.revenueByCategory.find((c) => c.name === 'Theater Rental')!;
+  // An unknown channel is kept as "other", never dropped.
+  assertEquals(rental.channels, { invoices: 48000, other: 2000 });
+  assertEquals(p.channels.map((c) => [c.key, c.amountCents]), [['invoices', 48000], ['in_person', 6000], ['website', 4000], ['other', 2000]]);
+  assertEquals(p.channels.find((c) => c.key === 'other')?.label, 'Other channel');
+});
+
+Deno.test('the channel query counts only paid lines', () => {
+  const q = categoryChannelQuery({ start: '2026-10-01', end: '2026-10-31' });
+  assertEquals(q.dimensions, ['ItemTransactions.category_name', 'ItemTransactions.sales_channel_id']);
+  assertEquals(q.filters?.[0].values, ['RECOGNIZED']);
 });
