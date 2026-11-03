@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DollarSign, TrendingUp, Users, BarChart3, UtensilsCrossed, RefreshCw } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { tallyGenres } from '@/lib/genres';
 import { LaborVsSales } from './labor/LaborVsSales';
@@ -37,33 +37,25 @@ import { LaborVsSales } from './labor/LaborVsSales';
  * short enough that every name is legible.
  */
 const RANKED_BARS = 9;
-const RANKED_LABEL_MAX = 26;
-const RANKED_ROW_PX = 34;
 
-type RankedRow = { name: string; label: string; value: number };
+/** `folded`: the names an "Other" row stands for, so it can say which. */
+type RankedRow = { name: string; value: number; folded?: string[] };
 
 /** Sort descending, keep the top N, and sum the rest into one "Other" row. */
 function rankWithOther(rows: Array<{ name: string; value: number }>, keep = RANKED_BARS): RankedRow[] {
   const sorted = [...rows].sort((a, b) => b.value - a.value);
   const head = sorted.length > keep + 1 ? sorted.slice(0, keep) : sorted;
   const tail = sorted.slice(head.length);
-  const out: RankedRow[] = head.map(r => ({
-    name: r.name,
-    label: r.name.length > RANKED_LABEL_MAX ? `${r.name.slice(0, RANKED_LABEL_MAX - 1)}…` : r.name,
-    value: r.value,
-  }));
+  const out: RankedRow[] = head.map(r => ({ name: r.name, value: r.value }));
   if (tail.length > 0) {
     out.push({
       name: `Other (${tail.length} more)`,
-      label: `Other (${tail.length} more)`,
       value: +tail.reduce((sum, r) => sum + r.value, 0).toFixed(2),
+      folded: tail.map(r => r.name),
     });
   }
   return out;
 }
-
-/** Tall enough that no row is cramped, whatever the count. */
-const rankedHeight = (rows: number) => rows * RANKED_ROW_PX + 24;
 
 const RANGES = [
   { key: '30d', label: '30 days' },
@@ -191,11 +183,12 @@ export default function AnalyticsTab() {
     })),
   );
 
-  const topPerformers = (data?.topPerformers ?? []).map(p => ({
-    title: p.title.length > 28 ? `${p.title.slice(0, 27)}…` : p.title,
-    revenue: +(p.revenueCents / 100).toFixed(2),
-    count: p.count,
+  // Full titles: RankedBars wraps long names instead of cutting them.
+  const topPerformers: RankedRow[] = (data?.topPerformers ?? []).map(p => ({
+    name: p.title,
+    value: +(p.revenueCents / 100).toFixed(2),
   }));
+  const topPerformerCounts = new Map((data?.topPerformers ?? []).map(p => [p.title, p.count]));
 
   // --- Genre popularity (build-sourced) ---
   // A production carries its genres as one comma-separated string, so a ticket
@@ -343,7 +336,11 @@ export default function AnalyticsTab() {
               description="Gross sales by Square reporting category, largest first."
             >
               {categoryData.length > 0 ? (
-                <RankedBars rows={categoryData} format={v => `$${v.toFixed(2)}`} />
+                <RankedBars
+                  rows={categoryData}
+                  format={v => `$${v.toFixed(2)}`}
+                  detail={r => r.folded ? r.folded.join(', ') : null}
+                />
               ) : <p className="text-muted-foreground text-center py-8">No sales in this range.</p>}
             </CollapsibleSection>
 
@@ -370,37 +367,42 @@ export default function AnalyticsTab() {
               id="analytics.uncategorized"
               title={`What's in "Uncategorized"`}
               count={data.uncategorized.length}
-              description="Items Square holds no reporting category for. Largest first."
+              description="Items Square holds no reporting category for, largest total first. Total is everything sold of that item in the range, not the price of one."
             >
-              <ul className="space-y-1">
-                {data.uncategorized.map((u, i) => (
-                  <li key={i} className="flex items-baseline justify-between gap-4">
-                    <span className="truncate">
-                      {u.name}
-                      <span className="text-muted-foreground">{' · '}{u.quantity}&times;</span>
-                    </span>
-                    <span className="tabular-nums shrink-0">{dollars(u.amountCents)}</span>
-                  </li>
-                ))}
-              </ul>
+              {/* Columns, not "30× $202.00": that read as $202 each. The amount is
+                  the item's total for the range, and the list is ordered by it. */}
+              <table className="w-full text-sm">
+                <thead className="text-xs uppercase text-muted-foreground border-b">
+                  <tr>
+                    <th scope="col" className="text-left font-medium py-2 pr-3">Item</th>
+                    <th scope="col" className="text-right font-medium py-2 px-3">Sold</th>
+                    <th scope="col" className="text-right font-medium py-2 pl-3">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.uncategorized.map((u, i) => (
+                    <tr key={i} className="border-b border-border/40 last:border-0">
+                      <td className="py-1.5 pr-3 break-words">{u.name}</td>
+                      <td className="py-1.5 px-3 text-right tabular-nums text-muted-foreground">{u.quantity.toLocaleString()}</td>
+                      <td className="py-1.5 pl-3 text-right tabular-nums">{dollars(u.amountCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </CollapsibleSection>
           )}
 
           {/* Top performers */}
           <CollapsibleSection id="analytics.top-performers" title="Top Performers" description="Ticket revenue">
             {topPerformers.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={topPerformers} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                  <YAxis dataKey="title" type="category" width={160} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-                  <Tooltip
-                    formatter={(v: number, name: string) => name === 'revenue' ? `$${v.toFixed(2)}` : v}
-                    contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
-                  />
-                  <Bar dataKey="revenue" fill="hsl(var(--primary))" name="Revenue" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <RankedBars
+                rows={topPerformers}
+                format={v => `$${v.toFixed(2)}`}
+                detail={r => {
+                  const n = topPerformerCounts.get(r.name);
+                  return n === undefined ? null : `${n.toLocaleString()} ${n === 1 ? 'ticket' : 'tickets'}`;
+                }}
+              />
             ) : <p className="text-muted-foreground text-center py-8">No ticket sales in this range.</p>}
           </CollapsibleSection>
 
@@ -448,34 +450,46 @@ export default function AnalyticsTab() {
 }
 
 /**
- * A ranked, single-series horizontal bar chart: names down the side, the value
- * at the end of each bar. One hue, so there is no legend to reconcile and no
- * colour to tell apart; height follows the row count so nothing is cramped.
+ * A ranked, single-series bar list: name, bar, value — one row per entry.
+ *
+ * Plain HTML rather than a chart library's SVG axis. The SVG version drew
+ * names into a fixed 160–170px strip: long show titles wrapped, were clipped
+ * on the left, and when they did not fit the library silently skipped every
+ * other label, so bars and names stopped lining up (reported 3 Nov 2026).
+ * As rows, every bar carries its own name, long names wrap, and the text
+ * follows the root font size and browser zoom like the rest of the app.
  */
-function RankedBars({ rows, format }: { rows: RankedRow[]; format: (v: number) => string }) {
+function RankedBars({ rows, format, detail }: {
+  rows: RankedRow[];
+  format: (v: number) => string;
+  /** Optional second line under a name, e.g. "142 tickets". */
+  detail?: (row: RankedRow) => string | null;
+}) {
+  const max = Math.max(...rows.map(r => r.value), 0);
   return (
-    <ResponsiveContainer width="100%" height={rankedHeight(rows.length)}>
-      <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 64, bottom: 4, left: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-border" />
-        <XAxis type="number" tickFormatter={format} tick={{ fill: 'hsl(var(--muted-foreground))' }} className="text-xs" />
-        <YAxis
-          dataKey="label"
-          type="category"
-          width={170}
-          interval={0}
-          tick={{ fill: 'hsl(var(--muted-foreground))' }}
-          className="text-xs"
-        />
-        <Tooltip
-          formatter={(v: number) => format(v)}
-          labelFormatter={(_, payload) => (payload?.[0]?.payload as RankedRow | undefined)?.name ?? ''}
-          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
-        />
-        <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} maxBarSize={22}>
-          <LabelList dataKey="value" position="right" formatter={format} className="fill-foreground text-xs" />
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+    <ol className="space-y-2">
+      {rows.map(r => {
+        const pct = max > 0 ? Math.max((r.value / max) * 100, r.value > 0 ? 1 : 0) : 0;
+        const extra = detail?.(r);
+        return (
+          <li
+            key={r.name}
+            className="grid grid-cols-1 sm:grid-cols-[minmax(0,16rem)_1fr] gap-x-3 gap-y-1 items-center"
+          >
+            <div className="min-w-0 text-sm leading-snug">
+              <span className="break-words">{r.name}</span>
+              {extra && <span className="block text-muted-foreground">{extra}</span>}
+            </div>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex-1 min-w-0" aria-hidden="true">
+                <div className="h-5 rounded-r bg-primary" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="text-sm tabular-nums shrink-0 w-24 text-right">{format(r.value)}</span>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
