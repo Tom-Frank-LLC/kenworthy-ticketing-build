@@ -1,11 +1,13 @@
 ---
 brief: qbo-export-from-square
 title: The QBO Export books the month from Square's reports, so it matches Square and the Overview
-status: built
+status: shipped
 track: bug
 severity: P1
 date: 2026-11-03
-verified: false
+verified: true
+shipped_in: ["#410"]
+shipped_at: 2026-11-03
 findings: FINDINGS-qbo-export-from-square.md
 ---
 
