@@ -28,6 +28,15 @@
 // lookup is what stops an admin from using "invite" as a side door onto a
 // superadmin's account.
 //
+// Host invites (BRIEF-host-magic-link-view). With role 'host' and a
+// `host_assignment`, this onboards a one-off renter in one step: the account
+// (created with no password and no invitation email), the host role, the
+// assignment to their production, and optionally their first sign-in email.
+// They never set a password: they sign in at /host/login by emailed link or
+// code, and that session can read their production's sales and change nothing
+// (migration 20261105025356). Without `host_assignment` a host invite is the
+// password invite it always was.
+//
 // Email delivery is Supabase's own `inviteUserByEmail`. That is not the
 // unbranded path it would have been a month ago: the Send Email Hook
 // (`send-auth-email`) intercepts every auth email and renders it through the
@@ -40,6 +49,7 @@ import { SITE_URL } from '../_shared/brand.ts';
 import { logAudit } from '../_shared/audit.ts';
 import { requireRole, roleGate } from '../_shared/callers.ts';
 import { inviteTargetMatches } from './target.ts';
+import { type HostAssignment, parseHostAssignment } from './host_assignment.ts';
 import {
   type CallerTier,
   INVITABLE_ROLES,
@@ -60,6 +70,110 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+const PRIVILEGED = ['staff', 'admin', 'superadmin'];
+
+/**
+ * The rest of a host invite, once the account exists and holds `host`: the
+ * assignment, the first sign-in email, and the audit row naming the admin.
+ */
+async function finishHostInvite(o: {
+  admin: any;
+  userId: string;
+  email: string;
+  tier: CallerTier;
+  created: boolean;
+  heldRoles: string[];
+  hostAssignment: HostAssignment;
+  sendSignInLink: boolean;
+  actor: { id: string; email: string | null };
+}): Promise<Response> {
+  const { admin, userId, email, hostAssignment: ha } = o;
+
+  // No unique constraint on host_event_assignments, so look before inserting:
+  // re-inviting a host must not give them the same production twice.
+  const { data: existing, error: existingError } = await admin
+    .from('host_event_assignments')
+    .select('id')
+    .eq('user_id', userId)
+    .eq(ha.column, ha.id)
+    .limit(1);
+  if (existingError) {
+    console.error('[invite-staff] assignment lookup failed:', existingError.message);
+    return json({ error: 'The host role was granted, but the production could not be assigned — assign it from the list below' }, 500);
+  }
+  let assignmentCreated = false;
+  if (!existing?.length) {
+    const { data: inserted, error: assignError } = await admin
+      .from('host_event_assignments')
+      .insert({ user_id: userId, [ha.column]: ha.id })
+      .select('id');
+    if (assignError || !inserted?.length) {
+      console.error('[invite-staff] assignment insert failed:', assignError?.message ?? 'no row');
+      return json({ error: 'The host role was granted, but the production could not be assigned — assign it from the list below' }, 500);
+    }
+    assignmentCreated = true;
+  }
+
+  // A privileged account's emailed-link session is aal1, which the database
+  // gives nothing: they use the staff sign-in, password and code, as before.
+  const privileged = o.heldRoles.some(r => PRIVILEGED.includes(r));
+  const siteBase = SITE_URL.replace(/\/$/, '');
+  let linkSent = false;
+  let linkError: string | null = null;
+  if (o.sendSignInLink && !privileged) {
+    // Through GoTrue's ordinary /otp, so the Send Email Hook renders it (link
+    // and code) and Supabase's own rate limit applies. The account holds `host`
+    // by now, which is what the hook checks before delivering.
+    const { error } = await admin.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false, emailRedirectTo: `${siteBase}/host` },
+    });
+    if (error) {
+      console.error('[invite-staff] sign-in email failed:', error.message);
+      linkError = /seconds|rate/i.test(error.message)
+        ? 'A sign-in email went to this address moments ago; wait a minute before sending another.'
+        : 'The sign-in email could not be sent. They can request one at the host sign-in page.';
+    } else {
+      linkSent = true;
+    }
+  }
+
+  await logAudit({
+    action: 'host.invite',
+    entityType: 'host_event_assignments',
+    entityId: userId,
+    details: {
+      created: o.created,
+      reused_existing_account: !o.created,
+      production_table: ha.table,
+      production_id: ha.id,
+      assignment_created: assignmentCreated,
+      sign_in_email_sent: linkSent,
+      invited_email: email,
+      caller_tier: o.tier,
+    },
+    actorId: o.actor.id,
+    actorEmail: o.actor.email,
+  });
+
+  return json({
+    ok: true,
+    created: o.created,
+    reused_existing_account: !o.created,
+    assignment_created: assignmentCreated,
+    sign_in_link_sent: linkSent,
+    sign_in_url: `${siteBase}/host/login`,
+    ...(privileged ? {
+      notice: 'This account already holds a staff role, so it signs in with the staff sign-in ' +
+        '(password and authenticator code), not an emailed link. No sign-in email was sent.',
+    } : {}),
+    ...(linkError ? { notice: linkError } : {}),
+    userId,
+    email,
+    role: 'host',
   });
 }
 
@@ -109,12 +223,35 @@ Deno.serve(async (req: Request) => {
 
     const displayName = String(body.display_name ?? '').trim() || null;
 
+    // --- A host invite: which production, checked before any account exists --
+    const hostAssignment = parseHostAssignment(body.host_assignment);
+    if (hostAssignment === 'invalid') {
+      return json({ error: 'host_assignment must name an event, live performance or movie by id' }, 400);
+    }
+    if (hostAssignment && role !== 'host') {
+      return json({ error: 'host_assignment only goes with the host role' }, 400);
+    }
+    const sendSignInLink = hostAssignment ? body.send_sign_in_link !== false : false;
+    if (hostAssignment) {
+      const { data: prod, error: prodError } = await admin
+        .from(hostAssignment.table)
+        .select('id, title')
+        .eq('id', hostAssignment.id)
+        .maybeSingle();
+      if (prodError) {
+        console.error('[invite-staff] production lookup failed:', prodError.message);
+        return json({ error: 'Could not check that production' }, 500);
+      }
+      if (!prod) return json({ error: 'That production does not exist' }, 404);
+    }
+
     // --- Privileged work ----------------------------------------------------
     // Reuse rather than duplicate. Someone who once bought a ticket already has
     // an account (checkout made one silently); inviting them must grant the role
     // to *that* account, not fail and not fork their history into a second one.
     let userId = await findUserIdByEmail(admin, email);
     let created = false;
+    let heldRoles: string[] = [];
 
     if (userId) {
       // The resolved account must be the address that was invited, as auth
@@ -142,8 +279,31 @@ Deno.serve(async (req: Request) => {
         console.error('[invite-staff] target role lookup failed:', heldError.message);
         return json({ error: 'Could not check that account' }, 500);
       }
-      const refusal = inviteRefusal(tier, role, (held ?? []).map((r: { role: string }) => r.role));
+      heldRoles = (held ?? []).map((r: { role: string }) => r.role);
+      const refusal = inviteRefusal(tier, role, heldRoles);
       if (refusal) return json({ error: refusal.error }, refusal.status);
+    }
+
+    if (!userId && hostAssignment) {
+      // No password and no invitation email: the renter's way in is the sign-in
+      // email below, or /host/login. Confirmed, because an admin typed the
+      // address for this person; the first sign-in still proves the inbox.
+      const { data: made, error: makeError } = await admin.auth.admin.createUser({
+        email,
+        email_confirm: true,
+        user_metadata: displayName ? { display_name: displayName } : undefined,
+      });
+      if (makeError || !made?.user) {
+        const message = makeError?.message ?? 'unknown error';
+        if (/already.*regist|already.*exist/i.test(message)) {
+          console.warn('[invite-staff] createUser reported an existing user the lookups missed');
+          return json({ error: 'That account already exists but could not be located' }, 409);
+        }
+        console.error('[invite-staff] createUser failed:', message);
+        return json({ error: 'Could not create the account' }, 502);
+      }
+      userId = made.user.id;
+      created = true;
     }
 
     if (!userId) {
@@ -189,6 +349,13 @@ Deno.serve(async (req: Request) => {
 
     // Deliberately no email address in this log line — see the security brief.
     console.log(`[invite-staff] ${created ? 'created' : 'reused'} user, granted ${role} (by ${tier})`);
+
+    if (hostAssignment) {
+      return await finishHostInvite({
+        admin, userId, email, tier, created, heldRoles, hostAssignment, sendSignInLink,
+        actor: { id: user.id, email: user.email ?? null },
+      });
+    }
 
     // The audit trigger on user_roles saw a service_role write with no
     // auth.uid(), so it recorded nobody. This row is the one that names the

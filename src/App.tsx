@@ -69,6 +69,7 @@ const EventForm = lazyWithRecovery(() => import("./pages/admin/EventForm"));
 const VenueForm = lazyWithRecovery(() => import("./pages/admin/VenueForm"));
 const ShowingForm = lazyWithRecovery(() => import("./pages/admin/ShowingForm"));
 const HostDashboard = lazyWithRecovery(() => import("./pages/admin/HostDashboard"));
+const HostSignIn = lazyWithRecovery(() => import("./pages/HostSignIn"));
 const SponsorshipForm = lazyWithRecovery(() => import("./pages/admin/SponsorshipForm"));
 const AuditLog = lazyWithRecovery(() => import("./pages/admin/AuditLog"));
 const AccountsRoles = lazyWithRecovery(() => import("./pages/admin/AccountsRoles"));
@@ -176,6 +177,8 @@ const App = () => (
                       decides. See src/lib/patronDisplay.ts. */}
                   <Route path="/pos/display" element={<PatronDisplay />} />
                   <Route path="/host" element={<MfaGate><HostDashboard /></MfaGate>} />
+                  {/* Passwordless, for one-off event hosts. Unadvertised. */}
+                  <Route path="/host/login" element={<HostSignIn />} />
                   <Route path="/sponsors" element={<Sponsors />} />
                   <Route path="/history" element={<HistoryPage />} />
                   <Route path="/rental-request" element={<RentalRequest />} />

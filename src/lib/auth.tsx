@@ -21,13 +21,22 @@ interface AuthContextType {
   isAdmin: boolean;
   isStaff: boolean;
   isHost: boolean;
+  /**
+   * Holds `host` and no staff, admin or superadmin role. The one kind of
+   * account that may use the app at aal1: it signs in by emailed link or code
+   * and gets read-only access to its own production (migration 20261105025356).
+   * The database decides this independently; this only spares such a session
+   * the code step it does not need.
+   */
+  isHostOnly: boolean;
   isSuperadmin: boolean;
   loading: boolean;
   /** Where this session stands on two-step sign-in. See lib/mfa.ts. */
   mfa: MfaState;
   /**
    * The server will refuse this session without a code: the switch is on. It
-   * applies to everyone who signs in. False until known.
+   * applies to everyone who signs in except a host-only account. False until
+   * known.
    */
   mfaRequired: boolean;
   /** Re-read factors and the switch, after enrolling or removing a factor. */
@@ -144,7 +153,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // on token refresh and on returning to the tab — a listener would record
   // "signed in" several times a shift for someone who signed in once. This is
   // the only path into the admin screens: Auth.tsx offers password sign-in and
-  // a password reset, and no magic-link or OTP entry point exists.
+  // a password reset. The one emailed-link entry point is /host/login
+  // (lib/hostSignIn.ts), and the session it makes is aal1, which the database
+  // gives nothing but a host-only account's own read-only view. It is not
+  // logged here: a host-only sign-in changes nothing, and recordStaffLogin
+  // skips non-privileged accounts anyway.
   //
   // The password is only the first step for an account with an authenticator.
   // The session it returns is aal1, and Auth.tsx asks for the code before
@@ -186,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isAdmin, isStaff, isHost, isSuperadmin, loading, mfa, mfaRequired, refreshMfa, signUp, signIn, completeSignIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, isAdmin, isStaff, isHost, isHostOnly: isHost && !isStaff, isSuperadmin, loading, mfa, mfaRequired, refreshMfa, signUp, signIn, completeSignIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

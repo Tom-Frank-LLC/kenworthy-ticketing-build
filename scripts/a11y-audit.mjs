@@ -31,7 +31,7 @@ const PUBLIC_ROUTES = [
   '/', '/calendar', '/film-passes', '/donate', '/about', '/history',
   '/press', '/silent-film-festival', '/rentals', '/rental-request',
   '/sponsors', '/volunteer', '/accessibility', '/privacy', '/terms',
-  '/backstage', '/auth', '/this-route-does-not-exist',
+  '/backstage', '/auth', '/host/login', '/this-route-does-not-exist',
   // Added after the first audit: the concessions menu got its own page, the
   // Backstage enquiry got its own form, and a film pass got a detail route.
   '/concessions', '/backstage-enquiry',

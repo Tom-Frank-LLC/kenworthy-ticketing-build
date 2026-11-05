@@ -6,9 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { Trash2, UserPlus, Search, Users } from 'lucide-react';
+import { Trash2, UserPlus, Search, Users, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { invokeFunction } from '@/lib/functions';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface Assignment {
   id: string;
@@ -17,7 +20,7 @@ interface Assignment {
   live_performance_id: string | null;
   movie_id: string | null;
   created_at: string;
-  profile?: { display_name: string | null };
+  profile?: { display_name: string | null; email?: string | null };
   event?: { title: string } | null;
   live_performance?: { title: string } | null;
   movie?: { title: string } | null;
@@ -37,6 +40,11 @@ export default function HostManagementTab() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedProductionKey, setSelectedProductionKey] = useState('');
   const [loading, setLoading] = useState(true);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [inviteProductionKey, setInviteProductionKey] = useState('');
+  const [inviteSendLink, setInviteSendLink] = useState(true);
+  const [inviting, setInviting] = useState(false);
 
   /*
    * One flat, searchable list rather than three scrollable groups.
@@ -89,10 +97,17 @@ export default function HostManagementTab() {
     setProductions(prods);
     setProfiles(profilesRes.data || []);
 
-    // Enrich assignments with names
+    // Enrich assignments with names. Read for the assigned accounts by id: the
+    // full profiles list above is the picker's, and every guest buyer has a
+    // profile, so it is cut off at PostgREST's 1,000 rows and a host invited by
+    // email (a new profile) would show as "Unknown User".
     const rawAssignments = assignmentsRes.data || [];
+    const assignedIds = [...new Set(rawAssignments.map(a => a.user_id))];
+    const { data: assignedProfiles } = assignedIds.length
+      ? await supabase.from('profiles').select('id, display_name, email').in('id', assignedIds)
+      : { data: [] as { id: string; display_name: string | null; email: string | null }[] };
     const enriched = rawAssignments.map(a => {
-      const profile = (profilesRes.data || []).find(p => p.id === a.user_id);
+      const profile = (assignedProfiles || []).find(p => p.id === a.user_id);
       const event = a.event_id ? (eventsRes.data || []).find(e => e.id === a.event_id) : null;
       const lp = a.live_performance_id ? (performancesRes.data || []).find(p => p.id === a.live_performance_id) : null;
       const movie = a.movie_id ? (moviesRes.data || []).find(m => m.id === a.movie_id) : null;
@@ -149,6 +164,53 @@ export default function HostManagementTab() {
     loadData();
   }
 
+  /**
+   * A one-off renter who has no account: create it with no password, make it a
+   * host of this production, and email the first sign-in link, all server-side
+   * in invite-staff. They sign in at /host/login from then on.
+   */
+  async function inviteHost(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inviteEmail.trim() || !inviteProductionKey) {
+      toast.error('Enter an email address and choose a production');
+      return;
+    }
+    const [kind, id] = inviteProductionKey.split('::');
+    setInviting(true);
+    try {
+      const res = await invokeFunction<{
+        created: boolean;
+        email: string;
+        assignment_created: boolean;
+        sign_in_link_sent: boolean;
+        sign_in_url: string;
+        notice?: string;
+      }>('invite-staff', {
+        email: inviteEmail,
+        display_name: inviteName,
+        role: 'host',
+        host_assignment: { kind, id },
+        send_sign_in_link: inviteSendLink,
+      });
+      const what = res.assignment_created ? 'is now a host of that production' : 'was already a host of that production';
+      toast.success(`${res.email} ${what}.`, {
+        description: res.notice
+          ?? (res.sign_in_link_sent
+            ? `A sign-in email is on its way. Later visits: ${res.sign_in_url}`
+            : `They sign in at ${res.sign_in_url} — no password needed.`),
+        duration: 20000,
+      });
+      setInviteEmail('');
+      setInviteName('');
+      setInviteProductionKey('');
+      loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not invite that host');
+    } finally {
+      setInviting(false);
+    }
+  }
+
   async function removeAssignment(id: string) {
     if (!confirm('Remove this host assignment?')) return;
     const { error } = await supabase.from('host_event_assignments').delete().eq('id', id);
@@ -167,6 +229,51 @@ export default function HostManagementTab() {
 
   return (
     <div className="space-y-6">
+      <CollapsibleSection id="rentals.hosts.invite" title="Invite a Host by Email" icon={Mail} defaultOpen>
+        <form onSubmit={inviteHost} className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            For a renter who has no account. They get a read-only view of this production's ticket sales,
+            sign in with an emailed link or code, and never set a password. They can't change showings,
+            issue comps or see patrons' contact details.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="invite-host-email">Email</Label>
+              <Input id="invite-host-email" type="email" required value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invite-host-name">Name (optional)</Label>
+              <Input id="invite-host-name" value={inviteName} onChange={e => setInviteName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invite-host-production">Production</Label>
+              <SearchableSelect
+                id="invite-host-production"
+                options={productionOptions}
+                value={inviteProductionKey}
+                onChange={setInviteProductionKey}
+                placeholder="Select production…"
+                searchPlaceholder="Search films, events, performances…"
+                emptyText="No production matches that search."
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="invite-host-send"
+                checked={inviteSendLink}
+                onCheckedChange={v => setInviteSendLink(v === true)}
+              />
+              <Label htmlFor="invite-host-send" className="font-normal">Email them a sign-in link now</Label>
+            </div>
+            <Button type="submit" disabled={inviting}>
+              <Mail className="h-4 w-4 mr-1" /> {inviting ? 'Inviting…' : 'Invite Host'}
+            </Button>
+          </div>
+        </form>
+      </CollapsibleSection>
+
       {/* Assign new host */}
       <CollapsibleSection id="rentals.hosts.assign" title="Assign a Host" icon={UserPlus}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -244,7 +351,7 @@ export default function HostManagementTab() {
                       <div className="flex items-center gap-3">
                         <Users className="h-5 w-5 text-primary" />
                         <div>
-                          <p className="font-medium">{a.profile?.display_name || 'Unknown'}</p>
+                          <p className="font-medium">{a.profile?.display_name || a.profile?.email || 'Unknown'}</p>
                           <div className="flex gap-2 mt-1">
                             <Badge variant="outline" className="text-xs">{type}</Badge>
                             <Badge variant="secondary" className="text-xs">{name}</Badge>

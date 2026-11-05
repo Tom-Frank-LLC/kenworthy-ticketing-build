@@ -3794,6 +3794,26 @@ export type Database = {
         }
         Returns: boolean
       }
+      host_attendees: {
+        Args: { p_showing_id: string }
+        Returns: {
+          attendee_name: string
+          checked_in: boolean
+          is_comp: boolean
+          purchased_at: string
+          ticket_id: string
+          ticket_type: string
+        }[]
+      }
+      host_ticket_counts: {
+        Args: { p_showing_ids: string[] }
+        Returns: {
+          checked_in: number
+          comps: number
+          showing_id: string
+          sold: number
+        }[]
+      }
       is_host_of: {
         Args: {
           _event_id: string

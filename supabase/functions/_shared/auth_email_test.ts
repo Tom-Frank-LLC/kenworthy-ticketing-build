@@ -139,6 +139,29 @@ Deno.test('recovery email carries the link, not a bare code', () => {
   assertEquals(html.includes('Reset password'), true);
 });
 
+Deno.test('a recovery email never shows the code: a reset link is all it carries', () => {
+  const html = buildAuthEmailHtml({ action: 'recovery', verifyUrl: 'https://x.test/verify?token=abc', token: '123456' });
+  const text = buildAuthEmailText({ action: 'recovery', verifyUrl: 'https://x.test/verify?token=abc', token: '123456' });
+  assertEquals(html.includes('123456'), false);
+  assertEquals(text.includes('123456'), false);
+});
+
+// /host/login takes either: the link in this browser, or the code typed in another.
+Deno.test('a magic link carries the code as well as the link', () => {
+  const opts = { action: 'magiclink', verifyUrl: 'https://x.test/verify?token=abc', token: '482913' };
+  const html = buildAuthEmailHtml(opts);
+  const text = buildAuthEmailText(opts);
+  assertEquals(html.includes('https://x.test/verify?token=abc'), true);
+  assertEquals(html.includes('482913'), true);
+  assertEquals(text.includes('https://x.test/verify?token=abc'), true);
+  assertEquals(text.includes('Or enter this code: 482913'), true);
+});
+
+Deno.test('a magic link with no code in the payload shows no empty code box', () => {
+  const html = buildAuthEmailHtml({ action: 'magiclink', verifyUrl: 'https://x.test/verify' });
+  assertEquals(html.includes('Or enter this code'), false);
+});
+
 Deno.test('reauthentication shows the code and no link', () => {
   const html = buildAuthEmailHtml({ action: 'reauthentication', verifyUrl: 'https://x.test/verify', token: '654321' });
   assertEquals(html.includes('654321'), true);

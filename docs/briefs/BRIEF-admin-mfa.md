@@ -11,6 +11,11 @@ findings: ../AUDIT-security-2026-10-06.md
 
 # Brief (for Claude Code): MFA for admin and superadmin accounts
 
+> **One exception since 2026-11-05:** a host-only account (holds `host`, no
+> staff/admin/superadmin role) is not asked for a code. It signs in by emailed
+> link and the database gives that aal1 session its own production to read and
+> nothing to change. See `BRIEF-host-magic-link-view.md`.
+
 **Requested by:** Tom, 2026-10-07. This is audit finding **M9**, deferred from the
 2026-10-06 fix round into a brief of its own. Tom plans to activate it within a
 day or two of the build landing.
