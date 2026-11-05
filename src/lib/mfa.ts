@@ -13,7 +13,9 @@ import { supabase } from '@/integrations/supabase/client';
  * Factor-agnostic on purpose. Nothing below assumes "one TOTP factor": factors
  * are listed and labelled by type, and the server only cares that the session
  * reached `aal2`. Adding passkeys later (Phase 2) means a new entry in
- * FACTOR_LABELS and a second way to verify, not a rewrite.
+ * FACTOR_LABELS and a second way to verify, not a rewrite. *
+ * One exception: a host-only account reads its own production at aal1 and
+ * changes nothing (BRIEF-host-magic-link-view); my_mfa_required() is false for it.
  */
 
 export type AalLevel = 'aal1' | 'aal2';

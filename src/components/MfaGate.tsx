@@ -5,7 +5,12 @@ import { needsCode } from '@/lib/mfa';
 
 /**
  * Two-step sign-in in front of a signed-in page (BRIEF-admin-mfa). Everyone who
- * signs in needs it, whatever their role.
+ * signs in needs it, whatever their role, with one exception: a host-only
+ * account (host, and no staff/admin/superadmin role) passes at aal1. It signs in
+ * by emailed link, and the database gives that session its own production to
+ * read and nothing to change (BRIEF-host-magic-link-view, migration
+ * 20261105025356). An account that hosts AND holds a privileged role is gated
+ * exactly as before.
  *
  * Signage, not the lock. Once the switch is on, the database and the edge
  * functions give a password-only session nothing it isn't owed as a signed-out
@@ -23,10 +28,12 @@ import { needsCode } from '@/lib/mfa';
  * them.
  */
 export function MfaGate({ children }: { children: React.ReactNode }) {
-  const { user, loading, mfa, mfaRequired, signOut } = useAuth();
+  const { user, loading, mfa, mfaRequired, isHostOnly, signOut } = useAuth();
   const location = useLocation();
 
   if (loading || !user) return <>{children}</>;
+
+  if (isHostOnly) return <>{children}</>;
 
   if (needsCode(mfa)) {
     return (

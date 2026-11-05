@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, Ticket, Calendar, Music, PartyPopper, Film, ScanLine, Plus, Trash2, Save, Gift } from 'lucide-react';
+import { Download, Ticket, Calendar, Music, PartyPopper, Film, ScanLine, Plus, Trash2, Save, Gift, Users, CheckCircle2, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
@@ -16,6 +16,9 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { formatShowtime } from '@/lib/datetime';
 import { trailerUrlError } from '@/lib/trailer';
+import { ProductionMetaBadges, displayedRuntime } from '@/components/ProductionMedia';
+import { RichText } from '@/components/RichText';
+import { openSignedContractPdf } from '@/lib/signedContractPdf';
 
 interface Assignment {
   id: string;
@@ -35,21 +38,66 @@ interface ProductionRecord {
   poster_url: string | null;
   trailer_url: string | null;
   pass_processing_fee: boolean;
+  duration_minutes: number | null;
+  show_runtime: boolean | null;
 }
 
+/**
+ * One row of host_production_contracts(): the rental request linked to a
+ * production (Admin → Hosts), as much of it as a host may see. Only the latest
+ * signing's PDF is archived, and signings before 2026-10-16 kept no file.
+ */
+interface ProductionContract {
+  request_id: string;
+  event_id: string | null;
+  live_performance_id: string | null;
+  movie_id: string | null;
+  signed: boolean;
+  signed_at: string | null;
+  signed_by_name: string | null;
+  signed_pdf_path: string | null;
+}
+
+/** One row of host_ticket_counts(): confirmed tickets on a showing. */
+interface ShowingCounts {
+  sold: number;
+  comps: number;
+  checkedIn: number;
+}
+
+const NO_COUNTS: ShowingCounts = { sold: 0, comps: 0, checkedIn: 0 };
+
+/**
+ * The host's window on their own production.
+ *
+ * Two audiences (docs/briefs/BRIEF-host-magic-link-view.md):
+ *   - a host signs in by emailed link (/host/login) and sees sales, the
+ *     schedule and who is coming, read-only. The database gives that session
+ *     nothing to change (migration 20261105025356), so the controls are not
+ *     shown either: a host should never meet a dead button.
+ *   - staff (staff, admin, superadmin) get the controls as before: edit the
+ *     production, add and hide showings, issue comps, export contacts. A
+ *     privileged session is aal2 by the time it is here (MfaGate).
+ */
 export default function HostDashboard() {
-  const { user, isHost, isAdmin, loading: authLoading } = useAuth();
+  const { user, isHost, isAdmin, isStaff, isHostOnly, mfa, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [showings, setShowings] = useState<any[]>([]);
-  const [ticketCounts, setTicketCounts] = useState<Record<string, number>>({});
+  const [ticketCounts, setTicketCounts] = useState<Record<string, ShowingCounts>>({});
+  const [contracts, setContracts] = useState<ProductionContract[]>([]);
   const [loading, setLoading] = useState(true);
+  const canManage = isStaff;
+  // The door scanner checks tickets in, which is a write: the database refuses
+  // it to a host's emailed-link (aal1) session. Offer it only where it works.
+  const canScan = !isHostOnly || mfa.currentLevel === 'aal2';
 
   useEffect(() => {
     if (authLoading) return;
+    if (!user) { navigate('/host/login', { replace: true }); return; }
     if (!isHost && !isAdmin) { navigate('/'); return; }
     loadData();
-  }, [isHost, isAdmin, authLoading, navigate]);
+  }, [user, isHost, isAdmin, authLoading, navigate]);
 
   async function loadData() {
     if (!user) return;
@@ -70,12 +118,17 @@ export default function HostDashboard() {
     const lpIds = assignmentData.filter(a => a.live_performance_id).map(a => a.live_performance_id!);
     const movieIds = assignmentData.filter(a => a.movie_id).map(a => a.movie_id!);
 
-    const cols = 'id, title, description, poster_url, trailer_url, pass_processing_fee';
-    const [eventsRes, lpRes, moviesRes] = await Promise.all([
+    const cols = 'id, title, description, poster_url, trailer_url, pass_processing_fee, duration_minutes, show_runtime';
+    const [eventsRes, lpRes, moviesRes, contractsRes] = await Promise.all([
       eventIds.length ? supabase.from('events').select(cols).in('id', eventIds) : { data: [] },
       lpIds.length ? supabase.from('live_performances').select(cols).in('id', lpIds) : { data: [] },
       movieIds.length ? supabase.from('movies').select(cols).in('id', movieIds) : { data: [] },
+      // A host cannot read rental_requests (contacts, notes, the invite token);
+      // this returns only the contract's signing and its archived PDF.
+      supabase.rpc('host_production_contracts'),
     ]);
+    if (contractsRes.error) console.error('host_production_contracts:', contractsRes.error);
+    setContracts((contractsRes.data ?? []) as ProductionContract[]);
 
     const enriched: Assignment[] = assignmentData.map(a => {
       let production: ProductionRecord | undefined;
@@ -87,6 +140,8 @@ export default function HostDashboard() {
         poster_url: row?.poster_url ?? null,
         trailer_url: row?.trailer_url ?? null,
         pass_processing_fee: !!row?.pass_processing_fee,
+        duration_minutes: row?.duration_minutes ?? null,
+        show_runtime: row?.show_runtime ?? null,
       });
       if (a.event_id) {
         const ev = (eventsRes.data || []).find((e: any) => e.id === a.event_id);
@@ -103,28 +158,38 @@ export default function HostDashboard() {
 
     setAssignments(enriched);
 
+    // Filtered by production on the server. Unfiltered, this read every
+    // showing the caller could see and filtered here, and past showings are
+    // visible to everyone: ~1,800 rows, cut to 1,000 by PostgREST without a
+    // word, so a host's own showings could silently be missing.
+    const productionFilter = [
+      eventIds.length ? `event_id.in.(${eventIds.join(',')})` : null,
+      lpIds.length ? `live_performance_id.in.(${lpIds.join(',')})` : null,
+      movieIds.length ? `movie_id.in.(${movieIds.join(',')})` : null,
+    ].filter(Boolean).join(',');
     const { data: showingsData } = await supabase
       .from('showings')
       .select('*')
+      .or(productionFilter)
       .order('start_time');
 
-    const relevantShowings = (showingsData || []).filter(s =>
-      assignmentData.some(a =>
-        (a.event_id && s.event_id === a.event_id) ||
-        (a.live_performance_id && s.live_performance_id === a.live_performance_id) ||
-        (a.movie_id && s.movie_id === a.movie_id)
-      )
-    );
+    const relevantShowings = showingsData || [];
     setShowings(relevantShowings);
 
-    const counts: Record<string, number> = {};
-    for (const s of relevantShowings) {
-      const { count } = await supabase
-        .from('tickets')
-        .select('id', { count: 'exact', head: true })
-        .eq('showing_id', s.id)
-        .eq('status', 'confirmed');
-      counts[s.id] = count || 0;
+    // One call for every showing, and it answers a host's emailed-link session,
+    // which may not read the tickets table itself.
+    const counts: Record<string, ShowingCounts> = {};
+    if (relevantShowings.length) {
+      const { data: countRows, error: countError } = await supabase.rpc('host_ticket_counts', {
+        p_showing_ids: relevantShowings.map(s => s.id),
+      });
+      if (countError) {
+        console.error('host_ticket_counts:', countError);
+        toast.error("Couldn't load ticket counts. Try reloading the page.");
+      }
+      for (const r of (countRows ?? []) as { showing_id: string; sold: number; comps: number; checked_in: number }[]) {
+        counts[r.showing_id] = { sold: Number(r.sold), comps: Number(r.comps), checkedIn: Number(r.checked_in) };
+      }
     }
     setTicketCounts(counts);
     setLoading(false);
@@ -154,10 +219,14 @@ export default function HostDashboard() {
   return (
     <div className="container py-8 px-4 max-w-4xl">
       <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
-        <h1 className="font-display text-3xl font-bold">Host Dashboard</h1>
-        <Button asChild variant="outline" size="sm">
-          <Link to="/staff/scanner"><ScanLine className="h-4 w-4 mr-1" /> Open Door Scanner</Link>
-        </Button>
+        <h1 className="font-display text-3xl font-bold">
+          <span className="text-primary">Theatre Rental</span> Host Dashboard
+        </h1>
+        {canScan && (
+          <Button asChild variant="outline" size="sm">
+            <Link to="/staff/scanner"><ScanLine className="h-4 w-4 mr-1" /> Open Door Scanner</Link>
+          </Button>
+        )}
       </div>
 
       {assignments.length === 0 ? (
@@ -173,7 +242,15 @@ export default function HostDashboard() {
               (a.live_performance_id && s.live_performance_id === a.live_performance_id) ||
               (a.movie_id && s.movie_id === a.movie_id)
             );
-            const totalTickets = productionShowings.reduce((sum, s) => sum + (ticketCounts[s.id] || 0), 0);
+            const contract = contracts.find(c =>
+              (a.event_id && c.event_id === a.event_id) ||
+              (a.live_performance_id && c.live_performance_id === a.live_performance_id) ||
+              (a.movie_id && c.movie_id === a.movie_id)
+            );
+            const totals = productionShowings.reduce<ShowingCounts>((t, s) => {
+              const c = ticketCounts[s.id] ?? NO_COUNTS;
+              return { sold: t.sold + c.sold, comps: t.comps + c.comps, checkedIn: t.checkedIn + c.checkedIn };
+            }, NO_COUNTS);
 
             return (
               <Card key={a.id} className="glass">
@@ -182,21 +259,36 @@ export default function HostDashboard() {
                     <Icon className="h-6 w-6 text-primary" />
                     <CardTitle className="font-display text-xl">{a.production?.title}</CardTitle>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => handleExport(a)}>
-                    <Download className="h-4 w-4 mr-1" /> Export Contacts
-                  </Button>
+                  {/* Contact export is staff work: a host's view has names, not
+                      addresses, and the database gives it no contact details. */}
+                  {canManage && (
+                    <Button variant="outline" size="sm" onClick={() => handleExport(a)}>
+                      <Download className="h-4 w-4 mr-1" /> Export Contacts
+                    </Button>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex gap-4">
+                  {a.production && <ProductionSummary production={a.production} />}
+                  {contract && <ContractSummary contract={contract} />}
+
+                  <div className="flex gap-3 flex-wrap">
                     <Badge variant="secondary" className="text-sm">
-                      <Ticket className="h-3.5 w-3.5 mr-1" /> {totalTickets} tickets sold
+                      <Ticket className="h-3.5 w-3.5 mr-1" /> {totals.sold} tickets sold
+                    </Badge>
+                    {totals.comps > 0 && (
+                      <Badge variant="outline" className="text-sm">
+                        <Gift className="h-3.5 w-3.5 mr-1" /> {totals.comps} comps
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="text-sm">
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> {totals.checkedIn} checked in
                     </Badge>
                     <Badge variant="outline" className="text-sm">
                       <Calendar className="h-3.5 w-3.5 mr-1" /> {productionShowings.length} showings
                     </Badge>
                   </div>
 
-                  {a.production && (
+                  {a.production && (canManage ? (
                     <ProductionManager
                       assignment={a}
                       production={a.production}
@@ -204,12 +296,79 @@ export default function HostDashboard() {
                       ticketCounts={ticketCounts}
                       onChanged={loadData}
                     />
-                  )}
+                  ) : (
+                    <ProductionView showings={productionShowings} ticketCounts={ticketCounts} />
+                  ))}
                 </CardContent>
               </Card>
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The production as patrons see it: poster, runtime, description. Shown to
+ * everyone here; staff edit it under Details below.
+ */
+function ProductionSummary({ production }: { production: ProductionRecord }) {
+  const runtime = displayedRuntime(production);
+  return (
+    <div className="flex flex-col sm:flex-row gap-4">
+      {production.poster_url && (
+        <img
+          src={production.poster_url}
+          alt={`Poster for ${production.title}`}
+          className="w-40 sm:w-44 max-h-72 self-start object-contain rounded-md bg-muted/30"
+          loading="lazy"
+        />
+      )}
+      <div className="min-w-0 flex-1 space-y-3">
+        <ProductionMetaBadges durationMinutes={runtime} />
+        {production.description ? (
+          <RichText html={production.description} className="text-muted-foreground leading-relaxed" />
+        ) : (
+          <p className="text-sm text-muted-foreground">No description yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The executed rental contract, when one is linked to this production.
+ * The PDF opens through a one-minute signed URL; the storage policy lets a
+ * host read only their own production's file (20261105073034).
+ */
+function ContractSummary({ contract }: { contract: ProductionContract }) {
+  if (!contract.signed) {
+    return (
+      <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 text-sm">
+        <FileText className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
+        <span>Rental contract: not signed yet.</span>
+      </div>
+    );
+  }
+  const when = contract.signed_at ? format(new Date(contract.signed_at), 'MMMM d, yyyy') : null;
+  return (
+    <div className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-muted/30 flex-wrap">
+      <div className="flex items-center gap-3 min-w-0">
+        <FileText className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
+        <div className="text-sm">
+          <p className="font-medium">Rental contract — signed</p>
+          <p className="text-muted-foreground">
+            {[when, contract.signed_by_name && `by ${contract.signed_by_name}`].filter(Boolean).join(' ')}
+          </p>
+        </div>
+      </div>
+      {contract.signed_pdf_path ? (
+        <Button variant="outline" size="sm" onClick={() => openSignedContractPdf(contract.signed_pdf_path!)}>
+          <FileText className="h-4 w-4 mr-1" aria-hidden="true" /> View signed contract
+        </Button>
+      ) : (
+        <p className="text-sm text-muted-foreground">Ask the Kenworthy for a copy of the signed PDF.</p>
       )}
     </div>
   );
@@ -231,7 +390,7 @@ function ProductionManager({
   assignment: Assignment;
   production: ProductionRecord;
   showings: any[];
-  ticketCounts: Record<string, number>;
+  ticketCounts: Record<string, ShowingCounts>;
   onChanged: () => void;
 }) {
   return (
@@ -257,6 +416,50 @@ function ProductionManager({
       </TabsContent>
       <TabsContent value="comps" className="pt-4">
         <CompTicketIssuer showings={showings} onChanged={onChanged} />
+      </TabsContent>
+      <TabsContent value="attendees" className="pt-4">
+        <AttendeesList showings={showings} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+/**
+ * What a host sees: the schedule with per-showing sales, and who is coming.
+ * Read-only on purpose; see the note on HostDashboard.
+ */
+function ProductionView({ showings, ticketCounts }: { showings: any[]; ticketCounts: Record<string, ShowingCounts> }) {
+  return (
+    <Tabs defaultValue="showings" className="w-full">
+      <TabsList className="grid grid-cols-2 w-full">
+        <TabsTrigger value="showings">Showings</TabsTrigger>
+        <TabsTrigger value="attendees">Attendees</TabsTrigger>
+      </TabsList>
+      <TabsContent value="showings" className="pt-4">
+        {showings.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No showings scheduled yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {showings.map(s => {
+              const c = ticketCounts[s.id] ?? NO_COUNTS;
+              return (
+                <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/50 flex-wrap">
+                  <span className="text-sm">{formatShowtime(s.start_time, 'EEE MMM d, yyyy • h:mm a')}</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="secondary">{c.sold} sold</Badge>
+                    {c.comps > 0 && <Badge variant="outline">{c.comps} comps</Badge>}
+                    <Badge variant="outline">{c.checkedIn} checked in</Badge>
+                    {s.cancelled_at ? (
+                      <Badge variant="outline">Cancelled</Badge>
+                    ) : (
+                      !s.is_active && <Badge variant="outline">Not on sale</Badge>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </TabsContent>
       <TabsContent value="attendees" className="pt-4">
         <AttendeesList showings={showings} />
@@ -344,7 +547,7 @@ function ShowingsManager({
   assignment: Assignment;
   production: ProductionRecord;
   showings: any[];
-  ticketCounts: Record<string, number>;
+  ticketCounts: Record<string, ShowingCounts>;
   onChanged: () => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -396,7 +599,7 @@ function ShowingsManager({
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-sm">{formatShowtime(s.start_time, 'EEE MMM d, yyyy • h:mm a')}</span>
               <Badge variant="secondary">${Number(s.ticket_price).toFixed(2)}</Badge>
-              <Badge variant="outline">{ticketCounts[s.id] || 0} tickets</Badge>
+              <Badge variant="outline">{(ticketCounts[s.id] ?? NO_COUNTS).sold} sold</Badge>
               {s.cancelled_at ? (
                 <Badge variant="outline">Cancelled</Badge>
               ) : (
@@ -527,38 +730,44 @@ function CompTicketIssuer({ showings, onChanged }: { showings: any[]; onChanged:
   );
 }
 
+interface AttendeeRow {
+  ticket_id: string;
+  attendee_name: string;
+  ticket_type: string | null;
+  is_comp: boolean;
+  checked_in: boolean;
+  purchased_at: string | null;
+}
+
+/**
+ * Confirmed tickets for one showing: name, ticket type, checked in.
+ *
+ * From host_attendees(), for staff and hosts alike. It returns no email or
+ * phone: the list is for knowing who is coming, and contacts are staff work
+ * (Export Contacts, or the attendee drawer on the admin dashboard). A host's
+ * emailed-link session cannot read the tickets table at all.
+ */
 function AttendeesList({ showings }: { showings: any[] }) {
   const [showingId, setShowingId] = useState<string>(showings[0]?.id || '');
-  const [tickets, setTickets] = useState<any[]>([]);
+  const [rows, setRows] = useState<AttendeeRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (!showingId) { setTickets([]); return; }
+    if (!showingId) { setRows([]); return; }
+    let cancelled = false;
     setLoading(true);
-    supabase
-      .from('tickets')
-      .select('id, status, scanned_at, payment_method, comp_recipient_name, comp_recipient_email, user_id, purchased_at')
-      .eq('showing_id', showingId)
-      .order('purchased_at', { ascending: false })
-      .then(async ({ data }) => {
-        const t = data || [];
-        // Names come from the showing_attendees RPC, not from reading profiles.
-        // RLS on profiles restricts every row to its own owner or an admin, so a
-        // host querying it directly got back only their own row and this list
-        // showed "Guest" for every attendee. The RPC scopes a host to the
-        // showings they are assigned to, which is the same rule that governs
-        // their access to the tickets above.
-        let contacts: Record<string, any> = {};
-        if (t.length) {
-          const { data: rows, error } = await supabase.rpc('showing_attendees', {
-            p_showing_ids: [showingId],
-          });
-          if (error) console.error('AttendeesList contacts:', error);
-          contacts = Object.fromEntries(((rows ?? []) as any[]).map(c => [c.ticket_id, c]));
-        }
-        setTickets(t.map(x => ({ ...x, profile: contacts[x.id] })));
-        setLoading(false);
-      });
+    setFailed(false);
+    supabase.rpc('host_attendees', { p_showing_id: showingId }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        console.error('host_attendees:', error);
+        setFailed(true);
+      }
+      setRows((data ?? []) as AttendeeRow[]);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, [showingId]);
 
   if (showings.length === 0) {
@@ -568,8 +777,9 @@ function AttendeesList({ showings }: { showings: any[] }) {
   return (
     <div className="space-y-3">
       <div className="space-y-1">
-        <Label className="text-xs">Showing</Label>
+        <Label htmlFor="attendees-showing" className="text-xs">Showing</Label>
         <select
+          id="attendees-showing"
           className="w-full h-10 rounded-md border bg-background px-3 text-sm"
           value={showingId}
           onChange={e => setShowingId(e.target.value)}
@@ -584,31 +794,30 @@ function AttendeesList({ showings }: { showings: any[] }) {
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : tickets.length === 0 ? (
+      ) : failed ? (
+        <p role="alert" className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+          Couldn't load the attendee list. Try reloading the page.
+        </p>
+      ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">No tickets for this showing yet.</p>
       ) : (
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">{tickets.length} ticket(s)</p>
-          {tickets.map(t => {
-            const name = t.comp_recipient_name || t.profile?.display_name || 'Guest';
-            const email = t.comp_recipient_email || t.profile?.email;
-            return (
-              <div key={t.id} className="flex items-center justify-between p-2 rounded bg-muted/40 text-sm">
-                <div>
-                  <span className="font-medium">{name}</span>
-                  {email && <span className="text-muted-foreground ml-2">{email}</span>}
-                </div>
-                <div className="flex items-center gap-2">
-                  {t.payment_method === 'comp' && <Badge variant="outline">Comp</Badge>}
-                  {t.scanned_at ? (
-                    <Badge variant="secondary">Scanned</Badge>
-                  ) : (
-                    <Badge variant="outline">Not scanned</Badge>
-                  )}
-                </div>
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <Users className="h-3.5 w-3.5" /> {rows.length} ticket{rows.length === 1 ? '' : 's'}
+          </p>
+          {rows.map(r => (
+            <div key={r.ticket_id} className="flex items-center justify-between gap-2 p-2 rounded bg-muted/40 text-sm flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium">{r.attendee_name}</span>
+                <span className="text-muted-foreground">{r.is_comp ? 'Comp' : (r.ticket_type || 'General admission')}</span>
               </div>
-            );
-          })}
+              {r.checked_in ? (
+                <Badge variant="secondary">Checked in</Badge>
+              ) : (
+                <Badge variant="outline">Not checked in</Badge>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

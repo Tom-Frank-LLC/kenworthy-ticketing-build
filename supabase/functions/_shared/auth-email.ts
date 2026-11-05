@@ -59,7 +59,7 @@ const COPY: Record<AuthAction, Copy> = {
   magiclink: {
     subject: 'Your Kenworthy sign-in link',
     heading: 'Sign in',
-    body: 'Use the button below to sign in. The link is single-use and expires shortly.',
+    body: 'Use the button below to sign in, or type the code shown under it. Each works once and expires shortly.',
     cta: 'Sign in',
   },
   invite: {
@@ -126,6 +126,9 @@ export function buildAuthEmailHtml(opts: {
 }): string {
   const c = copyFor(opts.action);
   const isCodeOnly = opts.action === 'reauthentication';
+  // A magic link also carries the same sign-in as a code, for a host who opens
+  // the email on their phone but signed in on a laptop (/host/login takes it).
+  const codeToo = opts.action === 'magiclink' && !!opts.token;
 
   const action = isCodeOnly
     ? `
@@ -133,7 +136,11 @@ export function buildAuthEmailHtml(opts: {
         ${esc(opts.token ?? '')}
       </div>`
     : `
-      ${primaryButton(opts.verifyUrl, c.cta)}
+      ${primaryButton(opts.verifyUrl, c.cta)}${codeToo ? `
+      <div style="font:400 14px/1.6 ${sans};color:${brand.ink};padding-top:20px;">Or enter this code:</div>
+      <div style="font:700 30px/1.2 ${mono};letter-spacing:.18em;color:${brand.ink};padding:4px 0 2px;">
+        ${esc(opts.token ?? '')}
+      </div>` : ''}
       <div style="font:400 12px/1.6 ${sans};color:${brand.faint};padding-top:14px;word-break:break-all;">
         Or paste this into your browser:<br />${esc(opts.verifyUrl)}
       </div>`;
@@ -166,7 +173,10 @@ export function buildAuthEmailText(opts: {
   const c = copyFor(opts.action);
   const lines = [c.heading, '', c.body, ''];
   if (opts.action === 'reauthentication') lines.push(`Code: ${opts.token ?? ''}`);
-  else lines.push(opts.verifyUrl);
+  else {
+    lines.push(opts.verifyUrl);
+    if (opts.action === 'magiclink' && opts.token) lines.push('', `Or enter this code: ${opts.token}`);
+  }
   lines.push('', ...textFooter(NOT_YOU));
   return lines.join('\n');
 }

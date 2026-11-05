@@ -14,7 +14,9 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
  *   - an account with no authenticator is sent to set one up once the server
  *     requires it, staff and hosts as much as admins; until then the page
  *     opens as before;
- *   - the pages outside the role gates (/host) get the same treatment.
+ *   - the pages outside the role gates (/host) get the same treatment, except
+ *     for a host-only account, which signs in by emailed link and is let
+ *     through at aal1 (BRIEF-host-magic-link-view). Host AND staff is not.
  */
 
 const factor = {
@@ -31,6 +33,7 @@ const mockAuth = {
   isAdmin: false,
   isStaff: false,
   isHost: false,
+  isHostOnly: false,
   isSuperadmin: false,
   loading: false,
   mfa: { currentLevel: 'aal1', nextLevel: 'aal1', verifiedFactors: [] as unknown[] },
@@ -75,6 +78,8 @@ function staff() {
 }
 
 beforeEach(() => {
+  mockAuth.isHost = false;
+  mockAuth.isHostOnly = false;
   mockAuth.mfa = { currentLevel: 'aal1', nextLevel: 'aal1', verifiedFactors: [] };
   mockAuth.mfaRequired = false;
 });
@@ -148,11 +153,35 @@ describe('staff with no authenticator', () => {
   });
 });
 
-describe('a host, outside the role gates', () => {
+describe('a host-only account (host, no privileged role)', () => {
   beforeEach(() => {
     mockAuth.isAdmin = false;
     mockAuth.isStaff = false;
     mockAuth.isHost = true;
+    mockAuth.isHostOnly = true;
+  });
+
+  it('opens /host at aal1 with the switch on: no code step, no setup redirect', () => {
+    mockAuth.mfaRequired = true;
+    renderAt('/host');
+    expect(screen.getByText('the host dashboard')).toBeTruthy();
+  });
+
+  it('is not asked for a code even if it once enrolled an authenticator', () => {
+    mockAuth.mfa = { currentLevel: 'aal1', nextLevel: 'aal2', verifiedFactors: [factor] };
+    mockAuth.mfaRequired = true;
+    renderAt('/host');
+    expect(screen.getByText('the host dashboard')).toBeTruthy();
+  });
+});
+
+// The carve-out must not become a bypass for a privileged account that also hosts.
+describe('an account that hosts and is also staff', () => {
+  beforeEach(() => {
+    mockAuth.isAdmin = false;
+    mockAuth.isStaff = true;
+    mockAuth.isHost = true;
+    mockAuth.isHostOnly = false;
   });
 
   it('is asked for the code on /host', () => {

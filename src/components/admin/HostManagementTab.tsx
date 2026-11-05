@@ -6,9 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { Trash2, UserPlus, Search, Users } from 'lucide-react';
+import { Trash2, UserPlus, Search, Users, Mail, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { invokeFunction } from '@/lib/functions';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useAuth } from '@/lib/auth';
+import { formatPlainDate } from '@/lib/datetime';
 
 interface Assignment {
   id: string;
@@ -17,10 +22,54 @@ interface Assignment {
   live_performance_id: string | null;
   movie_id: string | null;
   created_at: string;
-  profile?: { display_name: string | null };
+  profile?: { display_name: string | null; email?: string | null };
   event?: { title: string } | null;
   live_performance?: { title: string } | null;
   movie?: { title: string } | null;
+}
+
+/** A rental request as the contract picker needs it. */
+interface RentalContract {
+  id: string;
+  event_title: string | null;
+  applicant_name: string;
+  proposed_date: string | null;
+  signed_pdf_sha256: string | null;
+  linked_event_id: string | null;
+  linked_live_performance_id: string | null;
+  linked_movie_id: string | null;
+}
+
+const NO_CONTRACT = '__none__';
+
+/** The Hosts tab's production key ("movie::<id>") of the production a request is linked to. */
+function linkedProductionKey(r: RentalContract): string | null {
+  if (r.linked_event_id) return `event::${r.linked_event_id}`;
+  if (r.linked_live_performance_id) return `live_performance::${r.linked_live_performance_id}`;
+  if (r.linked_movie_id) return `movie::${r.linked_movie_id}`;
+  return null;
+}
+
+function assignmentProductionKey(a: { event_id: string | null; live_performance_id: string | null; movie_id: string | null }): string | null {
+  if (a.event_id) return `event::${a.event_id}`;
+  if (a.live_performance_id) return `live_performance::${a.live_performance_id}`;
+  if (a.movie_id) return `movie::${a.movie_id}`;
+  return null;
+}
+
+/**
+ * Link a production to its rental request, so its hosts see the signed
+ * contract on /host. One request per production; set_production_contract moves
+ * the link and refuses anyone but an admin (20261105073034).
+ */
+async function linkContract(productionKey: string, requestId: string | null): Promise<void> {
+  const [kind, id] = productionKey.split('::');
+  const { error } = await supabase.rpc('set_production_contract', {
+    p_kind: kind,
+    p_production_id: id,
+    p_request_id: requestId,
+  });
+  if (error) throw new Error(error.message);
 }
 
 interface Production {
@@ -30,6 +79,9 @@ interface Production {
 }
 
 export default function HostManagementTab() {
+  const { isAdmin } = useAuth();
+  const [rentals, setRentals] = useState<RentalContract[]>([]);
+  const [inviteContractId, setInviteContractId] = useState(NO_CONTRACT);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [productions, setProductions] = useState<Production[]>([]);
   const [profiles, setProfiles] = useState<{ id: string; display_name: string | null }[]>([]);
@@ -37,6 +89,11 @@ export default function HostManagementTab() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedProductionKey, setSelectedProductionKey] = useState('');
   const [loading, setLoading] = useState(true);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [inviteProductionKey, setInviteProductionKey] = useState('');
+  const [inviteSendLink, setInviteSendLink] = useState(true);
+  const [inviting, setInviting] = useState(false);
 
   /*
    * One flat, searchable list rather than three scrollable groups.
@@ -62,6 +119,23 @@ export default function HostManagementTab() {
     [productions],
   );
 
+  // Signed first: the dashboard shows a host the executed contract, so that is
+  // nearly always the one being picked.
+  const contractOptions = useMemo(
+    () => [
+      { value: NO_CONTRACT, label: 'No contract', hint: '' },
+      ...[...rentals]
+        .sort((x, y) => Number(!!y.signed_pdf_sha256) - Number(!!x.signed_pdf_sha256)
+          || (y.proposed_date ?? '').localeCompare(x.proposed_date ?? ''))
+        .map(r => ({
+          value: r.id,
+          label: `${r.event_title || 'Untitled rental'}${r.proposed_date ? ` — ${formatPlainDate(r.proposed_date)}` : ''}`,
+          hint: `${r.applicant_name} · ${r.signed_pdf_sha256 ? 'Signed' : 'Not signed'}`,
+        })),
+    ],
+    [rentals],
+  );
+
   useEffect(() => {
     loadData();
   }, []);
@@ -80,6 +154,18 @@ export default function HostManagementTab() {
       supabase.from('profiles').select('id, display_name'),
     ]);
 
+    // Paged and ordered, like the films: every rental is a candidate contract.
+    const rentalsRes = await fetchAllRows<RentalContract>((from, to) =>
+      supabase
+        .from('rental_requests')
+        .select('id, event_title, applicant_name, proposed_date, signed_pdf_sha256, linked_event_id, linked_live_performance_id, linked_movie_id')
+        .order('submitted_at', { ascending: false })
+        .order('id')
+        .range(from, to)
+    );
+    if (rentalsRes.error) toast.error(`Couldn't load rental contracts: ${rentalsRes.error.message}`);
+    setRentals(rentalsRes.data);
+
     // Build productions list
     const prods: Production[] = [
       ...(eventsRes.data || []).map(e => ({ id: e.id, title: e.title, type: 'event' as const })),
@@ -89,10 +175,17 @@ export default function HostManagementTab() {
     setProductions(prods);
     setProfiles(profilesRes.data || []);
 
-    // Enrich assignments with names
+    // Enrich assignments with names. Read for the assigned accounts by id: the
+    // full profiles list above is the picker's, and every guest buyer has a
+    // profile, so it is cut off at PostgREST's 1,000 rows and a host invited by
+    // email (a new profile) would show as "Unknown User".
     const rawAssignments = assignmentsRes.data || [];
+    const assignedIds = [...new Set(rawAssignments.map(a => a.user_id))];
+    const { data: assignedProfiles } = assignedIds.length
+      ? await supabase.from('profiles').select('id, display_name, email').in('id', assignedIds)
+      : { data: [] as { id: string; display_name: string | null; email: string | null }[] };
     const enriched = rawAssignments.map(a => {
-      const profile = (profilesRes.data || []).find(p => p.id === a.user_id);
+      const profile = (assignedProfiles || []).find(p => p.id === a.user_id);
       const event = a.event_id ? (eventsRes.data || []).find(e => e.id === a.event_id) : null;
       const lp = a.live_performance_id ? (performancesRes.data || []).find(p => p.id === a.live_performance_id) : null;
       const movie = a.movie_id ? (moviesRes.data || []).find(m => m.id === a.movie_id) : null;
@@ -149,6 +242,74 @@ export default function HostManagementTab() {
     loadData();
   }
 
+  /**
+   * A one-off renter who has no account: create it with no password, make it a
+   * host of this production, and email the first sign-in link, all server-side
+   * in invite-staff. They sign in at /host/login from then on.
+   */
+  async function inviteHost(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inviteEmail.trim() || !inviteProductionKey) {
+      toast.error('Enter an email address and choose a production');
+      return;
+    }
+    const [kind, id] = inviteProductionKey.split('::');
+    setInviting(true);
+    try {
+      const res = await invokeFunction<{
+        created: boolean;
+        email: string;
+        assignment_created: boolean;
+        sign_in_link_sent: boolean;
+        sign_in_url: string;
+        notice?: string;
+      }>('invite-staff', {
+        email: inviteEmail,
+        display_name: inviteName,
+        role: 'host',
+        host_assignment: { kind, id },
+        send_sign_in_link: inviteSendLink,
+      });
+      const what = res.assignment_created ? 'is now a host of that production' : 'was already a host of that production';
+      toast.success(`${res.email} ${what}.`, {
+        description: res.notice
+          ?? (res.sign_in_link_sent
+            ? `A sign-in email is on its way. Later visits: ${res.sign_in_url}`
+            : `They sign in at ${res.sign_in_url} — no password needed.`),
+        duration: 20000,
+      });
+      if (inviteContractId !== NO_CONTRACT) {
+        try {
+          await linkContract(inviteProductionKey, inviteContractId);
+        } catch (err) {
+          toast.error(`The host was invited, but the contract was not linked: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+      setInviteEmail('');
+      setInviteName('');
+      setInviteProductionKey('');
+      setInviteContractId(NO_CONTRACT);
+      loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not invite that host');
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function changeContract(productionKey: string, value: string) {
+    try {
+      await linkContract(productionKey, value === NO_CONTRACT ? null : value);
+      toast.success(value === NO_CONTRACT ? 'Contract unlinked' : 'Contract linked — its hosts can see it on their dashboard');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not link that contract');
+    }
+    loadData();
+  }
+
+  const contractFor = (productionKey: string | null) =>
+    productionKey ? rentals.find(r => linkedProductionKey(r) === productionKey) ?? null : null;
+
   async function removeAssignment(id: string) {
     if (!confirm('Remove this host assignment?')) return;
     const { error } = await supabase.from('host_event_assignments').delete().eq('id', id);
@@ -167,6 +328,65 @@ export default function HostManagementTab() {
 
   return (
     <div className="space-y-6">
+      <CollapsibleSection id="rentals.hosts.invite" title="Invite a Host by Email" icon={Mail} defaultOpen>
+        <form onSubmit={inviteHost} className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            For a renter who has no account. They get a read-only view of this production's ticket sales,
+            sign in with an emailed link or code, and never set a password. They can't change showings,
+            issue comps or see patrons' contact details.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="invite-host-email">Email</Label>
+              <Input id="invite-host-email" type="email" required value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invite-host-name">Name (optional)</Label>
+              <Input id="invite-host-name" value={inviteName} onChange={e => setInviteName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invite-host-production">Production</Label>
+              <SearchableSelect
+                id="invite-host-production"
+                options={productionOptions}
+                value={inviteProductionKey}
+                onChange={setInviteProductionKey}
+                placeholder="Select production…"
+                searchPlaceholder="Search films, events, performances…"
+                emptyText="No production matches that search."
+              />
+            </div>
+            {isAdmin && (
+              <div className="space-y-2">
+                <Label htmlFor="invite-host-contract">Rental contract (optional)</Label>
+                <SearchableSelect
+                  id="invite-host-contract"
+                  options={contractOptions}
+                  value={inviteContractId}
+                  onChange={setInviteContractId}
+                  placeholder="No contract"
+                  searchPlaceholder="Search rentals or renters…"
+                  emptyText="No rental matches that search."
+                />
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="invite-host-send"
+                checked={inviteSendLink}
+                onCheckedChange={v => setInviteSendLink(v === true)}
+              />
+              <Label htmlFor="invite-host-send" className="font-normal">Email them a sign-in link now</Label>
+            </div>
+            <Button type="submit" disabled={inviting}>
+              <Mail className="h-4 w-4 mr-1" /> {inviting ? 'Inviting…' : 'Invite Host'}
+            </Button>
+          </div>
+        </form>
+      </CollapsibleSection>
+
       {/* Assign new host */}
       <CollapsibleSection id="rentals.hosts.assign" title="Assign a Host" icon={UserPlus}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -238,22 +458,49 @@ export default function HostManagementTab() {
             <div className="space-y-3">
               {assignments.map(a => {
                 const { name, type } = getAssignmentLabel(a);
+                const productionKey = assignmentProductionKey(a);
+                const contract = contractFor(productionKey);
                 return (
                   <Card key={a.id} className="glass">
-                    <CardContent className="p-4 flex items-center justify-between">
+                    <CardContent className="p-4 flex items-center justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-3">
                         <Users className="h-5 w-5 text-primary" />
                         <div>
-                          <p className="font-medium">{a.profile?.display_name || 'Unknown'}</p>
+                          <p className="font-medium">{a.profile?.display_name || a.profile?.email || 'Unknown'}</p>
                           <div className="flex gap-2 mt-1">
                             <Badge variant="outline" className="text-xs">{type}</Badge>
                             <Badge variant="secondary" className="text-xs">{name}</Badge>
                           </div>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => removeAssignment(a.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* The contract belongs to the production, so every host
+                            of it shows, and changes, the same one. */}
+                        {isAdmin && productionKey ? (
+                          <div className="w-72 max-w-full">
+                            <Label htmlFor={`host-contract-${a.id}`} className="sr-only">
+                              Rental contract for {name}
+                            </Label>
+                            <SearchableSelect
+                              id={`host-contract-${a.id}`}
+                              options={contractOptions}
+                              value={contract?.id ?? NO_CONTRACT}
+                              onChange={v => changeContract(productionKey, v)}
+                              placeholder="No contract"
+                              searchPlaceholder="Search rentals or renters…"
+                              emptyText="No rental matches that search."
+                            />
+                          </div>
+                        ) : contract ? (
+                          <Badge variant="outline" className="text-xs">
+                            <FileText className="h-3 w-3 mr-1" aria-hidden="true" />
+                            {contract.signed_pdf_sha256 ? 'Contract signed' : 'Contract not signed'}
+                          </Badge>
+                        ) : null}
+                        <Button variant="ghost" size="sm" onClick={() => removeAssignment(a.id)} aria-label="Remove this host assignment">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 );
