@@ -6,7 +6,7 @@ track: feature
 severity: P2
 date: 2026-11-05
 verified: false
-evidence: supabase/migrations/20261105025356_host_view_at_aal1.sql; supabase/tests/admin_mfa (97 cases)
+evidence: supabase/migrations/20261105025356_host_view_at_aal1.sql; supabase/migrations/20261105073034_host_production_contract.sql; supabase/tests/admin_mfa (127 cases)
 ---
 
 # Brief (for Claude Code): Magic-link, view-only sales window for one-off event hosts
@@ -143,6 +143,54 @@ host can open it on a phone and type the code on a laptop.
   rental settlement. Add it once someone defines which figure a renter should
   see.
 
+## Dashboard details and the contract (follow-up, 2026-11-05)
+
+Tom, after the staging round trip passed: show the poster, description and
+runtime; head the page "**Theatre Rental** Host Dashboard" with "Theatre
+Rental" in the brand purple (`text-primary`, 5.6:1 on the page background by
+calculation); and show the executed contract.
+
+**Nothing linked a production to its rental request.** `rental_requests.linked_event_id`
+existed from the first schema, for events only, and nothing read or wrote it (0 of 7
+rows on staging). Rentals become live performances and films too. Migration
+`20261105073034_host_production_contract.sql`:
+
+- adds `linked_live_performance_id` / `linked_movie_id`; a CHECK allows at most one
+  link per request, and partial unique indexes allow one request per production.
+  If production already has two requests linked to one event, the migration stops
+  there, which is the intent.
+- `set_production_contract(kind, production_id, request_id | null)`: admin only
+  (UPDATE on `rental_requests` is admin only, and the function runs as the
+  caller). It moves the link and reports an unknown request rather than skipping it.
+- `host_production_contracts()`: signed or not, signed at, by whom, PDF path. For
+  staff, or a host passing `can_host_read`. Hosts still read no `rental_requests`
+  row: contacts, admin notes and the invite token stay staff only.
+- A `signed-contracts` storage policy through `can_host_read_signed_contract(name)`:
+  a host reads the archived PDF of their own production's contract and no other
+  file. The aal1 rule is `can_host_read`'s: host-only passes, host + staff needs the
+  code.
+
+**Where staff set it (Tom's choice): Admin → Rentals → Hosts.** Each assignment
+row has a "Rental contract" picker (signed requests first), and the invite form
+has an optional one. The link belongs to the production, so every host of it shows
+the same one. Admins only; staff see a badge.
+
+**On /host:** poster, runtime (hidden when the production's "show runtime" is
+off) and description for everyone; a contract row reading "signed {date} by
+{name}" with **View signed contract**, which opens a one-minute signed URL
+through the existing `openSignedContractPdf`. A signing from before 2026-10-16 kept
+no file; then it says to ask the Kenworthy for a copy. A linked contract that is
+not signed yet reads "not signed yet".
+
+Tests: `admin_mfa` +30 cases (127). Admin links at aal2; staff and aal1 admin
+are refused. The aal1 host-only account reads its contract and only its own PDF,
+and no request row. Host + staff at aal1, the ex-host and a patron get nothing.
+Relinking moves the host's access; unlinking removes it; both constraints hold;
+anon can call none of the functions. Without the migration the run stops at the
+first new case. `src/pages/admin/HostDashboard.test.tsx` (8). Real staging data,
+rolled back: an aal1 temporary host saw 1 contract and exactly its 1 PDF, not a
+second request linked to another production, and 0 request rows.
+
 ## Session lifetime (Decision 4)
 
 Left at the Supabase default. Session settings are project-wide, so shortening
@@ -170,6 +218,8 @@ Removing the role also stops token refreshes (`refuse_roleless_access_token`).
 - `auth_email_test.ts`: a magic link carries the code; a recovery email never
   does. `invite-staff/host_assignment_test.ts`: only the three production tables.
 
-**Not yet exercised:** a real magic-link / code round trip on staging. It needs
-an inbox, and `/host` has to be in Auth → URL Configuration → Redirect URLs (or
-covered by a wildcard), or the link lands on the home page instead.
+**Exercised on staging 2026-11-05:** Tom ran the real magic-link / code round
+trip and reported it successful. Not yet exercised: a host opening the signed PDF
+through the storage API from a browser (the policy is proven in SQL, against the
+real storage schema). That needs a host signed in on staging with a linked,
+archived contract.

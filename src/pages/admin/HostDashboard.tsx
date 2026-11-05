@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, Ticket, Calendar, Music, PartyPopper, Film, ScanLine, Plus, Trash2, Save, Gift, Users, CheckCircle2 } from 'lucide-react';
+import { Download, Ticket, Calendar, Music, PartyPopper, Film, ScanLine, Plus, Trash2, Save, Gift, Users, CheckCircle2, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
@@ -16,6 +16,9 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { formatShowtime } from '@/lib/datetime';
 import { trailerUrlError } from '@/lib/trailer';
+import { ProductionMetaBadges, displayedRuntime } from '@/components/ProductionMedia';
+import { RichText } from '@/components/RichText';
+import { openSignedContractPdf } from '@/lib/signedContractPdf';
 
 interface Assignment {
   id: string;
@@ -35,6 +38,24 @@ interface ProductionRecord {
   poster_url: string | null;
   trailer_url: string | null;
   pass_processing_fee: boolean;
+  duration_minutes: number | null;
+  show_runtime: boolean | null;
+}
+
+/**
+ * One row of host_production_contracts(): the rental request linked to a
+ * production (Admin → Hosts), as much of it as a host may see. Only the latest
+ * signing's PDF is archived, and signings before 2026-10-16 kept no file.
+ */
+interface ProductionContract {
+  request_id: string;
+  event_id: string | null;
+  live_performance_id: string | null;
+  movie_id: string | null;
+  signed: boolean;
+  signed_at: string | null;
+  signed_by_name: string | null;
+  signed_pdf_path: string | null;
 }
 
 /** One row of host_ticket_counts(): confirmed tickets on a showing. */
@@ -64,6 +85,7 @@ export default function HostDashboard() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [showings, setShowings] = useState<any[]>([]);
   const [ticketCounts, setTicketCounts] = useState<Record<string, ShowingCounts>>({});
+  const [contracts, setContracts] = useState<ProductionContract[]>([]);
   const [loading, setLoading] = useState(true);
   const canManage = isStaff;
   // The door scanner checks tickets in, which is a write: the database refuses
@@ -96,12 +118,17 @@ export default function HostDashboard() {
     const lpIds = assignmentData.filter(a => a.live_performance_id).map(a => a.live_performance_id!);
     const movieIds = assignmentData.filter(a => a.movie_id).map(a => a.movie_id!);
 
-    const cols = 'id, title, description, poster_url, trailer_url, pass_processing_fee';
-    const [eventsRes, lpRes, moviesRes] = await Promise.all([
+    const cols = 'id, title, description, poster_url, trailer_url, pass_processing_fee, duration_minutes, show_runtime';
+    const [eventsRes, lpRes, moviesRes, contractsRes] = await Promise.all([
       eventIds.length ? supabase.from('events').select(cols).in('id', eventIds) : { data: [] },
       lpIds.length ? supabase.from('live_performances').select(cols).in('id', lpIds) : { data: [] },
       movieIds.length ? supabase.from('movies').select(cols).in('id', movieIds) : { data: [] },
+      // A host cannot read rental_requests (contacts, notes, the invite token);
+      // this returns only the contract's signing and its archived PDF.
+      supabase.rpc('host_production_contracts'),
     ]);
+    if (contractsRes.error) console.error('host_production_contracts:', contractsRes.error);
+    setContracts((contractsRes.data ?? []) as ProductionContract[]);
 
     const enriched: Assignment[] = assignmentData.map(a => {
       let production: ProductionRecord | undefined;
@@ -113,6 +140,8 @@ export default function HostDashboard() {
         poster_url: row?.poster_url ?? null,
         trailer_url: row?.trailer_url ?? null,
         pass_processing_fee: !!row?.pass_processing_fee,
+        duration_minutes: row?.duration_minutes ?? null,
+        show_runtime: row?.show_runtime ?? null,
       });
       if (a.event_id) {
         const ev = (eventsRes.data || []).find((e: any) => e.id === a.event_id);
@@ -190,7 +219,9 @@ export default function HostDashboard() {
   return (
     <div className="container py-8 px-4 max-w-4xl">
       <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
-        <h1 className="font-display text-3xl font-bold">Host Dashboard</h1>
+        <h1 className="font-display text-3xl font-bold">
+          <span className="text-primary">Theatre Rental</span> Host Dashboard
+        </h1>
         {canScan && (
           <Button asChild variant="outline" size="sm">
             <Link to="/staff/scanner"><ScanLine className="h-4 w-4 mr-1" /> Open Door Scanner</Link>
@@ -210,6 +241,11 @@ export default function HostDashboard() {
               (a.event_id && s.event_id === a.event_id) ||
               (a.live_performance_id && s.live_performance_id === a.live_performance_id) ||
               (a.movie_id && s.movie_id === a.movie_id)
+            );
+            const contract = contracts.find(c =>
+              (a.event_id && c.event_id === a.event_id) ||
+              (a.live_performance_id && c.live_performance_id === a.live_performance_id) ||
+              (a.movie_id && c.movie_id === a.movie_id)
             );
             const totals = productionShowings.reduce<ShowingCounts>((t, s) => {
               const c = ticketCounts[s.id] ?? NO_COUNTS;
@@ -232,6 +268,9 @@ export default function HostDashboard() {
                   )}
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {a.production && <ProductionSummary production={a.production} />}
+                  {contract && <ContractSummary contract={contract} />}
+
                   <div className="flex gap-3 flex-wrap">
                     <Badge variant="secondary" className="text-sm">
                       <Ticket className="h-3.5 w-3.5 mr-1" /> {totals.sold} tickets sold
@@ -265,6 +304,71 @@ export default function HostDashboard() {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The production as patrons see it: poster, runtime, description. Shown to
+ * everyone here; staff edit it under Details below.
+ */
+function ProductionSummary({ production }: { production: ProductionRecord }) {
+  const runtime = displayedRuntime(production);
+  return (
+    <div className="flex flex-col sm:flex-row gap-4">
+      {production.poster_url && (
+        <img
+          src={production.poster_url}
+          alt={`Poster for ${production.title}`}
+          className="w-40 sm:w-44 max-h-72 self-start object-contain rounded-md bg-muted/30"
+          loading="lazy"
+        />
+      )}
+      <div className="min-w-0 flex-1 space-y-3">
+        <ProductionMetaBadges durationMinutes={runtime} />
+        {production.description ? (
+          <RichText html={production.description} className="text-muted-foreground leading-relaxed" />
+        ) : (
+          <p className="text-sm text-muted-foreground">No description yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The executed rental contract, when one is linked to this production.
+ * The PDF opens through a one-minute signed URL; the storage policy lets a
+ * host read only their own production's file (20261105073034).
+ */
+function ContractSummary({ contract }: { contract: ProductionContract }) {
+  if (!contract.signed) {
+    return (
+      <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 text-sm">
+        <FileText className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
+        <span>Rental contract: not signed yet.</span>
+      </div>
+    );
+  }
+  const when = contract.signed_at ? format(new Date(contract.signed_at), 'MMMM d, yyyy') : null;
+  return (
+    <div className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-muted/30 flex-wrap">
+      <div className="flex items-center gap-3 min-w-0">
+        <FileText className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
+        <div className="text-sm">
+          <p className="font-medium">Rental contract — signed</p>
+          <p className="text-muted-foreground">
+            {[when, contract.signed_by_name && `by ${contract.signed_by_name}`].filter(Boolean).join(' ')}
+          </p>
+        </div>
+      </div>
+      {contract.signed_pdf_path ? (
+        <Button variant="outline" size="sm" onClick={() => openSignedContractPdf(contract.signed_pdf_path!)}>
+          <FileText className="h-4 w-4 mr-1" aria-hidden="true" /> View signed contract
+        </Button>
+      ) : (
+        <p className="text-sm text-muted-foreground">Ask the Kenworthy for a copy of the signed PDF.</p>
       )}
     </div>
   );

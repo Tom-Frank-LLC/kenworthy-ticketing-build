@@ -2293,6 +2293,8 @@ export type Database = {
           is_ticketed: boolean | null
           kenworthy_provides_media: boolean | null
           linked_event_id: string | null
+          linked_live_performance_id: string | null
+          linked_movie_id: string | null
           marquee_text: string | null
           media_notes: string | null
           needs_digital_ticketing: boolean | null
@@ -2348,6 +2350,8 @@ export type Database = {
           is_ticketed?: boolean | null
           kenworthy_provides_media?: boolean | null
           linked_event_id?: string | null
+          linked_live_performance_id?: string | null
+          linked_movie_id?: string | null
           marquee_text?: string | null
           media_notes?: string | null
           needs_digital_ticketing?: boolean | null
@@ -2403,6 +2407,8 @@ export type Database = {
           is_ticketed?: boolean | null
           kenworthy_provides_media?: boolean | null
           linked_event_id?: string | null
+          linked_live_performance_id?: string | null
+          linked_movie_id?: string | null
           marquee_text?: string | null
           media_notes?: string | null
           needs_digital_ticketing?: boolean | null
@@ -3805,6 +3811,19 @@ export type Database = {
           ticket_type: string
         }[]
       }
+      host_production_contracts: {
+        Args: never
+        Returns: {
+          event_id: string | null
+          live_performance_id: string | null
+          movie_id: string | null
+          request_id: string
+          signed: boolean
+          signed_at: string | null
+          signed_by_name: string | null
+          signed_pdf_path: string | null
+        }[]
+      }
       host_ticket_counts: {
         Args: { p_showing_ids: string[] }
         Returns: {
@@ -3813,6 +3832,10 @@ export type Database = {
           showing_id: string
           sold: number
         }[]
+      }
+      set_production_contract: {
+        Args: { p_kind: string; p_production_id: string; p_request_id: string | null }
+        Returns: undefined
       }
       is_host_of: {
         Args: {

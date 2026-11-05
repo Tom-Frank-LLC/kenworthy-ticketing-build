@@ -373,6 +373,128 @@ SELECT public.t_expect('off again: gate lets an aal1 admin in', public.role_gate
 RESET ROLE;
 
 -- =========================================================================
+-- The production's contract (20261105073034), switch on.
+-- =========================================================================
+-- Two signed requests with archived PDFs. r1 gets linked to the Draft Film,
+-- which host, hoststaff and exhost are all assigned; r2 is someone else's.
+INSERT INTO public.rental_requests (id, applicant_name, email, phone, event_title, status,
+                                    signed_at, signed_by_name, signed_pdf_sha256, signed_pdf_path, admin_notes)
+VALUES
+  ('40000000-0000-0000-0000-000000000001', 'Rita Renter', 'rita@x.test', '+12085550111', 'Draft Film night', 'approved',
+   now(), 'Rita Renter', 'aa11', 'r1/signed.pdf', 'internal note'),
+  ('40000000-0000-0000-0000-000000000002', 'Otto Other', 'otto@x.test', NULL, 'Other rental', 'approved',
+   now(), 'Otto Other', 'bb22', 'r2/signed.pdf', NULL);
+INSERT INTO storage.objects (bucket_id, name) VALUES
+  ('signed-contracts', 'r1/signed.pdf'), ('signed-contracts', 'r2/signed.pdf');
+SELECT public.t_switch(true);
+
+\set link_r1 'SELECT public.set_production_contract(''movie'', ''10000000-0000-0000-0000-000000000002'', ''40000000-0000-0000-0000-000000000001'')'
+\set link_r2 'SELECT public.set_production_contract(''movie'', ''10000000-0000-0000-0000-000000000002'', ''40000000-0000-0000-0000-000000000002'')'
+\set unlink 'SELECT public.set_production_contract(''movie'', ''10000000-0000-0000-0000-000000000002'', NULL)'
+\set my_contracts 'SELECT count(*) FROM public.host_production_contracts() WHERE movie_id = ''10000000-0000-0000-0000-000000000002'''
+\set my_contract_path 'SELECT signed_pdf_path || ''/'' || signed::text || ''/'' || signed_by_name FROM public.host_production_contracts() WHERE movie_id = ''10000000-0000-0000-0000-000000000002'''
+\set contract_files 'SELECT string_agg(name, '','' ORDER BY name) FROM storage.objects WHERE bucket_id = ''signed-contracts'''
+\set contract_file_count 'SELECT count(*) FROM storage.objects WHERE bucket_id = ''signed-contracts'''
+\set request_rows 'SELECT count(*) FROM public.rental_requests'
+
+-- Linking is admin work, at aal2.
+SELECT public.t_as(:'staff', 'authenticated', 'aal2');
+SET ROLE authenticated;
+SELECT public.t_expect('contract: aal2 staff cannot link a contract', public.t_try(:'link_r1'), '42501');
+RESET ROLE;
+SELECT public.t_as(:'admin', 'authenticated', 'aal1');
+SET ROLE authenticated;
+SELECT public.t_expect('contract: aal1 admin cannot link a contract', public.t_try(:'link_r1'), '42501');
+RESET ROLE;
+SELECT public.t_as(:'admin', 'authenticated', 'aal2');
+SET ROLE authenticated;
+SELECT public.t_expect('contract: aal2 admin links r1 to the Draft Film', public.t_try(:'link_r1'), 'ok');
+SELECT public.t_check('contract: aal2 admin reads the link back', public.t_count(:'my_contracts') = 1);
+SELECT public.t_expect('contract: an unknown kind is refused',
+  public.t_try('SELECT public.set_production_contract(''show'', ''10000000-0000-0000-0000-000000000002'', NULL)'), '22023');
+SELECT public.t_expect('contract: an unknown request is reported, not silently skipped',
+  public.t_try('SELECT public.set_production_contract(''movie'', ''10000000-0000-0000-0000-000000000002'', ''40000000-0000-0000-0000-00000000ffff'')'), 'P0002');
+RESET ROLE;
+SELECT public.t_check('contract: the failed call rolled back, r1 is still linked',
+  (SELECT linked_movie_id = '10000000-0000-0000-0000-000000000002' FROM public.rental_requests
+    WHERE id = '40000000-0000-0000-0000-000000000001'));
+
+-- The host's emailed-link session: its own contract, and nothing else.
+SELECT public.t_as(:'host', 'authenticated', 'aal1');
+SET ROLE authenticated;
+SELECT public.t_expect('contract: aal1 host-only reads its signed contract',
+  public.t_text(:'my_contract_path'), 'r1/signed.pdf/true/Rita Renter');
+SELECT public.t_check('contract: aal1 host-only reads only its own production''s',
+  public.t_count('SELECT count(*) FROM public.host_production_contracts()') = 1);
+SELECT public.t_expect('contract: aal1 host-only reads its own PDF and no other', public.t_text(:'contract_files'), 'r1/signed.pdf');
+SELECT public.t_check('contract: aal1 host-only reads no rental request row (contacts, notes, token)',
+  public.t_count(:'request_rows') = 0, public.t_count(:'request_rows')::text);
+SELECT public.t_expect('contract: aal1 host-only cannot link a contract', public.t_try(:'link_r2'), '42501');
+RESET ROLE;
+
+-- Host + staff at aal1, the ex-host and a patron: nothing.
+SELECT public.t_as(:'hoststaff', 'authenticated', 'aal1');
+SET ROLE authenticated;
+SELECT public.t_check('contract: aal1 host+staff reads no contract', public.t_count(:'my_contracts') = 0);
+SELECT public.t_check('contract: aal1 host+staff reads no PDF', public.t_count(:'contract_file_count') = 0);
+RESET ROLE;
+SELECT public.t_as(:'exhost', 'authenticated', 'aal1');
+SET ROLE authenticated;
+SELECT public.t_check('contract: aal1 ex-host reads no contract', public.t_count(:'my_contracts') = 0);
+SELECT public.t_check('contract: aal1 ex-host reads no PDF', public.t_count(:'contract_file_count') = 0);
+RESET ROLE;
+SELECT public.t_as(:'patron', 'authenticated', 'aal2');
+SET ROLE authenticated;
+SELECT public.t_check('contract: aal2 patron reads no contract', public.t_count(:'my_contracts') = 0);
+SELECT public.t_check('contract: aal2 patron reads no PDF', public.t_count(:'contract_file_count') = 0);
+RESET ROLE;
+SELECT public.t_as(:'hoststaff', 'authenticated', 'aal2');
+SET ROLE authenticated;
+SELECT public.t_check('contract: aal2 host+staff reads every PDF (staff)', public.t_count(:'contract_file_count') = 2);
+RESET ROLE;
+
+-- Relinking moves the link: the production has one contract, and the host's
+-- access follows it.
+SELECT public.t_as(:'admin', 'authenticated', 'aal2');
+SET ROLE authenticated;
+SELECT public.t_expect('contract: aal2 admin relinks the Draft Film to r2', public.t_try(:'link_r2'), 'ok');
+RESET ROLE;
+SELECT public.t_check('contract: relinking cleared r1',
+  (SELECT linked_movie_id IS NULL FROM public.rental_requests WHERE id = '40000000-0000-0000-0000-000000000001'));
+SELECT public.t_as(:'host', 'authenticated', 'aal1');
+SET ROLE authenticated;
+SELECT public.t_expect('contract: after relinking the host reads r2''s PDF only', public.t_text(:'contract_files'), 'r2/signed.pdf');
+RESET ROLE;
+SELECT public.t_as(:'admin', 'authenticated', 'aal2');
+SET ROLE authenticated;
+SELECT public.t_expect('contract: aal2 admin unlinks', public.t_try(:'unlink'), 'ok');
+RESET ROLE;
+SELECT public.t_as(:'host', 'authenticated', 'aal1');
+SET ROLE authenticated;
+SELECT public.t_check('contract: unlinked, the host reads no contract', public.t_count(:'my_contracts') = 0);
+SELECT public.t_check('contract: unlinked, the host reads no PDF', public.t_count(:'contract_file_count') = 0);
+RESET ROLE;
+
+-- The shape of the link, enforced by the table.
+UPDATE public.rental_requests SET linked_movie_id = '10000000-0000-0000-0000-000000000001'
+ WHERE id = '40000000-0000-0000-0000-000000000001';
+SELECT public.t_expect('contract: a production links to one request at most',
+  public.t_try('UPDATE public.rental_requests SET linked_movie_id = ''10000000-0000-0000-0000-000000000001''
+                 WHERE id = ''40000000-0000-0000-0000-000000000002'''), '23505');
+SELECT public.t_check('contract: a request links to one production at most (CHECK present)',
+  EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rental_requests_one_linked_production'));
+UPDATE public.rental_requests SET linked_movie_id = NULL WHERE id = '40000000-0000-0000-0000-000000000001';
+
+SELECT public.t_as(NULL, 'anon', NULL);
+SET ROLE anon;
+SELECT public.t_expect('anon cannot call host_production_contracts', public.t_try('SELECT * FROM public.host_production_contracts()'), '42501');
+SELECT public.t_expect('anon cannot call set_production_contract', public.t_try(:'unlink'), '42501');
+SELECT public.t_expect('anon cannot call can_host_read_signed_contract',
+  public.t_try('SELECT public.can_host_read_signed_contract(''r1/signed.pdf'')'), '42501');
+RESET ROLE;
+SELECT public.t_switch(false);
+
+-- =========================================================================
 -- Structural: every policy that grants on the caller's identity is closed.
 -- =========================================================================
 -- A permissive policy whose expression still mentions auth.uid() / jwt() /
