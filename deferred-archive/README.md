@@ -1,5 +1,11 @@
 # Deferred: the screened-films Archive
 
+> **Restored 2026-11-13** — see `docs/briefs/BRIEF-archive-listings.md`. The archive is
+> back under Admin › Pages › Film Archive and on /history, and every archive film is now a
+> movie listing. Two things here are now out of date: `match-historical-screenings` was
+> **not** restored (it could never finish — see the brief; `import_archive_listings()`
+> replaced it), and "Clear archive" was dropped. This folder stays as the data backup.
+
 The searchable record of films that have screened at the Kenworthy
 (`historical_screenings`) was **turned off across the platform on August 14, 2026**
 so it wouldn't ship with the launch. Nothing about it is user-visible anymore.

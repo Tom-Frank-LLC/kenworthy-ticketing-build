@@ -36,7 +36,7 @@ column_allow(t, c) AS (
     'id','title','description','poster_url','duration_minutes','rating','genre',
     'is_active','created_at','updated_at','trailer_url','is_featured',
     'release_year','release_label','pass_processing_fee','ticket_type',
-    'rsvp_url','show_runtime'])
+    'rsvp_url','show_runtime','is_archival'])
   UNION ALL SELECT 'sponsorship_opportunities', unnest(ARRAY[
     'id','slug','title','tagline','intro_text','hook_text','cta_label',
     'section_heading','section_body','benefits','stats_text','price_text',

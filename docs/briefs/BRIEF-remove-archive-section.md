@@ -1,7 +1,8 @@
 ---
 brief: remove-archive-section
 title: Temporarily remove the screened-films Archive — preserve for post-launch
-status: shipped
+status: superseded
+superseded_by: archive-listings
 track: feature
 date: 2026-08-14
 shipped_in: ["9eb7448"]

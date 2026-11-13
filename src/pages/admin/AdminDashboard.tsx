@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { MarqueeFrame } from '@/components/MarqueeFrame';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, UsersRound, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Store, Receipt, Lock, LockOpen, Star, Bell
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, UsersRound, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Archive, Store, Receipt, Lock, LockOpen, Star, Bell
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
@@ -79,6 +79,8 @@ const NotificationsTab = lazyWithRecovery(() => import('@/components/admin/Notif
 const HiringTab = lazyWithRecovery(() => import('@/components/admin/HiringTab'));
 const PressTab = lazyWithRecovery(() => import('@/components/admin/PressTab'));
 const BackstageTab = lazyWithRecovery(() => import('@/components/admin/BackstageTab'));
+const HistoryTab = lazyWithRecovery(() => import('@/components/admin/HistoryTab'));
+const ArchiveTab = lazyWithRecovery(() => import('@/components/admin/ArchiveTab'));
 const FeaturedSlidesTab = lazyWithRecovery(() => import('@/components/admin/FeaturedSlidesTab'));
 
 /**
@@ -232,7 +234,12 @@ export default function AdminDashboard() {
 
   async function loadData() {
     const [moviesRes, eventsRes, concertsRes, showingsRes, venuesRes, countsRes] = await Promise.all([
-      fetchAllPages((from, to) => supabase.from('movies').select('*').order('title').order('id').range(from, to)),
+      // Live listings only. ~8,500 archive-only films (is_archival) and their
+      // ~10,000 archival showings would otherwise come down on every load, ten
+      // pages at a time; they are browsed from Pages › Film Archive instead.
+      fetchAllPages((from, to) =>
+        supabase.from('movies').select('*').eq('is_archival', false).order('title').order('id').range(from, to)
+      ),
       fetchAllPages((from, to) => supabase.from('events').select('*').order('title').order('id').range(from, to)),
       fetchAllPages((from, to) =>
         supabase.from('live_performances').select('*').order('title').order('id').range(from, to)
@@ -241,6 +248,7 @@ export default function AdminDashboard() {
         supabase
           .from('showings')
           .select('*, movies(title), events(title), live_performances(title), venues(name)')
+          .eq('is_archival', false)
           .order('start_time', { ascending: false })
           .order('id')
           .range(from, to)
@@ -1605,6 +1613,12 @@ export default function AdminDashboard() {
                 <TabsTrigger value="backstage">
                   <Martini className="h-4 w-4 mr-1 inline" />Backstage
                 </TabsTrigger>
+                <TabsTrigger value="history">
+                  <History className="h-4 w-4 mr-1 inline" />History
+                </TabsTrigger>
+                <TabsTrigger value="archive">
+                  <Archive className="h-4 w-4 mr-1 inline" />Film Archive
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="festival" className="space-y-6">
                 <Suspense fallback={<TabFallback />}>
@@ -1624,6 +1638,16 @@ export default function AdminDashboard() {
               <TabsContent value="backstage" className="space-y-6">
                 <Suspense fallback={<TabFallback />}>
                   <BackstageTab />
+                </Suspense>
+              </TabsContent>
+              <TabsContent value="history" className="space-y-6">
+                <Suspense fallback={<TabFallback />}>
+                  <HistoryTab />
+                </Suspense>
+              </TabsContent>
+              <TabsContent value="archive" className="space-y-6">
+                <Suspense fallback={<TabFallback />}>
+                  <ArchiveTab />
                 </Suspense>
               </TabsContent>
             </Tabs>

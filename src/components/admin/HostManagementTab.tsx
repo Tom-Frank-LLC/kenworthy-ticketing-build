@@ -75,7 +75,7 @@ export default function HostManagementTab() {
       // unpaged this returned an arbitrary 1,000 of the 1,088 titles, so the
       // films a host could be assigned to were a silently truncated set.
       fetchAllRows<{ id: string; title: string }>((from, to) =>
-        supabase.from('movies').select('id, title').order('title').order('id').range(from, to)
+        supabase.from('movies').select('id, title').eq('is_archival', false).order('title').order('id').range(from, to)
       ),
       supabase.from('profiles').select('id, display_name'),
     ]);
