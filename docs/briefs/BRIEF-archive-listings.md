@@ -68,6 +68,13 @@ supersedes: remove-archive-section
   - `import_archive_listings(p_dry_run DEFAULT true)`.
 
   The import is not run by the migration.
+- `20261113234834_archive_films_unrated.sql`: archive-only films get rating
+  NULL, not "NR". The archive has no rating column. The first import didn't name
+  `rating`, so the column default `'NR'` badged all 8,545 archive films as
+  unrated. This migration makes the import insert NULL and clears `'NR'` from
+  archival films still carrying it, writing 2 audit rows through the bulk path.
+  Rehearsed on staging inside rolled-back transactions: 8,545 cleared, 0 live
+  films touched, and a film the import recreates comes out NULL.
 
 **`import_archive_listings`** links each unmatched archive film to, in order:
 1. an archival movie it made earlier for the same title and year;
