@@ -13,8 +13,14 @@
  * testing rather than eyeballing once.
  */
 
-/** Sections that used to be top-level tabs and are now sub-tabs of Pages. */
-export const LEGACY_PAGE_SECTIONS = ['festival', 'hiring', 'press'] as const;
+/**
+ * Sections that used to be top-level tabs and are now sub-tabs of Pages.
+ *
+ * `archive` was the superadmin Archive tab, switched off on 2026-08-14 and
+ * brought back under Pages on 2026-11-13. An old `?section=archive` link is
+ * exactly the kind this list exists for, so it lands on the film archive.
+ */
+export const LEGACY_PAGE_SECTIONS = ['festival', 'hiring', 'press', 'archive'] as const;
 
 /**
  * Every sub-tab Pages has, legacy or not.
@@ -27,7 +33,7 @@ export const LEGACY_PAGE_SECTIONS = ['festival', 'hiring', 'press'] as const;
  * not there: `?section=backstage` was never a working link and should not start
  * being one.
  */
-export const PAGES_SUB_TABS = [...LEGACY_PAGE_SECTIONS, 'backstage'] as const;
+export const PAGES_SUB_TABS = [...LEGACY_PAGE_SECTIONS, 'backstage', 'history'] as const;
 
 /**
  * The sub-tabs of Listings, which are the `?tab=` parameter.

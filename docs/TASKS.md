@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**153 briefs** — 138 shipped, 5 built, 9 open, 0 needs triage, 1 closed.
+**154 briefs** — 137 shipped, 6 built, 9 open, 0 needs triage, 2 closed.
 
 ## Built, not deployed
 
@@ -13,6 +13,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 - `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
+- `P2` **The film archive is back, every archive film is a listing, and the History timeline is editable**<br>`feature` — [brief](briefs/BRIEF-archive-listings.md)
 - `P2` **The current site ships as an iOS app (Capacitor), with online checkout working inside it**<br>`feature` — [brief](briefs/BRIEF-capacitor-ios-app.md) · [notes](briefs/../FINDINGS-ios-webview-origin.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
@@ -141,7 +142,6 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - **Make the listing preview pane a vertical two-column split (portrait artwork + info)**<br>`ux` — [brief](briefs/BRIEF-listing-preview-vertical-split.md)
 - **Fix the footer newsletter signup + switch ticket-checkout marketing to opt-OUT**<br>`ops` — [brief](briefs/BRIEF-mailchimp-signup-optout.md)
 - **Press page + admin Press tab**<br>`ux` — `42cda95` — [brief](briefs/BRIEF-press-page.md)
-- **Temporarily remove the screened-films Archive — preserve for post-launch**<br>`feature` — `9eb7448` — [brief](briefs/BRIEF-remove-archive-section.md)
 - **Full RLS / permissions audit before launch**<br>`security` — `#59`, `43496e8` — [brief](briefs/BRIEF-rls-security-audit.md) · [notes](briefs/FINDINGS-rls-security-audit.md)
 - **Seating is per-showing, venue owns the map — fix + seed the venue**<br>`bug` — `7545b35` — [brief](briefs/BRIEF-seating-per-showing.md)
 - **The 1000-row cap on the movie picker — fix and data audit**<br>`data` — `f01527f` — [brief](briefs/BRIEF-showing-movie-1000-cap.md)
@@ -173,6 +173,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Closed without shipping
 
 - **A schema rebuilt from migrations after Supabase's Oct 30 change keeps every Data API grant production has** — The migrations already reproduce production's grants with no Supabase default ACL. `seats` is granted by the loop in 20260810165116, which a text search for GRANT cannot see.
+- **Temporarily remove the screened-films Archive — preserve for post-launch** — superseded
 
 ## Briefs with no frontmatter
 

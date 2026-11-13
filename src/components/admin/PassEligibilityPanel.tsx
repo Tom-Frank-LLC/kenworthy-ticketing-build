@@ -97,6 +97,7 @@ export function PassEligibilityPanel({ passTypes }: { passTypes: PassTypeOption[
           .select(
             'id, start_time, ticket_price, movies(title), events(title), live_performances(title)',
           )
+          .eq('is_archival', false)
           .gte('start_time', `${from}T00:00:00Z`)
           .lte('start_time', `${to}T23:59:59Z`)
           .order('start_time')

@@ -82,6 +82,9 @@ export async function fetchHistoryMonth(key: MonthKey, now: number = Date.now())
     // so this is the one listing that has to ask; everything else hides a
     // cancelled showing through the flag, which cancelling always clears.
     .is('cancelled_at', null)
+    // Not the screened-films archive, for now: it is public, but it shows on
+    // the History page until the calendar is built to reach back that far.
+    .eq('is_archival', false)
     .gte('start_time', from.toISOString())
     .lt('start_time', until)
     .order('start_time');

@@ -42,6 +42,12 @@ describe('resolveAdminSection', () => {
   // section. The two lists are separate for exactly this pair of cases.
   it('opens a sub-tab that was never a top-level section', () => {
     expect(resolveAdminSection('pages', 'backstage').pagesTab).toBe('backstage');
+    expect(resolveAdminSection('pages', 'history').pagesTab).toBe('history');
+    expect(resolveAdminSection('pages', 'archive').pagesTab).toBe('archive');
+  });
+
+  it('sends the old superadmin ?section=archive link to the film archive', () => {
+    expect(resolveAdminSection('archive', null)).toMatchObject({ section: 'pages', pagesTab: 'archive' });
   });
 
   it('does not invent a redirect for a section that never existed', () => {

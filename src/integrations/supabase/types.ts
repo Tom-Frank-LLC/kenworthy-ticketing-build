@@ -1751,6 +1751,7 @@ export type Database = {
           genre: string | null
           id: string
           is_active: boolean
+          is_archival: boolean
           is_featured: boolean
           pass_processing_fee: boolean
           poster_url: string | null
@@ -1775,6 +1776,7 @@ export type Database = {
           genre?: string | null
           id?: string
           is_active?: boolean
+          is_archival?: boolean
           is_featured?: boolean
           pass_processing_fee?: boolean
           poster_url?: string | null
@@ -1799,6 +1801,7 @@ export type Database = {
           genre?: string | null
           id?: string
           is_active?: boolean
+          is_archival?: boolean
           is_featured?: boolean
           pass_processing_fee?: boolean
           poster_url?: string | null
@@ -2653,7 +2656,9 @@ export type Database = {
           cancelled_at: string | null
           created_at: string
           event_id: string | null
+          historical_screening_id: string | null
           id: string
+          is_archival: boolean | null
           is_active: boolean
           is_featured: boolean
           live_performance_id: string | null
@@ -2673,6 +2678,7 @@ export type Database = {
           cancelled_at?: string | null
           created_at?: string
           event_id?: string | null
+          historical_screening_id?: string | null
           id?: string
           is_active?: boolean
           is_featured?: boolean
@@ -2693,6 +2699,7 @@ export type Database = {
           cancelled_at?: string | null
           created_at?: string
           event_id?: string | null
+          historical_screening_id?: string | null
           id?: string
           is_active?: boolean
           is_featured?: boolean
@@ -3577,6 +3584,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      import_archive_listings: {
+        Args: { p_dry_run?: boolean }
+        Returns: Json
+      }
       activate_film_pass: {
         Args: {
           p_activated_by?: string

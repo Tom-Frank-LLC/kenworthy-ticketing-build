@@ -9,6 +9,7 @@ import { Download, Ticket, Calendar, Music, PartyPopper, Film, ScanLine, Plus, T
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { exportContactsCsv } from '@/lib/exportContacts';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
@@ -103,10 +104,33 @@ export default function HostDashboard() {
 
     setAssignments(enriched);
 
-    const { data: showingsData } = await supabase
-      .from('showings')
-      .select('*')
-      .order('start_time');
+    // Asked for by the host's own productions, live rows only, and paged. This
+    // used to read every showing the host could see, oldest first, unpaged —
+    // PostgREST's silent 1,000-row cap then returned the oldest thousand, and
+    // with the screened-films archive (1926 on) that is all archival, so a
+    // host's current shows would have vanished from this page entirely.
+    const ids = (key: 'movie_id' | 'event_id' | 'live_performance_id') =>
+      [...new Set(assignmentData.map((a) => a[key]).filter(Boolean))] as string[];
+    const ors = [
+      ['movie_id', ids('movie_id')],
+      ['event_id', ids('event_id')],
+      ['live_performance_id', ids('live_performance_id')],
+    ]
+      .filter(([, v]) => (v as string[]).length)
+      .map(([k, v]) => `${k}.in.(${(v as string[]).join(',')})`)
+      .join(',');
+    const { data: showingsData } = ors
+      ? await fetchAllRows<any>((from, to) =>
+          supabase
+            .from('showings')
+            .select('*')
+            .eq('is_archival', false)
+            .or(ors)
+            .order('start_time')
+            .order('id')
+            .range(from, to),
+        )
+      : { data: [] as any[] };
 
     const relevantShowings = (showingsData || []).filter(s =>
       assignmentData.some(a =>

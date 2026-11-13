@@ -23,6 +23,7 @@ import { useOrderQuote } from '@/lib/quote';
 import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
 import type { DiscountRule } from '@/lib/discounts';
 import { ProductionMedia, ProductionMetaBadges, displayedRuntime } from '@/components/ProductionMedia';
+import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
@@ -147,6 +148,36 @@ function PassedNotice({ startTime }: { startTime: string }) {
         </Button>
         <Button variant="ghost" asChild>
           <Link to="/calendar">Browse the calendar</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A showing from the screened-films archive (`showings.is_archival`).
+ *
+ * In place of PassedNotice, because two of its sentences are wrong here: the
+ * archive records the date a film played, not the time — the 7:00 PM on the
+ * row is a placeholder — and "tickets are no longer available" describes a
+ * sale this showing never had.
+ */
+function ArchivalNotice({ startTime }: { startTime: string }) {
+  return (
+    <div role="status" className="rounded-lg border border-border bg-secondary/40 p-6 text-center">
+      <p className="font-display text-lg font-semibold">
+        Played at the Kenworthy on {formatShowtime(startTime, 'EEEE, MMMM d, yyyy')}.
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        From the Kenworthy&rsquo;s screening archive, drawn from a century of newspaper listings
+        and theater records.
+      </p>
+      <div className="mt-4 flex flex-wrap justify-center gap-3">
+        <Button variant="outline" asChild>
+          <Link to="/history">Explore a century of films</Link>
+        </Button>
+        <Button variant="ghost" asChild>
+          <Link to="/">See what&rsquo;s playing now</Link>
         </Button>
       </div>
     </div>
@@ -1086,6 +1117,8 @@ export default function Showing() {
   // Cancelled outranks passed: a cancelled night did not play, so "has
   // passed" would be the wrong sentence once its date goes by.
   const isCancelled = !!showing.cancelled_at;
+  // From the screened-films archive: a date, not a time, and never a sale.
+  const isArchival = !!showing.is_archival;
   // Free and open: no purchase panel at all. Read from the showing row rather
   // than inferred from a $0 price — a $0 showing with this false is still
   // ticketed, and the reserve flow it gets is the correct one. See
@@ -1184,6 +1217,11 @@ export default function Showing() {
               <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full font-medium">
                 {meta.label}
               </span>
+              {isArchival && (
+                <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full font-medium">
+                  Archive
+                </span>
+              )}
               {/* Not on a walk-in night. `soldOut` is a capacity answer and
                   capacity is not what limits a showing that sells nothing —
                   an old row still flagged for assigned seating would otherwise
@@ -1208,15 +1246,18 @@ export default function Showing() {
               <span className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" /> {formatShowtime(showing.start_time, 'EEEE, MMMM d, yyyy')}
               </span>
-              <span className="flex items-center gap-1">
-                <Clock className="h-4 w-4" /> {formatShowtime(showing.start_time, 'h:mm a')}
-              </span>
+              {/* Not for an archival showing: its 7:00 PM is a placeholder. */}
+              {!isArchival && (
+                <span className="flex items-center gap-1">
+                  <Clock className="h-4 w-4" /> {formatShowtime(showing.start_time, 'h:mm a')}
+                </span>
+              )}
               {/* No icon here on purpose: priceDisplay already starts with a
                   "$", and a DollarSign glyph in front of it rendered
                   "$ $10.00 per ticket". The currency symbol in the string is
                   the one that has to stay — it is what every other price in
                   the app is formatted with. */}
-              <span className="flex items-center gap-1">{priceDisplay}</span>
+              {!isArchival && <span className="flex items-center gap-1">{priceDisplay}</span>}
               {venue && (
                 <span className="flex items-center gap-1">
                   <MapPin className="h-4 w-4" /> {venue.name}
@@ -1225,7 +1266,7 @@ export default function Showing() {
             </div>
             {/* The offer, said once where the price is. Hidden on a walk-in night:
                 there is nothing to buy, so nothing to save on. */}
-            {!noTicket && soldHere && discountRules.length > 0 && (
+            {!noTicket && soldHere && !isArchival && discountRules.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {discountRules.map((rule) => (
                   <span
@@ -1236,6 +1277,17 @@ export default function Showing() {
                   </span>
                 ))}
               </div>
+            )}
+            {/* The film's past here, and the headline when it has been away
+                for decades. Every movie showing, archival ones included: the
+                count runs up to the day before this one. */}
+            {productionType === 'movie' && showing.movie_id && (
+              <PreviouslyScreened
+                movieId={showing.movie_id}
+                title={production?.title}
+                releaseYear={production?.release_year}
+                showingDay={formatShowtime(showing.start_time, 'yyyy-MM-dd')}
+              />
             )}
           </div>
         </div>
@@ -1268,6 +1320,8 @@ export default function Showing() {
           to keep this change legible as the one-line rule it is. */}
       {isCancelled ? (
         <CancelledNotice startTime={showing.start_time} />
+      ) : isArchival ? (
+        <ArchivalNotice startTime={showing.start_time} />
       ) : hasPassed ? (
         <PassedNotice startTime={showing.start_time} />
       ) : !soldHere ? (

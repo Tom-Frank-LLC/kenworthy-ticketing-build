@@ -214,6 +214,10 @@ export default function ShowingForm() {
         supabase
           .from('movies')
           .select('id, title, is_active, release_year, duration_minutes, ticket_type, rsvp_url')
+          // Not the ~8,500 archive-only films. One that comes back is brought
+          // in through the movie form ("use the archive listing"), which makes
+          // it active and so live again.
+          .eq('is_archival', false)
           .order('title')
           .order('id')
           .range(from, to)

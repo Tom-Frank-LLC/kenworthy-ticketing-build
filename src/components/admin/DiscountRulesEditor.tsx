@@ -116,7 +116,7 @@ export default function DiscountRulesEditor({ scope, audience }: {
       let showingIds: string[] = [];
       if (scopeColumn === 'showing_id') showingIds = [scopeId];
       else {
-        const { data } = await supabase.from('showings').select('id').filter(scopeColumn, 'eq', scopeId);
+        const { data } = await supabase.from('showings').select('id').filter(scopeColumn, 'eq', scopeId).eq('is_archival', false);
         showingIds = (data ?? []).map((s) => s.id);
       }
       if (showingIds.length === 0) { if (!cancelled) setTierNames([]); return; }

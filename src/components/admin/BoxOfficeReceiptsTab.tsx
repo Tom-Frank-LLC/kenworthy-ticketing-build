@@ -80,6 +80,7 @@ export default function BoxOfficeReceiptsTab() {
           'id, start_time, ticket_price, movie_id, movies(id, title, release_year, release_label, distributor, circuit, terms_percent)'
         )
         .not('movie_id', 'is', null)
+        .eq('is_archival', false)
         .lte('start_time', new Date().toISOString())
         .order('start_time', { ascending: false })
         .limit(200);

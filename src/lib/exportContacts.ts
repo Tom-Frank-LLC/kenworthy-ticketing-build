@@ -35,7 +35,10 @@ export async function exportContactsCsv(
   const { data: showings, error: showingsErr } = await supabase
     .from('showings')
     .select('id')
-    .eq(col, productionId);
+    .eq(col, productionId)
+    // Archival showings sold nothing, and a film's hundreds of them only
+    // lengthen the id list sent to tickets below.
+    .eq('is_archival', false);
 
   if (showingsErr) {
     console.error('exportContactsCsv showings:', showingsErr);

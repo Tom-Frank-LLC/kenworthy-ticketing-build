@@ -70,8 +70,12 @@ describe('fetchHistoryMonth', () => {
     expect(items[0].ended).toBe(true);
     expect(items[0].title).toBe('Metropolis');
 
+    // No is_active filter: a past showing is usually inactive and still belongs
+    // in history. The one eq is the screened-films archive (is_archival), kept
+    // off the calendar for now — a different thing from "past", despite the
+    // name this test uses for row 'a'.
     const showingFilters = calls.filter((c) => c.table === 'showings' && c.op === 'eq');
-    expect(showingFilters).toEqual([]);
+    expect(showingFilters).toEqual([{ table: 'showings', op: 'eq', args: ['is_archival', false] }]);
   });
 
   it('leaves out cancelled showings, which history cannot tell apart by the flag', async () => {

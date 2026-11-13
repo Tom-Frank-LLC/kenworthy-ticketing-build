@@ -227,7 +227,7 @@ async function fetchAll() {
   const rows = [];
   for (let from = 0; ; from += 1000) {
     // PostgREST silently caps a select at 1000 rows, so this pages explicitly.
-    const res = await fetch(`${API}/movies?select=id,title,genre&limit=1000&offset=${from}`, { headers: H });
+    const res = await fetch(`${API}/movies?select=id,title,genre&is_archival=eq.false&limit=1000&offset=${from}`, { headers: H });
     if (!res.ok) throw new Error(`movies read ${res.status}: ${await res.text()}`);
     const batch = await res.json();
     rows.push(...batch);

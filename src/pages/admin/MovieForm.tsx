@@ -36,6 +36,10 @@ export default function MovieForm() {
   const [rating, setRating] = useState('');
   const [genres, setGenres] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
+  // Archive listings (movies.is_archival): this one, when editing it, and any
+  // matching the title being typed, when adding a new film.
+  const [isArchival, setIsArchival] = useState(false);
+  const [archiveMatches, setArchiveMatches] = useState<{ id: string; title: string; release_year: number | null }[]>([]);
   const [trailerUrl, setTrailerUrl] = useState('');
   const [isFeatured, setIsFeatured] = useState(false);
   const [distributor, setDistributor] = useState('');
@@ -64,6 +68,7 @@ export default function MovieForm() {
           setRating(data.rating || '');
           setGenres(parseGenres(data.genre));
           setIsActive(data.is_active);
+          setIsArchival(!!(data as any).is_archival);
           setTrailerUrl(data.trailer_url || '');
           setIsFeatured(!!data.is_featured);
           setDistributor((data as any).distributor || '');
@@ -77,6 +82,28 @@ export default function MovieForm() {
       });
     }
   }, [id, isEdit, isAdmin, authLoading, navigate]);
+
+  // A film coming back after years away already has an archive listing, with
+  // every date it played here. Adding a second listing for it would leave that
+  // history on the old one, and the new showing's page would not show it. So
+  // when the title being typed matches one, offer it instead.
+  useEffect(() => {
+    if (isEdit) return;
+    const t = title.trim();
+    if (t.length < 2) { setArchiveMatches([]); return; }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from('movies')
+        .select('id, title, release_year')
+        .eq('is_archival', true)
+        .ilike('title', t.replace(/[%_\\]/g, (c) => `\\${c}`))
+        .order('release_year', { ascending: false, nullsFirst: false })
+        .limit(5);
+      if (!cancelled) setArchiveMatches(data ?? []);
+    }, 350);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [title, isEdit]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,6 +181,32 @@ export default function MovieForm() {
               <Label htmlFor="movie-title">Title *</Label>
               <Input id="movie-title" required value={title} onChange={e => setTitle(e.target.value)} />
             </div>
+            {isEdit && isArchival && (
+              <div className="rounded-md border border-accent/40 bg-accent/5 p-3 text-sm">
+                <p>
+                  This is an archive listing: a film known from the Kenworthy&rsquo;s screening archive.
+                  Making it active, or adding a showing of it, brings it back onto the dashboard with every
+                  date it played here attached.
+                </p>
+              </div>
+            )}
+            {!isEdit && archiveMatches.length > 0 && (
+              <div role="status" className="rounded-md border border-accent/40 bg-accent/5 p-3 text-sm space-y-2">
+                <p>
+                  Already in the Kenworthy archive. Use that listing, so the new showings carry the
+                  film&rsquo;s history here:
+                </p>
+                <ul className="space-y-1">
+                  {archiveMatches.map((m) => (
+                    <li key={m.id}>
+                      <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/admin/movies/${m.id}`)}>
+                        Use {m.title}{m.release_year ? ` (${m.release_year})` : ''}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <TicketingModeFields
               idPrefix="movie"
               kind="film"
