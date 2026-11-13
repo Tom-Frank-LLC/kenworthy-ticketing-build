@@ -9,7 +9,7 @@
 --
 -- 1. The import now inserts rating NULL explicitly (function body otherwise
 --    unchanged from 20261113223015).
--- 2. Archival films already made get 'NR' cleared. Only is_archival rows
+-- 2. Archival films already made get 'NR' cleared (see the note at the end). Only is_archival rows
 --    still at 'NR' are touched: a film made active (is_archival cleared by
 --    trigger) or given a real rating by staff is left alone. Films linked to
 --    one of our existing listings were never changed by the import and are
@@ -203,17 +203,13 @@ END $$;
 REVOKE ALL ON FUNCTION public.import_archive_listings(boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.import_archive_listings(boolean) TO authenticated, service_role;
 
--- Backfill. Through the bulk-audit path (db push runs as postgres), so this
--- writes a started row and one summary row instead of one per film.
-DO $$
-DECLARE
-  v_run uuid;
-  v_n   integer;
-BEGIN
-  v_run := public.audit_bulk_begin(ARRAY['movies'], 'archive.clear_placeholder_rating', '{}'::jsonb, 10, NULL);
-  UPDATE public.movies SET rating = NULL WHERE is_archival AND rating = 'NR';
-  GET DIAGNOSTICS v_n = ROW_COUNT;
-  PERFORM public.audit_bulk_end(v_run, 'archive.clear_placeholder_rating',
-    jsonb_build_object('movies_updated', v_n), NULL);
-END
-$$;
+-- Backfill. A plain UPDATE, audited row by row. Not through audit_bulk_begin:
+-- that admits only a session whose login user is postgres, and `supabase db
+-- push` logs in as a temporary CLI role before switching to postgres, so it is
+-- refused (42501, the first push of this file on staging). Where it matters
+-- this touches nothing:
+--   - production: this migration lands before the import has ever run there,
+--     so no archival film exists yet. 0 rows.
+--   - staging: the 8,545 films were cleared before this push, via `db query`
+--     (logs in as postgres) through the bulk path: 2 audit rows. 0 rows here.
+UPDATE public.movies SET rating = NULL WHERE is_archival AND rating = 'NR';

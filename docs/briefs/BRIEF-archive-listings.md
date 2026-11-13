@@ -71,9 +71,13 @@ supersedes: remove-archive-section
 - `20261113234834_archive_films_unrated.sql`: archive-only films get rating
   NULL, not "NR". The archive has no rating column. The first import didn't name
   `rating`, so the column default `'NR'` badged all 8,545 archive films as
-  unrated. This migration makes the import insert NULL and clears `'NR'` from
-  archival films still carrying it, writing 2 audit rows through the bulk path.
-  Rehearsed on staging inside rolled-back transactions: 8,545 cleared, 0 live
+  unrated. This migration makes the import insert NULL, then runs a plain UPDATE
+  clearing `'NR'` from archival films (0 rows on production, where it lands
+  before the import). On staging, the 8,545 were cleared first through
+  `db query` with the bulk path (2 audit rows). The bulk path can't run inside
+  `db push`: `audit_bulk_begin` admits only a session whose *login* user is
+  postgres, and push logs in as a temporary CLI role, so the first push failed
+  with 42501 and rolled back. Rehearsed inside rolled-back transactions: 0 live
   films touched, and a film the import recreates comes out NULL.
 
 **`import_archive_listings`** links each unmatched archive film to, in order:
