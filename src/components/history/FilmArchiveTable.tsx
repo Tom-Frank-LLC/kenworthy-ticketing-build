@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { formatYears, matchesQuery, rollUp, type ArchiveScreening, type FilmDetails } from '@/lib/archiveFilms';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,67 +14,15 @@ import {
 } from '@/components/ui/table';
 import { Film, Search, X } from 'lucide-react';
 
-export type ArchiveScreening = {
-  id: string;
-  year: number;
-  film_title_display: string;
-  film_year: number | null;
-};
-
-/** One distinct film, with every year it played rolled up. */
-type FilmEntry = {
-  key: string;
-  title: string;
-  filmYear: number | null;
-  screenings: number;
-  years: number[];
-};
+export type { ArchiveScreening } from '@/lib/archiveFilms';
 
 const PAGE_SIZE = 25;
 
-/** Group screenings into distinct films. Same title + release year = same film. */
-function rollUp(rows: ArchiveScreening[]): FilmEntry[] {
-  const map = new Map<string, FilmEntry>();
-  for (const r of rows) {
-    const title = r.film_title_display?.trim();
-    if (!title) continue;
-    const key = `${title.toLowerCase()}|${r.film_year ?? ''}`;
-    let entry = map.get(key);
-    if (!entry) {
-      entry = { key, title, filmYear: r.film_year, screenings: 0, years: [] };
-      map.set(key, entry);
-    }
-    entry.screenings++;
-    if (!entry.years.includes(r.year)) entry.years.push(r.year);
-  }
-  const out = [...map.values()];
-  for (const e of out) e.years.sort((a, b) => a - b);
-  // Chronological by the year the film first played here, oldest first. Titles break ties,
-  // which is what orders the list when a single year is being shown.
-  return out.sort((a, b) => a.years[0] - b.years[0] || a.title.localeCompare(b.title));
-}
-
-/** Render a year list compactly: consecutive runs collapse to "1954–1957". */
-function formatYears(years: number[]): string {
-  if (!years.length) return '';
-  const runs: string[] = [];
-  let start = years[0];
-  let prev = years[0];
-  for (let i = 1; i <= years.length; i++) {
-    const y = years[i];
-    if (y === prev + 1) {
-      prev = y;
-      continue;
-    }
-    runs.push(start === prev ? `${start}` : `${start}–${prev}`);
-    start = y;
-    prev = y;
-  }
-  return runs.join(', ');
-}
-
 export function FilmArchiveTable({
   rows,
+  details,
+  filmHref,
+  intro,
   loaded,
   yearFilter,
   onClearYearFilter,
@@ -80,26 +30,31 @@ export function FilmArchiveTable({
   onQueryChange,
 }: {
   rows: ArchiveScreening[];
+  /** Genre, rating, director and cast by movie id (archive_film_details()). */
+  details?: Map<string, FilmDetails>;
+  /** When set, each linked film's title links here (the admin table opens the movie form). */
+  filmHref?: (movieId: string) => string;
+  /** Replaces the public introduction under the heading. */
+  intro?: ReactNode;
   /** False while the archive is still being fetched; an empty table then means "loading", not "none". */
   loaded: boolean;
-  yearFilter: number | null;
-  onClearYearFilter: () => void;
-  /** Controlled so the page-wide search can drop a title in here. This box still
-   *  only ever filters the table — it never moves the timeline. */
+  yearFilter?: number | null;
+  onClearYearFilter?: () => void;
+  /** Controlled so the page-wide search can drop a title in here. This box only
+   *  ever filters the table — it never moves the timeline. */
   query: string;
   onQueryChange: (q: string) => void;
 }) {
   const [page, setPage] = useState(0);
 
   const films = useMemo(
-    () => rollUp(yearFilter ? rows.filter((r) => r.year === yearFilter) : rows),
-    [rows, yearFilter],
+    () => rollUp(yearFilter ? rows.filter((r) => r.year === yearFilter) : rows, details),
+    [rows, yearFilter, details],
   );
 
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return films;
-    return films.filter((f) => f.title.toLowerCase().includes(q));
+    if (!query.trim()) return films;
+    return films.filter((f) => matchesQuery(f, query));
   }, [films, query]);
 
   // Any change to the result set puts you back on the first page.
@@ -130,9 +85,13 @@ export function FilmArchiveTable({
         </h2>
       </div>
       <p className="font-serif text-muted-foreground mt-2 max-w-2xl">
-        Every title the Kenworthy is recorded as having screened, drawn from a century of
-        newspaper listings and theater records. Search by title, or pick a year from the
-        timeline above.
+        {intro ?? (
+          <>
+            Every title the Kenworthy is recorded as having screened, drawn from a century of
+            newspaper listings and theater records. Search by title, year, director, cast or
+            genre, or pick a year from the timeline above.
+          </>
+        )}
       </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -141,12 +100,12 @@ export function FilmArchiveTable({
           <Input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search films&hellip;"
+            placeholder="Title, year, director, cast, genre…"
             className="pl-9"
-            aria-label="Search films in the Kenworthy archive"
+            aria-label="Search the Kenworthy film archive by title, year, director, cast or genre"
           />
         </div>
-        {yearFilter && (
+        {yearFilter && onClearYearFilter && (
           <Badge variant="secondary" className="gap-1.5 py-1.5 pl-3 pr-1.5">
             Showing {yearFilter}
             <button
@@ -177,7 +136,16 @@ export function FilmArchiveTable({
           <TableBody>
             {visible.map((f) => (
               <TableRow key={f.key}>
-                <TableCell className="font-medium">{f.title}</TableCell>
+                <TableCell>
+                  {filmHref && f.movieId ? (
+                    <Link to={filmHref(f.movieId)} className="font-medium underline hover:text-accent">
+                      {f.title}
+                    </Link>
+                  ) : (
+                    <span className="font-medium">{f.title}</span>
+                  )}
+                  {f.details && <FilmCredits d={f.details} />}
+                </TableCell>
                 <TableCell className="text-muted-foreground">{f.filmYear ?? '—'}</TableCell>
                 <TableCell className="text-right tabular-nums">{f.screenings}</TableCell>
                 <TableCell className="text-muted-foreground text-sm">
@@ -191,7 +159,9 @@ export function FilmArchiveTable({
                   {!loaded
                     ? 'The film archive is still loading…'
                     : rows.length
-                      ? 'No films match that search.'
+                      ? yearFilter
+                        ? `No film shown in ${yearFilter} matches that search. Clear the ${yearFilter} filter to search every year.`
+                        : 'No films match that search.'
                       : 'The film archive could not be loaded.'}
                 </TableCell>
               </TableRow>
@@ -225,4 +195,16 @@ export function FilmArchiveTable({
       )}
     </section>
   );
+}
+
+/** Director, cast and genre under the title, when anyone has filled them in. */
+function FilmCredits({ d }: { d: FilmDetails }) {
+  const parts = [
+    d.director && `Directed by ${d.director}`,
+    d.cast_members && `Starring ${d.cast_members}`,
+    d.genre,
+    d.rating,
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  return <p className="text-sm text-muted-foreground mt-0.5">{parts.join(' · ')}</p>;
 }

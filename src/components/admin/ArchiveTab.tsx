@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Archive, Loader2, Search, Upload, Wand2 } from 'lucide-react';
+import { Archive, Loader2, Upload, Wand2 } from 'lucide-react';
 import { parseHistoricalWorkbook } from '@/lib/parseHistoricalXlsx';
+import { fetchAllRows } from '@/lib/fetchAllRows';
+import type { ArchiveScreening, FilmDetails } from '@/lib/archiveFilms';
+import { FilmArchiveTable } from '@/components/history/FilmArchiveTable';
 
 /**
  * The screened-films archive: every film the Kenworthy is recorded as having
@@ -26,7 +28,8 @@ import { parseHistoricalWorkbook } from '@/lib/parseHistoricalXlsx';
  *     row, so it would now delete ten thousand showings with one confirm().
  *     The full export lives in deferred-archive/data/ if a reload is needed.
  *   - The 8,500 archive-only films are not loaded into the dashboard; they are
- *     found here, by search.
+ *     found here, in the same "Every film" table as /history, where each title
+ *     opens its movie form.
  */
 
 const CHUNK = 500;
@@ -42,7 +45,6 @@ type ImportResult = {
   skipped_overlap: number;
   existing_links: { archive_title: string; film_year: number | null; movie_id: string; movie_title: string }[];
 };
-type ArchivalFilm = { id: string; title: string; release_year: number | null };
 
 async function count(q: PromiseLike<{ count: number | null }>) {
   return (await q).count ?? 0;
@@ -54,7 +56,9 @@ export default function ArchiveTab() {
   const [progress, setProgress] = useState('');
   const [preview, setPreview] = useState<ImportResult | null>(null);
   const [query, setQuery] = useState('');
-  const [films, setFilms] = useState<ArchivalFilm[] | null>(null);
+  const [rows, setRows] = useState<ArchiveScreening[]>([]);
+  const [rowsLoaded, setRowsLoaded] = useState(false);
+  const [details, setDetails] = useState<Map<string, FilmDetails>>(() => new Map());
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -68,25 +72,47 @@ export default function ArchiveTab() {
     setStats({ screenings, linked, archivalShowings, archivalFilms });
   }
 
-  useEffect(() => { void refresh(); }, []);
+  async function loadTable() {
+    const [r, d] = await Promise.all([
+      fetchAllRows<ArchiveScreening>((from, to) =>
+        supabase
+          .from('historical_screenings')
+          .select('id, year, film_title_display, film_year, matched_movie_id')
+          .eq('venue_name', 'Kenworthy')
+          .order('year')
+          .order('id')
+          .range(from, to),
+      ),
+      fetchAllRows<FilmDetails & { movie_id: string }>((from, to) =>
+        supabase.rpc('archive_film_details').range(from, to),
+      ),
+    ]);
+    if (r.error) toast.error(r.error.message);
+    setRows(r.data);
+    setDetails(new Map(d.data.map((x) => [x.movie_id, x])));
+    setRowsLoaded(true);
+  }
+
+  useEffect(() => { void refresh(); void loadTable(); }, []);
 
   async function handleWorkbook(file: File) {
     setBusy('upload');
     setProgress('Reading workbook…');
     try {
-      const rows = parseHistoricalWorkbook(await file.arrayBuffer());
-      setProgress(`Parsed ${rows.length.toLocaleString()} screenings. Uploading…`);
+      const parsed = parseHistoricalWorkbook(await file.arrayBuffer());
+      setProgress(`Parsed ${parsed.length.toLocaleString()} screenings. Uploading…`);
       let done = 0;
-      for (let i = 0; i < rows.length; i += CHUNK) {
-        const slice = rows.slice(i, i + CHUNK);
+      for (let i = 0; i < parsed.length; i += CHUNK) {
+        const slice = parsed.slice(i, i + CHUNK);
         const { data, error } = await supabase.from('historical_screenings').insert(slice).select('id');
         if (error) throw error;
-        if ((data?.length ?? 0) !== slice.length) throw new Error('Some rows were not saved — uploading is admin-only.');
+        if ((data?.length ?? 0) !== slice.length) throw new Error('Some parsed were not saved — uploading is admin-only.');
         done += slice.length;
-        setProgress(`Uploaded ${done.toLocaleString()} of ${rows.length.toLocaleString()}…`);
+        setProgress(`Uploaded ${done.toLocaleString()} of ${parsed.length.toLocaleString()}…`);
       }
-      toast.success(`Added ${rows.length.toLocaleString()} screenings. Preview the listings next.`);
+      toast.success(`Added ${parsed.length.toLocaleString()} screenings. Preview the listings next.`);
       await refresh();
+      await loadTable();
     } catch (e: any) {
       toast.error(e.message ?? 'Upload failed');
     } finally {
@@ -112,22 +138,8 @@ export default function ArchiveTab() {
         `Created ${result.movies_created.toLocaleString()} archive films and ${result.showings_created.toLocaleString()} showings.`,
       );
       await refresh();
+      await loadTable();
     }
-  }
-
-  async function search(e?: React.FormEvent) {
-    e?.preventDefault();
-    const q = query.trim();
-    if (q.length < 2) { setFilms(null); return; }
-    const { data, error } = await supabase
-      .from('movies')
-      .select('id, title, release_year')
-      .eq('is_archival', true)
-      .ilike('title', `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`)
-      .order('title')
-      .limit(50);
-    if (error) { toast.error(error.message); return; }
-    setFilms(data ?? []);
   }
 
   const nothingToDo = !!preview && preview.movies_created + preview.showings_created + preview.archive_rows_linked === 0;
@@ -216,35 +228,23 @@ export default function ArchiveTab() {
       </Card>
 
       <Card className="glass">
-        <CardHeader>
-          <CardTitle className="font-display flex items-center gap-2">
-            <Search className="h-5 w-5" /> Find an archive film
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Bringing a film back? Open its archive listing and make it active rather than creating a new
-            one — its screening history then shows on the new showing's page.
-          </p>
-          <form onSubmit={search} className="flex gap-2 max-w-md">
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Title…"
-              aria-label="Search archive films by title" />
-            <Button type="submit" variant="outline">Search</Button>
-          </form>
-          {films && (
-            films.length ? (
-              <ul className="space-y-1 text-sm">
-                {films.map((f) => (
-                  <li key={f.id}>
-                    <Link to={`/admin/movies/${f.id}`} className="underline hover:text-accent">
-                      {f.title}{f.release_year ? ` (${f.release_year})` : ''}
-                    </Link>
-                  </li>
-                ))}
-                {films.length === 50 && <li className="text-muted-foreground">First 50 shown — narrow the search.</li>}
-              </ul>
-            ) : <p className="text-sm text-muted-foreground">No archive-only film matches.</p>
-          )}
+        <CardContent className="p-4 md:p-6">
+          <FilmArchiveTable
+            rows={rows}
+            details={details}
+            loaded={rowsLoaded}
+            query={query}
+            onQueryChange={setQuery}
+            filmHref={(movieId) => `/admin/movies/${movieId}`}
+            intro={
+              <>
+                Every film in the archive. Open one to edit its listing: rating, genre, director,
+                cast, description and poster show on its showing pages and make it searchable on
+                the History page. Bringing a film back? Open its listing and make it active rather
+                than creating a new one, so its screening history shows on the new showing's page.
+              </>
+            }
+          />
         </CardContent>
       </Card>
 

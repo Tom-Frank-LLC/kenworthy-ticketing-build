@@ -36,7 +36,7 @@ column_allow(t, c) AS (
     'id','title','description','poster_url','duration_minutes','rating','genre',
     'is_active','created_at','updated_at','trailer_url','is_featured',
     'release_year','release_label','pass_processing_fee','ticket_type',
-    'rsvp_url','show_runtime','is_archival'])
+    'rsvp_url','show_runtime','is_archival','director','cast_members'])
   UNION ALL SELECT 'sponsorship_opportunities', unnest(ARRAY[
     'id','slug','title','tagline','intro_text','hook_text','cta_label',
     'section_heading','section_body','benefits','stats_text','price_text',
@@ -66,6 +66,7 @@ function_allow(f, why) AS (VALUES
   ('get_contract_signature',      'the /verify page printed on a signed contract'),
   ('get_public_availability',     'the public rental calendar'),
   ('showing_availability',        'seat counts on the showing page'),
+  ('archive_film_details',        'genre/rating/director/cast of archive films for /history; public columns only'),
   ('showing_ends_at',             'end-of-show rule; read by the pricing path'),
   ('quote_ticket_order',          'the checkout price preview'),
   ('log_failed_staff_login',      'staff sign-in page, before there is a session'),

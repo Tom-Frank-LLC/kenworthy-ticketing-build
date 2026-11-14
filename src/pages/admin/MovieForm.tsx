@@ -35,6 +35,8 @@ export default function MovieForm() {
   const [showRuntime, setShowRuntime] = useState(true);
   const [rating, setRating] = useState('');
   const [genres, setGenres] = useState<string[]>([]);
+  const [director, setDirector] = useState('');
+  const [castMembers, setCastMembers] = useState('');
   const [isActive, setIsActive] = useState(true);
   // Archive listings (movies.is_archival): this one, when editing it, and any
   // matching the title being typed, when adding a new film.
@@ -67,6 +69,8 @@ export default function MovieForm() {
           setShowRuntime((data as any).show_runtime !== false);
           setRating(data.rating || '');
           setGenres(parseGenres(data.genre));
+          setDirector(data.director || '');
+          setCastMembers(data.cast_members || '');
           setIsActive(data.is_active);
           setIsArchival(!!(data as any).is_archival);
           setTrailerUrl(data.trailer_url || '');
@@ -121,6 +125,8 @@ export default function MovieForm() {
         show_runtime: showRuntime,
         rating: rating || null,
         genre: formatGenres(genres),
+        director: director.trim() || null,
+        cast_members: castMembers.trim() || null,
         is_active: isActive,
         trailer_url: trailerUrl.trim() || null,
         is_featured: isFeatured,
@@ -267,6 +273,18 @@ export default function MovieForm() {
                 <Label htmlFor="movie-genre">Genre</Label>
                 <GenreInput id="movie-genre" kind="film" value={genres} onChange={setGenres} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="movie-director">Director</Label>
+              <Input id="movie-director" value={director} onChange={e => setDirector(e.target.value)} placeholder="Alfred Hitchcock" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="movie-cast">Cast</Label>
+              <Input id="movie-cast" value={castMembers} onChange={e => setCastMembers(e.target.value)}
+                placeholder="Robert Donat, Madeleine Carroll" aria-describedby="movie-cast-help" />
+              <p id="movie-cast-help" className="font-serif text-xs text-muted-foreground">
+                Separate names with commas. Shown on the showing page and searchable in the History film archive.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Trailer URL</Label>
