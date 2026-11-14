@@ -1,11 +1,12 @@
 ---
 brief: archive-search-and-credits
 title: The film archive searches every field, opens each film in admin, and films carry director and cast
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-11-13
-verified: false
+shipped_in: ["#417"]
+shipped_at: 2026-11-13
+verified: true
 ---
 
 # Brief: archive search, the admin "Every film" table, director and cast
@@ -47,3 +48,9 @@ search box.
 Migration `20261114014016_movie_director_cast.sql`. Staging: pushed, anon-surface test returns
 0 rows, and the search was checked in a browser. "1975" finds the 72 films shown that year, and
 "horror" finds films by genre.
+
+## Shipped (2026-11-13)
+
+Production: migration pushed first (anon-surface 0 rows; the function serves 180 films with
+details), then main `ec202be` deployed as worker `d88c8ed6`, rollback `7481ba74`. The changed
+chunks were checked byte for byte against the live site.
