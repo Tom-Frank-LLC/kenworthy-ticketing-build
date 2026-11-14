@@ -1744,8 +1744,10 @@ export type Database = {
       movies: {
         Row: {
           circuit: string | null
+          cast_members: string | null
           created_at: string
           description: string | null
+          director: string | null
           distributor: string | null
           duration_minutes: number
           genre: string | null
@@ -1769,8 +1771,10 @@ export type Database = {
         }
         Insert: {
           circuit?: string | null
+          cast_members?: string | null
           created_at?: string
           description?: string | null
+          director?: string | null
           distributor?: string | null
           duration_minutes?: number
           genre?: string | null
@@ -1794,8 +1798,10 @@ export type Database = {
         }
         Update: {
           circuit?: string | null
+          cast_members?: string | null
           created_at?: string
           description?: string | null
+          director?: string | null
           distributor?: string | null
           duration_minutes?: number
           genre?: string | null
@@ -3587,6 +3593,16 @@ export type Database = {
       import_archive_listings: {
         Args: { p_dry_run?: boolean }
         Returns: Json
+      }
+      archive_film_details: {
+        Args: never
+        Returns: {
+          cast_members: string | null
+          director: string | null
+          genre: string | null
+          movie_id: string
+          rating: string | null
+        }[]
       }
       activate_film_pass: {
         Args: {

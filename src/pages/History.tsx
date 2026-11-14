@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import type { FilmDetails } from '@/lib/archiveFilms';
 import { FilmArchiveTable } from '@/components/history/FilmArchiveTable';
 import { Film, Building2, Sparkles, Hammer, Star, Users } from 'lucide-react';
 import { SEO } from '@/components/SEO';
@@ -27,6 +28,7 @@ type ArchiveRow = {
   year: number;
   film_title_display: string;
   film_year: number | null;
+  matched_movie_id: string | null;
 };
 
 // Every milestone is a row of kenworthy_history, edited from Admin › Pages ›
@@ -215,6 +217,7 @@ function ItemCard({
 export default function HistoryPage() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [archive, setArchive] = useState<ArchiveRow[]>([]);
+  const [filmDetails, setFilmDetails] = useState<Map<string, FilmDetails>>(() => new Map());
   const [archiveLoaded, setArchiveLoaded] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [yearFilter, setYearFilter] = useState<number | null>(null);
@@ -270,7 +273,7 @@ export default function HistoryPage() {
       const { data } = await fetchAllRows<ArchiveRow>((from, to) =>
         supabase
           .from('historical_screenings')
-          .select('id, year, film_title_display, film_year')
+          .select('id, year, film_title_display, film_year, matched_movie_id')
           .eq('venue_name', 'Kenworthy')
           .order('year')
           .order('id')
@@ -278,6 +281,14 @@ export default function HistoryPage() {
       );
       setArchive(data);
       setArchiveLoaded(true);
+    })();
+    (async () => {
+      // Genre / rating / director / cast for the table's search. Only films
+      // someone has filled in come back, so this starts small.
+      const { data } = await fetchAllRows<FilmDetails & { movie_id: string }>((from, to) =>
+        supabase.rpc('archive_film_details').range(from, to),
+      );
+      setFilmDetails(new Map(data.map((d) => [d.movie_id, d])));
     })();
   }, []);
 
@@ -397,6 +408,7 @@ export default function HistoryPage() {
         <div className="mt-24 pt-12 border-t border-border/40">
           <FilmArchiveTable
             rows={archive}
+            details={filmDetails}
             loaded={archiveLoaded}
             yearFilter={yearFilter}
             onClearYearFilter={() => setYearFilter(null)}

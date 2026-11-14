@@ -1238,6 +1238,16 @@ export default function Showing() {
               durationMinutes={displayedRuntime(production)}
               className="mt-2"
             />
+            {productionType === 'movie' && (production?.director || production?.cast_members) && (
+              <dl className="mt-2 text-sm text-muted-foreground space-y-0.5 max-w-2xl">
+                {production.director && (
+                  <div><dt className="inline font-semibold text-foreground">Directed by </dt><dd className="inline">{production.director}</dd></div>
+                )}
+                {production.cast_members && (
+                  <div><dt className="inline font-semibold text-foreground">Starring </dt><dd className="inline">{production.cast_members}</dd></div>
+                )}
+              </dl>
+            )}
             <RichText
               html={production?.description}
               className="text-sm text-muted-foreground mt-2 max-w-2xl"
