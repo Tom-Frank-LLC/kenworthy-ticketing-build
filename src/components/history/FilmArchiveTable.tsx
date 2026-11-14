@@ -197,11 +197,15 @@ export function FilmArchiveTable({
   );
 }
 
-/** Director, cast and genre under the title, when anyone has filled them in. */
+/**
+ * Director, cast and genre under the title, when anyone has filled them in.
+ * "Cast", not "Starring": the Wikidata backfill orders cast by how well-known
+ * each actor is, so a famous cameo can come first.
+ */
 function FilmCredits({ d }: { d: FilmDetails }) {
   const parts = [
     d.director && `Directed by ${d.director}`,
-    d.cast_members && `Starring ${d.cast_members}`,
+    d.cast_members && `Cast: ${d.cast_members}`,
     d.genre,
     d.rating,
   ].filter(Boolean);

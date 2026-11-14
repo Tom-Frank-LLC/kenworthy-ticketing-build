@@ -7,6 +7,7 @@ date: 2026-11-13
 shipped_in: ["#417"]
 shipped_at: 2026-11-13
 verified: true
+findings: FINDINGS-archive-credits-backfill.md
 ---
 
 # Brief: archive search, the admin "Every film" table, director and cast
@@ -54,3 +55,10 @@ Migration `20261114014016_movie_director_cast.sql`. Staging: pushed, anon-surfac
 Production: migration pushed first (anon-surface 0 rows; the function serves 180 films with
 details), then main `ec202be` deployed as worker `d88c8ed6`, rollback `7481ba74`. The changed
 chunks were checked byte for byte against the live site.
+
+## Follow-up: the data (2026-11-13)
+
+Searching "Hitchcock" found nothing, because every film's director and cast were blank. They
+were filled from Wikidata for 7,284 / 6,638 archive films, matched on title + release year,
+in both environments. The cast label now reads "Cast", not "Starring". See
+`FINDINGS-archive-credits-backfill.md`.

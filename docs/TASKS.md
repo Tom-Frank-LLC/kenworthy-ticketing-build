@@ -32,7 +32,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 ## Shipped
 
 - **The film archive is back, every archive film is a listing, and the History timeline is editable**<br>`feature` — `#415` — [brief](briefs/BRIEF-archive-listings.md)
-- **The film archive searches every field, opens each film in admin, and films carry director and cast**<br>`feature` — `#417` — [brief](briefs/BRIEF-archive-search-and-credits.md)
+- **The film archive searches every field, opens each film in admin, and films carry director and cast**<br>`feature` — `#417` — [brief](briefs/BRIEF-archive-search-and-credits.md) · [notes](briefs/FINDINGS-archive-credits-backfill.md)
 - **The QBO Export books the month from Square's reports, so it matches Square and the Overview**<br>`bug` — `#410` — [brief](briefs/BRIEF-qbo-export-from-square.md) · [notes](briefs/FINDINGS-qbo-export-from-square.md)
 - **The patron pays on the Square Stand at the patron-facing display, straight from the donation step**<br>`feature` — `#392` — [brief](briefs/BRIEF-stand-at-patron-display.md)
 - **Linking a production or pass to Square ignores archived items, and an archived-only title says "unarchive" instead of "create"**<br>`bug` — `#401` — [brief](briefs/BRIEF-square-link-ignore-archived.md)
