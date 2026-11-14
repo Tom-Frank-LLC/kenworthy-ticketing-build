@@ -1,11 +1,12 @@
 ---
 brief: archive-listings
 title: The film archive is back, every archive film is a listing, and the History timeline is editable
-status: built
+status: shipped
 track: feature
-severity: P2
 date: 2026-11-13
-verified: false
+shipped_in: ["#415"]
+shipped_at: 2026-11-13
+verified: true
 supersedes: remove-archive-section
 ---
 
@@ -139,6 +140,30 @@ window or by id are unaffected; the audit is summarised in this brief's PR.
    real run, then `wrangler deploy`. Order: migrations → import → code. The old bundle
    reads `kenworthy_history` and merges in SEED by year + title, so once the seed migration
    lands it shows each milestone once, from the table.
+
+## Shipped (2026-11-13)
+
+- **Production:** the three migrations went out first. Code from main (`a732569`) is worker version
+  `7481ba74`; rollback is `85ee3095`, and production was checked equal to main before the deploy.
+  The import created 8,540 archive films and 9,777 archival showings, joined 181 archive films to
+  existing listings, and left 251 screenings to our own showings. All 10,028 Kenworthy rows are
+  linked. It wrote 2 bulk audit rows and left no suppression behind. A second dry run finds 0 to do.
+- **The remake trap (found in the production dry run).** Title-only linking joined 4 older films to
+  our listing of a newer film with the same name:
+  - *Secret Agent* (1936) → The Secret Agent (2025)
+  - *The Gladiator* (1938) → Gladiator (2000)
+  - *Alien³* (1992) → Alien (1979); normalising drops the "³"
+  - *Wuthering Heights* (1970) → Wuthering Heights (2026)
+
+  The import already declines a link when our listing's `release_year` differs. These listings
+  simply had none. Setting their real years (production, before the import; Tom approved) removed
+  the 4 links and added one right one: the archive's 1979 *Alien* joined our Alien.
+  **Before importing again, or after adding a new listing whose title matches an old film, give
+  the listing its release year.**
+- **Staging** was imported before this was found. It was fixed the same way: set the 4 years,
+  unlink those rows and the 1979 *Alien* rows, delete their archival showings and the separate
+  *Alien* archive listing, re-run. Staging now has 8,548 archive films and 9,775 archival showings,
+  with 0 rows unlinked.
 
 ## Not done / follow-ups
 
