@@ -1244,7 +1244,7 @@ export default function Showing() {
                   <div><dt className="inline font-semibold text-foreground">Directed by </dt><dd className="inline">{production.director}</dd></div>
                 )}
                 {production.cast_members && (
-                  <div><dt className="inline font-semibold text-foreground">Starring </dt><dd className="inline">{production.cast_members}</dd></div>
+                  <div><dt className="inline font-semibold text-foreground">Cast </dt><dd className="inline">{production.cast_members}</dd></div>
                 )}
               </dl>
             )}
