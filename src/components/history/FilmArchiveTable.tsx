@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { formatYears, matchesQuery, rollUp, type ArchiveScreening, type FilmDetails } from '@/lib/archiveFilms';
+import { formatYears, matchesQuery, rollUp, type ArchiveScreening, type FilmDetails, type FilmEntry } from '@/lib/archiveFilms';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,8 +32,11 @@ export function FilmArchiveTable({
   rows: ArchiveScreening[];
   /** Genre, rating, director and cast by movie id (archive_film_details()). */
   details?: Map<string, FilmDetails>;
-  /** When set, each linked film's title links here (the admin table opens the movie form). */
-  filmHref?: (movieId: string) => string;
+  /**
+   * Where a film's title links, or null for no link. The public table opens the
+   * film's archive listing page; the admin table opens the movie form.
+   */
+  filmHref?: (film: FilmEntry) => string | null;
   /** Replaces the public introduction under the heading. */
   intro?: ReactNode;
   /** False while the archive is still being fetched; an empty table then means "loading", not "none". */
@@ -134,11 +137,13 @@ export function FilmArchiveTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visible.map((f) => (
+            {visible.map((f) => {
+              const href = filmHref?.(f) ?? null;
+              return (
               <TableRow key={f.key}>
                 <TableCell>
-                  {filmHref && f.movieId ? (
-                    <Link to={filmHref(f.movieId)} className="font-medium underline hover:text-accent">
+                  {href ? (
+                    <Link to={href} className="font-medium underline underline-offset-2 hover:text-accent">
                       {f.title}
                     </Link>
                   ) : (
@@ -152,7 +157,8 @@ export function FilmArchiveTable({
                   {formatYears(f.years)}
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
             {!visible.length && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground py-10">

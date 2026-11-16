@@ -18,6 +18,14 @@ export type ArchiveScreening = {
   film_year: number | null;
   /** The movie listing this screening belongs to, once the import has run. */
   matched_movie_id?: string | null;
+  /** YYYY-MM-DD; orders a film's screenings within a year. */
+  screening_date?: string | null;
+  /**
+   * The archival showing made for this screening (`showings.historical_screening_id`),
+   * whose /showing/:id page is this screening's listing. Null for the screenings
+   * left to one of our own showings of the film (the import's overlap rule).
+   */
+  showing_id?: string | null;
 };
 
 /** Public metadata of a linked movie (archive_film_details()). */
@@ -36,24 +44,37 @@ export type FilmEntry = {
   /** Distinct calendar years it played here, ascending. */
   years: number[];
   movieId: string | null;
+  /** The listing page of its most recent screening here, when it has one. */
+  showingId: string | null;
   details: FilmDetails | null;
 };
 
 /** Group screenings into distinct films. */
 export function rollUp(rows: ArchiveScreening[], details?: Map<string, FilmDetails>): FilmEntry[] {
   const map = new Map<string, FilmEntry>();
+  // Sort key of the screening each film's showingId came from, so the latest wins
+  // whatever order the rows arrive in.
+  const linkedAt = new Map<string, string>();
   for (const r of rows) {
     const title = r.film_title_display?.trim();
     if (!title) continue;
     const key = `${title.toLowerCase()}|${r.film_year ?? ''}`;
     let entry = map.get(key);
     if (!entry) {
-      entry = { key, title, filmYear: r.film_year, screenings: 0, years: [], movieId: null, details: null };
+      entry = { key, title, filmYear: r.film_year, screenings: 0, years: [], movieId: null, showingId: null, details: null };
       map.set(key, entry);
     }
     entry.screenings++;
     if (!entry.years.includes(r.year)) entry.years.push(r.year);
     if (!entry.movieId && r.matched_movie_id) entry.movieId = r.matched_movie_id;
+    if (r.showing_id) {
+      const at = r.screening_date ?? String(r.year);
+      const prev = linkedAt.get(key);
+      if (prev === undefined || at > prev) {
+        linkedAt.set(key, at);
+        entry.showingId = r.showing_id;
+      }
+    }
   }
   const out = [...map.values()];
   for (const e of out) {

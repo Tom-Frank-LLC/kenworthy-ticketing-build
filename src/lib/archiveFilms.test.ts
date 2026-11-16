@@ -67,3 +67,25 @@ describe('rollUp', () => {
     expect(formatYears([1954, 1955, 1956, 1960])).toBe('1954–1956, 1960');
   });
 });
+
+describe('archive film links', () => {
+  const link = (id: string, date: string, showing: string | null): ArchiveScreening => ({
+    id, year: Number(date.slice(0, 4)), film_title_display: 'Casablanca', film_year: 1942,
+    matched_movie_id: 'm-casa', screening_date: date, showing_id: showing,
+  });
+
+  it("links a film to its most recent screening's page, whatever the row order", () => {
+    const [f] = rollUp([link('a', '1978-05-02', 's-1978'), link('b', '1943-03-06', 's-1943'), link('c', '1952-11-01', 's-1952')]);
+    expect(f.showingId).toBe('s-1978');
+  });
+
+  it('skips a screening with no archival showing (left to one of our own)', () => {
+    const [f] = rollUp([link('a', '1943-03-06', 's-1943'), link('b', '2024-06-01', null)]);
+    expect(f.showingId).toBe('s-1943');
+  });
+
+  it('has no link when no screening has a page', () => {
+    const [f] = rollUp([link('a', '2024-06-01', null)]);
+    expect(f.showingId).toBeNull();
+  });
+});

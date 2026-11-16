@@ -24,6 +24,9 @@ import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
 import type { DiscountRule } from '@/lib/discounts';
 import { ProductionMedia, ProductionMetaBadges, displayedRuntime } from '@/components/ProductionMedia';
 import { PreviouslyScreened } from '@/components/PreviouslyScreened';
+import { ArchiveBand } from '@/components/archive/ArchiveBand';
+import { ArchiveRun } from '@/components/archive/ArchiveRun';
+import { ArchiveTitleCard } from '@/components/archive/ArchiveTitleCard';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
@@ -163,22 +166,27 @@ function PassedNotice({ startTime }: { startTime: string }) {
  * sale this showing never had.
  */
 function ArchivalNotice({ startTime }: { startTime: string }) {
+  // The archive's aged-paper panel (--archive-* tokens, contrast computed in
+  // src/index.css). The links are styled here rather than as <Button>s: the
+  // outline button paints the page's dark background, which sits on the paper
+  // as a hole.
+  const link =
+    'inline-flex items-center rounded-md border border-archive-rule px-4 py-2 text-sm font-medium text-archive-ink hover:bg-archive-rule hover:text-archive-paper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-archive-rule focus-visible:ring-offset-2 focus-visible:ring-offset-archive-paper';
   return (
-    <div role="status" className="rounded-lg border border-border bg-secondary/40 p-6 text-center">
-      <p className="font-display text-lg font-semibold">
-        Played at the Kenworthy on {formatShowtime(startTime, 'EEEE, MMMM d, yyyy')}.
-      </p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        From the Kenworthy&rsquo;s screening archive, drawn from a century of newspaper listings
-        and theater records.
-      </p>
-      <div className="mt-4 flex flex-wrap justify-center gap-3">
-        <Button variant="outline" asChild>
-          <Link to="/history">Explore a century of films</Link>
-        </Button>
-        <Button variant="ghost" asChild>
-          <Link to="/">See what&rsquo;s playing now</Link>
-        </Button>
+    <div role="status" className="rounded-lg bg-archive-paper p-1.5 text-archive-ink">
+      <div className="rounded-md border-4 border-double border-archive-rule px-6 py-6 text-center">
+        <p className="font-display text-sm uppercase tracking-[0.25em] text-archive-rule">Played here</p>
+        <p className="mt-1 font-display text-2xl">
+          {formatShowtime(startTime, 'EEEE, MMMM d, yyyy')}
+        </p>
+        <p className="mt-2 text-sm text-archive-ink-muted">
+          From the Kenworthy&rsquo;s screening archive, drawn from a century of newspaper listings
+          and theater records.
+        </p>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <Link to="/history" className={link}>Explore a century of films</Link>
+          <Link to="/" className={link}>See what&rsquo;s playing now</Link>
+        </div>
       </div>
     </div>
   );
@@ -1133,6 +1141,9 @@ export default function Showing() {
   // query. When neither exists we keep the small type-icon tile instead of
   // reserving a media column for nothing.
   const hasMedia = !!(production?.trailer_url || production?.poster_url);
+  // An archive film with nothing to show gets a title card in the media column,
+  // so the archive page keeps the poster layout (8,573 of 8,721 have no poster).
+  const archiveTitleCard = isArchival && !hasMedia;
 
   // What the meta line says this costs.
   //
@@ -1158,7 +1169,9 @@ export default function Showing() {
           // Must be plain text. A meta description containing <p> is a bug —
           // it is what a search result and a shared link preview print.
           toMetaDescription(production?.description) ||
-          `Tickets for ${production?.title ?? 'this showing'} at Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`
+          (showing.is_archival
+            ? `${production?.title ?? 'This film'} played at the Kenworthy in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}. From the Kenworthy's screening archive.`
+            : `Tickets for ${production?.title ?? 'this showing'} at Kenworthy Performing Arts Centre in Moscow, Idaho on ${formatShowtime(showing.start_time, 'MMMM d, yyyy')}.`)
         }
         ogType="event"
         image={production?.poster_url || undefined}
@@ -1194,9 +1207,32 @@ export default function Showing() {
       />
       {/* Production info */}
       <div className="mb-8">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="mb-4">← Back</Button>
-        <div className={hasMedia ? 'grid gap-6 md:grid-cols-[minmax(0,26rem)_1fr] md:items-start' : 'flex items-start gap-4'}>
-          {hasMedia ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          // An archive page is reached from /history: go back there (to the same
+          // spot in the table when we came from it), not to the home page.
+          onClick={() =>
+            isArchival
+              ? (window.history.state?.idx ?? 0) > 0
+                ? navigate(-1)
+                : navigate('/history')
+              : navigate('/')
+          }
+          className="mb-4"
+        >
+          ← Back
+        </Button>
+        {isArchival && <ArchiveBand />}
+        <div className={hasMedia || archiveTitleCard ? 'grid gap-6 md:grid-cols-[minmax(0,26rem)_1fr] md:items-start' : 'flex items-start gap-4'}>
+          {archiveTitleCard ? (
+            <ArchiveTitleCard
+              title={production?.title ?? 'Untitled'}
+              releaseYear={production?.release_year}
+              playedOn={formatShowtime(showing.start_time, 'MMMM yyyy')}
+              className="mx-auto max-w-xs md:max-w-none"
+            />
+          ) : hasMedia ? (
             <ProductionMedia
               title={production?.title ?? meta.label}
               type={productionType}
@@ -1204,6 +1240,8 @@ export default function Showing() {
               trailerUrl={production?.trailer_url}
               aspect="auto"
               fallback="none"
+              // An archive poster is softly toned, like an old print.
+              posterClassName={isArchival ? 'sepia-[.3]' : undefined}
               className="rounded-lg overflow-hidden border border-border"
             />
           ) : (
@@ -1218,7 +1256,7 @@ export default function Showing() {
                 {meta.label}
               </span>
               {isArchival && (
-                <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full font-medium">
+                <span className="text-xs bg-accent/15 text-accent border border-accent/40 px-2 py-0.5 rounded-full font-medium">
                   Archive
                 </span>
               )}
@@ -1288,10 +1326,14 @@ export default function Showing() {
                 ))}
               </div>
             )}
-            {/* The film's past here, and the headline when it has been away
-                for decades. Every movie showing, archival ones included: the
-                count runs up to the day before this one. */}
-            {productionType === 'movie' && showing.movie_id && (
+            {/* The film's past here. A live showing gets PreviouslyScreened ("last
+                played here", and the headline when it has been away for
+                decades; its count runs up to the day before). An archive page
+                gets ArchiveRun instead: every date it played, each a link. */}
+            {productionType === 'movie' && showing.movie_id && isArchival && (
+              <ArchiveRun movieId={showing.movie_id} currentShowingId={showing.id} />
+            )}
+            {productionType === 'movie' && showing.movie_id && !isArchival && (
               <PreviouslyScreened
                 movieId={showing.movie_id}
                 title={production?.title}

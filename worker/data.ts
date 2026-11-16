@@ -30,6 +30,8 @@ export interface ShowingRow {
   is_active: boolean;
   /** Set when staff cancelled it. Readable by anon so a direct link can say so. */
   cancelled_at: string | null;
+  /** From the screening archive: a date it played here, never a sale. Its time is a 7 PM placeholder. */
+  is_archival?: boolean | null;
   created_at: string | null;
   updated_at: string | null;
   movies: (ProductionRow & { duration_minutes: number | null }) | null;
@@ -52,7 +54,7 @@ export interface PassRow {
 }
 
 const SHOWING_SELECT =
-  'id,start_time,ticket_price,manually_sold_out,no_ticket_required,is_active,cancelled_at,created_at,updated_at,' +
+  'id,start_time,ticket_price,manually_sold_out,no_ticket_required,is_active,cancelled_at,is_archival,created_at,updated_at,' +
   'movies(title,description,poster_url,duration_minutes),events(title,description,poster_url,duration_minutes),' +
   'live_performances(title,description,poster_url,duration_minutes),venues(name),showing_price_tiers(price,is_active)';
 

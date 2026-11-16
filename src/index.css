@@ -79,6 +79,18 @@
     --success: 142 60% 42%;
     --success-foreground: 0 0% 6%;
 
+    /* Archive — the vintage-print look of a page from the screening archive
+       (an archival /showing/:id). Brass is --accent; these add aged paper and
+       the ink printed on it. Computed against each other, not eyeballed:
+       ink on paper 11.5:1, ink-muted on paper 5.97:1, rule (dark brass) on
+       paper 5.10:1, accent on band 7.62:1. Gold accent on paper is 1.58:1 —
+       never put --accent text on --archive-paper; use --archive-rule. */
+    --archive-paper: 38 42% 84%;
+    --archive-ink: 28 35% 13%;
+    --archive-ink-muted: 28 25% 30%;
+    --archive-rule: 30 45% 32%;
+    --archive-band: 38 30% 11%;
+
     --chart-1: 278 58% 64%;
     --chart-2: 41 65% 56%;
     --chart-3: 142 60% 42%;

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { fetchAllRows } from '@/lib/fetchAllRows';
@@ -26,10 +27,23 @@ type Milestone = {
 type ArchiveRow = {
   id: string;
   year: number;
+  screening_date: string | null;
   film_title_display: string;
   film_year: number | null;
   matched_movie_id: string | null;
+  /** This screening's archival showing; its /showing/:id page is the listing. */
+  showing_id: string | null;
 };
+
+/**
+ * Where an archive screening links. Its own archival showing when it has one;
+ * otherwise (the import left it to one of our own showings of the film) that
+ * film's latest showing with us.
+ */
+function screeningHref(r: ArchiveRow, ownShowing: Map<string, string>): string | null {
+  const id = r.showing_id ?? (r.matched_movie_id ? ownShowing.get(r.matched_movie_id) : undefined);
+  return id ? `/showing/${id}` : null;
+}
 
 // Every milestone is a row of kenworthy_history, edited from Admin › Pages ›
 // History. They used to be a SEED array here, merged with the table, which left
@@ -60,11 +74,13 @@ function TimelineItem({
   milestone,
   side,
   screenings,
+  ownShowing,
   onSeeMore,
 }: {
   milestone: Milestone;
   side: 'left' | 'right';
   screenings: ArchiveRow[];
+  ownShowing: Map<string, string>;
   onSeeMore: (year: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -102,7 +118,7 @@ function TimelineItem({
       {/* Left column */}
       <div className={`hidden md:block ${isLeft ? '' : 'md:invisible'}`}>
         {isLeft && (
-          <ItemCard milestone={milestone} screenings={screenings} align="right" onSeeMore={onSeeMore} />
+          <ItemCard milestone={milestone} screenings={screenings} ownShowing={ownShowing} align="right" onSeeMore={onSeeMore} />
         )}
       </div>
 
@@ -121,7 +137,7 @@ function TimelineItem({
       {/* Right column */}
       <div className={`hidden md:block ${isLeft ? 'md:invisible' : ''}`}>
         {!isLeft && (
-          <ItemCard milestone={milestone} screenings={screenings} align="left" onSeeMore={onSeeMore} />
+          <ItemCard milestone={milestone} screenings={screenings} ownShowing={ownShowing} align="left" onSeeMore={onSeeMore} />
         )}
       </div>
 
@@ -131,7 +147,7 @@ function TimelineItem({
           <Icon className="h-3.5 w-3.5 text-accent" />
         </div>
         <div className="font-display text-lg text-accent mb-2">{milestone.year}</div>
-        <ItemCard milestone={milestone} screenings={screenings} align="left" onSeeMore={onSeeMore} />
+        <ItemCard milestone={milestone} screenings={screenings} ownShowing={ownShowing} align="left" onSeeMore={onSeeMore} />
       </div>
     </div>
   );
@@ -140,11 +156,13 @@ function TimelineItem({
 function ItemCard({
   milestone,
   screenings,
+  ownShowing,
   align,
   onSeeMore,
 }: {
   milestone: Milestone;
   screenings: ArchiveRow[];
+  ownShowing: Map<string, string>;
   align: 'left' | 'right';
   onSeeMore: (year: number) => void;
 }) {
@@ -191,12 +209,21 @@ function ItemCard({
               On screen that year
             </div>
             <div className={`flex flex-wrap gap-1.5 ${align === 'right' ? 'md:justify-end' : ''}`}>
-              {screenings.slice(0, BADGE_CAP).map((r) => (
-                <Badge key={r.id} variant="secondary" className="text-xs font-normal">
-                  {r.film_title_display}
-                  {r.film_year ? ` (${r.film_year})` : ''}
-                </Badge>
-              ))}
+              {screenings.slice(0, BADGE_CAP).map((r) => {
+                const label = `${r.film_title_display}${r.film_year ? ` (${r.film_year})` : ''}`;
+                const href = screeningHref(r, ownShowing);
+                return href ? (
+                  <Link key={r.id} to={href} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Badge variant="secondary" className="text-xs font-normal hover:bg-accent hover:text-accent-foreground transition-colors">
+                      {label}
+                    </Badge>
+                  </Link>
+                ) : (
+                  <Badge key={r.id} variant="secondary" className="text-xs font-normal">
+                    {label}
+                  </Badge>
+                );
+              })}
               {screenings.length > BADGE_CAP && (
                 <button
                   type="button"
@@ -219,6 +246,9 @@ export default function HistoryPage() {
   const [archive, setArchive] = useState<ArchiveRow[]>([]);
   const [filmDetails, setFilmDetails] = useState<Map<string, FilmDetails>>(() => new Map());
   const [archiveLoaded, setArchiveLoaded] = useState(false);
+  // movie id -> its latest showing of ours, for the films whose every archive
+  // screening was left to one of our own showings (no archival page of their own).
+  const [ownShowing, setOwnShowing] = useState<Map<string, string>>(() => new Map());
   const [scrollProgress, setScrollProgress] = useState(0);
   const [yearFilter, setYearFilter] = useState<number | null>(null);
   const [tableQuery, setTableQuery] = useState('');
@@ -270,17 +300,38 @@ export default function HistoryPage() {
     })();
     (async () => {
       // ~10,000 rows; PostgREST caps a response at 1,000 without saying so.
-      const { data } = await fetchAllRows<ArchiveRow>((from, to) =>
-        supabase
-          .from('historical_screenings')
-          .select('id, year, film_title_display, film_year, matched_movie_id')
-          .eq('venue_name', 'Kenworthy')
-          .order('year')
-          .order('id')
-          .range(from, to),
+      // showings(id) is the archival showing made for the row (one-to-one through
+      // showings.historical_screening_id), or null. The generated types predate
+      // that FK, so they cannot see the relation; hence the cast.
+      const { data } = await fetchAllRows<Omit<ArchiveRow, 'showing_id'> & { showings: { id: string } | null }>(
+        (from, to) =>
+          supabase
+            .from('historical_screenings')
+            .select('id, year, screening_date, film_title_display, film_year, matched_movie_id, showings(id)')
+            .eq('venue_name', 'Kenworthy')
+            .order('year')
+            .order('id')
+            .range(from, to) as any,
       );
-      setArchive(data);
+      const rows: ArchiveRow[] = data.map(({ showings, ...r }) => ({ ...r, showing_id: showings?.id ?? null }));
+      setArchive(rows);
       setArchiveLoaded(true);
+
+      // Films with no archival page at all (about 140, all films we still list):
+      // link them to their latest showing with us instead.
+      const linked = new Set(rows.filter((r) => r.showing_id && r.matched_movie_id).map((r) => r.matched_movie_id));
+      const orphans = [...new Set(rows.map((r) => r.matched_movie_id).filter((m): m is string => !!m && !linked.has(m)))];
+      const own = new Map<string, string>();
+      for (let i = 0; i < orphans.length; i += 100) {
+        const { data: shows } = await supabase
+          .from('showings')
+          .select('id, movie_id')
+          .in('movie_id', orphans.slice(i, i + 100))
+          .eq('is_archival', false)
+          .order('start_time', { ascending: false });
+        for (const sh of shows ?? []) if (sh.movie_id && !own.has(sh.movie_id)) own.set(sh.movie_id, sh.id);
+      }
+      setOwnShowing(own);
     })();
     (async () => {
       // Genre / rating / director / cast for the table's search. Only films
@@ -395,6 +446,7 @@ export default function HistoryPage() {
                 milestone={m}
                 side={i % 2 === 0 ? 'left' : 'right'}
                 screenings={screeningsByYear.get(m.year) ?? []}
+                ownShowing={ownShowing}
                 onSeeMore={showYearInTable}
               />
             ))}
@@ -408,6 +460,10 @@ export default function HistoryPage() {
         <div className="mt-24 pt-12 border-t border-border/40">
           <FilmArchiveTable
             rows={archive}
+            filmHref={(f) => {
+              const id = f.showingId ?? (f.movieId ? ownShowing.get(f.movieId) : undefined);
+              return id ? `/showing/${id}` : null;
+            }}
             details={filmDetails}
             loaded={archiveLoaded}
             yearFilter={yearFilter}

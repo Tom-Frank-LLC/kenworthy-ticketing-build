@@ -235,7 +235,7 @@ export default function ArchiveTab() {
             loaded={rowsLoaded}
             query={query}
             onQueryChange={setQuery}
-            filmHref={(movieId) => `/admin/movies/${movieId}`}
+            filmHref={(f) => (f.movieId ? `/admin/movies/${f.movieId}` : null)}
             intro={
               <>
                 Every film in the archive. Open one to edit its listing: rating, genre, director,

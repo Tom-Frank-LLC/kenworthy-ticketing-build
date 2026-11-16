@@ -92,7 +92,11 @@ async function resolveHead(env: Env, path: string): Promise<Resolved> {
       const production = showing && productionOf(showing);
       if (!showing || !production) return { status: 404, head: { ...base, noindex: true } };
       const when = showDate(showing.start_time);
-      const ld = showingJsonLd(showing, env.SITE_URL);
+      // An archive page is a record of a past screening, not an event on sale:
+      // no "Tickets for", and no Event markup (its time is a placeholder and it
+      // has no offer), which would read to a search engine as a listing.
+      const archival = !!showing.is_archival;
+      const ld = archival ? null : showingJsonLd(showing, env.SITE_URL);
       return {
         status: 200,
         head: {
@@ -100,9 +104,11 @@ async function resolveHead(env: Env, path: string): Promise<Resolved> {
           title: showingTitle(production.title, when),
           description:
             toMetaDescription(production.description) ||
-            `Tickets for ${production.title} at Kenworthy Performing Arts Centre in Moscow, Idaho on ${when}.`,
+            (archival
+              ? `${production.title} played at the Kenworthy in Moscow, Idaho on ${when}. From the Kenworthy's screening archive.`
+              : `Tickets for ${production.title} at Kenworthy Performing Arts Centre in Moscow, Idaho on ${when}.`),
           image: production.poster || base.image,
-          ogType: 'event',
+          ogType: archival ? 'website' : 'event',
           // Served (a ticket holder's link must still work) but not indexed:
           // a cancelled night is listed nowhere, search results included.
           noindex: !!showing.cancelled_at,
