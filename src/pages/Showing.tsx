@@ -555,6 +555,9 @@ export default function Showing() {
   const [showing, setShowing] = useState<any>(null);
   const [production, setProduction] = useState<any>(null);
   const [productionType, setProductionType] = useState<ProductionType>('movie');
+  // The poster URL that failed to load, if one did: the page then lays out as
+  // if there were no poster (title card on an archive page).
+  const [brokenPoster, setBrokenPoster] = useState<string | null>(null);
   const [venue, setVenue] = useState<any>(null);
   // The rest of this production's run. Empty until the showing loads, because
   // the showing is what names the production.
@@ -1141,9 +1144,11 @@ export default function Showing() {
   // Trailer/poster come from the production row we already fetched — no extra
   // query. When neither exists we keep the small type-icon tile instead of
   // reserving a media column for nothing.
-  const hasMedia = !!(production?.trailer_url || production?.poster_url);
+  const posterLoads = !!production?.poster_url && brokenPoster !== production.poster_url;
+  const hasMedia = !!(production?.trailer_url || posterLoads);
   // An archive film with nothing to show gets a title card in the media column,
-  // so the archive page keeps the poster layout (8,573 of 8,721 have no poster).
+  // so the archive page keeps the poster layout. Archive-only films have no
+  // poster of their own; a dead poster URL counts as none.
   const archiveTitleCard = isArchival && !hasMedia;
 
   // What the meta line says this costs.
@@ -1244,6 +1249,7 @@ export default function Showing() {
               fallback="none"
               // An archive poster is softly toned, like an old print.
               posterClassName={isArchival ? 'sepia-[.3]' : undefined}
+              onPosterError={() => setBrokenPoster(production?.poster_url ?? null)}
               className="rounded-lg overflow-hidden border border-border"
             />
           ) : (

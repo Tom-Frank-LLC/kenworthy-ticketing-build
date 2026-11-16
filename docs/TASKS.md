@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**156 briefs** — 139 shipped, 6 built, 9 open, 0 needs triage, 2 closed.
+**157 briefs** — 140 shipped, 6 built, 9 open, 0 needs triage, 2 closed.
 
 ## Built, not deployed
 
@@ -16,7 +16,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **The current site ships as an iOS app (Capacitor), with online checkout working inside it**<br>`feature` — [brief](briefs/BRIEF-capacitor-ios-app.md) · [notes](briefs/../FINDINGS-ios-webview-origin.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
 - `P2` **Rebuild /rentals — marquee-led hero, a real marquee booking form, hourly day-view availability, and the official rate grid**<br>`feature` — [brief](briefs/BRIEF-rentals-page-overhaul.md)
-- **Every archive film opens its own page, and archive pages have a vintage-print look**<br>`ux` — [brief](briefs/BRIEF-archive-film-pages.md)
+- **Archive films show public-domain posters from Wikimedia Commons, and a dead poster no longer renders broken**<br>`ux` — [brief](briefs/BRIEF-archive-posters-commons.md) · [notes](briefs/FINDINGS-archive-posters-commons.md)
 
 ## Open
 
@@ -32,6 +32,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **Every archive film opens its own page, and archive pages have a vintage-print look**<br>`ux` — `#422` — [brief](briefs/BRIEF-archive-film-pages.md)
 - **The film archive is back, every archive film is a listing, and the History timeline is editable**<br>`feature` — `#415` — [brief](briefs/BRIEF-archive-listings.md)
 - **The film archive searches every field, opens each film in admin, and films carry director and cast**<br>`feature` — `#417` — [brief](briefs/BRIEF-archive-search-and-credits.md) · [notes](briefs/FINDINGS-archive-credits-backfill.md)
 - **The QBO Export books the month from Square's reports, so it matches Square and the Overview**<br>`bug` — `#410` — [brief](briefs/BRIEF-qbo-export-from-square.md) · [notes](briefs/FINDINGS-qbo-export-from-square.md)

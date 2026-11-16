@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Clock, Film, Music, Sparkles } from 'lucide-react';
 import { formatRuntime, runtimeLabel } from '@/lib/datetime';
@@ -33,6 +34,12 @@ interface ProductionMediaProps {
   posterClassName?: string;
   /** 'icon' renders a placeholder tile when there is no trailer or poster. */
   fallback?: 'icon' | 'none';
+  /**
+   * Called when the poster fails to load, after the block has already fallen
+   * back to the no-poster rendering. Lets a page that laid itself out around a
+   * poster change course (the archive page swaps in its title card).
+   */
+  onPosterError?: () => void;
   className?: string;
 }
 
@@ -48,9 +55,20 @@ export function ProductionMedia({
   aspect = 'video',
   posterClassName,
   fallback = 'icon',
+  onPosterError,
   className,
 }: ProductionMediaProps) {
   const Icon = typeIcons[type];
+  // A poster URL that no longer loads renders as if there were no poster, not
+  // as a broken-image box with the title in it. 610 listings still point at
+  // kenworthy.org/wp-content, which answers 410 since the old site went
+  // (docs/FINDINGS-wp-poster-mixup.md). Keyed by URL, so a new one is tried.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const showPoster = !!posterUrl && failedUrl !== posterUrl;
+  const onError = () => {
+    setFailedUrl(posterUrl ?? null);
+    onPosterError?.();
+  };
   // resolveTrailer is the app's one trailer parser (also behind the home
   // marquee). It understands more of what an admin actually pastes than the
   // drawer's old inline regexes did — youtu.be, /shorts/, .mov, .m4v.
@@ -81,14 +99,14 @@ export function ProductionMedia({
     );
   }
 
-  if (posterUrl) {
+  if (showPoster) {
     return aspect === 'video' ? (
       <div className={`aspect-video w-full bg-secondary flex items-center justify-center overflow-hidden ${className ?? ''}`}>
-        <img src={posterUrl} alt={title} className="w-full h-full object-cover" />
+        <img src={posterUrl!} alt={title} onError={onError} className="w-full h-full object-cover" />
       </div>
     ) : (
       <div className={`w-full bg-secondary overflow-hidden ${className ?? ''}`}>
-        <img src={posterUrl} alt={title} className={`w-full h-auto object-contain ${posterClassName ?? ''}`} />
+        <img src={posterUrl!} alt={title} onError={onError} className={`w-full h-auto object-contain ${posterClassName ?? ''}`} />
       </div>
     );
   }
