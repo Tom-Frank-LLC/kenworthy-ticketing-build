@@ -69,6 +69,13 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        archive: {
+          paper: "hsl(var(--archive-paper))",
+          ink: "hsl(var(--archive-ink))",
+          "ink-muted": "hsl(var(--archive-ink-muted))",
+          rule: "hsl(var(--archive-rule))",
+          band: "hsl(var(--archive-band))",
+        },
         paper: {
           DEFAULT: "hsl(var(--paper))",
           foreground: "hsl(var(--paper-foreground))",
