@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatYears, matchesQuery, rollUp, type ArchiveScreening, type FilmDetails } from './archiveFilms';
+import { formatYears, kenworthyNameOn, matchesQuery, rollUp, type ArchiveScreening, type FilmDetails } from './archiveFilms';
 
 const row = (id: string, year: number, title: string, filmYear: number | null, movie?: string): ArchiveScreening => ({
   id, year, film_title_display: title, film_year: filmYear, matched_movie_id: movie ?? null,
@@ -87,5 +87,16 @@ describe('archive film links', () => {
   it('has no link when no screening has a page', () => {
     const [f] = rollUp([link('a', '2024-06-01', null)]);
     expect(f.showingId).toBeNull();
+  });
+});
+
+describe('kenworthyNameOn', () => {
+  it('is the Kenworthy Theatre before 2000', () => {
+    expect(kenworthyNameOn('1926-01-04')).toBe('Kenworthy Theatre');
+    expect(kenworthyNameOn('1999-12-31')).toBe('Kenworthy Theatre');
+  });
+  it('is the Kenworthy Performing Arts Centre from 1 January 2000', () => {
+    expect(kenworthyNameOn('2000-01-01')).toBe('Kenworthy Performing Arts Centre');
+    expect(kenworthyNameOn('2022-01-15')).toBe('Kenworthy Performing Arts Centre');
   });
 });

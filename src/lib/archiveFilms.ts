@@ -136,3 +136,13 @@ export function formatYears(years: number[]): string {
   }
   return runs.join(', ');
 }
+
+/**
+ * The building's name on a given venue-local day (`yyyy-MM-dd`). It was the
+ * Kenworthy Theatre until the end of 1999 and the Kenworthy Performing Arts
+ * Centre from 1 January 2000 (Tom, 2026-11-15). Archive pages name the venue
+ * as it was called the night the film played.
+ */
+export function kenworthyNameOn(day: string): string {
+  return day < '2000-01-01' ? 'Kenworthy Theatre' : 'Kenworthy Performing Arts Centre';
+}

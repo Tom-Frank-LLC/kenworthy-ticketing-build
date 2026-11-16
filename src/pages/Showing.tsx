@@ -27,6 +27,7 @@ import { PreviouslyScreened } from '@/components/PreviouslyScreened';
 import { ArchiveBand } from '@/components/archive/ArchiveBand';
 import { ArchiveRun } from '@/components/archive/ArchiveRun';
 import { ArchiveTitleCard } from '@/components/archive/ArchiveTitleCard';
+import { kenworthyNameOn } from '@/lib/archiveFilms';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
@@ -1229,7 +1230,8 @@ export default function Showing() {
             <ArchiveTitleCard
               title={production?.title ?? 'Untitled'}
               releaseYear={production?.release_year}
-              playedOn={formatShowtime(showing.start_time, 'MMMM yyyy')}
+              playedOn={formatShowtime(showing.start_time, 'MMMM d, yyyy')}
+              venueName={kenworthyNameOn(formatShowtime(showing.start_time, 'yyyy-MM-dd'))}
               className="mx-auto max-w-xs md:max-w-none"
             />
           ) : hasMedia ? (
@@ -1250,8 +1252,10 @@ export default function Showing() {
             </div>
           )}
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-display text-3xl font-bold">{production?.title}</h1>
+            {/* Wraps so a long title's badges drop below it on a phone instead
+                of widening the page (seen at 360px on a 70-character title). */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h1 className="min-w-0 break-words font-display text-3xl font-bold">{production?.title}</h1>
               <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full font-medium">
                 {meta.label}
               </span>

@@ -63,17 +63,31 @@ difference in visual theme from a normal calendar listing?"
 there: ink on paper 11.5:1, muted ink 5.97:1, dark-brass rule 5.10:1, gold on the
 band 7.62:1. Gold accent on paper is 1.58:1 and is never used as text there.
 
+**Title card wording (Tom, 2026-11-15).** "Kenworthy presents" (no "The"); the
+full date it played ("September 14, 2017"); and the building's name as it was
+that night: **Kenworthy Theatre** before 1 January 2000, **Kenworthy Performing
+Arts Centre** from then on (`kenworthyNameOn` in `src/lib/archiveFilms.ts`).
+Every archive screening has a full date in both environments (0 null, 0 that
+disagree with the showing's start), so the full date is never a guess. 85 fall
+on 1 January; they spread across 1929–1997 and include New Year's Day double
+features, so they read as real holiday screenings, not year-only placeholders.
+
+**Heading row.** On a phone, a long title plus its badges widened the page
+(the row could not wrap); this was on main too, for live listings. It wraps now.
+
 ## Checked
 
 - `tsc -p tsconfig.app.json`, `check:worker`, and the full vitest run
-  (1,312 passed). `archiveFilms.test.ts` covers the latest-screening link, the
+  (1,314 passed). `archiveFilms.test.ts` covers the latest-screening link, the
   skip for a screening with no page, and the no-link case.
 - In a browser against staging (dev server):
   - Casablanca's three dates each open their own page, with the current one
     marked, and the table opens the 2022 one.
   - Back returns to /history.
   - All 1,121 timeline chips rendered are links.
-  - No horizontal overflow at 360px.
+  - No horizontal overflow at 360px, including a 70-character title.
+  - Title card at 360px: 1972 reads Kenworthy Theatre / October 8, 1972; 2017
+    reads Kenworthy Performing Arts Centre (two balanced lines) / September 14, 2017.
 
 ## Not done
 

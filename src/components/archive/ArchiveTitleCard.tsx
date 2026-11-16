@@ -14,12 +14,15 @@ export function ArchiveTitleCard({
   title,
   releaseYear,
   playedOn,
+  venueName,
   className,
 }: {
   title: string;
   releaseYear?: number | null;
-  /** When it played here, already formatted ("March 1943"). */
+  /** When it played here, already formatted ("March 14, 1943"). */
   playedOn: string;
+  /** The building's name that night: see kenworthyNameOn(). */
+  venueName: string;
   className?: string;
 }) {
   // Long titles step down a size so they wrap to a few lines, not a column of
@@ -30,7 +33,7 @@ export function ArchiveTitleCard({
   return (
     <div
       role="img"
-      aria-label={`Title card: ${title}${releaseYear ? ` (${releaseYear})` : ''}, shown at the Kenworthy ${playedOn}`}
+      aria-label={`Title card: ${title}${releaseYear ? ` (${releaseYear})` : ''}, shown at the ${venueName} on ${playedOn}`}
       className={`aspect-[2/3] w-full rounded-lg bg-archive-paper p-2 text-archive-ink shadow-lg ${className ?? ''}`}
       style={{
         // Aged edges: a faint brass vignette, strongest at the corners and clear
@@ -43,7 +46,7 @@ export function ArchiveTitleCard({
         <div>
           <p aria-hidden="true" className="tracking-[0.5em] text-archive-rule">✦ ✦ ✦</p>
           <p className="mt-2 font-display text-xs uppercase tracking-[0.3em] text-archive-rule">
-            The Kenworthy presents
+            Kenworthy presents
           </p>
         </div>
 
@@ -54,7 +57,9 @@ export function ArchiveTitleCard({
 
         <div className="w-full">
           <div aria-hidden="true" className="mx-auto mb-3 h-px w-2/3 bg-archive-rule" />
-          <p className="font-display text-sm uppercase tracking-[0.25em]">Kenworthy Theatre</p>
+          {/* Balanced, so "Kenworthy Performing Arts Centre" breaks into even lines
+              on a phone instead of leaving "Centre" alone on the last one. */}
+          <p className="text-balance font-display text-sm uppercase tracking-[0.2em]">{venueName}</p>
           <p className="text-xs text-archive-ink-muted">Moscow, Idaho</p>
           <p className="mt-2 font-display text-base uppercase tracking-wide text-archive-rule">{playedOn}</p>
         </div>
