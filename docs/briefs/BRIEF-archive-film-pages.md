@@ -1,10 +1,12 @@
 ---
 brief: archive-film-pages
 title: Every archive film opens its own page, and archive pages have a vintage-print look
-status: built
+status: shipped
 track: ux
 date: 2026-11-15
-verified: false
+shipped_in: ["#422"]
+shipped_at: 2026-11-15
+verified: true
 ---
 
 # Brief: link the archive films to their pages, and theme those pages
@@ -89,9 +91,18 @@ features, so they read as real holiday screenings, not year-only placeholders.
   - Title card at 360px: 1972 reads Kenworthy Theatre / October 8, 1972; 2017
     reads Kenworthy Performing Arts Centre (two balanced lines) / September 14, 2017.
 
+## Shipped
+
+Squash-merged as 09bc13b and deployed to production on 2026-11-15 (Worker
+429c437e, rollback f3687b79; production matched main before the deploy). Checked
+on kenworthy.org: the crawler description is the archive text with no Event
+JSON-LD, and an archive poster (Spirited Away) carries `sepia(0.3)`.
+
+That poster was a dead WordPress URL and rendered as a broken image. A poster
+that fails to load now falls back to the no-poster layout (the title card on an
+archive page): see BRIEF-archive-posters-commons.
+
 ## Not done
 
-- The sepia poster treatment was not seen in the browser: staging has no
-  archive film with a poster. The class is confirmed in the built CSS.
 - The title card is not used for share-preview images; the Worker still falls
   back to the site image.

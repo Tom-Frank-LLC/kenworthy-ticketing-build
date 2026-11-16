@@ -51,3 +51,22 @@ describe('TrailerModal', () => {
     expect(new URL(frame.src).origin).toBe('https://player.vimeo.com');
   });
 });
+
+describe('ProductionMedia poster that fails to load', () => {
+  it('falls back to the no-poster rendering and tells the page', () => {
+    let told = 0;
+    const { container } = render(
+      <ProductionMedia title="Film" type="movie" posterUrl="https://gone.example/p.jpg" aspect="auto" fallback="none" onPosterError={() => { told++; }} />,
+    );
+    fireEvent.error(screen.getByRole('img', { name: 'Film' }));
+    expect(container.querySelector('img')).toBeNull();
+    expect(told).toBe(1);
+  });
+
+  it('tries a new poster URL after an old one failed', () => {
+    const { rerender } = render(<ProductionMedia title="Film" type="movie" posterUrl="https://gone.example/p.jpg" />);
+    fireEvent.error(screen.getByRole('img', { name: 'Film' }));
+    rerender(<ProductionMedia title="Film" type="movie" posterUrl="https://cdn.example.com/new.jpg" />);
+    expect(screen.getByRole('img', { name: 'Film' }).getAttribute('src')).toBe('https://cdn.example.com/new.jpg');
+  });
+});
