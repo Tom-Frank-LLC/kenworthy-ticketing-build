@@ -81,11 +81,68 @@ upload the right posters.
 North by Northwest (Films From the Vault) was deliberately not given the
 Centennial Series poster. That poster carries a different show date.
 
-## Not fixed: 689 listings point at dead WordPress URLs
+## The 689 listings with dead WordPress URLs
 
-The poster URLs of 565 movies and 124 events still point at
-`www.kenworthy.org/wp-content/uploads/...`. kenworthy.org is now this app,
-and those URLs return **410 Gone**, so those listings show no image.
+On 14 Nov, 565 movies and 124 events still had poster URLs pointing at
+`www.kenworthy.org/wp-content/uploads/...`. kenworthy.org is now this app, and
+its Worker answers **410 Gone** to every `/wp-content` path
+(`worker/redirects.ts`), so those listings showed no image.
 
-They were never rehydrated. Restoring them would run into the same overwrite
-problem, so each image would need checking by eye.
+### Why they were never copied
+
+The August copy was done by the `refetch-posters` edge function (added in
+6b3afb7, removed in 1789c1a). It had two gaps:
+
+- **204 URLs were skipped by design.** It only handled URLs ending in a
+  `-WxH` size suffix, and stripped the suffix to fetch the full-size file. A
+  URL without the suffix was passed over.
+- **485 were attempted and failed.** It reported failures only in its HTTP
+  response and never saved them, so the reasons are lost. These skew old:
+  their median last show is March 2024, against December 2025 for the copied
+  set.
+
+### Where else we looked (15 Nov)
+
+| Source | Result |
+|---|---|
+| Our `posters` bucket | Only the 553 copied files, plus staff uploads |
+| Old WordPress host (First Step Internet, 64.126.133.214) | Decommissioned; every path 302s to fsr.com |
+| This Mac (Spotlight), Google Drive | No WordPress backup or uploads folder |
+| `square_poster_matches_20260815`, catalog snapshot in storage | Empty table; the snapshot holds ITEM objects, no IMAGE objects |
+| TMDB | Ruled out in August (18bfa0b): its licence does not cover commercial use. 31 of the dead filenames are TMDB image IDs and TMDB still serves all 31, but copying them raises the same licence question |
+| Wayback Machine (CDX, prefix `kenworthy.org/wp-content/uploads/`) | 82 listings have the exact thumbnail or another size of the same file archived |
+
+### Wayback recovery (production, 15 Nov 2026)
+
+For each of the 82, we downloaded the exact archived thumbnail and the
+largest archived size of the same file (`web.archive.org/web/{ts}id_/{url}`).
+Wherever both existed they agreed by perceptual hash (dHash distance at most
+11 of 256), so no file was overwritten between sizes. Every image was then
+checked by eye against its listing title.
+
+- **79 restored.** The largest copy was resized to at most 2000px, flattened
+  to JPEG, uploaded to `posters/wp-restored/<id>.jpg`, and byte-verified
+  against its public URL. A guarded UPDATE changed a row only where
+  `poster_url` still equalled the dead URL: 56 movies and 23 events, with 79
+  audit rows.
+- **3 left as they were.** The archived image shows another event: Evil Does
+  Not Exist (The Apprentice poster), Palouse Land Trust Benefit Concert (a
+  Halloween party flyer) and Tom's Elton Tribute (a *Hope* screening flyer).
+  All three had generic file names (`poster-web-1.jpg`, `poster-web-5.jpg`,
+  `poster-web-1448x2048.jpg`), so this is the same overwrite cause as above.
+
+The full list is in
+[`docs/data/poster-wayback-recovery-2026-11-15.csv`](data/poster-wayback-recovery-2026-11-15.csv).
+
+### Still open: 610 listings
+
+610 listings still point at dead URLs: the 607 the Wayback Machine never
+captured, plus the 3 above. What could still hold them:
+
+1. **A backup of the old WordPress account from First Step Internet (FSR).**
+   This is the only source likely to cover the event flyers. The dead URLs
+   name exact files in `wp-content/uploads`, but generic names were
+   overwritten there too, so each image still needs checking by eye.
+2. **Orphaned images in the Square catalog.** The August repair found about
+   1,040. Their names are abbreviated (`square butch.jpg`), so matching is
+   fuzzy, and it needs live Square read access.
