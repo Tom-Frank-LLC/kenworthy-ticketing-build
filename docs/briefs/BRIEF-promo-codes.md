@@ -34,9 +34,11 @@ The discount model was built with promo codes in mind, but no promo code can be 
 | Code box at the box office | **missing** | `src/pages/staff/StaffPOS.tsx` |
 | Uniqueness, usage cap, redemption count | **missing**: no unique index on `code`, no cap column | |
 
-Staging has 0 discount rules (0 coded). **Production has not been checked.** Before building,
-run `select count(*), count(code) from ticket_discounts` against production. A rule someone
-already saved with a code would start applying the day pricing reads codes.
+No rule anywhere has a code. Staging has 0 rules. Production has 1 rule, which is active and has
+no code (checked read-only on 20 Nov 2026). This needed checking because the column has been
+writable since #311 by anything other than the admin editor (the dashboard, SQL, an import), and a
+rule saved with a code would start applying the day pricing reads codes. If the build starts long
+after this date, run `select count(*), count(code) from ticket_discounts` again.
 
 ## What the build needs
 
