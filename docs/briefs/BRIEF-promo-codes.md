@@ -1,12 +1,14 @@
 ---
 brief: promo-codes
 title: A buyer can enter a promo code at checkout and get that code's ticket discount, priced by the same SQL function as every other discount
-status: built
+status: shipped
 track: feature
 severity: P2
 date: 2026-11-13
-verified: false
-evidence: migrations 20261120190412 + 20261120231805 applied to staging 2026-11-20; promo-quote + ticket-checkout deployed to staging; staging Worker bc110a5b (rollback 36cf30f9). Not in production.
+shipped_in: ["#426"]
+shipped_at: 2026-11-21
+verified: true
+evidence: production 2026-11-21 — migrations 20261120190412 + 20261120231805 applied and checked (one signature per function, limits-table grants, live price unchanged, anon surface 0 rows); promo-quote + ticket-checkout deployed; Worker 6b98ba53 (rollback 429c437e), live bundle matches the build. Staging Worker 6d03416d (rollback 36cf30f9).
 ---
 
 # Brief: promo codes on ticket purchases
@@ -16,7 +18,7 @@ evidence: migrations 20261120190412 + 20261120231805 applied to staging 2026-11-
 #316–#324), `BRIEF-sec-rls-regressions` (audit L19, migration `20261006225937`).
 **Design record for the discount model:** `docs/DESIGN-order-level-tax-and-ticket-discounts.md`.
 
-## Build record (20 Nov 2026): built, on staging, not in production
+## Build record (20 Nov 2026; production 21 Nov 2026)
 
 Branch `feat/promo-codes`. Everything in "What the build needs" below is built, with these
 changes from the design, decided while building:
@@ -55,8 +57,9 @@ unchanged) + 84 promo checks + a two-session race for a code's last use; Deno 74
 handler tests for `promo-quote`; vitest 1332. On staging: `promo-quote` quotes (correct to
 the cent), anon refused the coded RPC, anon surface 0 rows, the showing page's code box
 (refusal, applied, used up), `create_ticket_order` writing coded rows and refusing past the
-limit, and the admin Promo codes tab. **Not yet done:** a sandbox card payment with a code
-through the page (Square order with the discount line), and the box office with a code.
+limit, and the admin Promo codes tab. **Shipped to production 21 Nov 2026 without** a card payment with a code
+through the page (Square order with the discount line) or a box-office sale with a code; Tom
+chose to deploy. The first real coded sale is the first end-to-end check of the Square side.
 Test code on staging: `STAGINGTEN` (site-wide 10%, 1 order per person, 2 in total).
 
 ## Where things stand (verified against `origin/main` at f0e0105, 13 Nov 2026)
