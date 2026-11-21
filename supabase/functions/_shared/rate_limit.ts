@@ -100,6 +100,48 @@ export async function checkRateLimit(
 }
 
 /**
+ * Has this caller already reached `limit` in `bucket`'s current window?
+ * Reads the counter without claiming anything.
+ *
+ * For limits that count only some outcomes. promo-quote counts failed code
+ * lookups (a patron re-pricing their basket with a code that works should
+ * never be limited), but a caller who has used up their failures must be
+ * refused before the next answer, valid or not. Otherwise a 429 would mean
+ * "wrong code" and an answer would mean "right code", and the limit would
+ * protect nothing. checkRateLimit cannot do that alone: it claims as it
+ * checks.
+ *
+ * Fails open, like checkRateLimit.
+ */
+export async function rateLimitReached(
+  admin: any,
+  req: Request,
+  bucket: string,
+  limit: number,
+): Promise<boolean> {
+  try {
+    const ip = callerIp(req);
+    if (!ip) return false;
+    const identifier = await hashIdentifier(ip);
+    const { data, error } = await admin
+      .from('rate_limits')
+      .select('count, expires_at')
+      .eq('bucket', bucket)
+      .eq('identifier', identifier)
+      .maybeSingle();
+    if (error) {
+      console.error('[rate-limit] peek failed, allowing', bucket, error);
+      return false;
+    }
+    if (!data || new Date(data.expires_at).getTime() <= Date.now()) return false;
+    return Number(data.count) >= limit;
+  } catch (err) {
+    console.error('[rate-limit] peek threw, allowing', bucket, err);
+    return false;
+  }
+}
+
+/**
  * The thresholds, in one place so they can be read against each other.
  *
  * Each is set at roughly ten times the busiest plausible human, so that nobody
@@ -156,6 +198,25 @@ export const LIMITS = {
    * without giving a card tester a useful rate.
    */
   filmPassOrder: { bucket: 'film-pass-order', limit: 20, windowSeconds: 600 },
+
+  /**
+   * Promo-code lookups that failed (BRIEF-promo-codes). Counted on failure
+   * only; checked before every coded quote with rateLimitReached, so once a
+   * caller is over it every answer stops, right or wrong.
+   *
+   * A person mistypes a code once or twice; a lobby on one Wi-Fi might have a
+   * handful of people doing it at once. Twenty in ten minutes covers that and
+   * holds one address to ~120 guesses an hour. Codes still need to be hard to
+   * guess (the admin form says so): this slows a guesser, it does not stop one.
+   */
+  promoCodeMiss: { bucket: 'promo-code-miss', limit: 20, windowSeconds: 600 },
+
+  /**
+   * Every coded quote, successful or not. A patron with a working code
+   * re-prices on each change to their basket, so this is generous; it bounds
+   * what one address can cost, nothing more.
+   */
+  promoQuote: { bucket: 'promo-quote', limit: 300, windowSeconds: 600 },
 } as const;
 
 /**

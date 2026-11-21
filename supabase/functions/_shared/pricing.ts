@@ -67,6 +67,12 @@ export interface PricedOrder {
   listSubtotal: number;
   /** The one rule applied to this order, or null. Never more than one. */
   discount: { id: string; label: string; cents: number } | null;
+  /**
+   * What happened to the promo code, when one was given. A code that could not
+   * be used at all never gets here: the database refuses it (PT422) and that
+   * arrives as a PricingError.
+   */
+  promo: PromoOutcome | null;
   tax: number;
   /** subtotal + tax, i.e. SUM(tickets.total_price). */
   total: number;
@@ -88,6 +94,31 @@ export interface PricedOrder {
     /** Most tickets one buyer may hold online; null = no cap. See _shared/ticket_limit.ts. */
     max_tickets_per_buyer: number | null;
   };
+}
+
+/**
+ * A valid code's effect on this order (price_ticket_order, 20261120190412):
+ *   applied          it is the order's discount
+ *   below_minimum    it needs `minQuantity` paid tickets
+ *   not_eligible     none of these ticket types qualify
+ *   better_discount  an automatic discount takes as much or more
+ */
+export type PromoStatus = 'applied' | 'below_minimum' | 'not_eligible' | 'better_discount';
+export interface PromoOutcome {
+  code: string;
+  status: PromoStatus;
+  minQuantity: number | null;
+}
+
+/**
+ * A promo code as typed, ready to send, or null for none. Only a length bound:
+ * the database decides what a code is, and answers an unknown one in words.
+ */
+export function readPromoCode(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const code = raw.trim();
+  if (!code) return null;
+  return code.slice(0, 64);
 }
 
 export class PricingError extends Error {
@@ -168,8 +199,17 @@ export function bundledDonationEmailError(
   return 'An email address is required to add a donation — it is where the receipt for your gift goes, and how we record it. Remove the donation to check out with a phone number only.';
 }
 
-/** The refusal codes price_ticket_order raises. All become a 400 with its sentence. */
-const PRICING_REFUSALS = new Set(['PT400', 'PT404', 'PT409', 'PT410']);
+/**
+ * The refusal codes price_ticket_order raises. All become a 400 with its
+ * sentence. PT422 is a promo code that cannot be used (unknown, expired, wrong
+ * showing or channel, or a usage limit reached).
+ */
+const PRICING_REFUSALS = new Set(['PT400', 'PT404', 'PT409', 'PT410', 'PT422']);
+
+/** A refusal that is about the code the buyer typed. */
+export function isPromoRefusal(err: unknown): boolean {
+  return err instanceof PricingError && err.code === 'PT422';
+}
 
 /** One row of public.priced_ticket, as PostgREST returns it. */
 interface PricedRow {
@@ -193,6 +233,9 @@ interface PricedRow {
   order_grand_total: number | string;
   production_title: string;
   production_category: string;
+  promo_code?: string | null;
+  promo_status?: PromoStatus | null;
+  promo_min_quantity?: number | null;
 }
 
 function refusal(error: { code?: string; message?: string } | null): PricingError | null {
@@ -213,19 +256,30 @@ export async function priceTicketOrder(
   showingId: string,
   descriptors: TicketDescriptor[],
   channel: ProcessingChannel | 'none' = 'online',
+  /** A promo code, and the online buyer when known (for per-buyer limits). */
+  promo: { code?: string | null; buyerId?: string | null } = {},
 ): Promise<PricedOrder> {
   if (!Array.isArray(descriptors) || descriptors.length === 0) {
     throw new PricingError('No tickets requested');
   }
 
-  const [{ data: rows, error }, { data: showing }] = await Promise.all([
-    admin.rpc('quote_ticket_order', {
+  // Only what the function reads. A forged descriptor cannot smuggle a
+  // price, a discount or anything else in: these two keys are all it has.
+  const tickets = descriptors.map((d) => ({ seat_id: d.seat_id ?? null, tier_id: d.tier_id ?? null }));
+  // With a code, the coded quote (service role or staff only). The public
+  // quote_ticket_order takes no code on purpose: anon calls it directly.
+  const quote = promo.code
+    ? admin.rpc('quote_ticket_order_coded', {
       p_showing_id: showingId,
-      // Only what the function reads. A forged descriptor cannot smuggle a
-      // price, a discount or anything else in: these two keys are all it has.
-      p_tickets: descriptors.map((d) => ({ seat_id: d.seat_id ?? null, tier_id: d.tier_id ?? null })),
+      p_tickets: tickets,
       p_channel: channel,
-    }),
+      p_code: promo.code,
+      p_buyer: promo.buyerId ?? null,
+    })
+    : admin.rpc('quote_ticket_order', { p_showing_id: showingId, p_tickets: tickets, p_channel: channel });
+
+  const [{ data: rows, error }, { data: showing }] = await Promise.all([
+    quote,
     admin
       .from('showings')
       .select('id, total_seats, requires_seat_selection, start_time, max_tickets_per_buyer')
@@ -264,6 +318,13 @@ export async function priceTicketOrder(
         cents: discountCents,
       }
       : null,
+    promo: first.promo_code && first.promo_status
+      ? {
+        code: first.promo_code,
+        status: first.promo_status,
+        minQuantity: first.promo_min_quantity == null ? null : Number(first.promo_min_quantity),
+      }
+      : null,
     tax: n(first.order_tax),
     total: n(first.order_total),
     processingFee: n(first.order_processing_fee),
@@ -297,6 +358,8 @@ export async function createTicketOrder(
     squarePaymentId?: string | null;
     idempotencyKey?: string | null;
     smsConsent?: boolean | null;
+    /** A promo code as typed. The database re-checks it, and its limits, as it writes. */
+    promoCode?: string | null;
   },
 ): Promise<{ rows: any[] } | { refused: PricingError } | { error: { code?: string; message: string } }> {
   const { data, error } = await admin.rpc('create_ticket_order', {
@@ -309,6 +372,7 @@ export async function createTicketOrder(
     p_square_payment_id: params.squarePaymentId ?? null,
     p_checkout_idempotency_key: params.idempotencyKey ?? null,
     p_sms_consent: params.smsConsent ?? null,
+    p_code: params.promoCode ?? null,
   });
   const refused = refusal(error);
   if (refused) return { refused };

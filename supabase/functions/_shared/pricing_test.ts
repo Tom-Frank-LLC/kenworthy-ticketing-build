@@ -10,8 +10,10 @@ import {
   bundledDonationEmailError,
   computeProcessingFee,
   createTicketOrder,
+  isPromoRefusal,
   priceTicketOrder,
   readDonationCents,
+  readPromoCode,
 } from './pricing.ts';
 import { NOT_SOLD_HERE_MESSAGE, ticketsSoldHere } from './purchasable.ts';
 
@@ -149,4 +151,68 @@ Deno.test('ticketsSoldHere: false for rsvp and info_only, true otherwise and whe
   assertEquals(ticketsSoldHere(null), true);
   // Twin of the RAISE in the migration and of src/lib/purchasable.ts.
   assertEquals(NOT_SOLD_HERE_MESSAGE, 'Tickets for this showing are not sold here.');
+});
+
+// ---- Promo codes (20261120190412, BRIEF-promo-codes) -----------------------
+
+Deno.test('without a code, pricing asks the public quote, and reports no promo', async () => {
+  let sent: any;
+  const admin = fakeAdmin((fn, args) => { sent = { fn, args }; return { data: [row()], error: null }; });
+  const order = await priceTicketOrder(admin, 's', [{}], 'online', { code: null });
+  assertEquals(sent.fn, 'quote_ticket_order');
+  assertEquals('p_code' in sent.args, false);
+  assertEquals(order.promo, null);
+});
+
+Deno.test('with a code, pricing asks the coded quote and passes code and buyer', async () => {
+  let sent: any;
+  const admin = fakeAdmin((fn, args) => {
+    sent = { fn, args };
+    return { data: [row({ promo_code: 'FALL25', promo_status: 'applied', promo_min_quantity: 1 })], error: null };
+  });
+  const order = await priceTicketOrder(admin, 's', [{}], 'online', { code: 'fall25', buyerId: 'u-1' });
+  assertEquals(sent.fn, 'quote_ticket_order_coded');
+  assertEquals(sent.args.p_code, 'fall25');
+  assertEquals(sent.args.p_buyer, 'u-1');
+  assertEquals(order.promo, { code: 'FALL25', status: 'applied', minQuantity: 1 });
+});
+
+Deno.test('a valid code that does not apply says why', async () => {
+  const admin = fakeAdmin(() => ({
+    data: [row({ discount_id: null, discount_label: null, order_discount: '0.00', promo_code: 'HALF4', promo_status: 'below_minimum', promo_min_quantity: 4 })],
+    error: null,
+  }));
+  const order = await priceTicketOrder(admin, 's', [{}], 'online', { code: 'HALF4' });
+  assertEquals(order.discount, null);
+  assertEquals(order.promo, { code: 'HALF4', status: 'below_minimum', minQuantity: 4 });
+});
+
+Deno.test('a code the database refuses is a PricingError the caller can tell apart', async () => {
+  const admin = fakeAdmin(() => ({ data: null, error: { code: 'PT422', message: 'That promo code has expired.' } }));
+  const err = await assertRejects(() => priceTicketOrder(admin, 's', [{}], 'online', { code: 'GONE' }), PricingError, 'That promo code has expired.');
+  assert(isPromoRefusal(err));
+  assert(!isPromoRefusal(new PricingError('This showing is sold out.', 'PT409')));
+});
+
+Deno.test('createTicketOrder sends the code, and a PT422 there is a refusal', async () => {
+  let sent: any;
+  const ok = await createTicketOrder(fakeAdmin((fn, args) => { sent = { fn, args }; return { data: [{ id: 'tk' }], error: null }; }),
+    { showingId: 's', descriptors: [{}], paymentMethod: 'online', userId: 'u', orderToken: 't', status: 'pending', promoCode: 'FALL25' });
+  assertEquals(sent.args.p_code, 'FALL25');
+  assert('rows' in ok);
+  const none = await createTicketOrder(fakeAdmin((fn, args) => { sent = { fn, args }; return { data: [{ id: 'tk' }], error: null }; }),
+    { showingId: 's', descriptors: [{}], paymentMethod: 'cash', userId: 'u', orderToken: 't', status: 'confirmed' });
+  assertEquals(sent.args.p_code, null);
+  assert('rows' in none);
+  const refused = await createTicketOrder(fakeAdmin(() => ({ data: null, error: { code: 'PT422', message: 'This promo code has been used up.' } })),
+    { showingId: 's', descriptors: [{}], paymentMethod: 'online', userId: 'u', orderToken: 't', status: 'pending', promoCode: 'X' });
+  assert('refused' in refused && isPromoRefusal(refused.refused));
+});
+
+Deno.test('readPromoCode: text only, trimmed, bounded, empty is none', () => {
+  assertEquals(readPromoCode(undefined), null);
+  assertEquals(readPromoCode(42), null);
+  assertEquals(readPromoCode('   '), null);
+  assertEquals(readPromoCode('  fall25 '), 'fall25');
+  assertEquals(readPromoCode('x'.repeat(200))?.length, 64);
 });
