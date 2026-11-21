@@ -280,3 +280,36 @@ Deno.test({
     });
   }),
 });
+
+Deno.test({
+  name: 'a promo code reaches the coded quote and the write; never the public quote (BRIEF-promo-codes)',
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: () => quietly(async () => {
+    useRoutes(world({ quote: (c) => rpc('quote_ticket_order_coded')(c) ? jsonResponse([pricedRow]) : undefined }));
+    const res = await handler(post(order({ promo_code: '  fall25 ' })));
+    assertEquals(res.status, 200, await res.clone().text());
+    assertEquals(count(rpc('quote_ticket_order')), 0);
+    assertEquals((calls.find(rpc('quote_ticket_order_coded'))!.body as { p_code: string }).p_code, 'fall25');
+    assertEquals((calls.find(rpc('create_ticket_order'))!.body as { p_code: string }).p_code, 'fall25');
+  }),
+});
+
+Deno.test({
+  name: 'a code refused as the rows are written: 409, its sentence, nothing charged',
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: () => quietly(async () => {
+    const routes = world({ quote: (c) => rpc('quote_ticket_order_coded')(c) ? jsonResponse([pricedRow]) : undefined });
+    routes.unshift((c) => rpc('create_ticket_order')(c)
+      ? jsonResponse({ code: 'PT422', message: 'This promo code has been used up.', details: null, hint: null }, 400)
+      : undefined);
+    useRoutes(routes);
+    const res = await handler(post(order({ promo_code: 'ONCE' })));
+    assertEquals(res.status, 409);
+    const out = await res.json();
+    assertEquals(out.error, 'This promo code has been used up. Your card was not charged.');
+    assert(out.promo_refused);
+    assertEquals(count((c) => c.url.hostname.includes('squareup')), 0);
+  }),
+});

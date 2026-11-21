@@ -47,6 +47,8 @@ import {
   priceTicketOrder,
   createTicketOrder,
   readDonationCents,
+  readPromoCode,
+  isPromoRefusal,
   type TicketDescriptor,
 } from '../_shared/pricing.ts';
 import { deliverConfirmation } from '../_shared/deliver.ts';
@@ -165,6 +167,13 @@ Deno.serve(async (req: Request) => {
   if (!donation.ok) return json({ error: donation.error }, 400);
   const donationCents = donation.cents;
 
+  // A promo code, if the buyer applied one (BRIEF-promo-codes). Never trusted
+  // for anything but its text: the database decides whether it exists, applies
+  // here, and has uses left, both when pricing and again as it writes the rows.
+  // Guessing codes through this path costs a Turnstile solve per attempt and
+  // counts against the checkout rate limit below.
+  const promoCode = readPromoCode(body.promo_code);
+
   if (!showingId) return json({ error: 'Showing is required' }, 400);
   if (descriptors.length === 0) return json({ error: 'Select at least one ticket' }, 400);
   // Only a sanity bound here. The real limit is the showing's own setting
@@ -276,8 +285,12 @@ Deno.serve(async (req: Request) => {
   // -------------------------------------------------------------------------
   let order;
   try {
-    order = await priceTicketOrder(admin, showingId, descriptors, 'online');
+    // No buyer yet: a guest's account is resolved further down. Per-buyer code
+    // limits are therefore enforced by create_ticket_order, which has it.
+    order = await priceTicketOrder(admin, showingId, descriptors, 'online', { code: promoCode });
   } catch (err) {
+    // promo_refused lets the page put the sentence beside the code box.
+    if (isPromoRefusal(err)) return json({ error: (err as PricingError).message, promo_refused: true }, 400);
     if (err instanceof PricingError) return json({ error: err.message }, 400);
     console.error('[ticket-checkout] pricing failed', err);
     return json({ error: 'Could not price this order' }, 500);
@@ -412,7 +425,14 @@ Deno.serve(async (req: Request) => {
     // whatever number is on file. Strict boolean: the form always asks, so
     // anything the client omits is a no rather than an unknown.
     smsConsent: body.sms_consent === true,
+    promoCode,
   });
+  if ('refused' in made && made.refused.code === 'PT422') {
+    // The code was fine when priced and is not now: its last use went to
+    // another buyer a moment ago, this buyer has used it up, or an admin
+    // switched it off. Their sentence, and that nothing was charged.
+    return json({ error: `${made.refused.message} Your card was not charged.`, promo_refused: true }, 409);
+  }
   if ('refused' in made) {
     // The availability checks above are advisory; the capacity trigger is
     // what actually refuses to oversell, and it says so with PT409 — the same

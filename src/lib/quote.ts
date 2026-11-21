@@ -52,41 +52,140 @@ export function quoteFromRows(rows: any[]): OrderQuote {
   };
 }
 
-export async function fetchQuote(showingId: string, tickets: TicketDescriptor[], channel: QuoteChannel): Promise<{ quote: OrderQuote } | { error: string }> {
-  const { data, error } = await supabase.rpc('quote_ticket_order', {
-    p_showing_id: showingId,
-    p_tickets: tickets.map((t) => ({ seat_id: t.seat_id ?? null, tier_id: t.tier_id ?? null })),
-    p_channel: channel,
-  });
-  if (error) return { error: error.message || 'Could not price this order' };
-  return { quote: quoteFromRows(data ?? []) };
+/**
+ * What a valid promo code did to this order (price_ticket_order,
+ * 20261120190412). A code that cannot be used at all is not one of these: it
+ * comes back as a refusal in words.
+ */
+export type PromoStatus = 'applied' | 'below_minimum' | 'not_eligible' | 'better_discount';
+export interface PromoOutcome {
+  code: string;
+  status: PromoStatus;
+  minQuantity: number | null;
 }
 
-export function useOrderQuote(showingId: string | null | undefined, tickets: TicketDescriptor[], channel: QuoteChannel, debounceMs = 150) {
+/**
+ * How a coded quote is asked for.
+ *   'public'  the showing page: the rate-limited promo-quote edge function.
+ *             quote_ticket_order (anon, unthrottled) takes no code on purpose.
+ *   'staff'   the box office: quote_ticket_order_coded, which refuses anyone
+ *             but staff.
+ */
+export type PromoVia = 'public' | 'staff';
+export interface PromoRequest { code: string; via: PromoVia }
+
+/** The promo outcome off the function's rows, or null. Exported for tests. */
+export function promoFromRows(rows: any[]): PromoOutcome | null {
+  const first = rows?.[0];
+  if (!first?.promo_code || !first?.promo_status) return null;
+  return {
+    code: first.promo_code,
+    status: first.promo_status,
+    minQuantity: first.promo_min_quantity == null ? null : Number(first.promo_min_quantity),
+  };
+}
+
+/** The sentence for a valid code that is not this order's discount, or null when it is. */
+export function promoNotice(promo: PromoOutcome | null): string | null {
+  if (!promo) return null;
+  switch (promo.status) {
+    case 'applied': return null;
+    case 'below_minimum':
+      return `${promo.code} needs at least ${promo.minQuantity ?? 2} tickets in the order.`;
+    case 'not_eligible': return `${promo.code} doesn't apply to the ticket types in this order.`;
+    case 'better_discount': return `A better discount already applies to this order, so ${promo.code} isn't needed.`;
+    default: return null;
+  }
+}
+
+type QuoteResult =
+  | { quote: OrderQuote; promo: PromoOutcome | null }
+  | { error: string; promoRefused?: boolean };
+
+const descriptorsOf = (tickets: TicketDescriptor[]) =>
+  tickets.map((t) => ({ seat_id: t.seat_id ?? null, tier_id: t.tier_id ?? null }));
+
+export async function fetchQuote(
+  showingId: string,
+  tickets: TicketDescriptor[],
+  channel: QuoteChannel,
+  promo?: PromoRequest | null,
+): Promise<QuoteResult> {
+  if (promo?.code && promo.via === 'public') {
+    const { data, error } = await supabase.functions.invoke('promo-quote', {
+      body: { showing_id: showingId, tickets: descriptorsOf(tickets), code: promo.code },
+    });
+    if (error) {
+      // A non-2xx leaves the body unread on error.context (see lib/functions.ts).
+      const response = (error as { context?: unknown }).context as Response | undefined;
+      const body = response && typeof response.json === 'function'
+        ? ((await response.json().catch(() => null)) as { error?: string; promo_refused?: boolean } | null)
+        : null;
+      return { error: body?.error || 'Could not check that promo code', promoRefused: !!body?.promo_refused };
+    }
+    return { quote: data.quote as OrderQuote, promo: (data.promo ?? null) as PromoOutcome | null };
+  }
+
+  const { data, error } = promo?.code
+    ? await supabase.rpc('quote_ticket_order_coded', {
+      p_showing_id: showingId, p_tickets: descriptorsOf(tickets), p_channel: channel, p_code: promo.code,
+    })
+    : await supabase.rpc('quote_ticket_order', {
+      p_showing_id: showingId, p_tickets: descriptorsOf(tickets), p_channel: channel,
+    });
+  // PT422 is a promo code that cannot be used; every other refusal is the order's.
+  if (error) return { error: error.message || 'Could not price this order', promoRefused: error.code === 'PT422' };
+  return { quote: quoteFromRows(data ?? []), promo: promoFromRows(data ?? []) };
+}
+
+/**
+ * The running total for a selection, optionally with a promo code.
+ *
+ * A code that is refused does not take the total with it: the hook prices the
+ * order again without the code, so the screen keeps showing what the buyer
+ * would actually pay, and the refusal arrives separately as `promoError` for
+ * the code box. `promo` is non-null only for a code the database accepted, so
+ * callers send a code at checkout exactly when `promo` is set.
+ */
+export function useOrderQuote(
+  showingId: string | null | undefined,
+  tickets: TicketDescriptor[],
+  channel: QuoteChannel,
+  debounceMs = 150,
+  promoRequest: PromoRequest | null = null,
+) {
   const [quote, setQuote] = useState<OrderQuote>(EMPTY_QUOTE);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [promo, setPromo] = useState<PromoOutcome | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
   const seq = useRef(0);
   // The selection as a string, so an equal selection is the same dependency.
-  const key = `${showingId ?? ''}|${channel}|${JSON.stringify(tickets.map((t) => [t.seat_id ?? null, t.tier_id ?? null]))}`;
+  const key = `${showingId ?? ''}|${channel}|${promoRequest?.via ?? ''}:${promoRequest?.code ?? ''}|${JSON.stringify(tickets.map((t) => [t.seat_id ?? null, t.tier_id ?? null]))}`;
 
   useEffect(() => {
     const mine = ++seq.current;
     if (!showingId || tickets.length === 0) {
-      setQuote(EMPTY_QUOTE); setError(null); setLoading(false);
+      setQuote(EMPTY_QUOTE); setError(null); setLoading(false); setPromo(null); setPromoError(null);
       return;
     }
     setLoading(true);
     const timer = setTimeout(async () => {
-      const res = await fetchQuote(showingId, tickets, channel);
+      let res = await fetchQuote(showingId, tickets, channel, promoRequest);
+      let refusedCode: string | null = null;
+      if ('error' in res && res.promoRefused) {
+        refusedCode = res.error;
+        res = await fetchQuote(showingId, tickets, channel, null);
+      }
       if (mine !== seq.current) return; // a newer selection has been asked about
-      if ('error' in res) setError(res.error);
-      else { setQuote(res.quote); setError(null); }
+      setPromoError(refusedCode);
+      if ('error' in res) { setError(res.error); setPromo(null); }
+      else { setQuote(res.quote); setError(null); setPromo(res.promo); }
       setLoading(false);
     }, debounceMs);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  return { quote, error, loading };
+  return { quote, error, loading, promo, promoError };
 }

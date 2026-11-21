@@ -18,6 +18,7 @@ import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
 import { CheckoutTurnstile } from '@/components/CheckoutTurnstile';
 import { useTurnstileGate } from '@/hooks/useTurnstileGate';
 import { DonationPrompt } from '@/components/DonationPrompt';
+import { PromoCodeField } from '@/components/PromoCodeField';
 import { type Seat, type PriceTier } from '@/lib/booking';
 import { useOrderQuote } from '@/lib/quote';
 import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
@@ -575,6 +576,9 @@ export default function Showing() {
   // Optional gift added to this purchase. Zero unless the buyer says otherwise;
   // it rides on the same card charge and is never taxed.
   const [donationCents, setDonationCents] = useState(0);
+  // The promo code the buyer applied, as typed. Quoted through the
+  // rate-limited promo-quote function, never the public quote (BRIEF-promo-codes).
+  const [promoCode, setPromoCode] = useState<string | null>(null);
 
   // Card payment for signed-in buyers. Guests get their own card form inside
   // GuestCheckoutForm, alongside the contact fields they still have to fill in.
@@ -876,8 +880,9 @@ export default function Showing() {
   // function the server prices with — so the number on screen is the number
   // charged. It carries the discount, the order-level tax and the surcharge a
   // rental production may pass on; nothing is computed here.
-  const { quote, error: quoteError, loading: quoting } = useOrderQuote(
-    showing?.id, buildTicketDescriptors(), 'online',
+  const { quote, error: quoteError, loading: quoting, promo, promoError } = useOrderQuote(
+    showing?.id, buildTicketDescriptors(), 'online', 150,
+    promoCode ? { code: promoCode, via: 'public' } : null,
   );
   const { subtotal, discount, tax, total, processingFee, grandTotal } = quote;
   // The gift is added to the charge after tax and is never taxed — the tax line
@@ -964,6 +969,9 @@ export default function Showing() {
         // all, so this is undefined there and the server treats it as no
         // consent given.
         sms_consent: opts.guest?.smsConsent === true,
+        // Only a code the database accepted. A refused one was already priced
+        // out of the total on screen, so sending it would only be refused again.
+        promo_code: promo ? promoCode : undefined,
       });
 
       if (!data?.success) throw new Error('Checkout failed');
@@ -1666,6 +1674,15 @@ export default function Showing() {
                       For a larger group, please call the box office.
                     </p>
                   )}
+                  <PromoCodeField
+                    applied={promoCode}
+                    onApply={setPromoCode}
+                    onRemove={() => setPromoCode(null)}
+                    promo={promo}
+                    error={promoError}
+                    checking={quoting}
+                    disabled={purchasing}
+                  />
                   <div className="border-t border-border pt-3 space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Subtotal</span>

@@ -39,6 +39,7 @@ vi.mock('@/integrations/supabase/client', () => {
     const chain: any = {
       select: () => chain,
       order: () => chain,
+      not: () => chain,
       eq: (col: string, val: string) => { if (col === 'id') id = val; return chain; },
       filter: () => chain,
       insert: (p: any) => { op = 'insert'; payload = p; return chain; },
@@ -46,7 +47,10 @@ vi.mock('@/integrations/supabase/client', () => {
       delete: () => { op = 'delete'; return chain; },
       then: (resolve: (v: unknown) => unknown) => {
         if (op === 'insert') {
-          state.inserts.push(payload);
+          state.inserts.push(table === 'ticket_discount_limits' ? { limits: payload } : payload);
+          if (table === 'ticket_discount_limits') {
+            return resolve({ data: (payload as any[]).map((_, i) => ({ id: `lim-${i}` })), error: null });
+          }
           const returned = state.insertReturns ?? [{ id: 'new', created_at: '2026-09-21T00:00:00Z', ...payload }];
           if (returned.length) state.rows.push(...returned);
           return resolve({ data: returned, error: null });
@@ -59,7 +63,8 @@ vi.mock('@/integrations/supabase/client', () => {
     return chain;
   };
   const canon: Record<string, string> = { Students: 'Student', student: 'Student' };
-  const rpc = (_fn: string, args: { raw: string }) => Promise.resolve({ data: canon[args.raw] ?? args.raw, error: null });
+  const rpc = (fn: string, args: { raw: string }) =>
+    Promise.resolve(fn === 'ticket_discount_usage' ? { data: [], error: null } : { data: canon[args.raw] ?? args.raw, error: null });
   return { supabase: { from, rpc } };
 });
 
@@ -200,5 +205,65 @@ describe('suggestLabel', () => {
     expect(suggestLabel('fixed_per_ticket', '2', '4')).toBe('$2 off each ticket when you buy 4+');
     expect(suggestLabel('fixed_per_order', '10.5', '1')).toBe('$10.50 off');
     expect(suggestLabel('percent', '', '4')).toBe('');
+  });
+});
+
+describe('promo codes (BRIEF-promo-codes)', () => {
+  it('stores a code the way the table requires: upper-case, no spaces', async () => {
+    render(<DiscountRulesEditor scope={{ movie_id: 'm-1' }} audience="every showing of this film" />);
+    await screen.findByText('No discounts yet.');
+    fireEvent.change(screen.getByLabelText('Percent'), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText('Promo code (optional)'), { target: { value: 'fall 25' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add discount' }));
+    await waitFor(() => expect(state.inserts).toHaveLength(1));
+    expect(state.inserts[0]).toMatchObject({ movie_id: 'm-1', code: 'FALL25', channels: null, is_active: true });
+    expect(state.toasts.success[0]).toMatch(/Code FALL25 added/);
+  });
+
+  it('refuses a code the table would refuse, before writing', async () => {
+    render(<DiscountRulesEditor scope={{ movie_id: 'm-1' }} audience="every showing of this film" />);
+    await screen.findByText('No discounts yet.');
+    fireEvent.change(screen.getByLabelText('Percent'), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText('Promo code (optional)'), { target: { value: 'ab' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add discount' }));
+    await waitFor(() => expect(state.toasts.error).toHaveLength(1));
+    expect(state.toasts.error[0]).toMatch(/3 to 32 letters/);
+    expect(state.inserts).toHaveLength(0);
+  });
+
+  it('a site-wide discount must have a code, or it would discount every ticket', async () => {
+    render(<DiscountRulesEditor scope={{ sitewide: true }} audience="every film, event and live performance" />);
+    await screen.findByText('No promo codes yet.');
+    fireEvent.change(screen.getByLabelText('Percent'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add promo code' }));
+    await waitFor(() => expect(state.toasts.error).toHaveLength(1));
+    expect(state.toasts.error[0]).toMatch(/needs a promo code/);
+    expect(state.inserts).toHaveLength(0);
+  });
+
+  it('a site-wide code is written with no scope at all', async () => {
+    render(<DiscountRulesEditor scope={{ sitewide: true }} audience="every film, event and live performance" />);
+    await screen.findByText('No promo codes yet.');
+    fireEvent.change(screen.getByLabelText('Percent'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('Promo code'), { target: { value: 'MEMBERS10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add promo code' }));
+    await waitFor(() => expect(state.inserts).toHaveLength(1));
+    const written = state.inserts[0];
+    expect(written.code).toBe('MEMBERS10');
+    for (const col of ['showing_id', 'movie_id', 'event_id', 'live_performance_id']) expect(written).not.toHaveProperty(col);
+  });
+
+  it('a limited code is written OFF, gets its limits, and only then goes on', async () => {
+    render(<DiscountRulesEditor scope={{ event_id: 'evt-1' }} audience="every showing of this event" />);
+    await screen.findByText('No discounts yet.');
+    fireEvent.change(screen.getByLabelText('Percent'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Promo code (optional)'), { target: { value: 'ONCEONLY' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add a limit/ }));
+    fireEvent.change(screen.getByLabelText('Up to'), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add discount' }));
+    await waitFor(() => expect(state.updates).toHaveLength(1));
+    expect(state.inserts[0]).toMatchObject({ code: 'ONCEONLY', is_active: false });
+    expect(state.inserts[1]).toEqual({ limits: [{ counts: 'orders', per: 'total', max_uses: 100, discount_id: 'new' }] });
+    expect(state.updates[0]).toEqual({ id: 'new', is_active: true });
   });
 });

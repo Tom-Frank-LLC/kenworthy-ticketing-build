@@ -32,3 +32,6 @@ CREATE TABLE public.host_assignments (user_id uuid, showing_id uuid);
 CREATE FUNCTION public.is_host_of_showing(_user_id uuid, _showing_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
   SELECT EXISTS (SELECT 1 FROM public.host_assignments WHERE user_id = _user_id AND showing_id = _showing_id) $$;
 ALTER TABLE public.tickets ADD COLUMN comp_recipient_name text, ADD COLUMN comp_recipient_email text, ADD COLUMN issued_by_user_id uuid;
+-- Promo-code usage counts skip a pending row older than the checkout hold
+-- (20261120190412), so they read when it was written.
+ALTER TABLE public.tickets ADD COLUMN purchased_at timestamptz NOT NULL DEFAULT now();
