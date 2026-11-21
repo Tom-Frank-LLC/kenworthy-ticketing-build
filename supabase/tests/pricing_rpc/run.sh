@@ -27,6 +27,14 @@ run < supabase/migrations/20260922203433_movies_external_ticketing.sql
 # tier-required rule (audit H2); §9 of the test compares the two.
 run < $T/pricing_rpc/tier_required_before.sql
 run < supabase/migrations/20261006225325_price_ticket_order_requires_tier.sql
+# The public may not read a coded rule (audit L19), then promo codes. §9 below
+# then compares every production shape priced without a code against the old
+# function: promo codes must change none of them.
+run < supabase/migrations/20261006225937_ticket_discount_codes_hidden.sql
+run < supabase/migrations/20261120190412_promo_codes.sql
+run < supabase/migrations/20261120231805_promo_code_limit_grants.sql
 docker cp supabase/functions/_shared/pricing_vectors.json pgrpc:/tmp/pricing_vectors.json
 { echo "\\set doc \`cat /tmp/pricing_vectors.json\`"; cat $T/pricing_rpc/pricing_rpc_test.sql; } | run
+run < $T/pricing_rpc/promo_codes_test.sql
+sh $T/pricing_rpc/promo_race.sh
 [ -n "$KEEP" ] || docker rm -f pgrpc >/dev/null
