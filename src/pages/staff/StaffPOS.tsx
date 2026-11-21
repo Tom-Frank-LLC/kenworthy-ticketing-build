@@ -41,7 +41,8 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import TransactionsTab from '@/components/admin/TransactionsTab';
 import { type Seat, type PriceTier, type TicketLineItem, newOrderToken } from '@/lib/booking';
 import { useOrderQuote } from '@/lib/quote';
-import { describeOffer, fetchDiscountRules } from '@/lib/discounts';
+import { buyerLimitNote, describeOffer, fetchDiscountRules, type DiscountLimit } from '@/lib/discounts';
+import { PromoCodeField } from '@/components/PromoCodeField';
 import type { DiscountRule } from '@/lib/discounts';
 import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
@@ -131,6 +132,12 @@ export default function StaffPOS() {
   // The same rules the website applies, so a group at the counter pays what
   // the same group would have paid online.
   const [discountRules, setDiscountRules] = useState<DiscountRule[]>([]);
+  // A promo code for this sale (BRIEF-promo-codes). Quoted through
+  // quote_ticket_order_coded, which only staff may call.
+  const [promoCode, setPromoCode] = useState<string | null>(null);
+  // A per-person limit on that code. The till cannot check it, because
+  // counter sales are recorded under the staff member, so staff are told.
+  const [promoBuyerNote, setPromoBuyerNote] = useState<string | null>(null);
   const [tierQuantities, setTierQuantities] = useState<Record<string, number>>({});
   const [selectedTierId, setSelectedTierId] = useState(''); // for assigned seating
 
@@ -401,9 +408,25 @@ export default function StaffPOS() {
   // write the rows — so the screen and the sale cannot disagree. The channel
   // decides the surcharge: a rental production may pass Square's in-person
   // rate on to a card sale; cash never carries one, no card was processed.
-  const { quote, error: quoteError, loading: quoting } = useOrderQuote(
-    selectedShowingId || null, ticketDescriptors(), paymentMethod === 'card' ? 'in_person' : 'none',
+  const { quote, error: quoteError, loading: quoting, promo, promoError } = useOrderQuote(
+    selectedShowingId || null, ticketDescriptors(), paymentMethod === 'card' ? 'in_person' : 'none', 150,
+    promoCode ? { code: promoCode, via: 'staff' } : null,
   );
+
+  useEffect(() => {
+    if (!promo?.code) { setPromoBuyerNote(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('ticket_discounts')
+        .select('id, ticket_discount_limits(counts, per, max_uses)')
+        .eq('code', promo.code)
+        .maybeSingle();
+      if (cancelled) return;
+      setPromoBuyerNote(buyerLimitNote(((data as { ticket_discount_limits?: DiscountLimit[] } | null)?.ticket_discount_limits) ?? []));
+    })();
+    return () => { cancelled = true; };
+  }, [promo?.code]);
   const { subtotal, discount, tax, total, processingFee, grandTotal } = quote;
   // Tax was computed from the ticket lines above; the gift is added after it
   // and is never part of it. This is the number the terminal is handed.
@@ -498,6 +521,8 @@ export default function StaffPOS() {
       // Recorded so a refund credits the card that paid, rather than only
       // flipping the ticket's status.
       p_square_payment_id: squarePaymentId,
+      // Only a code the database accepted; it checks it again as it writes.
+      p_code: promo ? promoCode : null,
     });
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as Array<{ id: string; total_price: number; processing_fee: number }>;
@@ -514,7 +539,7 @@ export default function StaffPOS() {
       toast.error(`Recorded $${(storedCents / 100).toFixed(2)} but the screen showed $${grandTotal.toFixed(2)}. Check this sale in Today's sales.`, { duration: 15000 });
     }
     return { ticketIds: rows.map(r => r.id), orderToken };
-  }, [selectedShowingId, ticketDescriptors, grandTotal]);
+  }, [selectedShowingId, ticketDescriptors, grandTotal, promo, promoCode]);
 
   /**
    * File the counter donation, once the sale it rode in on has gone through.
@@ -693,6 +718,7 @@ export default function StaffPOS() {
     setPatronEmail('');
     setPatronPhone('');
     setDonationCents(0);
+    setPromoCode(null);
     setDonationFromDisplay(false);
     setSaleId(crypto.randomUUID());
     setPaymentStatus('idle');
@@ -1416,6 +1442,17 @@ export default function StaffPOS() {
                       </div>
                     )}
                   </div>
+                  <PromoCodeField
+                    key={saleId}
+                    applied={promoCode}
+                    onApply={setPromoCode}
+                    onRemove={() => setPromoCode(null)}
+                    promo={promo}
+                    error={promoError}
+                    checking={quoting}
+                    disabled={inFlight}
+                    note={promoBuyerNote}
+                  />
                   <div className="border-t border-border pt-3 space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Subtotal</span>

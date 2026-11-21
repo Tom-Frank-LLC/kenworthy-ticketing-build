@@ -3165,8 +3165,45 @@ export type Database = {
         }
         Relationships: []
       }
+      ticket_discount_limits: {
+        Row: {
+          counts: string
+          created_at: string
+          discount_id: string
+          id: string
+          max_uses: number
+          per: string
+        }
+        Insert: {
+          counts: string
+          created_at?: string
+          discount_id: string
+          id?: string
+          max_uses: number
+          per: string
+        }
+        Update: {
+          counts?: string
+          created_at?: string
+          discount_id?: string
+          id?: string
+          max_uses?: number
+          per?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_discount_limits_discount_id_fkey"
+            columns: ["discount_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_discounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ticket_discounts: {
         Row: {
+          applies_to: string
+          channels: string[] | null
           code: string | null
           created_at: string
           eligible_tiers: string[] | null
@@ -3185,6 +3222,8 @@ export type Database = {
           value: number
         }
         Insert: {
+          applies_to?: string
+          channels?: string[] | null
           code?: string | null
           created_at?: string
           eligible_tiers?: string[] | null
@@ -3203,6 +3242,8 @@ export type Database = {
           value: number
         }
         Update: {
+          applies_to?: string
+          channels?: string[] | null
           code?: string | null
           created_at?: string
           eligible_tiers?: string[] | null
@@ -3262,6 +3303,7 @@ export type Database = {
           confirmation_error: string | null
           confirmation_sent_at: string | null
           discount_amount: number
+          discount_code: string | null
           discount_id: string | null
           discount_label: string | null
           id: string
@@ -3299,6 +3341,7 @@ export type Database = {
           confirmation_error?: string | null
           confirmation_sent_at?: string | null
           discount_amount?: number
+          discount_code?: string | null
           discount_id?: string | null
           discount_label?: string | null
           id?: string
@@ -3336,6 +3379,7 @@ export type Database = {
           confirmation_error?: string | null
           confirmation_sent_at?: string | null
           discount_amount?: number
+          discount_code?: string | null
           discount_id?: string | null
           discount_label?: string | null
           id?: string
@@ -3672,6 +3716,7 @@ export type Database = {
       create_ticket_order: {
         Args: {
           p_checkout_idempotency_key?: string
+          p_code?: string
           p_comp_recipient_email?: string
           p_comp_recipient_name?: string
           p_order_token?: string
@@ -3693,6 +3738,7 @@ export type Database = {
           confirmation_error: string | null
           confirmation_sent_at: string | null
           discount_amount: number
+          discount_code: string | null
           discount_id: string | null
           discount_label: string | null
           id: string
@@ -3852,7 +3898,13 @@ export type Database = {
       my_mfa_required: { Args: never; Returns: boolean }
       order_tax_cents: { Args: { base_cents: number }; Returns: number }
       price_ticket_order: {
-        Args: { p_channel?: string; p_showing_id: string; p_tickets: Json }
+        Args: {
+          p_buyer?: string
+          p_channel?: string
+          p_code?: string
+          p_showing_id: string
+          p_tickets: Json
+        }
         Returns: Database["public"]["CompositeTypes"]["priced_ticket"][]
         SetofOptions: {
           from: "*"
@@ -3906,6 +3958,30 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      quote_ticket_order_coded: {
+        Args: {
+          p_buyer?: string
+          p_channel?: string
+          p_code?: string
+          p_showing_id: string
+          p_tickets: Json
+        }
+        Returns: Database["public"]["CompositeTypes"]["priced_ticket"][]
+        SetofOptions: {
+          from: "*"
+          to: "priced_ticket"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      ticket_discount_usage: {
+        Args: { p_discount_ids: string[] }
+        Returns: {
+          discount_id: string
+          orders: number
+          tickets: number
+        }[]
       }
       redeem_film_pass: {
         Args: { p_amount: number; p_pass_id: string; p_ticket_id: string }
@@ -4041,6 +4117,9 @@ export type Database = {
         order_grand_total: number | null
         production_title: string | null
         production_category: string | null
+        promo_code: string | null
+        promo_status: string | null
+        promo_min_quantity: number | null
       }
     }
   }

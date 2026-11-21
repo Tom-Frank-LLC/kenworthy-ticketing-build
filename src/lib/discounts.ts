@@ -15,6 +15,8 @@ export interface DiscountRule {
   code?: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
+  /** NULL = everywhere; else a subset of online / in_person (20261120190412). */
+  channels?: string[] | null;
 }
 
 /**
@@ -30,7 +32,7 @@ export function usableRules(rows: DiscountRule[], nowMs: number): DiscountRule[]
     .map((r) => ({ ...r, value: Number(r.value) }));
 }
 
-const COLUMNS = 'id, type, value, min_quantity, label, created_at, is_active, code, starts_at, ends_at, eligible_tiers';
+const COLUMNS = 'id, type, value, min_quantity, label, created_at, is_active, code, starts_at, ends_at, eligible_tiers, channels';
 
 /**
  * The discount rules that could apply to a showing right now: its own, and its
@@ -81,8 +83,52 @@ export function describeOffer(rule: DiscountRule): string {
   const amount = rule.type === 'percent'
     ? `${Number(rule.value)}%`
     : `$${Number(rule.value).toFixed(2).replace(/\.00$/, '')}${rule.type === 'fixed_per_ticket' ? ' per ticket' : ''}`;
-  if (rule.min_quantity <= 1) return `Save ${amount}`;
-  return `Buy ${rule.min_quantity} or more and save ${amount}`;
+  const where = channelPhrase(rule.channels);
+  if (rule.min_quantity <= 1) return `Save ${amount}${where}`;
+  return `Buy ${rule.min_quantity} or more and save ${amount}${where}`;
+}
+
+/** " online only" / " at the box office", or '' for a rule that applies everywhere. */
+export function channelPhrase(channels: string[] | null | undefined): string {
+  if (!channels || channels.length !== 1) return '';
+  return channels[0] === 'online' ? ' online only' : ' at the box office';
+}
+
+// ---- Usage limits (ticket_discount_limits, 20261120190412) ------------------
+
+export type LimitCounts = 'orders' | 'tickets';
+export type LimitPer = 'total' | 'buyer' | 'showing' | 'day' | 'buyer_showing';
+export interface DiscountLimit {
+  id?: string;
+  counts: LimitCounts;
+  per: LimitPer;
+  max_uses: number;
+}
+
+export const LIMIT_PER_LABELS: Record<LimitPer, string> = {
+  total: 'in total',
+  buyer: 'per person',
+  showing: 'per showing',
+  day: 'per day of shows',
+  buyer_showing: 'per person, per showing',
+};
+
+/** "100 orders in total", "2 tickets per person". */
+export function describeLimit(limit: DiscountLimit): string {
+  const n = Number(limit.max_uses);
+  const unit = limit.counts === 'orders' ? (n === 1 ? 'order' : 'orders') : (n === 1 ? 'ticket' : 'tickets');
+  return `${n} ${unit} ${LIMIT_PER_LABELS[limit.per] ?? limit.per}`;
+}
+
+/**
+ * What the till shows beside an applied code that has a per-person limit, or
+ * null when it has none. Counter sales are recorded under the staff member
+ * ringing them, so the database cannot tell who the patron is; staff check.
+ */
+export function buyerLimitNote(limits: DiscountLimit[]): string | null {
+  const personal = limits.filter((l) => l.per === 'buyer' || l.per === 'buyer_showing');
+  if (personal.length === 0) return null;
+  return `Limit ${personal.map(describeLimit).join('; ')}. The till can't check this, so please confirm with the patron.`;
 }
 
 /** "Adult and Child tickets" — or '' when a rule applies to every type. */

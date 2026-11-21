@@ -1,11 +1,12 @@
 ---
 brief: promo-codes
 title: A buyer can enter a promo code at checkout and get that code's ticket discount, priced by the same SQL function as every other discount
-status: queued
+status: built
 track: feature
 severity: P2
 date: 2026-11-13
 verified: false
+evidence: migrations 20261120190412 + 20261120231805 applied to staging 2026-11-20; promo-quote + ticket-checkout deployed to staging; staging Worker bc110a5b (rollback 36cf30f9). Not in production.
 ---
 
 # Brief: promo codes on ticket purchases
@@ -14,6 +15,49 @@ verified: false
 **Builds on:** `BRIEF-ticket-discounts` (shipped #311/#312/#314), `BRIEF-pricing-rpc` (shipped
 #316–#324), `BRIEF-sec-rls-regressions` (audit L19, migration `20261006225937`).
 **Design record for the discount model:** `docs/DESIGN-order-level-tax-and-ticket-discounts.md`.
+
+## Build record (20 Nov 2026): built, on staging, not in production
+
+Branch `feat/promo-codes`. Everything in "What the build needs" below is built, with these
+changes from the design, decided while building:
+
+- **Limits are rows** (`ticket_discount_limits`), not three columns: Tom asked for options
+  ("per item or per visit"), so each limit counts `orders` or `tickets`, `per` `total` /
+  `buyer` / `showing` / `day` / `buyer_showing`, any number per rule. A `tickets` limit
+  counts *discounted* tickets only, and refuses an order that would cross it (no trimming).
+  `day` is the showing's date in `America/Los_Angeles`.
+- **Limits and channels apply to automatic rules too.** An automatic rule over its limit is
+  skipped silently (nobody asked for it by name); a coded rule over its limit is refused.
+- **Rate limiting counts failed lookups only** (`promo-code-miss`, 20 / 10 min), checked
+  read-only before every coded quote (`rateLimitReached` in `_shared/rate_limit.ts`). Once a
+  caller is over it, every answer stops, right or wrong, so a 429 can't mean "wrong code".
+  A patron re-pricing their basket with a working code is never counted. A per-call bucket
+  (`promo-quote`, 300 / 10 min) only bounds cost. The original "10 per 10 min on every call"
+  would have locked out a patron changing ticket counts.
+- **`ticket_discount_usage(uuid[])`**: the admin screens' "used on N orders, M tickets"
+  comes from the same counting function the limits enforce.
+- **A refused code doesn't take the total with it.** The browser re-prices without the code
+  and shows the refusal beside the box, so the total on screen is always payable.
+
+**Two bugs found by testing, both fixed before anyone saw them:**
+
+1. The scope check `IF NOT (… OR c.movie_id = s.movie_id …)` was NULL, not false, when
+   nothing matched (three of four scope columns are NULL), and `IF NULL` doesn't raise, so
+   every scoped code worked at every showing. Caught by `promo_codes_test.sql` P2; fixed with
+   `COALESCE(…, false)`.
+2. New tables here don't get SELECT/INSERT/UPDATE/DELETE for `authenticated` by default (only
+   REFERENCES/TRIGGER/TRUNCATE), so the admin tab failed with "permission denied for table
+   ticket_discount_limits". The harness hid it with a test-side GRANT. Found on staging,
+   fixed in `20261120231805`, and the harness now relies on the migrations' own grants.
+
+**Tested:** pricing harness 144 existing (§9: every production shape priced without a code is
+unchanged) + 84 promo checks + a two-session race for a code's last use; Deno 744 + new
+handler tests for `promo-quote`; vitest 1332. On staging: `promo-quote` quotes (correct to
+the cent), anon refused the coded RPC, anon surface 0 rows, the showing page's code box
+(refusal, applied, used up), `create_ticket_order` writing coded rows and refusing past the
+limit, and the admin Promo codes tab. **Not yet done:** a sandbox card payment with a code
+through the page (Square order with the discount line), and the box office with a code.
+Test code on staging: `STAGINGTEN` (site-wide 10%, 1 order per person, 2 in total).
 
 ## Where things stand (verified against `origin/main` at f0e0105, 13 Nov 2026)
 

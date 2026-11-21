@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { UndeliveredOrdersCard } from '@/components/admin/UndeliveredOrdersCard';
 import { MarqueeFrame } from '@/components/MarqueeFrame';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, UsersRound, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Archive, Store, Receipt, Lock, LockOpen, Star, Bell
+import { Globe, Film, Plus, Calendar, Ticket, Edit, Trash2, Music, PartyPopper, BarChart3, UtensilsCrossed, CreditCard, Download, Users, Wallet, KeyRound, FileText, UsersRound, Handshake, History, Disc, Search, X, ChevronLeft, ChevronRight, Mail, Heart, Eye, Building2, Briefcase, Newspaper, Martini, Archive, Store, Receipt, Lock, LockOpen, Star, Bell, Tag
 } from 'lucide-react';
 import { ProductionDetailDrawer } from '@/components/ProductionDetailDrawer';
 import { AttendeeSheet } from '@/components/admin/AttendeeSheet';
@@ -73,6 +73,7 @@ const BoxOfficeReceiptsTab = lazyWithRecovery(() => import('@/components/admin/B
 const LaborTab = lazyWithRecovery(() => import('@/components/admin/LaborTab'));
 const SponsorsTab = lazyWithRecovery(() => import('@/components/admin/SponsorsTab'));
 const DvdLibraryTab = lazyWithRecovery(() => import('@/components/admin/DvdLibraryTab'));
+const PromoCodesTab = lazyWithRecovery(() => import('@/components/admin/PromoCodesTab'));
 const MailchimpTab = lazyWithRecovery(() => import('@/components/admin/MailchimpTab'));
 const LglTab = lazyWithRecovery(() => import('@/components/admin/LglTab'));
 const NotificationsTab = lazyWithRecovery(() => import('@/components/admin/NotificationsTab'));
@@ -837,6 +838,9 @@ export default function AdminDashboard() {
               tabs: [
                 { value: 'listings', label: 'Listings', icon: Calendar, show: true },
                 { value: 'passes', label: 'Passes', icon: CreditCard, show: true },
+                /* Admin only: writing a discount rule is (RLS). Site-wide codes
+                   live here because no film or event owns them. */
+                { value: 'promo-codes', label: 'Promo codes', icon: Tag, show: isAdmin },
                 { value: 'concessions', label: 'Concessions', icon: UtensilsCrossed, show: true },
                 { value: 'dvds', label: 'DVDs', icon: Disc, show: true },
               ],
@@ -1486,6 +1490,15 @@ export default function AdminDashboard() {
             <FilmPassesTab />
           </Suspense>
         </TabsContent>
+
+        {/* Promo codes Tab — admin only (BRIEF-promo-codes) */}
+        {isAdmin && (
+        <TabsContent value="promo-codes" className="space-y-6">
+          <Suspense fallback={<TabFallback />}>
+            <PromoCodesTab />
+          </Suspense>
+        </TabsContent>
+        )}
 
         {/* DVDs Tab */}
         <TabsContent value="dvds" className="space-y-6">
