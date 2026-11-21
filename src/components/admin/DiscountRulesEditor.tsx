@@ -620,8 +620,6 @@ export default function DiscountRulesEditor({ scope, audience }: {
             <Plus className="h-4 w-4 mr-1" /> Add a limit
           </Button>
           <p className="text-sm text-muted-foreground">
-            An order has to fit every limit. "Per person" counts online orders only: at the box office
-            the till can't tell who the patron is, so staff are shown the limit and asked to check.
             A failed card payment doesn't use anything up; a refund doesn't give a use back.
           </p>
         </fieldset>
