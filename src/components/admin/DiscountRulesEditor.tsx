@@ -405,15 +405,7 @@ export default function DiscountRulesEditor({ scope, audience }: {
 
   return (
     <div className="space-y-5">
-      {sitewide ? (
-        <p className="text-sm text-muted-foreground font-serif">
-          Every promo code on the site, wherever it works. A code added here works on every film,
-          event and live performance; to make a code for one film or event, add it on that film's
-          or event's Discounts section instead. Buyers type the code on the showing page, or staff
-          type it at the box office. If an automatic discount takes off as much or more, the buyer
-          gets that one instead: discounts never stack.
-        </p>
-      ) : (
+      {!sitewide && (
         <p className="text-sm text-muted-foreground font-serif">
           Applies to {audience}. Without a promo code, a discount applies automatically; with one,
           it is hidden from the showing page and applies only when the code is entered. If more
