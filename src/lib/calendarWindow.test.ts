@@ -197,32 +197,32 @@ describe('monthDividers', () => {
 
 describe('anchorView', () => {
   it('stays put when the view already holds an item', () => {
-    expect(key(anchorView(WEEK_VIEW, ['2026-09-12'], FLOOR).start)).toBe('2026-08-23');
+    expect(key(anchorView(WEEK_VIEW, ['2026-09-12'], FLOOR, FRI).start)).toBe('2026-08-23');
   });
 
   it('stays put when there are no items at all', () => {
-    expect(key(anchorView(WEEK_VIEW, [], FLOOR).start)).toBe('2026-08-23');
+    expect(key(anchorView(WEEK_VIEW, [], FLOOR, FRI).start)).toBe('2026-08-23');
   });
 
   it('follows the earliest item when the week view is empty', () => {
     // 2026-11-19 is a Thursday; its week starts Sunday 2026-11-15.
-    const next = anchorView(WEEK_VIEW, ['2026-12-02', '2026-11-19'], FLOOR);
+    const next = anchorView(WEEK_VIEW, ['2026-12-02', '2026-11-19'], FLOOR, FRI);
     expect(next.mode).toBe('week');
     expect(key(next.start)).toBe('2026-11-15');
   });
 
   it('follows by whole months once the reader is navigating months', () => {
-    const next = anchorView(month(2026, 8), ['2026-11-19'], FLOOR);
+    const next = anchorView(month(2026, 8), ['2026-11-19'], FLOOR, FRI);
     expect(next.mode).toBe('month');
     expect(key(next.start)).toBe('2026-11-01');
   });
 
   it('never follows an item behind the floor', () => {
-    expect(key(anchorView(month(2026, 8), ['2026-01-05'], FLOOR).start)).toBe('2026-08-01');
+    expect(key(anchorView(month(2026, 8), ['2026-01-05'], FLOOR, FRI).start)).toBe('2026-08-01');
   });
 
   it('ignores a malformed key rather than jumping somewhere absurd', () => {
-    expect(key(anchorView(WEEK_VIEW, ['not-a-date'], FLOOR).start)).toBe('2026-08-23');
+    expect(key(anchorView(WEEK_VIEW, ['not-a-date'], FLOOR, FRI).start)).toBe('2026-08-23');
   });
 });
 
