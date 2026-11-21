@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**156 briefs** — 139 shipped, 6 built, 9 open, 0 needs triage, 2 closed.
+**157 briefs** — 139 shipped, 6 built, 10 open, 0 needs triage, 2 closed.
 
 ## Built, not deployed
 
@@ -25,6 +25,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 - `P2` **Comp tickets are issued but never delivered to the person receiving them**<br>`bug` — [brief](briefs/BRIEF-comp-ticket-delivery.md)
 - `P2` **The Mailchimp campaign has never been able to send, because it queries a column that does not exist**<br>`bug` — [brief](briefs/BRIEF-mailchimp-campaign-dead-column.md)
 - `P2` **Settle the privacy model for media buckets, and fix the one place it already broke**<br>`security` — [brief](briefs/BRIEF-media-bucket-privacy-model.md)
+- `P2` **A buyer can enter a promo code at checkout and get that code's ticket discount, priced by the same SQL function as every other discount**<br>`feature` — [brief](briefs/BRIEF-promo-codes.md)
 - `P2` **A released or failed card sale stops holding its assigned seat**<br>`bug` — [brief](briefs/BRIEF-seat-release-unique-index.md)
 - `P2` **Establish whether Section 504 applies to the Kenworthy, and put the record behind it in place**<br>`ops` — [brief](briefs/BRIEF-section-504-compliance.md) · [notes](briefs/../accessibility-audit.md)
 - `P3` **Anyone who signs in can add a passkey as a second factor, keeping their authenticator app as the backup**<br>`security` — [brief](briefs/BRIEF-admin-passkeys.md)
