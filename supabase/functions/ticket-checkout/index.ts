@@ -333,12 +333,40 @@ Deno.serve(async (req: Request) => {
   } else {
     const { data: soldRows } = await admin
       .from('tickets')
-      .select('id, status, purchased_at')
+      .select('id, status, purchased_at, tier_id')
       .eq('showing_id', showingId)
       .in('status', HELD_STATUSES);
-    const sold = (soldRows || []).filter(isHeld).length;
-    if (sold + order.tickets.length > order.showing.total_seats) {
+    const heldRows = (soldRows || []).filter(isHeld);
+    if (heldRows.length + order.tickets.length > order.showing.total_seats) {
       return json({ error: 'Not enough tickets left for this showing' }, 409);
+    }
+
+    // A tier's own limit (showing_price_tiers.max_tickets): a block like
+    // Preferred Seating that sells out before the rest of the house. Advisory,
+    // like the check above — enforce_showing_capacity() is what refuses, under
+    // a lock — but it lets this refusal come before the buyer's account is
+    // created, and say how many are left. Tiers come from the priced order, so
+    // a seat's own tier mapping has already been applied.
+    const wanted = new Map<string, number>();
+    for (const t of order.tickets) {
+      if (t.tier_id) wanted.set(t.tier_id, (wanted.get(t.tier_id) ?? 0) + 1);
+    }
+    if (wanted.size > 0) {
+      const { data: limited } = await admin
+        .from('showing_price_tiers')
+        .select('id, tier_name, max_tickets')
+        .in('id', [...wanted.keys()])
+        .not('max_tickets', 'is', null);
+      for (const tier of (limited || []) as { id: string; tier_name: string; max_tickets: number }[]) {
+        const left = Math.max(0, tier.max_tickets - heldRows.filter((r) => r.tier_id === tier.id).length);
+        if ((wanted.get(tier.id) ?? 0) > left) {
+          return json({
+            error: left === 0
+              ? `${tier.tier_name} is sold out for this showing.`
+              : `Only ${left} ${tier.tier_name} ticket${left === 1 ? ' is' : 's are'} left for this showing.`,
+          }, 409);
+        }
+      }
     }
   }
 

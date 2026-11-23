@@ -22,7 +22,7 @@ import { DEFAULT_SHOWING_MINUTES, ticketsSoldHere } from '@/lib/purchasable';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { safeHttpUrl } from '@/lib/safeUrl';
 import { squareSaveOutcome } from '@/lib/squareLink';
-import { setShowingPriceTiers } from '@/lib/priceTiers';
+import { parseTierLimit, setShowingPriceTiers } from '@/lib/priceTiers';
 import {
   findCollidingRowIndexes,
   findDuplicateRowIndexes,
@@ -50,6 +50,11 @@ interface TierRow {
   id?: string;
   tier_name: string;
   price: string;
+  /**
+   * The tier's general-admission ticket limit as typed: '' is no limit, '0'
+   * closes the tier. Optional so the defaults below need not spell it out.
+   */
+  max_tickets?: string;
   display_order: number;
 }
 
@@ -327,6 +332,7 @@ export default function ShowingForm() {
             id: t.id,
             tier_name: t.tier_name,
             price: String(t.price),
+            max_tickets: t.max_tickets == null ? '' : String(t.max_tickets),
             display_order: t.display_order,
           })));
         } else {
@@ -528,7 +534,7 @@ export default function ShowingForm() {
     setTiers(prev => prev.filter((_, i) => i !== index));
   };
 
-  const updateTier = (index: number, field: 'tier_name' | 'price', value: string) => {
+  const updateTier = (index: number, field: 'tier_name' | 'price' | 'max_tickets', value: string) => {
     setTiers(prev => prev.map((t, i) => i === index ? { ...t, [field]: value } : t));
   };
 
@@ -709,7 +715,15 @@ export default function ShowingForm() {
       try {
         await setShowingPriceTiers(
           showingId,
-          validTiers.map(t => ({ tier_name: t.tier_name, price: parseFloat(t.price) })),
+          // max_tickets is always sent from here — null when blank — so
+          // clearing the box clears the limit. (The seat editor omits it, which
+          // keeps a limit; see setShowingPriceTiers.) handleSubmit has already
+          // refused anything parseTierLimit cannot read.
+          validTiers.map(t => ({
+            tier_name: t.tier_name,
+            price: parseFloat(t.price),
+            max_tickets: parseTierLimit(t.max_tickets) ?? null,
+          })),
         );
       } catch (err) {
         const why = err instanceof Error ? err.message : 'unknown error';
@@ -874,6 +888,16 @@ export default function ShowingForm() {
     // showings behind with the form still on screen, and a second press of the
     // button would create every one of them again.
     if (assignedSeating && seatEditorRef.current?.validate() === false) return;
+
+    // Same reasoning: a limit the database will refuse is caught before
+    // anything is written. Only where the tier list is what gets saved.
+    if (!sellsNothing && !assignedSeating && useTiers) {
+      const bad = tiers.find(t => t.tier_name.trim() && parseTierLimit(t.max_tickets) === undefined);
+      if (bad) {
+        toast.error(`The ticket limit for ${bad.tier_name.trim()} must be a whole number of 0 or more, or blank for no limit.`);
+        return;
+      }
+    }
 
     if (isEdit) {
       setSaving(true);
@@ -1635,12 +1659,12 @@ export default function ShowingForm() {
               {useTiers && (
                 <div className="space-y-2">
                   {tiers.map((tier, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                    <div key={i} className="flex flex-wrap items-center gap-2">
                       <Input
                         placeholder="Tier name (e.g. Adult)"
                         value={tier.tier_name}
                         onChange={e => updateTier(i, 'tier_name', e.target.value)}
-                        className="flex-1"
+                        className="flex-1 min-w-[10rem]"
                       />
                       <div className="relative w-24">
                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
@@ -1652,6 +1676,20 @@ export default function ShowingForm() {
                           className="pl-6"
                         />
                       </div>
+                      <label className="flex items-center gap-1 text-sm text-muted-foreground">
+                        Limit
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          inputMode="numeric"
+                          placeholder="None"
+                          value={tier.max_tickets ?? ''}
+                          onChange={e => updateTier(i, 'max_tickets', e.target.value)}
+                          aria-label={`Ticket limit for ${tier.tier_name.trim() || `tier ${i + 1}`}`}
+                          className="w-20"
+                        />
+                      </label>
                       <Button
                         type="button"
                         variant="ghost"
@@ -1667,6 +1705,12 @@ export default function ShowingForm() {
                   <Button type="button" variant="outline" size="sm" onClick={addTier} className="w-full">
                     <Plus className="h-4 w-4 mr-1" /> Add Tier
                   </Button>
+                  <p className="text-sm text-muted-foreground">
+                    <strong className="font-semibold text-foreground">Limit</strong> is the most tickets a
+                    tier can sell for each showtime — for a block like Preferred Seating that sells out
+                    before the rest of the house. Leave it blank for no limit, or set 0 to stop selling
+                    that tier now. The showing's capacity still applies to every tier together.
+                  </p>
                 </div>
               )}
             </div>

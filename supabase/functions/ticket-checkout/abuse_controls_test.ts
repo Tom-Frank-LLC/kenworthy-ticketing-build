@@ -313,3 +313,61 @@ Deno.test({
     assertEquals(count((c) => c.url.hostname.includes('squareup')), 0);
   }),
 });
+
+// A tier with its own ticket limit (showing_price_tiers.max_tickets): the
+// ballet's Preferred Seating block. The database trigger is what refuses; this
+// is the advisory check that refuses first, before an account exists.
+function tierWorld(maxTickets: number, alreadyHeld: number): Route[] {
+  const tierRow = { ...pricedRow, tier_id: 'tier-preferred', tier_name: 'Preferred Seating' };
+  const routes = world({ quote: (c) => rpc('quote_ticket_order')(c) ? jsonResponse([tierRow, { ...tierRow, seq: 2 }]) : undefined });
+  routes.unshift(
+    (c) => is(c, 'GET', '/rest/v1/showing_price_tiers')
+      ? rows(c, [{ id: 'tier-preferred', tier_name: 'Preferred Seating', max_tickets: maxTickets }])
+      : undefined,
+    (c) => is(c, 'GET', '/rest/v1/tickets') && !c.url.searchParams.has('checkout_idempotency_key')
+      ? rows(c, Array.from({ length: alreadyHeld }, (_, i) => ({
+          id: `held-${i}`, status: 'confirmed', purchased_at: new Date().toISOString(), tier_id: 'tier-preferred',
+        })))
+      : undefined,
+  );
+  return routes;
+}
+
+Deno.test({
+  name: 'a tier at its limit is refused by name, before any account or row',
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: () => quietly(async () => {
+    useRoutes(tierWorld(10, 10));
+    const res = await handler(post(order()));
+    assertEquals(res.status, 409);
+    assertEquals((await res.json()).error, 'Preferred Seating is sold out for this showing.');
+    assertEquals(count(createdUser), 0);
+    assertEquals(count(rpc('create_ticket_order')), 0);
+  }),
+});
+
+Deno.test({
+  name: 'a tier with fewer left than asked for says how many',
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: () => quietly(async () => {
+    useRoutes(tierWorld(10, 9));
+    const res = await handler(post(order()));
+    assertEquals(res.status, 409);
+    assertEquals((await res.json()).error, 'Only 1 Preferred Seating ticket is left for this showing.');
+    assertEquals(count(rpc('create_ticket_order')), 0);
+  }),
+});
+
+Deno.test({
+  name: 'a tier with room under its limit sells',
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: () => quietly(async () => {
+    useRoutes(tierWorld(10, 8));
+    const res = await handler(post(order()));
+    assertEquals(res.status, 200);
+    assertEquals(count(rpc('create_ticket_order')), 1);
+  }),
+});

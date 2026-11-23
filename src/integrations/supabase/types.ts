@@ -2530,6 +2530,7 @@ export type Database = {
           display_order: number
           id: string
           is_active: boolean
+          max_tickets: number | null
           price: number
           showing_id: string
           tier_name: string
@@ -2540,6 +2541,7 @@ export type Database = {
           display_order?: number
           id?: string
           is_active?: boolean
+          max_tickets?: number | null
           price?: number
           showing_id: string
           tier_name?: string
@@ -2550,6 +2552,7 @@ export type Database = {
           display_order?: number
           id?: string
           is_active?: boolean
+          max_tickets?: number | null
           price?: number
           showing_id?: string
           tier_name?: string
@@ -4011,6 +4014,7 @@ export type Database = {
           display_order: number
           id: string
           is_active: boolean
+          max_tickets: number | null
           price: number
           showing_id: string
           tier_name: string
@@ -4032,6 +4036,7 @@ export type Database = {
           held: number
           requires_seat_selection: boolean
           taken_seat_ids: string[]
+          tiers: Json
           total_seats: number
         }[]
       }

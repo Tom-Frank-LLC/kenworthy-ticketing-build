@@ -5,7 +5,7 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**157 briefs** — 140 shipped, 6 built, 9 open, 0 needs triage, 2 closed.
+**158 briefs** — 141 shipped, 6 built, 9 open, 0 needs triage, 2 closed.
 
 ## Built, not deployed
 
@@ -32,6 +32,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A general-admission price tier can have its own ticket limit, so a block like Preferred Seating sells out while General Admission keeps selling**<br>`feature` — `#427` — [brief](briefs/BRIEF-tier-ticket-limits.md)
 - **A buyer can enter a promo code at checkout and get that code's ticket discount, priced by the same SQL function as every other discount**<br>`feature` — `#426` — [brief](briefs/BRIEF-promo-codes.md)
 - **The film archive is back, every archive film is a listing, and the History timeline is editable**<br>`feature` — `#415` — [brief](briefs/BRIEF-archive-listings.md)
 - **The film archive searches every field, opens each film in admin, and films carry director and cast**<br>`feature` — `#417` — [brief](briefs/BRIEF-archive-search-and-credits.md) · [notes](briefs/FINDINGS-archive-credits-backfill.md)

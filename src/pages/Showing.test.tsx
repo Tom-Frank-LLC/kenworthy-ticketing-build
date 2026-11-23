@@ -239,3 +239,59 @@ describe('Showing: an event with its own runtime', () => {
     expect(screen.queryByText('1h 30m')).toBeNull();
   });
 });
+
+/**
+ * A general-admission tier with its own ticket limit (BRIEF-tier-ticket-limits):
+ * the ballet's Preferred Seating block sells out before General Admission. The
+ * limit comes from showing_availability's `tiers` column; the server refuses an
+ * over-limit order either way, so this is about the page not offering one.
+ */
+describe('Showing: a tier that has sold out on its own', () => {
+  const ballet = {
+    ...pastShowing,
+    id: 'showing-ballet',
+    start_time: iso(3 * DAY),
+    is_active: true,
+    total_seats: 200,
+  };
+  const tiers = [
+    { id: 'tier-ps', showing_id: 'showing-ballet', tier_name: 'Preferred Seating', price: 40, display_order: 0, is_active: true },
+    { id: 'tier-ga', showing_id: 'showing-ballet', tier_name: 'General Admission', price: 25, display_order: 1, is_active: true },
+  ];
+  const availability = (ps: number | null, ga: number | null) => ({
+    total_seats: 200, requires_seat_selection: false, held: 60, available: 140, taken_seat_ids: [],
+    tiers: [
+      { tier_id: 'tier-ps', max_tickets: ps === null ? null : 60, held: 60, available: ps },
+      { tier_id: 'tier-ga', max_tickets: ga === null ? null : 140, held: 0, available: ga },
+    ],
+  });
+
+  it('marks the full tier sold out and stops its +, while the other tier still sells', async () => {
+    tables = { showings: [ballet], movies: [movie], showing_price_tiers: tiers, __rpc__: [availability(0, null)] };
+    renderShowing('showing-ballet');
+
+    const plusPreferred = await screen.findByRole('button', { name: 'One more Preferred Seating ticket' });
+    expect(screen.getByText('Sold out')).toBeTruthy();
+    expect((plusPreferred as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'One more General Admission ticket' }) as HTMLButtonElement).disabled).toBe(false);
+    // The showing itself is not sold out.
+    expect(screen.queryByText('Sold Out')).toBeNull();
+  });
+
+  it('with no limit on any tier, nothing reads sold out — every showing before this change', async () => {
+    tables = { showings: [ballet], movies: [movie], showing_price_tiers: tiers, __rpc__: [availability(null, null)] };
+    renderShowing('showing-ballet');
+
+    const plusPreferred = await screen.findByRole('button', { name: 'One more Preferred Seating ticket' });
+    expect((plusPreferred as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText('Sold out')).toBeNull();
+  });
+
+  it('reads the whole showing sold out when every tier is, though seats remain', async () => {
+    tables = { showings: [ballet], movies: [movie], showing_price_tiers: tiers, __rpc__: [availability(0, 0)] };
+    renderShowing('showing-ballet');
+
+    expect((await screen.findAllByText('Sold Out')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'One more Preferred Seating ticket' })).toBeNull();
+  });
+});
