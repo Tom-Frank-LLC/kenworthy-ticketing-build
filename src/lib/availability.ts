@@ -8,7 +8,34 @@ export type ShowingAvailability = {
   /** Capacity left, floored at zero. */
   available: number;
   takenSeatIds: Set<string>;
+  /**
+   * Each live tier's ticket limit and what is left of it, by tier id.
+   * `available` is null for a tier with no limit of its own. General admission
+   * only: a seated tier is bounded by its seats, and its `held` is always 0.
+   */
+  tiers: Map<string, TierAvailability>;
 };
+
+export type TierAvailability = {
+  maxTickets: number | null;
+  held: number;
+  /** Left under the tier's own limit, floored at zero; null when unlimited. */
+  available: number | null;
+};
+
+/**
+ * How many tickets of `tierId` are left under the tier's own limit; Infinity
+ * when it has none, or the lookup did not mention it. Callers still apply the
+ * showing's capacity as well — the tier limit is the tighter of the two only
+ * some of the time (Preferred can have 10 left in a house with 3 left).
+ */
+export function tierRoomLeft(
+  tiers: Map<string, TierAvailability> | undefined,
+  tierId: string,
+): number {
+  const t = tiers?.get(tierId);
+  return t?.available ?? Infinity;
+}
 
 /**
  * How many tickets are left for a showing, and which seats are gone.
@@ -46,6 +73,26 @@ export type ShowingAvailability = {
  * can leave whatever they were showing untouched rather than flashing a wrong
  * "sold out".
  */
+/**
+ * The RPC's `tiers` column, as a map. Tolerant of its absence — a database
+ * that predates 20261123060222 returns no such column — by treating every tier
+ * as unlimited, which is exactly what that database enforces.
+ */
+function parseTiers(raw: unknown): Map<string, TierAvailability> {
+  const out = new Map<string, TierAvailability>();
+  if (!Array.isArray(raw)) return out;
+  for (const row of raw as Array<Record<string, unknown>>) {
+    if (typeof row?.tier_id !== 'string') continue;
+    const num = (v: unknown) => (typeof v === 'number' ? v : null);
+    out.set(row.tier_id, {
+      maxTickets: num(row.max_tickets),
+      held: num(row.held) ?? 0,
+      available: num(row.available),
+    });
+  }
+  return out;
+}
+
 export async function fetchShowingAvailability(
   showingId: string,
 ): Promise<ShowingAvailability | null> {
@@ -64,5 +111,6 @@ export async function fetchShowingAvailability(
     held: data.held ?? 0,
     available: data.available ?? 0,
     takenSeatIds: new Set<string>(data.taken_seat_ids ?? []),
+    tiers: parseTiers(data.tiers),
   };
 }

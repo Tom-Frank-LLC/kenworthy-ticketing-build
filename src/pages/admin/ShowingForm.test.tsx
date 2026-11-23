@@ -722,9 +722,59 @@ describe('ShowingForm — editing the price tiers of a showing that has sold', (
 
     await waitFor(() => expect(state.toasts.success).toContain('Showing updated!'));
     expect(state.tierWrites).toEqual([
-      { showingId: SHOWING_ID, tiers: [{ tier_name: 'General Admission', price: 50 }] },
+      { showingId: SHOWING_ID, tiers: [{ tier_name: 'General Admission', price: 50, max_tickets: null }] },
     ]);
     expect(state.tierTableWrites).toEqual([]);
+  });
+
+  // Per-tier ticket limits (BRIEF-tier-ticket-limits): the ballet's Preferred
+  // Seating block sells out before General Admission.
+  it('a tier limit loads, saves as a number, and a blank box clears it', async () => {
+    state.existingTiers[1] = { ...state.existingTiers[1], max_tickets: 60 };
+    await openForEdit();
+    const preferred = screen.getByLabelText('Ticket limit for Preferred Seating') as HTMLInputElement;
+    const general = screen.getByLabelText('Ticket limit for General Admission') as HTMLInputElement;
+    expect(preferred.value).toBe('60');
+    expect(general.value).toBe('');
+
+    fireEvent.change(preferred, { target: { value: '45' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update Showing' }));
+    await waitFor(() => expect(state.toasts.success).toContain('Showing updated!'));
+    expect(state.tierWrites).toEqual([{
+      showingId: SHOWING_ID,
+      tiers: [
+        { tier_name: 'General Admission', price: 50, max_tickets: null },
+        { tier_name: 'Preferred Seating', price: 75, max_tickets: 45 },
+      ],
+    }]);
+  });
+
+  it('zero is a limit (the tier is closed), not "no limit"', async () => {
+    await openForEdit();
+    fireEvent.change(screen.getByLabelText('Ticket limit for Preferred Seating'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update Showing' }));
+    await waitFor(() => expect(state.toasts.success).toContain('Showing updated!'));
+    expect(state.tierWrites[0].tiers[1]).toEqual({ tier_name: 'Preferred Seating', price: 75, max_tickets: 0 });
+  });
+
+  it('a fractional limit never reaches a save (the input\'s own step=1 stops it)', async () => {
+    await openForEdit();
+    const input = screen.getByLabelText('Ticket limit for Preferred Seating') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '2.5' } });
+    expect(input.validity.valid).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Update Showing' }));
+    await new Promise(r => setTimeout(r, 50));
+    expect(state.tierWrites).toEqual([]);
+    expect(state.toasts.success).toEqual([]);
+  });
+
+  it('a limit the database would refuse is refused before anything is written', async () => {
+    await openForEdit();
+    fireEvent.change(screen.getByLabelText('Ticket limit for Preferred Seating'), { target: { value: '100001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update Showing' }));
+    await waitFor(() => expect(state.toasts.error[0]).toMatch(/limit for Preferred Seating must be a whole number/));
+    expect(state.tierWrites).toEqual([]);
+    expect(state.toasts.success).toEqual([]);
   });
 
   it('a refused tier write is reported, not swallowed', async () => {

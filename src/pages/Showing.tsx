@@ -32,7 +32,7 @@ import { kenworthyNameOn } from '@/lib/archiveFilms';
 import { SEO } from '@/components/SEO';
 import { syncMailchimpProfile, subscribeToMailchimp } from '@/lib/mailchimp';
 import { ticketPagePath } from '@/lib/tickets';
-import { fetchShowingAvailability } from '@/lib/availability';
+import { fetchShowingAvailability, tierRoomLeft, type TierAvailability } from '@/lib/availability';
 import { formatShowtime } from '@/lib/datetime';
 import {
   NOT_SOLD_HERE_MESSAGE,
@@ -565,6 +565,10 @@ export default function Showing() {
   const [selectedSeats, setSelectedSeats] = useState<Set<string>>(new Set());
   const [gaQuantity, setGaQuantity] = useState(0);
   const [ticketsSold, setTicketsSold] = useState(0);
+  // Each tier's own ticket limit and what is left of it (general admission).
+  // Empty until availability loads, which reads as "no tier has a limit" —
+  // the server refuses an over-limit order either way.
+  const [tierAvailability, setTierAvailability] = useState<Map<string, TierAvailability>>(new Map());
   const [loading, setLoading] = useState(true);
   // The showing, or the title it belongs to, could not be read: a deleted or
   // mistyped id, or a production the theatre has taken down. Rendered as a
@@ -611,9 +615,15 @@ export default function Showing() {
   // runs out of capacity, assigned seating runs out of unclaimed seats. Guard on
   // seats.length so an assigned showing whose seat map has not loaded yet does
   // not read as sold out for a moment.
+  //
+  // A GA tier can also run out on its own (showing_price_tiers.max_tickets):
+  // Preferred sells out while General Admission keeps selling. Only when every
+  // tier has is there nothing left to buy, and the showing as a whole reads
+  // sold out.
+  const tierSoldOut = (tierId: string) => tierRoomLeft(tierAvailability, tierId) <= 0;
   const capacitySoldOut = isAssignedSeating
     ? seats.length > 0 && seats.every(s => takenSeatIds.has(s.id))
-    : gaAvailable <= 0;
+    : gaAvailable <= 0 || (hasTiers && priceTiers.every(t => tierSoldOut(t.id)));
 
   // An admin said the house is full, whatever the seat count says. Kept as its
   // own const rather than folded into the line below because the two states
@@ -660,6 +670,7 @@ export default function Showing() {
     setSelectedSeats(new Set());
     setGaQuantity(0);
     setTicketsSold(0);
+    setTierAvailability(new Map());
     setDonationCents(0);
 
     // A second navigation while the first load is still in flight would
@@ -756,6 +767,7 @@ export default function Showing() {
         if (availability) {
           setTakenSeatIds(availability.takenSeatIds);
           setTicketsSold(availability.held);
+          setTierAvailability(availability.tiers);
         }
 
         // Resolve per-seat tier mapping. showing_seat_tiers links venue_seats
@@ -807,7 +819,10 @@ export default function Showing() {
         setProduction(prod);
         setVenue(venueRes.data);
         setSiblingShowings(siblings);
-        if (availability) setTicketsSold(availability.held);
+        if (availability) {
+          setTicketsSold(availability.held);
+          setTierAvailability(availability.tiers);
+        }
       }
       setLoading(false);
     }
@@ -832,7 +847,8 @@ export default function Showing() {
       // The ceiling is on the ORDER, not on each tier: four Adults and four
       // Students is eight tickets.
       const others = Object.entries(prev).reduce((sum, [id, qty]) => sum + (id === tierId ? 0 : qty), 0);
-      const next = Math.max(0, Math.min(pickCeiling - others, current + delta));
+      // And on the tier, when it has a limit of its own.
+      const next = Math.max(0, Math.min(pickCeiling - others, tierRoomLeft(tierAvailability, tierId), current + delta));
       return { ...prev, [tierId]: Math.max(0, next) };
     });
   };
@@ -1055,6 +1071,7 @@ export default function Showing() {
       if (availability) {
         setTakenSeatIds(availability.takenSeatIds);
         setTicketsSold(availability.held);
+        setTierAvailability(availability.tiers);
         setSelectedSeats(prev => {
           const next = new Set(prev);
           for (const seatId of prev) {
@@ -1065,12 +1082,14 @@ export default function Showing() {
         setGaQuantity(q => Math.min(q, availability.available));
         setTierQuantities(prev => {
           // Trim the tier spread down to what is actually left, largest tiers
-          // first, so the running total can never exceed the new ceiling.
+          // first, so the running total can never exceed the new ceiling —
+          // and each tier down to its own limit, which is the usual reason
+          // for this refusal on a tiered night ("Preferred is sold out").
           let budget = availability.available;
           const next: Record<string, number> = {};
           for (const tier of priceTiers) {
             const want = prev[tier.id] || 0;
-            const give = Math.min(want, budget);
+            const give = Math.min(want, budget, tierRoomLeft(availability.tiers, tier.id));
             next[tier.id] = give;
             budget -= give;
           }
@@ -1494,7 +1513,15 @@ export default function Showing() {
                       <div key={tier.id} className="flex items-center justify-between p-4 rounded-lg bg-secondary/50">
                         <div>
                           <p className="font-medium">{tier.tier_name}</p>
-                          <p className="text-sm text-muted-foreground">${tier.price.toFixed(2)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            ${tier.price.toFixed(2)}
+                            {/* Said in words, not only by a greyed-out +: a
+                                disabled button tells a screen reader nothing
+                                about why. */}
+                            {tierSoldOut(tier.id) && (
+                              <span className="ml-2 font-semibold uppercase tracking-wide text-foreground">Sold out</span>
+                            )}
+                          </p>
                         </div>
                         {/* Named, because the icons are not. These were two
                             unlabelled buttons — a screen reader read "button,
@@ -1527,7 +1554,10 @@ export default function Showing() {
                             size="icon"
                             aria-label={`One more ${tier.tier_name} ticket`}
                             onClick={() => updateTierQty(tier.id, 1)}
-                            disabled={ticketCount >= pickCeiling}
+                            disabled={
+                              ticketCount >= pickCeiling
+                              || (tierQuantities[tier.id] || 0) >= tierRoomLeft(tierAvailability, tier.id)
+                            }
                           >
                             <Plus className="h-4 w-4" />
                           </Button>

@@ -46,7 +46,7 @@ import { PromoCodeField } from '@/components/PromoCodeField';
 import type { DiscountRule } from '@/lib/discounts';
 import { DonationPrompt } from '@/components/DonationPrompt';
 import { invokeFunction } from '@/lib/functions';
-import { fetchShowingAvailability } from '@/lib/availability';
+import { fetchShowingAvailability, tierRoomLeft, type TierAvailability } from '@/lib/availability';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { counterRefusal, type CounterRefusal } from '@/lib/purchasable';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -126,6 +126,10 @@ export default function StaffPOS() {
   const [loadingSeats, setLoadingSeats] = useState(false);
   const [gaQuantity, setGaQuantity] = useState(0);
   const [gaTicketsSold, setGaTicketsSold] = useState(0);
+  // Each GA tier's own ticket limit and what is left of it. The database
+  // refuses an over-limit sale here too (the box office is held to the same
+  // limit as the website); this is so the + button stops first.
+  const [tierAvailability, setTierAvailability] = useState<Map<string, TierAvailability>>(new Map());
 
   // Tiered pricing state
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
@@ -315,6 +319,7 @@ export default function StaffPOS() {
       } else {
         setGaTicketsSold(availability?.held ?? 0);
       }
+      setTierAvailability(availability?.tiers ?? new Map());
       setLoadingSeats(false);
     }
     loadData();
@@ -653,22 +658,20 @@ export default function StaffPOS() {
     }
   }, [patronEmail, patronPhone]);
 
+  // The same RPC the showing's first load uses, for the same reason (see the
+  // comment there): a direct read of tickets is filtered by RLS, and counted
+  // confirmed rows only where the server also counts live holds. It is also
+  // the only source of per-tier counts. A failed lookup leaves the numbers as
+  // they were rather than zeroing them.
   const refreshAfterSale = useCallback(async () => {
+    const availability = await fetchShowingAvailability(selectedShowingId);
+    if (!availability) return;
     if (isAssignedSeating) {
-      const { data: ticketsData } = await supabase
-        .from('tickets')
-        .select('seat_id')
-        .eq('showing_id', selectedShowingId)
-        .eq('status', 'confirmed');
-      setTakenSeatIds(new Set((ticketsData || []).map(t => t.seat_id)));
+      setTakenSeatIds(availability.takenSeatIds);
     } else {
-      const { count } = await supabase
-        .from('tickets')
-        .select('id', { count: 'exact' })
-        .eq('showing_id', selectedShowingId)
-        .eq('status', 'confirmed');
-      setGaTicketsSold(count || 0);
+      setGaTicketsSold(availability.held);
     }
+    setTierAvailability(availability.tiers);
   }, [selectedShowingId, isAssignedSeating]);
 
   const addTransaction = useCallback((
@@ -1282,6 +1285,14 @@ export default function StaffPOS() {
                         <div>
                           <p className="font-medium">{tier.tier_name}</p>
                           <p className="text-xs text-muted-foreground">${tier.price.toFixed(2)} each</p>
+                          {/* Staff see the count, as they do for the house below. */}
+                          {tierAvailability.get(tier.id)?.available != null && (
+                            <p className={`text-xs ${tierRoomLeft(tierAvailability, tier.id) <= 0 ? 'font-semibold uppercase tracking-wide text-foreground' : 'text-muted-foreground'}`}>
+                              {tierRoomLeft(tierAvailability, tier.id) <= 0
+                                ? 'Sold out'
+                                : `${tierRoomLeft(tierAvailability, tier.id)} of ${tierAvailability.get(tier.id)!.maxTickets} left`}
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-3">
                           <Button
@@ -1296,8 +1307,8 @@ export default function StaffPOS() {
                           <Button
                             variant="outline"
                             size="icon"
-                            onClick={() => setTierQuantities(prev => ({ ...prev, [tier.id]: Math.min(gaAvailable - totalTierQuantity + (prev[tier.id] || 0), (prev[tier.id] || 0) + 1) }))}
-                            disabled={totalTierQuantity >= gaAvailable}
+                            onClick={() => setTierQuantities(prev => ({ ...prev, [tier.id]: Math.min(gaAvailable - totalTierQuantity + (prev[tier.id] || 0), tierRoomLeft(tierAvailability, tier.id), (prev[tier.id] || 0) + 1) }))}
+                            disabled={totalTierQuantity >= gaAvailable || (tierQuantities[tier.id] || 0) >= tierRoomLeft(tierAvailability, tier.id)}
                           >
                             <Plus className="h-4 w-4" />
                           </Button>
