@@ -1,12 +1,13 @@
 ---
 brief: tier-ticket-limits
 title: A general-admission price tier can have its own ticket limit, so a block like Preferred Seating sells out while General Admission keeps selling
-status: built
+status: shipped
 track: feature
-severity: P1
 date: 2026-11-22
-verified: false
-evidence: migration 20261123060222_tier_ticket_limits.sql; supabase/tests/tier_limits (incl. a two-session race with a lock-removed control that fails)
+shipped_in: ["#427"]
+shipped_at: 2026-11-22
+verified: true
+evidence: production 2026-11-22 — migration 20261123060222 applied and checked (column, trigger, writer, anon grants, anon surface 0 rows; prod's three functions matched their source migrations byte-for-byte before it ran); ticket-checkout deployed; Worker 6a3a0546 (rollback 6b98ba53), live bundle verified. Staging Worker b990dcf7 (rollback 6d03416d). No limit set on any tier yet.
 ---
 
 # Brief: per-tier ticket limits (general admission)
@@ -100,8 +101,18 @@ saves through the same function and knows nothing of limits. Bad values
   sold out, unlimited, all-tiers-out, each mutation-checked); deno 755 pass
   (new: checkout tier refusal before account, "Only 1 … left", room sells).
 
+## Deployed (2026-11-22)
+
+- Staging and production: migration, `ticket-checkout`, Worker. On both, the
+  public `showing_availability` returns `tiers` to anon, and the anon surface
+  check is 0 rows.
+- Production's ballet (Grand Kyiv Ballet, The Nutcracker; 2 showings, GA,
+  265 seats) had 36 and 8 Preferred Seating sold at deploy time. 5 tickets on
+  the first showing have no tier and count only against the house.
+- Not yet exercised: a real purchase refused by a tier limit, online or at
+  the POS. No limit is set anywhere, so nothing sells differently yet.
+
 ## Still to do
 
-- [ ] Staging: db push, functions deploy (`ticket-checkout`), Worker deploy;
-      set a limit on a staging GA showing and buy through it, online and POS.
-- [ ] Production: same, then set the ballet's Preferred limit with staff.
+- [ ] Staff set the ballet's Preferred Seating limit, per showtime. A limit
+      below what has sold just reads Sold out.
