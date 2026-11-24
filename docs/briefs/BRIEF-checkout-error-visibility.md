@@ -1,12 +1,14 @@
 ---
 brief: checkout-error-visibility
 title: A failed purchase or donation shows a persistent, high-contrast, icon-and-text error, not a vanishing toast
-status: built
+status: shipped
 track: ux
 severity: P1
 date: 2026-11-23
-shipped_in: ["d580806"]
-verified: false
+shipped_in: ["#428"]
+shipped_at: 2026-11-24
+verified: true
+findings: FINDINGS-ticket-declines-2026-11.md
 ---
 
 # Checkout error visibility
@@ -17,9 +19,10 @@ and sometimes also by red text with nothing else marking it as an error. The
 person who reported it is red-deficient. Buyers decided the site was broken and
 gave up on mistakes they could have fixed.
 
-**Status:** both phases are built on `feat/checkout-error-visibility`. Nothing
-is deployed. Set `shipped` and `shipped_in` (PR number) once it is in
-production.
+**Status:** shipped in #428 (squash `7f82579`), deployed to production
+2026-11-24 as Worker version `25a7831b` (rollback `6a3a0546`). It was
+verified first on staging (`6051f797`) with sandbox CVV declines on the
+donation page and ticket checkout.
 
 ## Phase 1 — tickets (`d580806`)
 

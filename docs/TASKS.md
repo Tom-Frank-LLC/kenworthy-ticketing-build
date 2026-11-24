@@ -5,14 +5,13 @@
 > change a brief's frontmatter and re-run the script. Schema:
 > [`briefs/.frontmatter-schema.md`](briefs/.frontmatter-schema.md).
 
-**159 briefs** — 141 shipped, 7 built, 9 open, 0 needs triage, 2 closed.
+**159 briefs** — 142 shipped, 6 built, 9 open, 0 needs triage, 2 closed.
 
 ## Built, not deployed
 
 Code complete and merged. **Merging does not deploy** — only `wrangler deploy` does.
 
 - `P0` **End-to-end security audit, second pass — every finding located, ranked and routed to a follow-up**<br>`security` — `#356` — [brief](briefs/BRIEF-security-audit-2026-10-06.md) · [notes](briefs/../AUDIT-security-2026-10-06.md)
-- `P1` **A failed purchase or donation shows a persistent, high-contrast, icon-and-text error, not a vanishing toast**<br>`ux` — `d580806` — [brief](briefs/BRIEF-checkout-error-visibility.md)
 - `P1` **LGL constituent lookup fails — it sends a query parameter LGL does not accept**<br>`bug` — [brief](briefs/BRIEF-lgl-constituent-search-bad-parameter.md)
 - `P2` **The current site ships as an iOS app (Capacitor), with online checkout working inside it**<br>`feature` — [brief](briefs/BRIEF-capacitor-ios-app.md) · [notes](briefs/../FINDINGS-ios-webview-origin.md)
 - `P2` **The box office can see today's presales, and the checkout panel stops being painted over**<br>`feature` — [brief](briefs/BRIEF-pos-todays-presales.md) · [notes](briefs/FINDINGS-pos-revenue-sources.md)
@@ -33,6 +32,7 @@ Code complete and merged. **Merging does not deploy** — only `wrangler deploy`
 
 ## Shipped
 
+- **A failed purchase or donation shows a persistent, high-contrast, icon-and-text error, not a vanishing toast**<br>`ux` — `#428` — [brief](briefs/BRIEF-checkout-error-visibility.md) · [notes](briefs/FINDINGS-ticket-declines-2026-11.md)
 - **A general-admission price tier can have its own ticket limit, so a block like Preferred Seating sells out while General Admission keeps selling**<br>`feature` — `#427` — [brief](briefs/BRIEF-tier-ticket-limits.md)
 - **A buyer can enter a promo code at checkout and get that code's ticket discount, priced by the same SQL function as every other discount**<br>`feature` — `#426` — [brief](briefs/BRIEF-promo-codes.md)
 - **The film archive is back, every archive film is a listing, and the History timeline is editable**<br>`feature` — `#415` — [brief](briefs/BRIEF-archive-listings.md)
