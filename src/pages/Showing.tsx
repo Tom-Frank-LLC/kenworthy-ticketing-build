@@ -15,6 +15,7 @@ import { Film, Calendar, Clock, Check, Minus, Plus, MapPin, Sparkles, Music, Cre
 import { SeatMap } from '@/components/SeatMap';
 import { SalesFinalNote } from '@/components/SalesFinalNote';
 import { GuestCheckoutForm } from '@/components/GuestCheckoutForm';
+import { CheckoutError } from '@/components/CheckoutError';
 import { CheckoutTurnstile } from '@/components/CheckoutTurnstile';
 import { useTurnstileGate } from '@/hooks/useTurnstileGate';
 import { DonationPrompt } from '@/components/DonationPrompt';
@@ -577,6 +578,12 @@ export default function Showing() {
   // this: it loads, and renders in its passed state.
   const [unavailable, setUnavailable] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
+  // The last checkout failure, shown persistently by the pay button until the
+  // next attempt (BRIEF-checkout-error-visibility). The server charge/pricing
+  // refusals used to surface only as a Sonner toast that vanished before a
+  // buyer could read it — the reason "it didn't go through" emails arrive with
+  // no charge on file.
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   // Optional gift added to this purchase. Zero unless the buyer says otherwise;
   // it rides on the same card charge and is never taxed.
   const [donationCents, setDonationCents] = useState(0);
@@ -960,6 +967,8 @@ export default function Showing() {
       return;
     }
 
+    // Clear any banner from a previous attempt before this one.
+    setPurchaseError(null);
     setPurchasing(true);
     try {
       const data = await invokeFunction<{
@@ -1060,7 +1069,16 @@ export default function Showing() {
       // buyer typed and picked stays as it was.
       idempotencyKeyRef.current = crypto.randomUUID();
       turnstile.refresh();
-      toast.error(err.message || 'Failed to purchase tickets');
+      // Persistent, high-contrast, by the pay button — not only a toast that
+      // disappears before it can be read. The server's own sentence when it has
+      // one (it is written for buyers — e.g. a decline, or "Your card was not
+      // charged."), a clear actionable fallback otherwise.
+      const message =
+        typeof err?.message === 'string' && err.message.trim()
+          ? err.message
+          : "We couldn't complete your purchase. Your card was not charged — please check your card details and try again.";
+      setPurchaseError(message);
+      toast.error(message);
 
       // Every rejection on availability grounds — a seat taken a moment ago, or
       // the last tickets going to someone else — means this page is now showing
@@ -1695,9 +1713,8 @@ export default function Showing() {
                   </div>
                   {/* The database's own refusal — sold out, passed, a tier
                       withdrawn — in the summary, before the pay button meets it. */}
-                  {quoteError && (
-                    <p className="text-sm text-destructive" role="alert">{quoteError}</p>
-                  )}
+                  <CheckoutError message={quoteError} />
+
                   {ticketCount >= buyerLimit && (
                     <p className="text-sm text-muted-foreground" role="status">
                       {buyerLimit} is the most tickets one buyer can purchase online for this showing.
@@ -1767,6 +1784,7 @@ export default function Showing() {
                         </div>
                       )}
                       <CheckoutTurnstile gate={turnstile} />
+                      <CheckoutError message={purchaseError} />
                       <Button
                         className="w-full"
                         size="lg"
@@ -1800,6 +1818,7 @@ export default function Showing() {
                       purchasing={purchasing}
                       donationCents={donationCents}
                       turnstile={turnstile}
+                      serverError={purchaseError}
                       onPurchase={handleGuestPurchase}
                     />
                   )}

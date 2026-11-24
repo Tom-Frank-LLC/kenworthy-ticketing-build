@@ -93,3 +93,47 @@ describe('Donate newsletter', () => {
     expect(subscribeToMailchimp).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * A refused gift used to be reported only by a toast that was gone in seconds
+ * (BRIEF-checkout-error-visibility). The banner is what stays.
+ */
+describe('Donate failure banner', () => {
+  beforeEach(() => {
+    invokeFunction.mockReset();
+    subscribeToMailchimp.mockReset();
+  });
+
+  it("shows the server's refusal as a persistent alert with an icon, and clears it on the next attempt", async () => {
+    invokeFunction.mockRejectedValueOnce(new Error('Your card was declined. Please try a different card.'));
+    render(<Donate />);
+    fillDonor();
+    await donate();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Your card was declined. Please try a different card.');
+    // Icon + text, not a colour-only node (WCAG 1.4.1); the message itself is
+    // the high-contrast foreground colour, not the red.
+    expect(alert.querySelector('svg')).not.toBeNull();
+    expect(alert.querySelector('p')).not.toHaveClass('text-destructive');
+
+    // Still there after the moment a toast would have gone.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    // The next attempt clears it, and a success reaches the receipt as before.
+    invokeFunction.mockResolvedValueOnce({ success: true, receiptUrl: null });
+    fireEvent.click(screen.getByRole('button', { name: /^Donate/ }));
+    expect(await screen.findByRole('heading', { name: 'Thank You' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows a fallback when the server gives no sentence', async () => {
+    invokeFunction.mockResolvedValueOnce({ success: false });
+    render(<Donate />);
+    fillDonor();
+    await donate();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("We couldn't process your donation.");
+  });
+});
