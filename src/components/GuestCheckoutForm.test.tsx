@@ -178,6 +178,15 @@ describe('GuestCheckoutForm', () => {
     expect(contactSummary).toHaveFocus();
     expect(tokenizeCard).not.toHaveBeenCalled();
     expect(onPurchase).not.toHaveBeenCalled();
+
+    // And reachable from the field itself: someone tabbing back to Email hears
+    // why it is invalid, not just that it is.
+    const email = emailField();
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(email).toHaveAccessibleDescription(/is required/);
+    if (COLLECT_PHONE) {
+      expect(screen.getByLabelText('Phone')).toHaveAccessibleDescription(/is required/);
+    }
   });
 
   /**
