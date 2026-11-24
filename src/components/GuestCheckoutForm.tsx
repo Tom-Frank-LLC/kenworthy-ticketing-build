@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { FormErrorSummary } from '@/components/ui/field';
+import { FieldError, FormErrorSummary } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
 import { Check, User, Mail, Phone, CreditCard, Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -234,7 +234,7 @@ export function GuestCheckoutForm({
               aria-invalid={errors.name ? true : undefined}
             />
             {errors.name && (
-              <p id="guest-name-error" className="text-sm text-destructive mt-1">{errors.name}</p>
+              <FieldError id="guest-name-error" className="mt-1">{errors.name}</FieldError>
             )}
           </div>
           <div>
@@ -258,7 +258,7 @@ export function GuestCheckoutForm({
               aria-invalid={errors.email ? true : undefined}
             />
             {errors.email && (
-              <p id="guest-email-error" className="text-sm text-destructive mt-1">{errors.email}</p>
+              <FieldError id="guest-email-error" className="mt-1">{errors.email}</FieldError>
             )}
           </div>
           {/* The phone field and its consent box are the opt-in an A2P 10DLC
@@ -311,7 +311,7 @@ export function GuestCheckoutForm({
             </div>
           )}
           {errors.contact && (
-            <p id="guest-contact-error" className="text-sm text-destructive mt-1">{errors.contact}</p>
+            <FieldError id="guest-contact-error" className="mt-1">{errors.contact}</FieldError>
           )}
           {/* Referenced by aria-describedby on both contact fields, so the
               rule is read out on arrival rather than sitting below as text
@@ -351,7 +351,7 @@ export function GuestCheckoutForm({
             <CreditCard className="h-4 w-4" /> Payment
           </p>
           <SquareCardForm ref={cardRef} source="ticket-checkout" onReadyChange={setCardReady} />
-          {errors.card && <p className="text-sm text-destructive mt-1">{errors.card}</p>}
+          {errors.card && <FieldError className="mt-1">{errors.card}</FieldError>}
         </div>
       )}
 

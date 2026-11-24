@@ -10,6 +10,7 @@ import { Heart, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SquareCardForm, type SquareCardFormHandle } from '@/components/SquareCardForm';
 import { CheckoutTurnstile } from '@/components/CheckoutTurnstile';
+import { CheckoutError } from '@/components/CheckoutError';
 import { useTurnstileGate } from '@/hooks/useTurnstileGate';
 
 /**
@@ -52,25 +53,36 @@ export default function Donate() {
   // the server — see useTurnstileGate.
   const turnstile = useTurnstileGate();
   const [done, setDone] = useState<{ receiptUrl: string | null; amount: number } | null>(null);
+  // Why the last attempt stopped, shown by the Donate button until the next
+  // try (BRIEF-checkout-error-visibility). A toast alone was gone in seconds,
+  // before a donor had read it, and left them guessing whether the gift went
+  // through. The toast stays too; this is the copy that does not disappear.
+  const [donateError, setDonateError] = useState<string | null>(null);
+  const fail = (msg: string) => {
+    setDonateError(msg);
+    toast.error(msg);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
+    // A new attempt: drop the last one's banner.
+    setDonateError(null);
 
     if (!amount || amount < 1) {
-      toast.error('Please choose or enter a donation amount.');
+      fail('Please choose or enter a donation amount.');
       return;
     }
     if (amount > 100000) {
-      toast.error('Please enter an amount of $100,000 or less.');
+      fail('Please enter an amount of $100,000 or less.');
       return;
     }
     if (!name.trim() || !email.trim()) {
-      toast.error('Your name and email are required for the receipt.');
+      fail('Your name and email are required for the receipt.');
       return;
     }
     if (!cardRef.current) {
-      toast.error('Card form is not ready yet — give it a moment.');
+      fail('Card form is not ready yet — give it a moment.');
       return;
     }
     if (turnstile.waiting) return;
@@ -82,7 +94,12 @@ export default function Donate() {
       try {
         token = await cardRef.current.tokenize();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Please check your card details.');
+        // Nothing has reached the server yet, so "not charged" is certain here.
+        fail(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Please check your card details. Your card was not charged.',
+        );
         return;
       }
 
@@ -108,7 +125,7 @@ export default function Donate() {
       );
 
       if (!data?.success) {
-        toast.error('Donation could not be processed.');
+        fail("We couldn't process your donation. Please check your card details and try again.");
         return;
       }
 
@@ -133,7 +150,14 @@ export default function Donate() {
     } catch (err) {
       console.error('Donation submit error:', err);
       if (sent) turnstile.refresh();
-      toast.error(err instanceof Error ? err.message : 'Something went wrong.');
+      // A decline arrives here as the server's own sentence (invokeFunction
+      // unwraps it). The fallback does NOT say the card was not charged: a
+      // dropped connection after Square took the payment lands here too.
+      fail(
+        err instanceof Error && err.message
+          ? err.message
+          : "We couldn't confirm your donation. If no receipt reaches your email, please try again or call the box office.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -372,6 +396,8 @@ export default function Donate() {
           </div>
 
           <CheckoutTurnstile gate={turnstile} />
+
+          <CheckoutError message={donateError} />
 
           <Button
             type="submit"

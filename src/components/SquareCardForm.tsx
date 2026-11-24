@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { FieldError } from '@/components/ui/field';
 import {
   SANDBOX_CARD_HINT,
   fetchSquareConfig,
@@ -106,9 +107,9 @@ export const SquareCardForm = forwardRef<SquareCardFormHandle, SquareCardFormPro
 
     if (error) {
       return (
-        <p className={`text-sm text-destructive ${className ?? ''}`}>
+        <FieldError className={className}>
           {error}. Please refresh and try again, or call the box office.
-        </p>
+        </FieldError>
       );
     }
 

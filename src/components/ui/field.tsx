@@ -1,4 +1,5 @@
 import * as React from "react";
+import { AlertTriangle } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -81,14 +82,40 @@ export function Field({
           {hint}
         </p>
       )}
-      {error && (
-        // Not role="alert": the summary below announces the whole set once.
-        // One alert per invalid field talks over itself.
-        <p id={errorId} className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+      {error && <FieldError id={errorId}>{error}</FieldError>}
     </div>
+  );
+}
+
+/**
+ * The one look for an error under a field, shared by `Field` and the forms that
+ * still wire their own inputs (GuestCheckoutForm, SquareCardForm), so the pay
+ * path cannot drift back to bare red text.
+ *
+ * The icon is the point (WCAG 1.4.1). Red text alone marks an error by colour,
+ * and a red-deficient buyer sees it only as another line of grey copy. The
+ * colour passes as it stands: `--destructive` is 6.1:1 on the background and
+ * 5.7:1 on a card, and still 4.9 / 4.6:1 under a full protanopia simulation
+ * (Machado 2009). The old `0 72% 51%` red, which the original checkout brief
+ * was written against, dropped to 2.6:1 under that simulation.
+ *
+ * Not role="alert": FormErrorSummary (or CheckoutError) announces the failure
+ * once. An alert per field talks over itself.
+ */
+export function FieldError({
+  id,
+  className,
+  children,
+}: {
+  id?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <p id={id} className={cn("flex items-start gap-1.5 text-sm text-destructive", className)}>
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <span>{children}</span>
+    </p>
   );
 }
 
@@ -110,9 +137,16 @@ export const FormErrorSummary = React.forwardRef<
   return (
     <div ref={ref} tabIndex={-1} role="alert" aria-live="assertive" className={cn(className)}>
       {list.length > 0 && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3">
-          <p className="text-sm font-medium text-destructive">{title}</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-destructive">
+        // Foreground text on the tint, with the red kept for the border and
+        // icon — the same treatment as CheckoutError. Red text on this tint is
+        // 5.0:1 to normal vision but 4.2:1 under a protanopia simulation, and
+        // this is the box a red-deficient buyer most needs to read.
+        <div className="rounded-md border border-destructive bg-destructive/10 p-3 text-foreground">
+          <p className="flex items-start gap-2 text-sm font-medium">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
+            <span>{title}</span>
+          </p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-10 text-sm">
             {list.map(([key, message]) => (
               <li key={key}>{message}</li>
             ))}
