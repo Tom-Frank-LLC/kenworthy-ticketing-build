@@ -89,6 +89,13 @@ export function GuestCheckoutForm({
   // completable without agreeing to texts.
   const [smsConsent, setSmsConsent] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // "Email or phone is required" is about both contact fields, so both point at
+  // it (and at the rule under them). It used to render as text after the
+  // fields with nothing linking it, so a screen reader landing on Email heard
+  // "invalid" from nothing and never heard why.
+  const contactDescribedBy = [errors.contact ? 'guest-contact-error' : null, 'guest-contact-hint']
+    .filter(Boolean)
+    .join(' ');
   const [tokenizing, setTokenizing] = useState(false);
   const [cardReady, setCardReady] = useState(false);
   const cardRef = useRef<SquareCardFormHandle>(null);
@@ -251,11 +258,11 @@ export function GuestCheckoutForm({
               autoComplete="email"
               aria-required={emailRequired ? true : undefined}
               aria-describedby={
-                [errors.email ? 'guest-email-error' : null, 'guest-contact-hint']
+                [errors.email ? 'guest-email-error' : null, contactDescribedBy]
                   .filter(Boolean)
                   .join(' ')
               }
-              aria-invalid={errors.email ? true : undefined}
+              aria-invalid={errors.email || errors.contact ? true : undefined}
             />
             {errors.email && (
               <FieldError id="guest-email-error" className="mt-1">{errors.email}</FieldError>
@@ -280,6 +287,11 @@ export function GuestCheckoutForm({
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
                 maxLength={20}
+                aria-describedby={contactDescribedBy}
+                // A phone only counts as a contact once texts are live; before
+                // then the error is "email is required" and the phone is not
+                // what is wrong.
+                aria-invalid={errors.contact && SMS_DELIVERY_LIVE ? true : undefined}
               />
               {/* The A2P 10DLC disclosure block. Twilio's campaign review
                   rejects an opt-in that is missing any of four things, so all
